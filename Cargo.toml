@@ -1,0 +1,15 @@
+[package]
+name = "splashboard"
+version = "0.1.0"
+edition = "2024"
+authors = ["Yuji Ueki <unhappychoice@gmail.com>"]
+description = "A customizable terminal splash screen with plugin-based data sources"
+license = "ISC"
+repository = "https://github.com/unhappychoice/splashboard"
+homepage = "https://github.com/unhappychoice/splashboard"
+readme = "README.md"
+keywords = ["tui", "splash", "dashboard", "terminal", "ratatui"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+ratatui = "0.29"

@@ -99,7 +99,7 @@ Early design phase. See [Issues](https://github.com/unhappychoice/splashboard/is
 
 ## License
 
-TBD (likely MIT or Apache-2.0)
+ISC
 
 ## Related
 
