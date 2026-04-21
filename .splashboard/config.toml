@@ -133,6 +133,34 @@ fetcher = "read_store"
 file_format = "text"
 render = { type = "simple", align = "center" }
 
+# ── System fetchers (sysinfo-backed, cross-platform) ─────────────────
+# Each fetcher is multi-shape; the renderer pick below is one valid pairing.
+
+[[widget]]
+id = "cpu"
+fetcher = "cpu_load"
+render = "gauge"
+
+[[widget]]
+id = "memory"
+fetcher = "memory"
+render = "line_gauge"
+
+[[widget]]
+id = "uptime"
+fetcher = "uptime"
+render = { type = "simple", align = "center" }
+
+[[widget]]
+id = "load_avg"
+fetcher = "load_average"
+render = { type = "simple", align = "center" }
+
+[[widget]]
+id = "processes"
+fetcher = "process_top"
+render = "table"
+
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
 # even though it's narrower than the terminal. 2-column rows below keep the default Legacy
@@ -263,5 +291,39 @@ height = { length = 6 }
   [[row.child]]
   widget = "recent_commits"
   title = "timeline"
+  border = "rounded"
+
+[[row]]
+height = { length = 3 }
+
+  [[row.child]]
+  widget = "cpu"
+  title = "cpu_load"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "memory"
+  title = "memory"
+  border = "rounded"
+
+[[row]]
+height = { length = 3 }
+
+  [[row.child]]
+  widget = "uptime"
+  title = "uptime"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "load_avg"
+  title = "load_average"
+  border = "rounded"
+
+[[row]]
+height = { length = 7 }
+
+  [[row.child]]
+  widget = "processes"
+  title = "process_top"
   border = "rounded"
 
