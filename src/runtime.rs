@@ -12,10 +12,10 @@ use tokio::task::JoinSet;
 use crate::cache::{Cache, CacheEntry};
 use crate::config::{Config, WidgetConfig};
 use crate::daemon;
-use crate::fetcher::{FetchContext, Registry};
+use crate::fetcher::{self, FetchContext, Registry, ShapeMismatch};
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
-use crate::render::{self, RenderSpec};
+use crate::render::{self, RenderSpec, Shape};
 use crate::trust::{self, TrustStore};
 
 /// Split trust-passed widgets into cached (disk-backed, fetched async via daemon) and realtime
@@ -31,15 +31,82 @@ fn split_by_fetcher_kind(
         .partition(|w| registry.get_cached(&w.fetcher).is_some())
 }
 
+/// Derives the shape each widget should ask its fetcher for. Renderers are single-shape today
+/// (every builtin's `accepts()` returns one element), so specifying `render = "..."` uniquely
+/// determines the shape. Widgets without an explicit renderer fall back to the fetcher's
+/// [`fetcher::Fetcher::default_shape`]. Unknown fetcher / renderer names drop out here — we skip
+/// them and let the downstream dispatch / render paths surface the mismatch as placeholders.
+fn derive_shapes(
+    widgets: &[WidgetConfig],
+    fetchers: &Registry,
+    renderers: &render::Registry,
+) -> HashMap<WidgetId, Shape> {
+    widgets
+        .iter()
+        .filter_map(|w| derive_shape(w, fetchers, renderers).map(|s| (w.id.clone(), s)))
+        .collect()
+}
+
+fn derive_shape(
+    w: &WidgetConfig,
+    fetchers: &Registry,
+    renderers: &render::Registry,
+) -> Option<Shape> {
+    if let Some(spec) = &w.render
+        && let Some(renderer) = renderers.get(spec.renderer_name())
+        && let Some(&shape) = renderer.accepts().first()
+    {
+        return Some(shape);
+    }
+    fetchers.get(&w.fetcher).map(|f| f.default_shape())
+}
+
+/// Partitions widgets into (shape-valid, shape-invalid-with-reason). A widget whose renderer-
+/// derived shape isn't in the fetcher's `shapes()` is diverted to a placeholder rather than
+/// being dispatched — protects the same "never crash the splash" invariant as unknown-renderer
+/// handling in [`render::render_payload`]. Unknown fetcher names pass through; the fetch
+/// dispatch drops them separately.
+fn partition_by_shape_support(
+    widgets: &[WidgetConfig],
+    shapes: &HashMap<WidgetId, Shape>,
+    fetchers: &Registry,
+) -> (Vec<WidgetConfig>, Vec<(WidgetConfig, ShapeMismatch)>) {
+    let mut valid = Vec::new();
+    let mut invalid = Vec::new();
+    for w in widgets {
+        let Some(fetcher) = fetchers.get(&w.fetcher) else {
+            valid.push(w.clone());
+            continue;
+        };
+        let Some(&shape) = shapes.get(&w.id) else {
+            valid.push(w.clone());
+            continue;
+        };
+        if fetcher.shapes().contains(&shape) {
+            valid.push(w.clone());
+        } else {
+            invalid.push((
+                w.clone(),
+                ShapeMismatch {
+                    fetcher: fetcher.name().to_string(),
+                    requested: shape,
+                },
+            ));
+        }
+    }
+    (valid, invalid)
+}
+
 fn compute_realtime_payloads(
     registry: &Registry,
     widgets: &[WidgetConfig],
+    shapes: &HashMap<WidgetId, Shape>,
 ) -> HashMap<WidgetId, Payload> {
     widgets
         .iter()
         .filter_map(|w| {
             let fetcher = registry.get_realtime(&w.fetcher)?;
-            let ctx = fetch_context(w, Duration::from_secs(0));
+            let ctx = fetch_context(w, shapes.get(&w.id).copied(), Duration::from_secs(0));
             Some((w.id.clone(), fetcher.compute(&ctx)))
         })
         .collect()
@@ -74,16 +141,31 @@ pub async fn run(
     // what needs unlocking.
     let decision = TrustStore::load().decide(config_ident);
     let (fetchable, gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
+    // Derive the renderer-implied shape for each widget once, then reuse it in every downstream
+    // step (validation, cache key, fetch, realtime compute) so the fetcher sees a single
+    // consistent answer.
+    let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
+    // Shape validation runs on everything the trust gate let through — a widget whose renderer
+    // demands a shape the fetcher can't emit renders a placeholder instead of reaching the
+    // fetcher.
+    let (fetchable, shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
 
     // Cached widgets go through disk cache + async daemon. Realtime widgets recompute each
     // frame and never touch disk.
     let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
 
-    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets);
+    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets, &shapes);
     let mut payloads = entries_to_payloads(&entries);
-    payloads.extend(compute_realtime_payloads(&registry, &realtime_widgets));
+    payloads.extend(compute_realtime_payloads(
+        &registry,
+        &realtime_widgets,
+        &shapes,
+    ));
     for w in &gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
+    for (w, err) in &shape_invalid {
+        payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
     }
 
     // Load axis: decide whether to block on fresh data. If there are any cached widgets with no
@@ -131,16 +213,15 @@ pub async fn run(
             // Multi-frame loop: ticks the frame every FRAME_TICK so animated renderers can
             // animate; picks up daemon-written cache entries as they land; stops when the
             // daemon finishes (if we were waiting for it) or the window expires.
+            let buckets = WidgetBuckets {
+                cached: &cached_widgets,
+                realtime: &realtime_widgets,
+                gated: &gated,
+                shape_invalid: &shape_invalid,
+            };
             let deadline = std::time::Instant::now() + window;
             loop {
-                refresh_payloads(
-                    &cache,
-                    &registry,
-                    &cached_widgets,
-                    &realtime_widgets,
-                    &gated,
-                    &mut payloads,
-                );
+                refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
                 draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
                 if remaining.is_zero() {
@@ -159,14 +240,7 @@ pub async fn run(
                     tokio::time::sleep(tick).await;
                 }
             }
-            refresh_payloads(
-                &cache,
-                &registry,
-                &cached_widgets,
-                &realtime_widgets,
-                &gated,
-                &mut payloads,
-            );
+            refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
             draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
         Err(_) => {
@@ -178,6 +252,7 @@ pub async fn run(
                 cache.as_ref(),
                 &cached_widgets,
                 &entries,
+                &shapes,
                 fetch_deadline,
             )
             .await;
@@ -202,19 +277,35 @@ pub async fn run(
 pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &str)>) {
     let cache = Cache::open_default();
     let registry = Registry::with_builtins();
+    let render_registry = render::Registry::with_builtins();
     let decision = TrustStore::load().decide(config_ident);
     let (fetchable, _gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
+    let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
+    // Shape-invalid widgets are rendered as placeholders by the main process; there's no value
+    // in the daemon hitting their fetchers just to have the result discarded.
+    let (fetchable, _shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
     // Daemon only persists cached-fetcher output. Realtime widgets have no disk representation.
     let (cached_widgets, _realtime) = split_by_fetcher_kind(&fetchable, &registry);
-    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets);
+    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets, &shapes);
     let _ = fetch_all(
         &registry,
         cache.as_ref(),
         &cached_widgets,
         &entries,
+        &shapes,
         DAEMON_DEADLINE,
     )
     .await;
+}
+
+/// Widget partitions the runtime carries across refreshes. Bundling keeps
+/// [`refresh_payloads`] under clippy's arg-count limit and makes the "what goes where"
+/// categories explicit at call sites.
+struct WidgetBuckets<'a> {
+    cached: &'a [WidgetConfig],
+    realtime: &'a [WidgetConfig],
+    gated: &'a [WidgetConfig],
+    shape_invalid: &'a [(WidgetConfig, ShapeMismatch)],
 }
 
 /// Rebuilds the payload map after the daemon has run: pulls fresh entries from the cache for
@@ -223,26 +314,32 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
 fn refresh_payloads(
     cache: &Option<Cache>,
     registry: &Registry,
-    cached_widgets: &[WidgetConfig],
-    realtime_widgets: &[WidgetConfig],
-    gated: &[WidgetConfig],
+    buckets: &WidgetBuckets<'_>,
+    shapes: &HashMap<WidgetId, Shape>,
     payloads: &mut HashMap<WidgetId, Payload>,
 ) {
-    let entries = load_entries(cache.as_ref(), registry, cached_widgets);
+    let entries = load_entries(cache.as_ref(), registry, buckets.cached, shapes);
     *payloads = entries_to_payloads(&entries);
-    payloads.extend(compute_realtime_payloads(registry, realtime_widgets));
-    for w in gated {
+    payloads.extend(compute_realtime_payloads(
+        registry,
+        buckets.realtime,
+        shapes,
+    ));
+    for w in buckets.gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
+    for (w, err) in buckets.shape_invalid {
+        payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
     }
 }
 
-fn fetch_context(w: &WidgetConfig, deadline: Duration) -> FetchContext {
+fn fetch_context(w: &WidgetConfig, shape: Option<Shape>, deadline: Duration) -> FetchContext {
     FetchContext {
         widget_id: w.id.clone(),
         format: w.format.clone(),
         timeout: deadline,
         file_format: w.file_format.clone(),
-        shape: w.shape.clone(),
+        shape,
     }
 }
 
@@ -250,6 +347,7 @@ fn load_entries(
     cache: Option<&Cache>,
     registry: &Registry,
     widgets: &[WidgetConfig],
+    shapes: &HashMap<WidgetId, Shape>,
 ) -> HashMap<WidgetId, CacheEntry> {
     let Some(c) = cache else {
         return HashMap::new();
@@ -258,7 +356,8 @@ fn load_entries(
         .iter()
         .filter_map(|w| {
             let fetcher = registry.get_cached(&w.fetcher)?;
-            let key = fetcher.cache_key(&fetch_context(w, Duration::from_secs(0)));
+            let shape = shapes.get(&w.id).copied();
+            let key = fetcher.cache_key(&fetch_context(w, shape, Duration::from_secs(0)));
             c.load(&key).map(|e| (w.id.clone(), e))
         })
         .collect()
@@ -276,6 +375,7 @@ async fn fetch_all(
     cache: Option<&Cache>,
     widgets: &[WidgetConfig],
     cached: &HashMap<WidgetId, CacheEntry>,
+    shapes: &HashMap<WidgetId, Shape>,
     deadline: Duration,
 ) -> HashMap<WidgetId, Payload> {
     let mut set = JoinSet::new();
@@ -286,7 +386,7 @@ async fn fetch_all(
         let Some(fetcher) = registry.get_cached(&w.fetcher) else {
             continue;
         };
-        let ctx = fetch_context(w, deadline);
+        let ctx = fetch_context(w, shapes.get(&w.id).copied(), deadline);
         let cache_key = fetcher.cache_key(&ctx);
         let lock = match cache {
             Some(c) => match c.try_lock(&cache_key) {
@@ -464,6 +564,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &HashMap::new(),
+            &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
@@ -472,7 +573,7 @@ mod tests {
         let key = registry
             .get_cached("static")
             .unwrap()
-            .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
+            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
         let loaded = cache.load(&key).unwrap();
         match loaded.payload.body {
             Body::Lines(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
@@ -482,7 +583,6 @@ mod tests {
 
     #[tokio::test]
     async fn widgets_sharing_fetcher_and_params_share_cache_file() {
-        // Two different widget ids, same fetcher + format → one cache entry, readable by either.
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let registry = Registry::with_builtins();
@@ -491,18 +591,17 @@ mod tests {
             static_widget("greeting_project_b", "Hello!"),
         ];
 
-        // First widget populates the cache.
         let _ = fetch_all(
             &registry,
             Some(&cache),
             &widgets[..1],
             &HashMap::new(),
+            &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
 
-        // Second widget sees the shared entry when we look it up by its cache key.
-        let entries = load_entries(Some(&cache), &registry, &widgets[1..]);
+        let entries = load_entries(Some(&cache), &registry, &widgets[1..], &HashMap::new());
         assert!(entries.contains_key("greeting_project_b"));
     }
 
@@ -519,12 +618,12 @@ mod tests {
             Some(&cache),
             &first,
             &HashMap::new(),
+            &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
 
-        // Same widget id but different format should not be served the other's cache.
-        let entries = load_entries(Some(&cache), &registry, &second);
+        let entries = load_entries(Some(&cache), &registry, &second, &HashMap::new());
         assert!(
             entries.is_empty(),
             "second widget should not read first widget's cache"
@@ -551,6 +650,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &cached,
+            &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
@@ -560,9 +660,6 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_all_skips_widgets_whose_key_is_already_locked() {
-        // Simulates a second splashboard invocation arriving while the first still holds the
-        // fetch lock for the same cache key — the second should skip rather than duplicate the
-        // request. We hold the lock manually here to stand in for the "first" process.
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let registry = Registry::with_builtins();
@@ -570,13 +667,14 @@ mod tests {
         let key = registry
             .get_cached("static")
             .unwrap()
-            .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
+            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
         let _held = cache.try_lock(&key).expect("first acquire");
 
         let fresh = fetch_all(
             &registry,
             Some(&cache),
             &widgets,
+            &HashMap::new(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
@@ -601,9 +699,107 @@ mod tests {
             None,
             &widgets,
             &HashMap::new(),
+            &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
         assert!(fresh.is_empty());
+    }
+
+    fn widget_with_render(id: &str, fetcher: &str, renderer: Option<&str>) -> WidgetConfig {
+        WidgetConfig {
+            id: id.into(),
+            fetcher: fetcher.into(),
+            render: renderer.map(|r| RenderSpec::Short(r.into())),
+            ..Default::default()
+        }
+    }
+
+    fn single_shape(id: &str, shape: Shape) -> HashMap<WidgetId, Shape> {
+        let mut m = HashMap::new();
+        m.insert(id.into(), shape);
+        m
+    }
+
+    #[test]
+    fn derive_shape_prefers_renderer_accepted_shape_over_fetcher_default() {
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let w = widget_with_render("t", "clock", Some("calendar"));
+        assert_eq!(
+            derive_shape(&w, &registry, &render_registry),
+            Some(Shape::Calendar)
+        );
+    }
+
+    #[test]
+    fn derive_shape_falls_back_to_fetcher_default_when_no_render_spec() {
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let w = widget_with_render("t", "clock", None);
+        assert_eq!(
+            derive_shape(&w, &registry, &render_registry),
+            Some(Shape::Lines)
+        );
+    }
+
+    #[test]
+    fn derive_shape_falls_back_to_fetcher_default_when_renderer_unknown() {
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let w = widget_with_render("t", "clock", Some("definitely_not_a_renderer"));
+        assert_eq!(
+            derive_shape(&w, &registry, &render_registry),
+            Some(Shape::Lines)
+        );
+    }
+
+    #[test]
+    fn partition_by_shape_support_keeps_widget_with_compatible_renderer() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget_with_render("d", "disk", Some("gauge"))];
+        let shapes = single_shape("d", Shape::Ratio);
+        let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
+        assert_eq!(valid.len(), 1);
+        assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn partition_by_shape_support_rejects_incompatible_renderer() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget_with_render("d", "disk", Some("calendar"))];
+        let shapes = single_shape("d", Shape::Calendar);
+        let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
+        assert!(valid.is_empty());
+        assert_eq!(invalid.len(), 1);
+        assert_eq!(invalid[0].0.id, "d");
+        assert_eq!(invalid[0].1.requested, Shape::Calendar);
+    }
+
+    #[test]
+    fn partition_by_shape_support_passes_through_unknown_fetcher() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget_with_render("x", "no_such_fetcher", Some("calendar"))];
+        let shapes = single_shape("x", Shape::Calendar);
+        let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
+        assert_eq!(valid.len(), 1);
+        assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn partition_by_shape_support_accepts_multi_shape_fetchers_renderer_shape() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![
+            widget_with_render("a", "clock", Some("simple")),
+            widget_with_render("b", "clock", Some("table")),
+            widget_with_render("c", "clock", Some("calendar")),
+        ];
+        let mut shapes = HashMap::new();
+        shapes.insert("a".into(), Shape::Lines);
+        shapes.insert("b".into(), Shape::Entries);
+        shapes.insert("c".into(), Shape::Calendar);
+        let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
+        assert_eq!(valid.len(), 3);
+        assert!(invalid.is_empty());
     }
 }

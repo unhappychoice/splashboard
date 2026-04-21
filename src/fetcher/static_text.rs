@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use crate::payload::{Body, LinesData, Payload};
+use crate::render::Shape;
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
@@ -17,6 +18,9 @@ impl Fetcher for StaticText {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Lines]
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let source = ctx.format.as_deref().unwrap_or("");

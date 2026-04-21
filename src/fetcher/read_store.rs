@@ -6,8 +6,24 @@ use crate::payload::{
     Bar, BarsData, Body, CalendarData, EntriesData, HeatmapData, ImageData, LinesData,
     NumberSeriesData, Payload, PointSeriesData, RatioData,
 };
+use crate::render::Shape;
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
+
+/// Every payload shape ReadStore knows how to deserialize. Intentionally broad — ReadStore is
+/// the escape hatch for user-defined widgets, so it supports the non-dynamic shapes exhaustively;
+/// config picks which variant a specific file maps to.
+const READ_STORE_SHAPES: &[Shape] = &[
+    Shape::Lines,
+    Shape::Entries,
+    Shape::Ratio,
+    Shape::NumberSeries,
+    Shape::PointSeries,
+    Shape::Bars,
+    Shape::Image,
+    Shape::Calendar,
+    Shape::Heatmap,
+];
 
 /// Renders a local file the user wrote. The file lives at a fixed, sanitized path
 /// `$HOME/.splashboard/store/<widget_id>.<ext>` — config cannot redirect the read, so a hostile
@@ -29,11 +45,14 @@ impl Fetcher for ReadStoreFetcher {
         // there's no path-traversal vector even in an untrusted local config.
         Safety::Safe
     }
+    fn shapes(&self) -> &[Shape] {
+        READ_STORE_SHAPES
+    }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         // Differentiate by widget id + declared shape so two widgets pointed at different
         // files (different ids) don't collide, and a single widget changing its shape gets
         // a fresh entry rather than reading an old-shape cached payload.
-        let shape = ctx.shape.as_deref().unwrap_or("");
+        let shape = ctx.shape.map(|s| s.as_str()).unwrap_or("");
         let file_format = ctx.file_format.as_deref().unwrap_or("");
         format!(
             "read_store-{}-{}-{}",
@@ -43,10 +62,10 @@ impl Fetcher for ReadStoreFetcher {
         )
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let shape = ctx
-            .shape
-            .as_deref()
-            .ok_or_else(|| FetchError::Failed("read_store widget missing `shape`".into()))?;
+        // Runtime always derives a shape (renderer's single accepted shape, or our
+        // `default_shape`); `None` falls back defensively to Lines so direct callers still
+        // behave.
+        let shape = ctx.shape.unwrap_or(Shape::Lines);
         let file_format = ctx
             .file_format
             .as_deref()
@@ -65,9 +84,9 @@ impl Fetcher for ReadStoreFetcher {
 
 /// `text` is the natural default for `lines`; everything else needs structure. Saves users
 /// from writing `file_format = "text"` for every simple notes widget.
-fn default_format_for_shape(shape: &str) -> &'static str {
+fn default_format_for_shape(shape: Shape) -> &'static str {
     match shape {
-        "lines" => "text",
+        Shape::Lines => "text",
         _ => "json",
     }
 }
@@ -100,7 +119,7 @@ fn sanitize(s: &str) -> String {
         .collect()
 }
 
-fn load_body(path: &std::path::Path, file_format: &str, shape: &str) -> Result<Body, FetchError> {
+fn load_body(path: &std::path::Path, file_format: &str, shape: Shape) -> Result<Body, FetchError> {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(empty_body(shape)),
@@ -111,13 +130,14 @@ fn load_body(path: &std::path::Path, file_format: &str, shape: &str) -> Result<B
     parse_body(text, file_format, shape)
 }
 
-fn parse_body(text: &str, file_format: &str, shape: &str) -> Result<Body, FetchError> {
+fn parse_body(text: &str, file_format: &str, shape: Shape) -> Result<Body, FetchError> {
     match (file_format, shape) {
-        ("text", "lines") => Ok(Body::Lines(LinesData {
+        ("text", Shape::Lines) => Ok(Body::Lines(LinesData {
             lines: text.lines().map(str::to_string).collect(),
         })),
         ("text", _) => Err(FetchError::Failed(format!(
-            "shape {shape:?} requires json or toml, not text"
+            "shape {:?} requires json or toml, not text",
+            shape.as_str()
         ))),
         ("json", shape) => from_json(text, shape),
         ("toml", shape) => from_toml(text, shape),
@@ -130,7 +150,7 @@ fn parse_body(text: &str, file_format: &str, shape: &str) -> Result<Body, FetchE
 /// Deserialize the file as the inner `*Data` struct for the requested shape, and wrap in the
 /// right `Body` variant. Users write the data payload directly (e.g. `{ "cells": [[...]] }`
 /// for a heatmap) — no wrapping `{"shape":...}` envelope required.
-fn from_json(text: &str, shape: &str) -> Result<Body, FetchError> {
+fn from_json(text: &str, shape: Shape) -> Result<Body, FetchError> {
     macro_rules! parse_as {
         ($ty:ty, $variant:ident) => {
             serde_json::from_str::<$ty>(text)
@@ -139,20 +159,23 @@ fn from_json(text: &str, shape: &str) -> Result<Body, FetchError> {
         };
     }
     match shape {
-        "lines" => parse_as!(LinesData, Lines),
-        "entries" => parse_as!(EntriesData, Entries),
-        "ratio" => parse_as!(RatioData, Ratio),
-        "number_series" => parse_as!(NumberSeriesData, NumberSeries),
-        "point_series" => parse_as!(PointSeriesData, PointSeries),
-        "bars" => parse_as!(BarsData, Bars),
-        "image" => parse_as!(ImageData, Image),
-        "calendar" => parse_as!(CalendarData, Calendar),
-        "heatmap" => parse_as!(HeatmapData, Heatmap),
-        other => Err(FetchError::Failed(format!("unknown shape: {other:?}"))),
+        Shape::Lines => parse_as!(LinesData, Lines),
+        Shape::Entries => parse_as!(EntriesData, Entries),
+        Shape::Ratio => parse_as!(RatioData, Ratio),
+        Shape::NumberSeries => parse_as!(NumberSeriesData, NumberSeries),
+        Shape::PointSeries => parse_as!(PointSeriesData, PointSeries),
+        Shape::Bars => parse_as!(BarsData, Bars),
+        Shape::Image => parse_as!(ImageData, Image),
+        Shape::Calendar => parse_as!(CalendarData, Calendar),
+        Shape::Heatmap => parse_as!(HeatmapData, Heatmap),
+        other => Err(FetchError::Failed(format!(
+            "read_store doesn't support shape {:?}",
+            other.as_str()
+        ))),
     }
 }
 
-fn from_toml(text: &str, shape: &str) -> Result<Body, FetchError> {
+fn from_toml(text: &str, shape: Shape) -> Result<Body, FetchError> {
     macro_rules! parse_as {
         ($ty:ty, $variant:ident) => {
             toml::from_str::<$ty>(text)
@@ -161,43 +184,46 @@ fn from_toml(text: &str, shape: &str) -> Result<Body, FetchError> {
         };
     }
     match shape {
-        "lines" => parse_as!(LinesData, Lines),
-        "entries" => parse_as!(EntriesData, Entries),
-        "ratio" => parse_as!(RatioData, Ratio),
-        "number_series" => parse_as!(NumberSeriesData, NumberSeries),
-        "point_series" => parse_as!(PointSeriesData, PointSeries),
-        "bars" => parse_as!(BarsData, Bars),
-        "image" => parse_as!(ImageData, Image),
-        "calendar" => parse_as!(CalendarData, Calendar),
-        "heatmap" => parse_as!(HeatmapData, Heatmap),
-        other => Err(FetchError::Failed(format!("unknown shape: {other:?}"))),
+        Shape::Lines => parse_as!(LinesData, Lines),
+        Shape::Entries => parse_as!(EntriesData, Entries),
+        Shape::Ratio => parse_as!(RatioData, Ratio),
+        Shape::NumberSeries => parse_as!(NumberSeriesData, NumberSeries),
+        Shape::PointSeries => parse_as!(PointSeriesData, PointSeries),
+        Shape::Bars => parse_as!(BarsData, Bars),
+        Shape::Image => parse_as!(ImageData, Image),
+        Shape::Calendar => parse_as!(CalendarData, Calendar),
+        Shape::Heatmap => parse_as!(HeatmapData, Heatmap),
+        other => Err(FetchError::Failed(format!(
+            "read_store doesn't support shape {:?}",
+            other.as_str()
+        ))),
     }
 }
 
 /// Empty-but-valid body for the declared shape. Used when the file is missing so the splash
 /// stays quiet rather than breaking — matches the "optional" flavor of ReadStore widgets.
-fn empty_body(shape: &str) -> Body {
+fn empty_body(shape: Shape) -> Body {
     match shape {
-        "entries" => Body::Entries(EntriesData { items: Vec::new() }),
-        "ratio" => Body::Ratio(RatioData {
+        Shape::Entries => Body::Entries(EntriesData { items: Vec::new() }),
+        Shape::Ratio => Body::Ratio(RatioData {
             value: 0.0,
             label: None,
         }),
-        "number_series" => Body::NumberSeries(NumberSeriesData { values: Vec::new() }),
-        "point_series" => Body::PointSeries(PointSeriesData { series: Vec::new() }),
-        "bars" => Body::Bars(BarsData {
+        Shape::NumberSeries => Body::NumberSeries(NumberSeriesData { values: Vec::new() }),
+        Shape::PointSeries => Body::PointSeries(PointSeriesData { series: Vec::new() }),
+        Shape::Bars => Body::Bars(BarsData {
             bars: Vec::<Bar>::new(),
         }),
-        "image" => Body::Image(ImageData {
+        Shape::Image => Body::Image(ImageData {
             path: String::new(),
         }),
-        "calendar" => Body::Calendar(CalendarData {
+        Shape::Calendar => Body::Calendar(CalendarData {
             year: 1970,
             month: 1,
             day: None,
             events: Vec::new(),
         }),
-        "heatmap" => Body::Heatmap(HeatmapData {
+        Shape::Heatmap => Body::Heatmap(HeatmapData {
             cells: Vec::new(),
             thresholds: None,
             row_labels: None,
@@ -212,11 +238,11 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    fn ctx(id: &str, shape: &str, file_format: &str) -> FetchContext {
+    fn ctx(id: &str, shape: Shape, file_format: &str) -> FetchContext {
         FetchContext {
             widget_id: id.into(),
             timeout: Duration::from_secs(1),
-            shape: Some(shape.into()),
+            shape: Some(shape),
             file_format: Some(file_format.into()),
             ..Default::default()
         }
@@ -262,7 +288,7 @@ mod tests {
         std::fs::write(store.join("habit.json"), r#"{"cells":[[0,1,2,3,4]]}"#).unwrap();
         let _guard = ScopedHome::new(tmp.path());
         let p = ReadStoreFetcher
-            .fetch(&ctx("habit", "heatmap", "json"))
+            .fetch(&ctx("habit", Shape::Heatmap, "json"))
             .await
             .unwrap();
         match p.body {
@@ -279,7 +305,7 @@ mod tests {
         std::fs::write(store.join("notes.txt"), "one\ntwo\nthree").unwrap();
         let _guard = ScopedHome::new(tmp.path());
         let p = ReadStoreFetcher
-            .fetch(&ctx("notes", "lines", "text"))
+            .fetch(&ctx("notes", Shape::Lines, "text"))
             .await
             .unwrap();
         match p.body {
@@ -293,7 +319,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let _guard = ScopedHome::new(tmp.path());
         let p = ReadStoreFetcher
-            .fetch(&ctx("absent", "heatmap", "json"))
+            .fetch(&ctx("absent", Shape::Heatmap, "json"))
             .await
             .unwrap();
         match p.body {
@@ -303,29 +329,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_shape_errors() {
+    async fn missing_shape_falls_back_to_lines() {
+        // Runtime always supplies a shape now, but defensively treat `None` as Lines so a stray
+        // caller doesn't get an error and the cache_key stays stable.
         let tmp = tempfile::tempdir().unwrap();
         let store = tmp.path().join("store");
         std::fs::create_dir_all(&store).unwrap();
-        std::fs::write(store.join("x.json"), "{}").unwrap();
-        let _guard = ScopedHome::new(tmp.path());
-        let p = ReadStoreFetcher
-            .fetch(&ctx("x", "definitely_not_a_shape", "json"))
-            .await;
-        assert!(matches!(p, Err(FetchError::Failed(_))));
-    }
-
-    #[tokio::test]
-    async fn missing_shape_is_an_error() {
-        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(store.join("x.txt"), "hello").unwrap();
         let _guard = ScopedHome::new(tmp.path());
         let c = FetchContext {
             widget_id: "x".into(),
             timeout: Duration::from_secs(1),
+            file_format: Some("text".into()),
             ..Default::default()
         };
-        let p = ReadStoreFetcher.fetch(&c).await;
-        assert!(matches!(p, Err(FetchError::Failed(_))));
+        let p = ReadStoreFetcher.fetch(&c).await.unwrap();
+        match p.body {
+            Body::Lines(d) => assert_eq!(d.lines, vec!["hello"]),
+            other => panic!("expected lines body, got {other:?}"),
+        }
     }
 
     #[test]
@@ -338,15 +360,15 @@ mod tests {
 
     #[test]
     fn cache_key_differs_across_widget_ids() {
-        let a = ReadStoreFetcher.cache_key(&ctx("habit", "heatmap", "json"));
-        let b = ReadStoreFetcher.cache_key(&ctx("sleep", "heatmap", "json"));
+        let a = ReadStoreFetcher.cache_key(&ctx("habit", Shape::Heatmap, "json"));
+        let b = ReadStoreFetcher.cache_key(&ctx("sleep", Shape::Heatmap, "json"));
         assert_ne!(a, b);
     }
 
     #[test]
     fn cache_key_differs_across_shapes() {
-        let a = ReadStoreFetcher.cache_key(&ctx("habit", "heatmap", "json"));
-        let b = ReadStoreFetcher.cache_key(&ctx("habit", "lines", "json"));
+        let a = ReadStoreFetcher.cache_key(&ctx("habit", Shape::Heatmap, "json"));
+        let b = ReadStoreFetcher.cache_key(&ctx("habit", Shape::Lines, "json"));
         assert_ne!(a, b);
     }
 }
