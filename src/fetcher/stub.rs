@@ -175,7 +175,7 @@ impl Fetcher for ContributionsStub {
             cells: fake_contributions(),
             thresholds: None,
             row_labels: None,
-            col_labels: None,
+            col_labels: Some(month_labels_for_last_52_weeks()),
         })))
     }
 }
@@ -203,6 +203,47 @@ fn fake_contributions() -> Vec<Vec<u32>> {
                 .collect()
         })
         .collect()
+}
+
+/// One string per week column, non-empty only on the week whose range contains the 1st of a
+/// new month. The result slides with today's date so the demo always looks current.
+fn month_labels_for_last_52_weeks() -> Vec<String> {
+    use chrono::{Datelike, Duration, Local};
+    let today = Local::now().date_naive();
+    let start = today - Duration::days(51 * 7);
+    let mut out: Vec<String> = (0..52).map(|_| String::new()).collect();
+    let mut last_month = 0u32;
+    for week in 0..52 {
+        let week_start = start + Duration::days(week * 7);
+        for d in 0..7 {
+            let day = week_start + Duration::days(d);
+            if day.day() == 1 && day.month() != last_month {
+                out[week as usize] = short_month(day.month());
+                last_month = day.month();
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn short_month(m: u32) -> String {
+    match m {
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        12 => "Dec",
+        _ => "",
+    }
+    .to_string()
 }
 
 pub struct TodayStub;

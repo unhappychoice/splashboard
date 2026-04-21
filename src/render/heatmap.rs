@@ -50,19 +50,60 @@ fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData) {
         return;
     }
     let thresholds = resolve_thresholds(data);
-    paint_cells(frame.buffer_mut(), area, data, &thresholds);
+    // Reserve a top row for column labels only when we have labels AND enough vertical room
+    // to draw them without eating into the actual grid.
+    let label_row = has_col_labels(data) && area.height as usize > data.cells.len();
+    let grid_area = if label_row {
+        Rect {
+            x: area.x,
+            y: area.y + 1,
+            width: area.width,
+            height: area.height.saturating_sub(1),
+        }
+    } else {
+        area
+    };
+    let (visible_cols, col_offset) = visible_col_window(data, grid_area);
+    if label_row {
+        paint_col_labels(frame.buffer_mut(), area, data, visible_cols, col_offset);
+    }
+    paint_cells(
+        frame.buffer_mut(),
+        grid_area,
+        data,
+        &thresholds,
+        visible_cols,
+        col_offset,
+    );
 }
 
-fn paint_cells(buf: &mut Buffer, area: Rect, data: &HeatmapData, thresholds: &[u32]) {
-    let rows = data.cells.len();
+fn has_col_labels(data: &HeatmapData) -> bool {
+    data.col_labels
+        .as_ref()
+        .is_some_and(|v| v.iter().any(|s| !s.is_empty()))
+}
+
+fn visible_col_window(data: &HeatmapData, grid_area: Rect) -> (usize, usize) {
     let cols = data.cells[0].len();
-    let max_visible_rows = (area.height / CELL_H) as usize;
-    let max_visible_cols = (area.width / CELL_W) as usize;
-    let visible_rows = rows.min(max_visible_rows);
+    let max_visible_cols = (grid_area.width / CELL_W) as usize;
     let visible_cols = cols.min(max_visible_cols);
     // Right-align columns so "the most recent N weeks" is what survives when the slot is
     // narrower than the full year. Row alignment is top-anchored (weekday order is fixed).
     let col_offset = cols.saturating_sub(visible_cols);
+    (visible_cols, col_offset)
+}
+
+fn paint_cells(
+    buf: &mut Buffer,
+    area: Rect,
+    data: &HeatmapData,
+    thresholds: &[u32],
+    visible_cols: usize,
+    col_offset: usize,
+) {
+    let rows = data.cells.len();
+    let max_visible_rows = (area.height / CELL_H) as usize;
+    let visible_rows = rows.min(max_visible_rows);
     for r in 0..visible_rows {
         for c in 0..visible_cols {
             let value = data.cells[r][c + col_offset];
@@ -77,6 +118,40 @@ fn paint_cells(buf: &mut Buffer, area: Rect, data: &HeatmapData, thresholds: &[u
             // Column 1 of each cell stays as the terminal default so the grid reads as
             // distinct cells rather than a single continuous band.
         }
+    }
+}
+
+fn paint_col_labels(
+    buf: &mut Buffer,
+    area: Rect,
+    data: &HeatmapData,
+    visible_cols: usize,
+    col_offset: usize,
+) {
+    // Labels live on the top row of `area` (which includes the label row; `grid_area` starts
+    // one row below). Write each non-empty label at its column's x-origin, extending as far
+    // as there's room before the next label starts.
+    let Some(labels) = &data.col_labels else {
+        return;
+    };
+    let mut next_label_start: usize = visible_cols;
+    // Scan from right to left so we know where the next label starts when we paint the
+    // current one — lets us stop writing before colliding with the neighbor.
+    for c in (0..visible_cols).rev() {
+        let Some(label) = labels.get(c + col_offset) else {
+            continue;
+        };
+        if label.is_empty() {
+            continue;
+        }
+        let x0 = area.x + (c as u16) * CELL_W;
+        let max_chars = (next_label_start - c) * CELL_W as usize;
+        for (i, ch) in label.chars().take(max_chars).enumerate() {
+            if let Some(cell) = buf.cell_mut((x0 + i as u16, area.y)) {
+                cell.set_symbol(&ch.to_string());
+            }
+        }
+        next_label_start = c;
     }
 }
 
@@ -237,6 +312,58 @@ mod tests {
         // The spacer column right after it (position 39) must stay blank.
         let gap = buf.cell((39, 0)).unwrap();
         assert_eq!(gap.symbol(), " ", "spacer column must be blank");
+    }
+
+    #[test]
+    fn col_labels_paint_on_top_row_when_height_allows() {
+        let cells = vec![vec![1u32; 10]; 7];
+        let mut labels = vec![String::new(); 10];
+        labels[0] = "Jan".into();
+        labels[4] = "Feb".into();
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Heatmap(HeatmapData {
+                cells,
+                thresholds: None,
+                row_labels: None,
+                col_labels: Some(labels),
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("heatmap".into());
+        // 10 cells × 2 cols = 20 width; 7 day rows + 1 label row = 8 height.
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 8);
+        let top: String = (0..20)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol().to_string())
+            .collect();
+        assert!(top.contains("Jan"), "Jan label missing: {top:?}");
+        assert!(top.contains("Feb"), "Feb label missing: {top:?}");
+    }
+
+    #[test]
+    fn col_labels_skipped_when_height_too_tight() {
+        // 7 rows is exactly the grid; no room for a label row, so the grid still paints all
+        // 7 day rows with no label collision.
+        let cells = vec![vec![5u32; 10]; 7];
+        let labels: Vec<String> = (0..10).map(|_| "Jan".into()).collect();
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Heatmap(HeatmapData {
+                cells,
+                thresholds: None,
+                row_labels: None,
+                col_labels: Some(labels),
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("heatmap".into());
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 7);
+        // The top row should be cells, not a label — first char is the filled glyph.
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), CELL_GLYPH);
     }
 
     #[test]

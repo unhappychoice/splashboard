@@ -47,7 +47,7 @@ height = { min = 6 }
   widget = "clock"
 
 [[row]]
-height = { length = 7 }
+height = { length = 8 }
 
   [[row.child]]
   widget = "contributions"

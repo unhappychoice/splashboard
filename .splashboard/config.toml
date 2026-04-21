@@ -196,7 +196,7 @@ height = { length = 6 }
   border = "rounded"
 
 [[row]]
-height = { length = 9 }
+height = { length = 10 }
 
   [[row.child]]
   widget = "contributions"
