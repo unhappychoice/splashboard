@@ -28,7 +28,6 @@ mod tests {
 
     fn payload(text: &str) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,

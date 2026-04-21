@@ -13,7 +13,6 @@ mod tests {
 
     fn payload(values: Vec<u64>) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,

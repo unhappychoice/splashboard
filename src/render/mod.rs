@@ -1,8 +1,4 @@
-use ratatui::{
-    Frame,
-    layout::Rect,
-    widgets::{Block, Borders},
-};
+use ratatui::{Frame, layout::Rect};
 
 use crate::payload::{Body, Payload};
 
@@ -19,26 +15,14 @@ mod text;
 pub mod test_utils;
 
 pub fn render_payload(frame: &mut Frame, area: Rect, payload: &Payload) {
-    let block = build_block(payload);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     match &payload.body {
-        Body::Text(d) => text::render(frame, inner, d),
-        Body::List(d) => list::render(frame, inner, d),
-        Body::Gauge(d) => gauge::render(frame, inner, d),
-        Body::Sparkline(d) => sparkline::render(frame, inner, d),
-        Body::LineChart(d) => line_chart::render(frame, inner, d),
-        Body::BarChart(d) => bar_chart::render(frame, inner, d),
-        Body::Bignum(d) => bignum::render(frame, inner, d),
-        Body::Image(d) => image::render(frame, inner, d),
-    }
-}
-
-fn build_block(payload: &Payload) -> Block<'_> {
-    let b = Block::default().borders(Borders::ALL);
-    match payload.title.as_deref() {
-        Some(title) => b.title(title),
-        None => b,
+        Body::Text(d) => text::render(frame, area, d),
+        Body::List(d) => list::render(frame, area, d),
+        Body::Gauge(d) => gauge::render(frame, area, d),
+        Body::Sparkline(d) => sparkline::render(frame, area, d),
+        Body::LineChart(d) => line_chart::render(frame, area, d),
+        Body::BarChart(d) => bar_chart::render(frame, area, d),
+        Body::Bignum(d) => bignum::render(frame, area, d),
+        Body::Image(d) => image::render(frame, area, d),
     }
 }

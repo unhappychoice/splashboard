@@ -18,7 +18,6 @@ mod tests {
 
     fn payload(bars: Vec<Bar>) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,

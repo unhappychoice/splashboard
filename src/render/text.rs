@@ -13,7 +13,6 @@ mod tests {
 
     fn payload(lines: &[&str]) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,
@@ -24,8 +23,8 @@ mod tests {
     }
 
     #[test]
-    fn renders_lines_inside_block() {
+    fn renders_lines_at_top() {
         let buf = render_to_buffer(&payload(&["hello world"]), 30, 5);
-        assert!(line_text(&buf, 1).contains("hello world"));
+        assert!(line_text(&buf, 0).contains("hello world"));
     }
 }
