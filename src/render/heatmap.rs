@@ -12,8 +12,12 @@ use super::{RenderOptions, Renderer, Shape};
 pub struct HeatmapRenderer;
 
 const LEVELS: usize = 5;
+/// Each cell takes 2 terminal columns so it reads as square-ish despite the 1:2 character
+/// aspect. The first column paints the filled glyph; the second is a blank spacer so adjacent
+/// cells don't merge into a single band. 1 row per cell — rows are already tall.
 const CELL_W: u16 = 2;
 const CELL_H: u16 = 1;
+const CELL_GLYPH: &str = "■";
 
 /// Background gradient for the contribution-graph "grass" palette, level 0 → 4. Picked to be
 /// readable on both dark and light terminals without a theme system in place yet; will be
@@ -65,14 +69,12 @@ fn paint_cells(buf: &mut Buffer, area: Rect, data: &HeatmapData, thresholds: &[u
             let color = PALETTE[level];
             let x = area.x + (c as u16) * CELL_W;
             let y = area.y + (r as u16) * CELL_H;
-            for dx in 0..CELL_W {
-                for dy in 0..CELL_H {
-                    if let Some(cell) = buf.cell_mut((x + dx, y + dy)) {
-                        cell.set_bg(color);
-                        cell.set_symbol(" ");
-                    }
-                }
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_symbol(CELL_GLYPH);
+                cell.set_fg(color);
             }
+            // Column 1 of each cell stays as the terminal default so the grid reads as
+            // distinct cells rather than a single continuous band.
         }
     }
 }
@@ -228,13 +230,12 @@ mod tests {
         let mut cells = vec![vec![0u32; 30]];
         cells[0][29] = 100; // Marker in the last column.
         let buf = render(cells, 40, 1); // 40 cols / 2 per cell = 20 visible columns.
-        // The rightmost cell must have a non-default bg.
+        // The rightmost filled cell (position 38) should carry the filled glyph.
         let right = buf.cell((38, 0)).unwrap();
-        assert_ne!(
-            right.bg,
-            ratatui::style::Color::Reset,
-            "rightmost cell should be painted"
-        );
+        assert_eq!(right.symbol(), CELL_GLYPH);
+        // The spacer column right after it (position 39) must stay blank.
+        let gap = buf.cell((39, 0)).unwrap();
+        assert_eq!(gap.symbol(), " ", "spacer column must be blank");
     }
 
     #[test]
