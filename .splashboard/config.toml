@@ -21,11 +21,6 @@ fetcher = "clock"
 render = { type = "ascii_art", pixel_size = "quadrant", align = "center" }
 
 [[widget]]
-id = "clock_figlet"
-fetcher = "clock"
-render = { type = "ascii_art", style = "figlet", align = "center" }
-
-[[widget]]
 id = "typewriter"
 fetcher = "static"
 render = { type = "animated_typewriter", align = "center" }
@@ -158,14 +153,6 @@ flex = "center"
   [[row.child]]
   widget = "clock"
   width = { length = 22 }
-
-[[row]]
-height = { length = 6 }
-flex = "center"
-
-  [[row.child]]
-  widget = "clock_figlet"
-  width = { length = 44 }
 
 [[row]]
 height = { length = 4 }
