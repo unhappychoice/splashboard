@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarChartData, Body, GaugeData, ListData, ListItem, Payload, SparklineData, Status,
+    Bar, BarsData, Body, EntriesData, Entry, NumberSeriesData, Payload, RatioData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
@@ -33,7 +33,7 @@ impl Fetcher for DiskStub {
         Safety::Safe
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Gauge(GaugeData {
+        Ok(payload(Body::Ratio(RatioData {
             value: 0.45,
             label: Some("45% of 500 GB".into()),
         })))
@@ -51,7 +51,7 @@ impl Fetcher for GitCommitsStub {
         Safety::Exec
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Sparkline(SparklineData {
+        Ok(payload(Body::NumberSeries(NumberSeriesData {
             values: vec![2, 5, 0, 3, 7, 4, 1, 6, 9, 2, 3, 5, 8, 4],
         })))
     }
@@ -69,19 +69,19 @@ impl Fetcher for SystemStub {
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         let ok = Some(Status::Ok);
-        Ok(payload(Body::List(ListData {
+        Ok(payload(Body::Entries(EntriesData {
             items: vec![
-                ListItem {
+                Entry {
                     key: "os".into(),
                     value: Some("linux".into()),
                     status: ok,
                 },
-                ListItem {
+                Entry {
                     key: "uptime".into(),
                     value: Some("3d 2h".into()),
                     status: ok,
                 },
-                ListItem {
+                Entry {
                     key: "load".into(),
                     value: Some("0.28".into()),
                     status: ok,
@@ -102,7 +102,7 @@ impl Fetcher for GithubPrsStub {
         Safety::Network
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::BarChart(BarChartData {
+        Ok(payload(Body::Bars(BarsData {
             bars: vec![
                 Bar {
                     label: "splsh".into(),

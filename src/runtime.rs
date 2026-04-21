@@ -15,6 +15,7 @@ use crate::daemon;
 use crate::fetcher::{FetchContext, Registry};
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
+use crate::render::{self, RenderSpec};
 use crate::trust::{self, TrustStore};
 
 const DEFAULT_REFRESH_SECS: u64 = 60;
@@ -31,6 +32,8 @@ pub async fn run(
     let layout = config.to_layout();
     let cache = Cache::open_default();
     let registry = Registry::with_builtins();
+    let render_registry = render::Registry::with_builtins();
+    let specs = render_specs(&config.widgets);
 
     // Split widgets into what we can fetch vs what we must gate behind trust. Gated slots render
     // a canned "🔒 requires trust" placeholder so the layout stays intact and the user can see
@@ -55,7 +58,7 @@ pub async fn run(
     // immediately so the shell prompt is never blocked on fetch I/O.
     let drew_cached = !wait && !payloads.is_empty();
     if drew_cached {
-        draw(&mut terminal, &layout, &payloads)?;
+        draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
     }
 
     match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
@@ -65,7 +68,7 @@ pub async fn run(
                 // managed to write before the deadline.
                 let _ = wait_for_daemon(child, WAIT_DEADLINE).await;
                 refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
-                draw(&mut terminal, &layout, &payloads)?;
+                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
             }
             // Steady state (!wait): child is detached, it keeps fetching after we exit. Next
             // invocation picks up its output from the cache.
@@ -80,7 +83,7 @@ pub async fn run(
                 payloads.insert(id, payload);
             }
             if !drew_cached || changed {
-                draw(&mut terminal, &layout, &payloads)?;
+                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
             }
         }
     }
@@ -243,9 +246,18 @@ fn draw<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
     payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
 ) -> io::Result<()> {
-    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads))?;
+    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads, specs, registry))?;
     Ok(())
+}
+
+fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
+    widgets
+        .iter()
+        .filter_map(|w| w.render.clone().map(|s| (w.id.clone(), s)))
+        .collect()
 }
 
 #[allow(dead_code)]
@@ -256,14 +268,14 @@ fn stdout_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Body, TextData};
+    use crate::payload::{Body, LinesData};
 
     fn text_payload(line: &str) -> Payload {
         Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::Text(TextData {
+            body: Body::Lines(LinesData {
                 lines: vec![line.into()],
             }),
         }
@@ -273,7 +285,7 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: fetcher.into(),
-            render: crate::config::RenderType::Text,
+            render: None,
             format: None,
             refresh_interval: Some(60),
         }
@@ -310,7 +322,7 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: "static".into(),
-            render: crate::config::RenderType::Text,
+            render: None,
             format: Some(text.into()),
             refresh_interval: Some(60),
         }
@@ -339,7 +351,7 @@ mod tests {
             .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
         let loaded = cache.load(&key).unwrap();
         match loaded.payload.body {
-            Body::Text(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
+            Body::Lines(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
             _ => panic!("expected text body"),
         }
     }
@@ -403,7 +415,7 @@ mod tests {
         let widgets = vec![WidgetConfig {
             id: "greeting".into(),
             fetcher: "static".into(),
-            render: crate::config::RenderType::Text,
+            render: None,
             format: Some("Hi!".into()),
             refresh_interval: Some(60),
         }];

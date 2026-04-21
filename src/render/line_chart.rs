@@ -5,9 +5,27 @@ use ratatui::{
     widgets::{Axis, Chart, Dataset, GraphType},
 };
 
-use crate::payload::{LineChartData, LineSeries};
+use crate::payload::{Body, PointSeries, PointSeriesData};
 
-pub fn render(frame: &mut Frame, area: Rect, data: &LineChartData) {
+use super::{RenderOptions, Renderer, Shape};
+
+pub struct LineChartRenderer;
+
+impl Renderer for LineChartRenderer {
+    fn name(&self) -> &str {
+        "chart_line"
+    }
+    fn accepts(&self) -> &[Shape] {
+        &[Shape::PointSeries]
+    }
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+        if let Body::PointSeries(d) = body {
+            render_line_chart(frame, area, d);
+        }
+    }
+}
+
+fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData) {
     let datasets: Vec<Dataset> = data.series.iter().map(to_dataset).collect();
     let (x_bounds, y_bounds) = bounds(&data.series);
     let chart = Chart::new(datasets)
@@ -16,7 +34,7 @@ pub fn render(frame: &mut Frame, area: Rect, data: &LineChartData) {
     frame.render_widget(chart, area);
 }
 
-fn to_dataset(series: &LineSeries) -> Dataset<'_> {
+fn to_dataset(series: &PointSeries) -> Dataset<'_> {
     Dataset::default()
         .name(series.name.clone())
         .marker(Marker::Braille)
@@ -24,7 +42,7 @@ fn to_dataset(series: &LineSeries) -> Dataset<'_> {
         .data(&series.points)
 }
 
-fn bounds(series: &[LineSeries]) -> ([f64; 2], [f64; 2]) {
+fn bounds(series: &[PointSeries]) -> ([f64; 2], [f64; 2]) {
     let points: Vec<(f64, f64)> = series
         .iter()
         .flat_map(|s| s.points.iter().copied())
@@ -46,21 +64,22 @@ fn max(xs: &[f64]) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::payload::{Body, LineChartData, LineSeries, Payload};
+    use super::*;
+    use crate::payload::{Payload, PointSeries, PointSeriesData};
     use crate::render::test_utils::render_to_buffer;
 
-    fn payload(series: Vec<LineSeries>) -> Payload {
+    fn payload(series: Vec<PointSeries>) -> Payload {
         Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::LineChart(LineChartData { series }),
+            body: Body::PointSeries(PointSeriesData { series }),
         }
     }
 
     #[test]
     fn renders_without_panicking() {
-        let s = LineSeries {
+        let s = PointSeries {
             name: "temp".into(),
             points: vec![(0.0, 20.0), (1.0, 21.5), (2.0, 19.8)],
         };

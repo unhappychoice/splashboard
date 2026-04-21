@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::layout::{BorderStyle, Child, Layout};
+use crate::render::RenderSpec;
 
 const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
 
@@ -28,24 +29,15 @@ pub struct General {
 pub struct WidgetConfig {
     pub id: String,
     pub fetcher: String,
-    pub render: RenderType,
+    /// Renderer selection. `render = "simple"` (short form) or
+    /// `render = { type = "bignum_tui", pixel_size = "quadrant" }` (full form with options).
+    /// Absent = pick the default renderer for the fetcher's shape.
+    #[serde(default)]
+    pub render: Option<RenderSpec>,
     #[serde(default)]
     pub format: Option<String>,
     #[serde(default)]
     pub refresh_interval: Option<u64>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RenderType {
-    Text,
-    List,
-    Gauge,
-    Sparkline,
-    LineChart,
-    BarChart,
-    Bignum,
-    Image,
 }
 
 #[derive(Debug, Clone, Deserialize)]

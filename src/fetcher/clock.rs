@@ -3,7 +3,7 @@ use std::fmt::Write;
 use async_trait::async_trait;
 use chrono::Local;
 
-use crate::payload::{BignumData, Body, Payload};
+use crate::payload::{Body, LinesData, Payload};
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
@@ -29,7 +29,7 @@ impl Fetcher for ClockFetcher {
             icon: None,
             status: None,
             format: None,
-            body: Body::Bignum(BignumData { text }),
+            body: Body::Lines(LinesData { lines: vec![text] }),
         })
     }
 }
@@ -66,25 +66,24 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn default_format_is_hh_mm() {
-        let p = ClockFetcher.fetch(&ctx(None)).await.unwrap();
+    fn first_line(p: Payload) -> String {
         match p.body {
-            Body::Bignum(d) => {
-                assert_eq!(d.text.len(), 5, "{:?} should be HH:MM", d.text);
-                assert_eq!(d.text.chars().nth(2), Some(':'));
-            }
-            _ => panic!("expected bignum body"),
+            Body::Lines(d) => d.lines.into_iter().next().unwrap_or_default(),
+            _ => panic!("expected lines body"),
         }
     }
 
     #[tokio::test]
+    async fn default_format_is_hh_mm() {
+        let text = first_line(ClockFetcher.fetch(&ctx(None)).await.unwrap());
+        assert_eq!(text.len(), 5, "{text:?} should be HH:MM");
+        assert_eq!(text.chars().nth(2), Some(':'));
+    }
+
+    #[tokio::test]
     async fn custom_format_is_honored() {
-        let p = ClockFetcher.fetch(&ctx(Some("%Y"))).await.unwrap();
-        match p.body {
-            Body::Bignum(d) => assert_eq!(d.text.len(), 4, "{:?} should be YYYY", d.text),
-            _ => panic!("expected bignum body"),
-        }
+        let text = first_line(ClockFetcher.fetch(&ctx(Some("%Y"))).await.unwrap());
+        assert_eq!(text.len(), 4, "{text:?} should be YYYY");
     }
 
     #[tokio::test]
@@ -92,23 +91,14 @@ mod tests {
         // `%Q` is not a recognised strftime directive; chrono's formatter returns `fmt::Error`
         // for it, which would panic through `to_string()`. Our wrapper must return a valid
         // default-formatted string instead.
-        let p = ClockFetcher.fetch(&ctx(Some("%Q"))).await.unwrap();
-        match p.body {
-            Body::Bignum(d) => {
-                assert_eq!(d.text.len(), 5, "expected fallback HH:MM, got {:?}", d.text);
-                assert_eq!(d.text.chars().nth(2), Some(':'));
-            }
-            _ => panic!("expected bignum body"),
-        }
+        let text = first_line(ClockFetcher.fetch(&ctx(Some("%Q"))).await.unwrap());
+        assert_eq!(text.len(), 5, "expected fallback HH:MM, got {text:?}");
+        assert_eq!(text.chars().nth(2), Some(':'));
     }
 
     #[tokio::test]
     async fn literal_percent_in_format_does_not_crash() {
-        // Plain literals are fine.
-        let p = ClockFetcher.fetch(&ctx(Some("now: %H:%M"))).await.unwrap();
-        match p.body {
-            Body::Bignum(d) => assert!(d.text.starts_with("now: ")),
-            _ => panic!("expected bignum body"),
-        }
+        let text = first_line(ClockFetcher.fetch(&ctx(Some("now: %H:%M"))).await.unwrap());
+        assert!(text.starts_with("now: "));
     }
 }

@@ -1,8 +1,26 @@
 use ratatui::{Frame, layout::Rect, widgets::BarChart};
 
-use crate::payload::BarChartData;
+use crate::payload::{BarsData, Body};
 
-pub fn render(frame: &mut Frame, area: Rect, data: &BarChartData) {
+use super::{RenderOptions, Renderer, Shape};
+
+pub struct BarChartRenderer;
+
+impl Renderer for BarChartRenderer {
+    fn name(&self) -> &str {
+        "bar_chart"
+    }
+    fn accepts(&self) -> &[Shape] {
+        &[Shape::Bars]
+    }
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+        if let Body::Bars(d) = body {
+            render_bars(frame, area, d);
+        }
+    }
+}
+
+fn render_bars(frame: &mut Frame, area: Rect, data: &BarsData) {
     let bars: Vec<(&str, u64)> = data
         .bars
         .iter()
@@ -13,7 +31,8 @@ pub fn render(frame: &mut Frame, area: Rect, data: &BarChartData) {
 
 #[cfg(test)]
 mod tests {
-    use crate::payload::{Bar, BarChartData, Body, Payload};
+    use super::*;
+    use crate::payload::{Bar, BarsData, Payload};
     use crate::render::test_utils::render_to_buffer;
 
     fn payload(bars: Vec<Bar>) -> Payload {
@@ -21,7 +40,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::BarChart(BarChartData { bars }),
+            body: Body::Bars(BarsData { bars }),
         }
     }
 

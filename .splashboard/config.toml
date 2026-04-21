@@ -5,12 +5,12 @@ wait_for_fresh = false
 id = "greeting"
 fetcher = "static"
 render = "simple"
-format = "Hello, splashboard!"
+format = "welcome back to splashboard\nhack on it, break it, ship it"
 
 [[widget]]
 id = "clock"
 fetcher = "clock"
-render = "bignum_tui"
+render = { type = "bignum_tui", pixel_size = "quadrant" }
 
 [[widget]]
 id = "disk"
@@ -37,7 +37,7 @@ height = { min = 6 }
 
   [[row.child]]
   widget = "greeting"
-  title = "Greeting"
+  title = "splashboard"
 
   [[row.child]]
   widget = "clock"
