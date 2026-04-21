@@ -68,10 +68,14 @@ pub async fn run(
         (true, _) => Some(WAIT_DEADLINE),
     };
 
-    // Cap the inline viewport at terminal_height - 1 so there's always one row left below it
-    // for the shell prompt to land on cleanly. If we exceed the terminal height, the final
-    // `println!()` on exit forces a scroll and shaves off the top of the splash.
-    let requested_height = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
+    // Default viewport = sum of configured row heights so every widget fits without manual
+    // tuning. Users can still override with `general.height` when they want padding or are
+    // using Percentage sizes. Clamped to `terminal_rows - 1` so there's always one row left
+    // below the viewport for the shell prompt to land on cleanly.
+    let requested_height = config
+        .general
+        .height
+        .unwrap_or_else(|| config.computed_height().max(DEFAULT_VIEWPORT_LINES));
     let term_rows = ratatui::crossterm::terminal::size()
         .map(|(_, h)| h)
         .unwrap_or(requested_height);

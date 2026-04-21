@@ -124,6 +124,26 @@ impl Config {
     pub fn to_layout(&self) -> Layout {
         Layout::rows(self.rows.iter().map(to_row_child).collect())
     }
+
+    /// Sum of row heights — what the inline viewport needs to be to fit every row without
+    /// clipping the bottom. Non-Length sizes fall back to reasonable approximations
+    /// (Min/Max use their value, Fill contributes a small default, Percentage is ignored
+    /// since it can't resolve without a known viewport).
+    pub fn computed_height(&self) -> u16 {
+        self.rows
+            .iter()
+            .map(|r| row_height_estimate(r.height))
+            .sum()
+    }
+}
+
+fn row_height_estimate(size: Option<SizeSpec>) -> u16 {
+    match size {
+        Some(SizeSpec::Length(n)) | Some(SizeSpec::Min(n)) | Some(SizeSpec::Max(n)) => n,
+        Some(SizeSpec::Fill(_)) => 3,
+        Some(SizeSpec::Percentage(_)) => 0,
+        None => 3,
+    }
 }
 
 pub const LOCAL_CONFIG_CANDIDATES: &[&str] = &[".splashboard/config.toml", ".splashboard.toml"];

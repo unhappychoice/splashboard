@@ -4,10 +4,8 @@
 
 [general]
 wait_for_fresh = false
-# Must be >= sum of all row lengths below (currently 2+4+6+4+4+3+5+7+6 = 41) or the bottom
-# widgets get clipped. Runtime additionally caps this at `terminal_rows - 1`, so on short
-# terminals trailing rows simply don't fit.
-height = 41
+# `height` omitted — runtime auto-sizes the inline viewport to fit every configured row.
+# Set it explicitly if you want padding below the last widget.
 
 # ── Lines shape: 4 renderers ──────────────────────────────────────────
 
