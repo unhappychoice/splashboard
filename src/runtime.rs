@@ -28,7 +28,6 @@ pub async fn run(
     config_ident: Option<(&Path, &str)>,
     wait: bool,
 ) -> io::Result<()> {
-    let wait = wait || config.general.wait_for_fresh;
     let layout = config.to_layout();
     let cache = Cache::open_default();
     let registry = Registry::with_builtins();
@@ -45,10 +44,14 @@ pub async fn run(
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
 
+    // No cache hits yet → promote to --wait behavior so we don't exit with a blank terminal.
+    // Subsequent invocations (once the daemon has populated the cache) stay cache-first.
+    let wait = wait || config.general.wait_for_fresh || entries.is_empty();
+
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend)?;
 
-    // Cache-first: unless --wait, paint what we have from disk (plus trust placeholders)
+    // Cache-first: unless we're waiting, paint what we have from disk (plus trust placeholders)
     // immediately so the shell prompt is never blocked on fetch I/O.
     let drew_cached = !wait && !payloads.is_empty();
     if drew_cached {
@@ -58,18 +61,14 @@ pub async fn run(
     match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
         Ok(child) => {
             if wait {
-                // Block on the daemon (with a hard ceiling) and then redraw with whatever it
+                // Block on the daemon (with a hard ceiling) and then draw with whatever it
                 // managed to write before the deadline.
                 let _ = wait_for_daemon(child, WAIT_DEADLINE).await;
-                let entries = load_entries(cache.as_ref(), &registry, &fetchable);
-                payloads = entries_to_payloads(&entries);
-                for w in &gated {
-                    payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
-                }
+                refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
                 draw(&mut terminal, &layout, &payloads)?;
             }
-            // Default path: the child is detached; it keeps fetching after we exit. Next
-            // invocation reads its output from the cache.
+            // Steady state (!wait): child is detached, it keeps fetching after we exit. Next
+            // invocation picks up its output from the cache.
         }
         Err(_) => {
             // Failing to spawn the daemon is rare (OOM, exec permission). Fall back to inline
@@ -109,6 +108,23 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
         DAEMON_DEADLINE,
     )
     .await;
+}
+
+/// Rebuilds the payload map after the daemon has run: pulls fresh entries from the cache and
+/// re-applies the trust-gate placeholders on top. Used by both the `--wait` path and the
+/// first-run fallback so the two stay in sync.
+fn refresh_payloads(
+    cache: &Option<Cache>,
+    registry: &Registry,
+    fetchable: &[WidgetConfig],
+    gated: &[WidgetConfig],
+    payloads: &mut HashMap<WidgetId, Payload>,
+) {
+    let entries = load_entries(cache.as_ref(), registry, fetchable);
+    *payloads = entries_to_payloads(&entries);
+    for w in gated {
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
 }
 
 async fn wait_for_daemon(mut child: tokio::process::Child, deadline: Duration) -> io::Result<()> {
