@@ -5,6 +5,7 @@ wait_for_fresh = false
 id = "greeting"
 fetcher = "static"
 render = "text"
+format = "Hello, splashboard!"
 
 [[widget]]
 id = "clock"

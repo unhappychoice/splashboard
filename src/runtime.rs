@@ -1,0 +1,276 @@
+use std::collections::HashMap;
+use std::io::{self, Stdout, stdout};
+use std::time::Duration;
+
+use ratatui::{
+    Terminal, TerminalOptions, Viewport,
+    backend::{Backend, CrosstermBackend},
+};
+use tokio::task::JoinSet;
+
+use crate::cache::{Cache, CacheEntry};
+use crate::config::{Config, WidgetConfig};
+use crate::fetcher::{FetchContext, Registry};
+use crate::layout::{self, Layout, WidgetId};
+use crate::payload::Payload;
+
+const DEFAULT_REFRESH_SECS: u64 = 60;
+const FAST_DEADLINE: Duration = Duration::from_millis(1500);
+const WAIT_DEADLINE: Duration = Duration::from_secs(5);
+const VIEWPORT_LINES: u16 = 16;
+
+pub async fn run(config: &Config, wait: bool) -> io::Result<()> {
+    let wait = wait || config.general.wait_for_fresh;
+    let layout = config.to_layout();
+    let cache = Cache::open_default();
+    let registry = Registry::with_builtins();
+
+    let entries = load_entries(cache.as_ref(), &config.widgets);
+    let mut payloads = entries_to_payloads(&entries);
+
+    let backend = CrosstermBackend::new(stdout());
+    let mut terminal = make_terminal(backend)?;
+
+    let drew_cached = !wait && !payloads.is_empty();
+    if drew_cached {
+        draw(&mut terminal, &layout, &payloads)?;
+    }
+
+    let deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
+    let fresh = fetch_all(
+        &registry,
+        cache.as_ref(),
+        &config.widgets,
+        &entries,
+        deadline,
+    )
+    .await;
+
+    let changed = !fresh.is_empty();
+    for (id, payload) in fresh {
+        payloads.insert(id, payload);
+    }
+    if !drew_cached || changed {
+        draw(&mut terminal, &layout, &payloads)?;
+    }
+
+    println!();
+    Ok(())
+}
+
+fn load_entries(cache: Option<&Cache>, widgets: &[WidgetConfig]) -> HashMap<WidgetId, CacheEntry> {
+    let Some(c) = cache else {
+        return HashMap::new();
+    };
+    widgets
+        .iter()
+        .filter_map(|w| c.load(&w.id).map(|e| (w.id.clone(), e)))
+        .collect()
+}
+
+fn entries_to_payloads(entries: &HashMap<WidgetId, CacheEntry>) -> HashMap<WidgetId, Payload> {
+    entries
+        .iter()
+        .map(|(k, v)| (k.clone(), v.payload.clone()))
+        .collect()
+}
+
+async fn fetch_all(
+    registry: &Registry,
+    cache: Option<&Cache>,
+    widgets: &[WidgetConfig],
+    cached: &HashMap<WidgetId, CacheEntry>,
+    deadline: Duration,
+) -> HashMap<WidgetId, Payload> {
+    let mut set = JoinSet::new();
+    for w in widgets {
+        if !should_refresh(cached, w) {
+            continue;
+        }
+        let Some(fetcher) = registry.get(&w.fetcher) else {
+            continue;
+        };
+        let ctx = FetchContext {
+            widget_id: w.id.clone(),
+            format: w.format.clone(),
+            timeout: deadline,
+        };
+        let id = w.id.clone();
+        let ttl = w.refresh_interval.unwrap_or(DEFAULT_REFRESH_SECS);
+        set.spawn(async move {
+            let payload = tokio::time::timeout(deadline, fetcher.fetch(&ctx))
+                .await
+                .ok()?
+                .ok()?;
+            Some((id, ttl, payload))
+        });
+    }
+
+    let mut out = HashMap::new();
+    while let Some(joined) = set.join_next().await {
+        let Ok(Some((id, ttl, payload))) = joined else {
+            continue;
+        };
+        if let Some(c) = cache {
+            let _ = c.store(&id, &CacheEntry::new(payload.clone(), ttl));
+        }
+        out.insert(id, payload);
+    }
+    out
+}
+
+fn should_refresh(cached: &HashMap<WidgetId, CacheEntry>, w: &WidgetConfig) -> bool {
+    match cached.get(&w.id) {
+        Some(e) => !e.is_fresh(),
+        None => true,
+    }
+}
+
+fn make_terminal<B: Backend>(backend: B) -> io::Result<Terminal<B>> {
+    Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(VIEWPORT_LINES),
+        },
+    )
+}
+
+fn draw<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+) -> io::Result<()> {
+    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads))?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn stdout_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
+    make_terminal(CrosstermBackend::new(stdout()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::payload::{Body, TextData};
+
+    fn text_payload(line: &str) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                lines: vec![line.into()],
+            }),
+        }
+    }
+
+    fn widget(id: &str, fetcher: &str) -> WidgetConfig {
+        WidgetConfig {
+            id: id.into(),
+            fetcher: fetcher.into(),
+            render: crate::config::RenderType::Text,
+            format: None,
+            refresh_interval: Some(60),
+        }
+    }
+
+    #[test]
+    fn should_refresh_when_no_cache_entry() {
+        let cached = HashMap::new();
+        assert!(should_refresh(&cached, &widget("a", "static")));
+    }
+
+    #[test]
+    fn should_refresh_when_entry_is_stale() {
+        let mut cached = HashMap::new();
+        cached.insert(
+            "a".into(),
+            CacheEntry {
+                refreshed_at: 0,
+                ttl_seconds: 60,
+                payload: text_payload("x"),
+            },
+        );
+        assert!(should_refresh(&cached, &widget("a", "static")));
+    }
+
+    #[test]
+    fn should_skip_when_entry_is_fresh() {
+        let mut cached = HashMap::new();
+        cached.insert("a".into(), CacheEntry::new(text_payload("x"), 60));
+        assert!(!should_refresh(&cached, &widget("a", "static")));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_populates_cache_and_returns_fresh_payloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let registry = Registry::with_builtins();
+        let widgets = vec![WidgetConfig {
+            id: "greeting".into(),
+            fetcher: "static".into(),
+            render: crate::config::RenderType::Text,
+            format: Some("Hi!".into()),
+            refresh_interval: Some(60),
+        }];
+
+        let fresh = fetch_all(
+            &registry,
+            Some(&cache),
+            &widgets,
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(fresh.contains_key("greeting"));
+        let loaded = cache.load("greeting").unwrap();
+        match loaded.payload.body {
+            Body::Text(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
+            _ => panic!("expected text body"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_all_skips_fresh_cached_widgets() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let registry = Registry::with_builtins();
+        let widgets = vec![WidgetConfig {
+            id: "greeting".into(),
+            fetcher: "static".into(),
+            render: crate::config::RenderType::Text,
+            format: Some("Hi!".into()),
+            refresh_interval: Some(60),
+        }];
+        let mut cached = HashMap::new();
+        cached.insert("greeting".into(), CacheEntry::new(text_payload("old"), 60));
+
+        let fresh = fetch_all(
+            &registry,
+            Some(&cache),
+            &widgets,
+            &cached,
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(fresh.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_ignores_unknown_fetcher() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget("x", "no_such_fetcher")];
+        let fresh = fetch_all(
+            &registry,
+            None,
+            &widgets,
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(fresh.is_empty());
+    }
+}
