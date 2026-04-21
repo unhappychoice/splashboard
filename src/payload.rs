@@ -36,6 +36,9 @@ pub enum Body {
     Bars(BarsData),
     /// Path to an image on disk.
     Image(ImageData),
+    /// A month view anchored at a specific date, optionally with highlighted events. Calendar
+    /// widget (and anything future that shows month-scale state) consumes this.
+    Calendar(CalendarData),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -102,6 +105,20 @@ pub struct Bar {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageData {
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CalendarData {
+    /// ISO year (e.g. 2026).
+    pub year: i32,
+    /// 1..=12.
+    pub month: u8,
+    /// Optional focus / "today" day, 1..=31. If set, the calendar renderer highlights it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day: Option<u8>,
+    /// Extra days to mark (e.g. event days). Empty by default.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<u8>,
 }
 
 #[cfg(test)]

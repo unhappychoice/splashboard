@@ -8,11 +8,13 @@ use crate::payload::{Body, Payload};
 
 mod ascii_art;
 mod bar_chart;
+mod calendar;
 mod gauge;
 mod image;
 mod line_chart;
 mod line_gauge;
 mod list;
+mod scatter;
 mod sparkline;
 mod table;
 mod text;
@@ -32,6 +34,7 @@ pub enum Shape {
     PointSeries,
     Bars,
     Image,
+    Calendar,
 }
 
 pub fn shape_of(body: &Body) -> Shape {
@@ -43,6 +46,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::PointSeries(_) => Shape::PointSeries,
         Body::Bars(_) => Shape::Bars,
         Body::Image(_) => Shape::Image,
+        Body::Calendar(_) => Shape::Calendar,
     }
 }
 
@@ -110,8 +114,10 @@ impl Registry {
         r.register(Arc::new(line_gauge::LineGaugeRenderer));
         r.register(Arc::new(sparkline::SparklineRenderer));
         r.register(Arc::new(line_chart::LineChartRenderer));
+        r.register(Arc::new(scatter::ScatterRenderer));
         r.register(Arc::new(bar_chart::BarChartRenderer));
         r.register(Arc::new(image::ImageRenderer));
+        r.register(Arc::new(calendar::CalendarRenderer));
         r
     }
 
@@ -133,6 +139,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::PointSeries => "chart_line",
         Shape::Bars => "bar_chart",
         Shape::Image => "image",
+        Shape::Calendar => "calendar",
     }
 }
 
@@ -209,8 +216,10 @@ mod tests {
             "line_gauge",
             "sparkline",
             "chart_line",
+            "scatter",
             "bar_chart",
             "image",
+            "calendar",
         ] {
             assert!(r.get(name).is_some(), "missing builtin renderer: {name}");
         }
@@ -226,6 +235,7 @@ mod tests {
             Shape::PointSeries,
             Shape::Bars,
             Shape::Image,
+            Shape::Calendar,
         ] {
             let name = default_renderer_for(s);
             let r = Registry::with_builtins();
