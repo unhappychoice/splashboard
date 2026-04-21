@@ -219,7 +219,7 @@ height = { length = 3 }
   border = "rounded"
 
 [[row]]
-height = { length = 11 }
+height = { length = 12 }
 
   [[row.child]]
   widget = "prs"
