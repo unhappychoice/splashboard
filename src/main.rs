@@ -1,17 +1,18 @@
 use std::io::{self, IsTerminal, stdin, stdout};
 
 use clap::{Parser, Subcommand};
-use ratatui::{Terminal, TerminalOptions, Viewport, backend::CrosstermBackend};
 
 use crate::config::Config;
 use crate::shell::Shell;
 
+mod cache;
 mod config;
+mod fetcher;
 mod layout;
 mod payload;
 mod render;
+mod runtime;
 mod shell;
-mod stubs;
 
 const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
 const MIN_WIDTH: u16 = 40;
@@ -26,6 +27,11 @@ struct Cli {
     #[arg(long)]
     on_cd: bool,
 
+    /// Wait for fresh data before drawing (skips the cache-first fast path). Slower startup,
+    /// guarantees the frame reflects current values. Equivalent to `general.wait_for_fresh`.
+    #[arg(long)]
+    wait: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -39,7 +45,8 @@ enum Command {
     },
 }
 
-fn main() -> io::Result<()> {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> io::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Init { shell }) => {
@@ -48,23 +55,23 @@ fn main() -> io::Result<()> {
         }
         None => {
             let _ = if cli.on_cd {
-                render_for_cd()
+                render_for_cd(cli.wait).await
             } else {
-                render_splash()
+                render_splash(cli.wait).await
             };
             Ok(())
         }
     }
 }
 
-fn render_splash() -> io::Result<()> {
+async fn render_splash(wait: bool) -> io::Result<()> {
     if !should_render() {
         return Ok(());
     }
-    draw(&load_full_config())
+    runtime::run(&load_full_config(), wait).await
 }
 
-fn render_for_cd() -> io::Result<()> {
+async fn render_for_cd(wait: bool) -> io::Result<()> {
     if !should_render() {
         return Ok(());
     }
@@ -74,7 +81,7 @@ fn render_for_cd() -> io::Result<()> {
     let Ok(config) = Config::load_or_default(&path) else {
         return Ok(());
     };
-    draw(&config)
+    runtime::run(&config, wait).await
 }
 
 fn should_render() -> bool {
@@ -99,21 +106,6 @@ fn meets_minimum_size() -> bool {
 
 fn is_large_enough(width: u16, height: u16) -> bool {
     width >= MIN_WIDTH && height >= MIN_HEIGHT
-}
-
-fn draw(config: &Config) -> io::Result<()> {
-    let root = config.to_layout();
-    let widgets = stubs::widgets_for(config.widgets.iter().map(|w| &w.id));
-    let backend = CrosstermBackend::new(stdout());
-    let mut terminal = Terminal::with_options(
-        backend,
-        TerminalOptions {
-            viewport: Viewport::Inline(16),
-        },
-    )?;
-    terminal.draw(|frame| layout::draw(frame, frame.area(), &root, &widgets))?;
-    println!();
-    Ok(())
 }
 
 fn load_full_config() -> Config {
