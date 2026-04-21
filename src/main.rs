@@ -14,6 +14,8 @@ mod shell;
 mod stubs;
 
 const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
+const MIN_WIDTH: u16 = 40;
+const MIN_HEIGHT: u16 = 16;
 
 #[derive(Parser)]
 #[command(version, about = "A customizable terminal splash screen")]
@@ -76,7 +78,10 @@ fn render_for_cd() -> io::Result<()> {
 }
 
 fn should_render() -> bool {
-    stdout().is_terminal() && stdin().is_terminal() && allow_render(|k| std::env::var(k).ok())
+    stdout().is_terminal()
+        && stdin().is_terminal()
+        && allow_render(|k| std::env::var(k).ok())
+        && meets_minimum_size()
 }
 
 fn allow_render(env: impl Fn(&str) -> Option<String>) -> bool {
@@ -84,6 +89,16 @@ fn allow_render(env: impl Fn(&str) -> Option<String>) -> bool {
         return false;
     }
     !matches!(env("TERM").as_deref(), Some("dumb"))
+}
+
+fn meets_minimum_size() -> bool {
+    ratatui::crossterm::terminal::size()
+        .map(|(w, h)| is_large_enough(w, h))
+        .unwrap_or(false)
+}
+
+fn is_large_enough(width: u16, height: u16) -> bool {
+    width >= MIN_WIDTH && height >= MIN_HEIGHT
 }
 
 fn draw(config: &Config) -> io::Result<()> {
@@ -148,5 +163,21 @@ mod tests {
     #[test]
     fn normal_term_allows_render() {
         assert!(allow_render(env_with(&[("TERM", "xterm-256color")])));
+    }
+
+    #[test]
+    fn large_enough_size_passes() {
+        assert!(super::is_large_enough(80, 24));
+        assert!(super::is_large_enough(super::MIN_WIDTH, super::MIN_HEIGHT));
+    }
+
+    #[test]
+    fn below_min_width_fails() {
+        assert!(!super::is_large_enough(39, 40));
+    }
+
+    #[test]
+    fn below_min_height_fails() {
+        assert!(!super::is_large_enough(80, 15));
     }
 }
