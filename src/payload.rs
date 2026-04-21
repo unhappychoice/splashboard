@@ -42,6 +42,10 @@ pub enum Body {
     /// 2D grid of intensities. Used by the GitHub-style contribution graph, habit trackers, any
     /// daily-metric heatmap. Renderer maps each cell into a bucketed color.
     Heatmap(HeatmapData),
+    /// Single traffic-light status + short label. Used by CI, deploy, SLO, oncall — one
+    /// indicator per fetcher. Rows of badges are a composition concern handled by the nested
+    /// layout (`combined_status_row`), not by a multi-entry payload.
+    Badge(BadgeData),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -122,6 +126,12 @@ pub struct HeatmapData {
     pub row_labels: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub col_labels: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BadgeData {
+    pub status: Status,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -259,6 +269,27 @@ mod tests {
             lines: vec!["12:34".into()],
         }));
         assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn badge_round_trips() {
+        let p = bare(Body::Badge(BadgeData {
+            status: Status::Warn,
+            label: "deploy degraded".into(),
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn badge_serializes_with_expected_shape_tag() {
+        let p = bare(Body::Badge(BadgeData {
+            status: Status::Error,
+            label: "oncall paging".into(),
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "badge");
+        assert_eq!(v["data"]["status"], "error");
+        assert_eq!(v["data"]["label"], "oncall paging");
     }
 
     #[test]
