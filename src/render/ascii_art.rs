@@ -5,26 +5,27 @@ use crate::payload::{Body, LinesData};
 
 use super::{RenderOptions, Renderer, Shape};
 
-/// Big-text renderer over the `Lines` shape. Uses `tui-big-text` for the actual glyphs. Takes
-/// an optional `pixel_size` ("full" / "quadrant" / "sextant"); unspecified picks by area height
-/// so small frames still display something readable.
-pub struct BignumTuiRenderer;
+/// ASCII-art text rendering over the `Lines` shape. Today this wraps `tui-big-text`'s
+/// half-block glyphs (selectable via `pixel_size`). Alternate styles — figlet, animated, etc.
+/// — will land as additional options on the same renderer name so users configure "ascii art,
+/// like this" rather than mentally juggling crate-specific renderer names.
+pub struct AsciiArtRenderer;
 
-impl Renderer for BignumTuiRenderer {
+impl Renderer for AsciiArtRenderer {
     fn name(&self) -> &str {
-        "bignum_tui"
+        "ascii_art"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Lines]
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {
-            render_bignum(frame, area, d, opts);
+            render_ascii_art(frame, area, d, opts);
         }
     }
 }
 
-fn render_bignum(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
+fn render_ascii_art(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
     let pixel_size = opts
         .pixel_size
         .as_deref()
@@ -78,7 +79,7 @@ mod tests {
     #[test]
     fn renders_without_panicking() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("bignum_tui".into());
+        let spec = RenderSpec::Short("ascii_art".into());
         let _ = render_to_buffer_with_spec(&payload("12:34"), Some(&spec), &registry, 40, 10);
     }
 

@@ -6,21 +6,21 @@ use serde::Deserialize;
 
 use crate::payload::{Body, Payload};
 
+mod ascii_art;
 mod bar_chart;
-mod bignum;
 mod gauge;
 mod image;
 mod line_chart;
-mod list;
 mod sparkline;
+mod table;
 mod text;
 
 #[cfg(test)]
 pub mod test_utils;
 
 /// Data shape a fetcher produces. A shape is consumed by one or more renderers — a `Lines`
-/// shape can be rendered by `simple` (plain text), `bignum_tui` (big-text), and future
-/// alternatives (ascii art, animated) without the fetcher needing to know.
+/// shape can be rendered by `simple` (plain text), `ascii_art` (big-text via tui-big-text),
+/// and future alternatives (figlet, animated typewriter) without the fetcher needing to know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shape {
     Lines,
@@ -46,17 +46,17 @@ pub fn shape_of(body: &Body) -> Shape {
 
 /// Per-renderer configuration. Each renderer picks out the fields it cares about from this bag;
 /// others are ignored. Kept deliberately flat so config authors can write
-/// `render = { type = "bignum_tui", pixel_size = "quadrant" }` without nesting.
+/// `render = { type = "ascii_art", pixel_size = "quadrant" }` without nesting.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenderOptions {
-    /// bignum_tui: "full" | "quadrant" | "sextant". None = adaptive (pick by area height).
+    /// ascii_art: "full" | "quadrant" | "sextant". None = adaptive (pick by area height).
     #[serde(default)]
     pub pixel_size: Option<String>,
 }
 
 /// What the TOML accepts for `render`. Short form `render = "simple"` uses defaults; long form
-/// `render = { type = "bignum_tui", pixel_size = "quadrant" }` carries options. Absence means
+/// `render = { type = "ascii_art", pixel_size = "quadrant" }` carries options. Absence means
 /// "use the default renderer for this shape".
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -101,8 +101,8 @@ impl Registry {
     pub fn with_builtins() -> Self {
         let mut r = Self::default();
         r.register(Arc::new(text::SimpleRenderer));
-        r.register(Arc::new(bignum::BignumTuiRenderer));
-        r.register(Arc::new(list::ListRenderer));
+        r.register(Arc::new(ascii_art::AsciiArtRenderer));
+        r.register(Arc::new(table::TableRenderer));
         r.register(Arc::new(gauge::GaugeRenderer));
         r.register(Arc::new(sparkline::SparklineRenderer));
         r.register(Arc::new(line_chart::LineChartRenderer));
@@ -123,7 +123,7 @@ impl Registry {
 pub fn default_renderer_for(shape: Shape) -> &'static str {
     match shape {
         Shape::Lines => "simple",
-        Shape::Entries => "list",
+        Shape::Entries => "table",
         Shape::Ratio => "gauge",
         Shape::NumberSeries => "sparkline",
         Shape::PointSeries => "chart_line",
@@ -188,8 +188,8 @@ mod tests {
     #[test]
     fn full_form_carries_options() {
         let w: Wrapper =
-            toml::from_str(r#"render = { type = "bignum_tui", pixel_size = "quadrant" }"#).unwrap();
-        assert_eq!(w.render.renderer_name(), "bignum_tui");
+            toml::from_str(r#"render = { type = "ascii_art", pixel_size = "quadrant" }"#).unwrap();
+        assert_eq!(w.render.renderer_name(), "ascii_art");
         assert_eq!(w.render.options().pixel_size.as_deref(), Some("quadrant"));
     }
 
@@ -198,8 +198,8 @@ mod tests {
         let r = Registry::with_builtins();
         for name in [
             "simple",
-            "bignum_tui",
-            "list",
+            "ascii_art",
+            "table",
             "gauge",
             "sparkline",
             "chart_line",
@@ -234,12 +234,11 @@ mod tests {
     #[test]
     fn lines_shape_has_multiple_renderers() {
         // The point of the whole registry: one shape, many renderers. Lines is consumed by both
-        // the plain `simple` renderer and the big-text `bignum_tui` renderer — users pick via
-        // config.
+        // the plain `simple` renderer and the `ascii_art` renderer — users pick via config.
         let r = Registry::with_builtins();
         assert!(r.get("simple").unwrap().accepts().contains(&Shape::Lines));
         assert!(
-            r.get("bignum_tui")
+            r.get("ascii_art")
                 .unwrap()
                 .accepts()
                 .contains(&Shape::Lines)

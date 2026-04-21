@@ -10,7 +10,7 @@ format = "welcome back to splashboard\nhack on it, break it, ship it"
 [[widget]]
 id = "clock"
 fetcher = "clock"
-render = { type = "bignum_tui", pixel_size = "quadrant" }
+render = { type = "ascii_art", pixel_size = "quadrant" }
 
 [[widget]]
 id = "disk"
@@ -25,7 +25,7 @@ render = "sparkline"
 [[widget]]
 id = "system"
 fetcher = "system"
-render = "list"
+render = "table"
 
 [[widget]]
 id = "prs"
