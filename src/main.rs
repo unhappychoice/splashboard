@@ -1,16 +1,15 @@
+use std::collections::HashMap;
 use std::io::{self, stdout};
 
-use ratatui::{
-    Frame, Terminal, TerminalOptions, Viewport,
-    backend::CrosstermBackend,
-    layout::{Constraint, Layout},
-};
+use ratatui::{Terminal, TerminalOptions, Viewport, backend::CrosstermBackend};
 
+use crate::layout::{Child, Layout, WidgetId};
 use crate::payload::{
     Bar, BarChartData, BignumData, Body, GaugeData, ListData, ListItem, Payload, SparklineData,
     Status, TextData,
 };
 
+mod layout;
 mod payload;
 mod render;
 
@@ -22,35 +21,41 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Inline(16),
         },
     )?;
-    terminal.draw(draw_demo)?;
+    let root = demo_layout();
+    let widgets = demo_widgets();
+    terminal.draw(|frame| layout::draw(frame, frame.area(), &root, &widgets))?;
     println!();
     Ok(())
 }
 
-fn draw_demo(frame: &mut Frame) {
-    let widgets = demo_widgets();
-    let rows = Layout::vertical([
-        Constraint::Length(6),
-        Constraint::Length(5),
-        Constraint::Length(5),
+fn demo_layout() -> Layout {
+    Layout::rows(vec![
+        Child::min(6, row(&["greeting", "clock"])),
+        Child::length(5, row(&["disk", "commits"])),
+        Child::length(5, row(&["system", "prs"])),
     ])
-    .split(frame.area());
-    for (row_idx, row) in rows.iter().enumerate() {
-        let cols = Layout::horizontal([Constraint::Percentage(50); 2]).split(*row);
-        render::render_payload(frame, cols[0], &widgets[row_idx * 2]);
-        render::render_payload(frame, cols[1], &widgets[row_idx * 2 + 1]);
-    }
 }
 
-fn demo_widgets() -> [Payload; 6] {
+fn row(ids: &[&str]) -> Layout {
+    Layout::cols(
+        ids.iter()
+            .map(|id| Child::fill(1, Layout::widget(*id)))
+            .collect(),
+    )
+}
+
+fn demo_widgets() -> HashMap<WidgetId, Payload> {
     [
-        greeting(),
-        clock(),
-        disk_gauge(),
-        commits_sparkline(),
-        system_list(),
-        pr_counts(),
+        ("greeting", greeting()),
+        ("clock", clock()),
+        ("disk", disk_gauge()),
+        ("commits", commits_sparkline()),
+        ("system", system_list()),
+        ("prs", pr_counts()),
     ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect()
 }
 
 fn greeting() -> Payload {
