@@ -100,6 +100,14 @@ impl RenderSpec {
 pub trait Renderer: Send + Sync {
     fn name(&self) -> &str;
     fn accepts(&self) -> &[Shape];
+    /// Whether this renderer produces different output on repeated calls within one draw
+    /// cycle. The runtime consults this: any true answer upgrades the draw phase from a single
+    /// one-shot call into a time-boxed multi-frame loop so the animation actually plays. Load
+    /// state (cache warm / cold / --wait) is not consulted — load and render are independent
+    /// axes.
+    fn animates(&self) -> bool {
+        false
+    }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions);
 }
 
@@ -180,6 +188,21 @@ pub fn render_payload(
         return;
     }
     renderer.render(frame, area, &payload.body, &options);
+}
+
+/// `true` if any widget in `widgets` will be rendered by a renderer that declares itself
+/// animated. Runtime uses this to decide whether to run a multi-frame render loop even when
+/// load is fast (cache-first).
+pub fn any_widget_animates(widgets: &[crate::config::WidgetConfig], registry: &Registry) -> bool {
+    widgets.iter().any(|w| {
+        let name = match &w.render {
+            Some(spec) => spec.renderer_name(),
+            // Widgets without an explicit renderer use the shape default, which is always a
+            // static renderer in the current builtin set.
+            None => return false,
+        };
+        registry.get(name).is_some_and(|r| r.animates())
+    })
 }
 
 fn render_error(frame: &mut Frame, area: Rect, msg: &str) {

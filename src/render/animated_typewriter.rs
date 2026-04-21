@@ -22,6 +22,9 @@ impl Renderer for AnimatedTypewriterRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Lines]
     }
+    fn animates(&self) -> bool {
+        true
+    }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
         if let Body::Lines(d) = body {
             render_typewriter(frame, area, d);

@@ -22,10 +22,13 @@ const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
 const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
-/// Frame interval while waiting on the daemon. Animated renderers
-/// (`animated_typewriter`) rely on this cadence to produce motion; sub-50ms would waste CPU,
-/// above 100ms would look choppy.
+/// Frame interval while inside the multi-frame render loop. Animated renderers rely on this
+/// cadence to produce motion; sub-50ms would waste CPU, above 100ms would look choppy.
 const FRAME_TICK: Duration = Duration::from_millis(50);
+/// How long to run the render loop when the only reason for looping is animation (no wait).
+/// Long enough for `animated_typewriter` to finish typing; short enough to not noticeably
+/// delay the shell on cache-warm startups.
+const ANIMATION_WINDOW: Duration = Duration::from_secs(2);
 const DEFAULT_VIEWPORT_LINES: u16 = 16;
 
 pub async fn run(
@@ -51,61 +54,78 @@ pub async fn run(
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
 
-    // No cache hits yet → promote to --wait behavior so we don't exit with a blank terminal.
-    // Subsequent invocations (once the daemon has populated the cache) stay cache-first.
+    // Load axis: decide whether to block on fresh data. Empty cache gets promoted to wait
+    // so we don't exit with a blank terminal on first run.
     let wait = wait || config.general.wait_for_fresh || entries.is_empty();
+
+    // Render axis: decide whether any configured renderer needs repeat frames. Independent of
+    // the load decision — an animated widget must animate regardless of cache state.
+    let animated = render::any_widget_animates(&config.widgets, &render_registry);
+
+    let loop_window = match (wait, animated) {
+        (false, false) => None,
+        (false, true) => Some(ANIMATION_WINDOW),
+        (true, _) => Some(WAIT_DEADLINE),
+    };
 
     let viewport_lines = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend, viewport_lines)?;
 
-    // Cache-first: unless we're waiting, paint what we have from disk (plus trust placeholders)
-    // immediately so the shell prompt is never blocked on fetch I/O.
-    let drew_cached = !wait && !payloads.is_empty();
-    if drew_cached {
+    // Cache-first one-shot: no looping needed, paint what we have and exit.
+    if loop_window.is_none() {
         draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+        let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
+        println!();
+        return Ok(());
     }
 
+    let window = loop_window.unwrap();
     match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
         Ok(mut child) => {
-            if wait {
-                // Tick a frame every FRAME_TICK until the daemon finishes or WAIT_DEADLINE
-                // elapses. Repeated draws give animated renderers something to animate, and
-                // let cache writes from the daemon show up as soon as they land.
-                let deadline = std::time::Instant::now() + WAIT_DEADLINE;
-                loop {
-                    refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
-                    draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
-                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                    if remaining.is_zero() {
+            // Multi-frame loop: ticks the frame every FRAME_TICK so animated renderers can
+            // animate; picks up daemon-written cache entries as they land; stops when the
+            // daemon finishes (if we were waiting for it) or the window expires.
+            let deadline = std::time::Instant::now() + window;
+            loop {
+                refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
+                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    if wait {
                         let _ = child.start_kill();
-                        break;
                     }
-                    let tick = remaining.min(FRAME_TICK);
+                    break;
+                }
+                let tick = remaining.min(FRAME_TICK);
+                if wait {
                     match tokio::time::timeout(tick, child.wait()).await {
                         Ok(_) => break,
                         Err(_) => continue,
                     }
+                } else {
+                    tokio::time::sleep(tick).await;
                 }
-                // Final frame after the daemon's last write.
-                refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
-                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
             }
-            // Steady state (!wait): child is detached, it keeps fetching after we exit. Next
-            // invocation picks up its output from the cache.
+            refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
+            draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
         Err(_) => {
-            // Failing to spawn the daemon is rare (OOM, exec permission). Fall back to inline
-            // fetch so the user still gets fresh data this invocation.
-            let deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
-            let fresh = fetch_all(&registry, cache.as_ref(), &fetchable, &entries, deadline).await;
-            let changed = !fresh.is_empty();
+            // Spawning the daemon failed (OOM, exec permission) — rare. Fall back to inline
+            // fetch and a single final draw so the user still sees something useful.
+            let fetch_deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
+            let fresh = fetch_all(
+                &registry,
+                cache.as_ref(),
+                &fetchable,
+                &entries,
+                fetch_deadline,
+            )
+            .await;
             for (id, payload) in fresh {
                 payloads.insert(id, payload);
             }
-            if !drew_cached || changed {
-                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
-            }
+            draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
     }
 
