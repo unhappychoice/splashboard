@@ -89,6 +89,13 @@ id = "today"
 fetcher = "today"
 render = "calendar"
 
+# ── Heatmap ─────────────────────────────────────────────────────────
+
+[[widget]]
+id = "contributions"
+fetcher = "contributions"
+render = "heatmap"
+
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
 # even though it's narrower than the terminal. 2-column rows below keep the default Legacy
@@ -186,4 +193,12 @@ height = { length = 6 }
   [[row.child]]
   widget = "system"
   title = "table"
+  border = "rounded"
+
+[[row]]
+height = { length = 9 }
+
+  [[row.child]]
+  widget = "contributions"
+  title = "heatmap"
   border = "rounded"
