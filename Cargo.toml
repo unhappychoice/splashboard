@@ -21,7 +21,7 @@ clap = { version = "4", features = ["derive"] }
 tui-big-text = "0.7"
 ratatui-image = "4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process"] }
 async-trait = "0.1"
 sha2 = "0.10"
 

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, Stdout, stdout};
+use std::path::Path;
 use std::time::Duration;
 
 use ratatui::{
@@ -10,6 +11,7 @@ use tokio::task::JoinSet;
 
 use crate::cache::{Cache, CacheEntry};
 use crate::config::{Config, WidgetConfig};
+use crate::daemon;
 use crate::fetcher::{FetchContext, Registry};
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
@@ -17,9 +19,10 @@ use crate::payload::Payload;
 const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
+const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
 const VIEWPORT_LINES: u16 = 16;
 
-pub async fn run(config: &Config, wait: bool) -> io::Result<()> {
+pub async fn run(config: &Config, config_path: Option<&Path>, wait: bool) -> io::Result<()> {
     let wait = wait || config.general.wait_for_fresh;
     let layout = config.to_layout();
     let cache = Cache::open_default();
@@ -31,31 +34,81 @@ pub async fn run(config: &Config, wait: bool) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend)?;
 
+    // Cache-first: unless --wait, paint what we have from disk immediately so the shell prompt
+    // is never blocked on fetch I/O.
     let drew_cached = !wait && !payloads.is_empty();
     if drew_cached {
         draw(&mut terminal, &layout, &payloads)?;
     }
 
-    let deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
-    let fresh = fetch_all(
-        &registry,
-        cache.as_ref(),
-        &config.widgets,
-        &entries,
-        deadline,
-    )
-    .await;
-
-    let changed = !fresh.is_empty();
-    for (id, payload) in fresh {
-        payloads.insert(id, payload);
-    }
-    if !drew_cached || changed {
-        draw(&mut terminal, &layout, &payloads)?;
+    match daemon::spawn_fetch_daemon(config_path) {
+        Ok(child) => {
+            if wait {
+                // Block on the daemon (with a hard ceiling) and then redraw with whatever it
+                // managed to write before the deadline.
+                let _ = wait_for_daemon(child, WAIT_DEADLINE).await;
+                let entries = load_entries(cache.as_ref(), &registry, &config.widgets);
+                payloads = entries_to_payloads(&entries);
+                draw(&mut terminal, &layout, &payloads)?;
+            }
+            // Default path: the child is detached; it keeps fetching after we exit. Next
+            // invocation reads its output from the cache.
+        }
+        Err(_) => {
+            // Failing to spawn the daemon is rare (OOM, exec permission). Fall back to inline
+            // fetch so the user still gets fresh data this invocation.
+            let deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
+            let fresh = fetch_all(
+                &registry,
+                cache.as_ref(),
+                &config.widgets,
+                &entries,
+                deadline,
+            )
+            .await;
+            let changed = !fresh.is_empty();
+            for (id, payload) in fresh {
+                payloads.insert(id, payload);
+            }
+            if !drew_cached || changed {
+                draw(&mut terminal, &layout, &payloads)?;
+            }
+        }
     }
 
     println!();
     Ok(())
+}
+
+/// Runs fetchers and persists the results. Called by the detached `fetch-only` subcommand so the
+/// main invocation can exit without waiting for I/O. Errors from individual fetchers are logged
+/// nowhere (daemon has no stdio) and simply leave stale cache in place.
+pub async fn fetch_and_persist(config: &Config) {
+    let cache = Cache::open_default();
+    let registry = Registry::with_builtins();
+    let entries = load_entries(cache.as_ref(), &registry, &config.widgets);
+    let _ = fetch_all(
+        &registry,
+        cache.as_ref(),
+        &config.widgets,
+        &entries,
+        DAEMON_DEADLINE,
+    )
+    .await;
+}
+
+async fn wait_for_daemon(mut child: tokio::process::Child, deadline: Duration) -> io::Result<()> {
+    match tokio::time::timeout(deadline, child.wait()).await {
+        Ok(Ok(_status)) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(_elapsed) => {
+            let _ = child.start_kill();
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "fetch daemon timed out",
+            ))
+        }
+    }
 }
 
 fn fetch_context(w: &WidgetConfig, deadline: Duration) -> FetchContext {
