@@ -38,14 +38,14 @@ impl Renderer for HeatmapRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Heatmap]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Heatmap(d) = body {
-            render_heatmap(frame, area, d);
+            render_heatmap(frame, area, d, opts);
         }
     }
 }
 
-fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData) {
+fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData, opts: &RenderOptions) {
     if data.cells.is_empty() || data.cells[0].is_empty() || area.width == 0 || area.height == 0 {
         return;
     }
@@ -64,17 +64,43 @@ fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData) {
         area
     };
     let (visible_cols, col_offset) = visible_col_window(data, grid_area);
+    // Horizontal alignment: the grid itself is narrower than the slot when the terminal is
+    // wide. Without alignment the grid hugs the left edge, which looks lopsided next to
+    // centered widgets above/below it. `align` (left / center / right) shifts the grid's
+    // x-origin inside `area`.
+    let grid_px_width = (visible_cols as u16) * CELL_W;
+    let x_shift = horizontal_shift(opts.align.as_deref(), grid_area.width, grid_px_width);
+    let shifted = Rect {
+        x: grid_area.x + x_shift,
+        ..grid_area
+    };
+    let label_area = Rect {
+        x: area.x + x_shift,
+        ..area
+    };
     if label_row {
-        paint_col_labels(frame.buffer_mut(), area, data, visible_cols, col_offset);
+        paint_col_labels(frame.buffer_mut(), label_area, data, visible_cols, col_offset);
     }
     paint_cells(
         frame.buffer_mut(),
-        grid_area,
+        shifted,
         data,
         &thresholds,
         visible_cols,
         col_offset,
     );
+}
+
+fn horizontal_shift(align: Option<&str>, area_width: u16, content_width: u16) -> u16 {
+    if content_width >= area_width {
+        return 0;
+    }
+    let slack = area_width - content_width;
+    match align {
+        Some("center") => slack / 2,
+        Some("right") => slack,
+        _ => 0,
+    }
 }
 
 fn has_col_labels(data: &HeatmapData) -> bool {
@@ -363,6 +389,60 @@ mod tests {
         let spec = RenderSpec::Short("heatmap".into());
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 7);
         // The top row should be cells, not a label — first char is the filled glyph.
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), CELL_GLYPH);
+    }
+
+    #[test]
+    fn align_center_shifts_grid_to_middle_of_area() {
+        // 5 cells × 2 cols = 10px; area is 20 wide → slack 10 → center pad 5 on the left.
+        let cells = vec![vec![5u32; 5]];
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Heatmap(HeatmapData {
+                cells,
+                thresholds: None,
+                row_labels: None,
+                col_labels: None,
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Full {
+            type_name: "heatmap".into(),
+            options: RenderOptions {
+                align: Some("center".into()),
+                ..Default::default()
+            },
+        };
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 1);
+        // First 5 columns are pre-pad (default ' ').
+        assert_eq!(buf.cell((4, 0)).unwrap().symbol(), " ");
+        // Column 5 has the first painted glyph.
+        assert_eq!(buf.cell((5, 0)).unwrap().symbol(), CELL_GLYPH);
+        // The last filled cell paints at x = 5 + 4*2 = 13; 14 is spacer; 15..=19 is blank.
+        assert_eq!(buf.cell((13, 0)).unwrap().symbol(), CELL_GLYPH);
+        assert_eq!(buf.cell((15, 0)).unwrap().symbol(), " ");
+    }
+
+    #[test]
+    fn align_defaults_to_left() {
+        let cells = vec![vec![5u32; 5]];
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Heatmap(HeatmapData {
+                cells,
+                thresholds: None,
+                row_labels: None,
+                col_labels: None,
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("heatmap".into());
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 1);
+        // Default align (none) = left: first glyph at column 0.
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), CELL_GLYPH);
     }
 

@@ -35,7 +35,7 @@ render = "bar_chart"
 [[widget]]
 id = "contributions"
 fetcher = "contributions"
-render = "heatmap"
+render = { type = "heatmap", align = "center" }
 
 [[row]]
 height = { min = 6 }

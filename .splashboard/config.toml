@@ -94,7 +94,7 @@ render = "calendar"
 [[widget]]
 id = "contributions"
 fetcher = "contributions"
-render = "heatmap"
+render = { type = "heatmap", align = "center" }
 
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
