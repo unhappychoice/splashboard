@@ -39,6 +39,9 @@ pub enum Body {
     /// A month view anchored at a specific date, optionally with highlighted events. Calendar
     /// widget (and anything future that shows month-scale state) consumes this.
     Calendar(CalendarData),
+    /// 2D grid of intensities. Used by the GitHub-style contribution graph, habit trackers, any
+    /// daily-metric heatmap. Renderer maps each cell into a bucketed color.
+    Heatmap(HeatmapData),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -105,6 +108,20 @@ pub struct Bar {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageData {
     pub path: String,
+}
+
+/// 2D grid of intensities, row-major (`cells[row][col]`). The renderer picks a bucket per cell
+/// via `thresholds` (explicit bucket boundaries) or an auto-quartile fallback when absent.
+/// Labels are optional and may be rendered along the edges if space allows.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HeatmapData {
+    pub cells: Vec<Vec<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thresholds: Option<Vec<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_labels: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub col_labels: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

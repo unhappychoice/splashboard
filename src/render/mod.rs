@@ -11,6 +11,7 @@ mod ascii_art;
 mod bar_chart;
 mod calendar;
 mod gauge;
+mod heatmap;
 mod image;
 mod line_chart;
 mod line_gauge;
@@ -36,6 +37,7 @@ pub enum Shape {
     Bars,
     Image,
     Calendar,
+    Heatmap,
 }
 
 pub fn shape_of(body: &Body) -> Shape {
@@ -48,6 +50,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::Bars(_) => Shape::Bars,
         Body::Image(_) => Shape::Image,
         Body::Calendar(_) => Shape::Calendar,
+        Body::Heatmap(_) => Shape::Heatmap,
     }
 }
 
@@ -137,6 +140,7 @@ impl Registry {
         r.register(Arc::new(bar_chart::BarChartRenderer));
         r.register(Arc::new(image::ImageRenderer));
         r.register(Arc::new(calendar::CalendarRenderer));
+        r.register(Arc::new(heatmap::HeatmapRenderer));
         r
     }
 
@@ -159,6 +163,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::Bars => "bar_chart",
         Shape::Image => "image",
         Shape::Calendar => "calendar",
+        Shape::Heatmap => "heatmap",
     }
 }
 
@@ -255,6 +260,7 @@ mod tests {
             "bar_chart",
             "image",
             "calendar",
+            "heatmap",
         ] {
             assert!(r.get(name).is_some(), "missing builtin renderer: {name}");
         }
@@ -271,6 +277,7 @@ mod tests {
             Shape::Bars,
             Shape::Image,
             Shape::Calendar,
+            Shape::Heatmap,
         ] {
             let name = default_renderer_for(s);
             let r = Registry::with_builtins();
