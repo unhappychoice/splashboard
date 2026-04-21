@@ -1,11 +1,14 @@
 #![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::payload::Payload;
+
+static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CacheEntry {
@@ -50,7 +53,7 @@ impl Cache {
 
     pub fn store(&self, widget_id: &str, entry: &CacheEntry) -> std::io::Result<()> {
         let path = self.path_for(widget_id);
-        let tmp = path.with_extension("tmp");
+        let tmp = tmp_path_for(&path);
         let json = serde_json::to_string(entry).map_err(io_err)?;
         ensure_parent(&path)?;
         std::fs::write(&tmp, json)?;
@@ -61,6 +64,16 @@ impl Cache {
     pub fn path_for(&self, widget_id: &str) -> PathBuf {
         self.dir.join(format!("{}.json", sanitize(widget_id)))
     }
+}
+
+fn tmp_path_for(final_path: &Path) -> PathBuf {
+    let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let file_name = final_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    final_path.with_file_name(format!("{file_name}.{pid}.{seq}.tmp"))
 }
 
 fn sanitize(s: &str) -> String {
@@ -177,5 +190,46 @@ mod tests {
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         std::fs::write(cache.path_for("bad"), "not-json").unwrap();
         assert!(cache.load("bad").is_none());
+    }
+
+    #[test]
+    fn tmp_path_is_unique_across_calls() {
+        let final_path = Path::new("/tmp/cache/foo.json");
+        let a = tmp_path_for(final_path);
+        let b = tmp_path_for(final_path);
+        assert_ne!(a, b);
+        assert!(a.to_string_lossy().contains("foo.json."));
+        assert!(a.to_string_lossy().ends_with(".tmp"));
+    }
+
+    #[test]
+    fn concurrent_stores_leave_valid_final_file() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Arc::new(Cache::open(dir.path().to_path_buf()).unwrap());
+        let handles: Vec<_> = (0..32)
+            .map(|i| {
+                let cache = Arc::clone(&cache);
+                thread::spawn(move || {
+                    let entry = CacheEntry::new(sample(), 100 + i);
+                    cache.store("shared", &entry).unwrap();
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let loaded = cache.load("shared").expect("final file must parse");
+        assert!(loaded.ttl_seconds >= 100);
+        // No leftover tmp files should remain in the cache dir.
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "leftover tmp files: {leftovers:?}");
     }
 }
