@@ -12,7 +12,7 @@ use super::{FetchContext, FetchError, Fetcher, Safety};
 pub fn builtins() -> Vec<Arc<dyn Fetcher>> {
     vec![
         Arc::new(StaticText),
-        Arc::new(ClockStub),
+        Arc::new(ClockFetcher),
         Arc::new(DiskStub),
         Arc::new(GitCommitsStub),
         Arc::new(SystemStub),
@@ -20,6 +20,8 @@ pub fn builtins() -> Vec<Arc<dyn Fetcher>> {
     ]
 }
 
+/// Emits `format` verbatim, splitting on `\n` so users can ship multi-line fixed text blocks
+/// ("welcome to this project", setup notes, etc.) without needing a dedicated fetcher.
 pub struct StaticText;
 
 #[async_trait]
@@ -31,25 +33,35 @@ impl Fetcher for StaticText {
         Safety::Safe
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let line = ctx.format.clone().unwrap_or_default();
-        Ok(payload(Body::Text(TextData { lines: vec![line] })))
+        let source = ctx.format.as_deref().unwrap_or("");
+        let lines = if source.is_empty() {
+            Vec::new()
+        } else {
+            source.split('\n').map(String::from).collect()
+        };
+        Ok(payload(Body::Text(TextData { lines })))
     }
 }
 
-pub struct ClockStub;
+/// Renders the current local time. `format` follows chrono's strftime conventions; default is
+/// `%H:%M` (24h clock). Emits a Bignum payload so the default layout can lean on the big-text
+/// renderer for visual weight.
+pub struct ClockFetcher;
+
+const CLOCK_DEFAULT_FORMAT: &str = "%H:%M";
 
 #[async_trait]
-impl Fetcher for ClockStub {
+impl Fetcher for ClockFetcher {
     fn name(&self) -> &str {
         "clock"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
     }
-    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Bignum(BignumData {
-            text: "12:34".into(),
-        })))
+    async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
+        let fmt = ctx.format.as_deref().unwrap_or(CLOCK_DEFAULT_FORMAT);
+        let text = chrono::Local::now().format(fmt).to_string();
+        Ok(payload(Body::Bignum(BignumData { text })))
     }
 }
 
@@ -176,7 +188,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn static_text_uses_format_field() {
+    async fn static_text_single_line() {
         let p = StaticText.fetch(&ctx(Some("Hello!"))).await.unwrap();
         match p.body {
             Body::Text(t) => assert_eq!(t.lines, vec!["Hello!".to_string()]),
@@ -185,9 +197,74 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clock_stub_emits_bignum() {
-        let p = ClockStub.fetch(&ctx(None)).await.unwrap();
-        assert!(matches!(p.body, Body::Bignum(_)));
+    async fn static_text_splits_on_newline() {
+        let p = StaticText
+            .fetch(&ctx(Some("line one\nline two\nline three")))
+            .await
+            .unwrap();
+        match p.body {
+            Body::Text(t) => {
+                assert_eq!(
+                    t.lines,
+                    vec![
+                        "line one".to_string(),
+                        "line two".to_string(),
+                        "line three".to_string(),
+                    ]
+                );
+            }
+            _ => panic!("expected text body"),
+        }
+    }
+
+    #[tokio::test]
+    async fn static_text_missing_format_is_empty() {
+        let p = StaticText.fetch(&ctx(None)).await.unwrap();
+        match p.body {
+            Body::Text(t) => assert!(t.lines.is_empty()),
+            _ => panic!("expected text body"),
+        }
+    }
+
+    #[tokio::test]
+    async fn static_text_empty_format_is_empty() {
+        let p = StaticText.fetch(&ctx(Some(""))).await.unwrap();
+        match p.body {
+            Body::Text(t) => assert!(t.lines.is_empty()),
+            _ => panic!("expected text body"),
+        }
+    }
+
+    #[tokio::test]
+    async fn static_text_trailing_newline_keeps_empty_line() {
+        // Users who don't want the trailing blank shouldn't trail a \n; we preserve split
+        // semantics so the rendered output matches the format string byte-for-byte.
+        let p = StaticText.fetch(&ctx(Some("a\n"))).await.unwrap();
+        match p.body {
+            Body::Text(t) => assert_eq!(t.lines, vec!["a".to_string(), "".to_string()]),
+            _ => panic!("expected text body"),
+        }
+    }
+
+    #[tokio::test]
+    async fn clock_default_format_is_hh_mm() {
+        let p = ClockFetcher.fetch(&ctx(None)).await.unwrap();
+        match p.body {
+            Body::Bignum(d) => {
+                assert_eq!(d.text.len(), 5, "{:?} should be HH:MM", d.text);
+                assert_eq!(d.text.chars().nth(2), Some(':'));
+            }
+            _ => panic!("expected bignum body"),
+        }
+    }
+
+    #[tokio::test]
+    async fn clock_honors_custom_format() {
+        let p = ClockFetcher.fetch(&ctx(Some("%Y"))).await.unwrap();
+        match p.body {
+            Body::Bignum(d) => assert_eq!(d.text.len(), 4, "{:?} should be 4-digit year", d.text),
+            _ => panic!("expected bignum body"),
+        }
     }
 
     #[test]
