@@ -46,7 +46,21 @@ pub struct FetchContext {
 pub trait Fetcher: Send + Sync {
     fn name(&self) -> &str;
     fn safety(&self) -> Safety;
+    /// Identity of this fetcher-invocation for caching. Two calls that share a key see the same
+    /// payload. Default covers the common case (`name + format`); fetchers whose output depends on
+    /// more (cwd, repo, URL) override this to mix those in.
+    fn cache_key(&self, ctx: &FetchContext) -> String {
+        default_cache_key(self.name(), ctx)
+    }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError>;
+}
+
+pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
+    use sha2::{Digest, Sha256};
+    let raw = format!("{}|{}", name, ctx.format.as_deref().unwrap_or(""));
+    let digest = Sha256::digest(raw.as_bytes());
+    let hex: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
+    format!("{name}-{hex}")
 }
 
 #[derive(Default, Clone)]
@@ -126,5 +140,55 @@ mod tests {
         let p = f.fetch(&ctx).await.unwrap();
         assert!(matches!(p.body, Body::Text(_)));
         assert_eq!(f.safety(), Safety::Network);
+    }
+
+    fn ctx_with(format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "w".into(),
+            format: format.map(String::from),
+            timeout: Duration::from_secs(1),
+        }
+    }
+
+    #[test]
+    fn cache_key_is_stable_for_same_inputs() {
+        let a = default_cache_key("static", &ctx_with(Some("Hi!")));
+        let b = default_cache_key("static", &ctx_with(Some("Hi!")));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn cache_key_differs_across_fetchers() {
+        let a = default_cache_key("static", &ctx_with(None));
+        let b = default_cache_key("clock", &ctx_with(None));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_key_differs_when_format_differs() {
+        let a = default_cache_key("static", &ctx_with(Some("Hi!")));
+        let b = default_cache_key("static", &ctx_with(Some("Bye!")));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_key_ignores_widget_id_and_timeout() {
+        // Two different widgets that point at the same fetcher with the same params share cache.
+        let mut a = ctx_with(Some("x"));
+        let mut b = ctx_with(Some("x"));
+        a.widget_id = "greeting_one".into();
+        b.widget_id = "greeting_two".into();
+        a.timeout = Duration::from_secs(1);
+        b.timeout = Duration::from_secs(99);
+        assert_eq!(
+            default_cache_key("static", &a),
+            default_cache_key("static", &b)
+        );
+    }
+
+    #[test]
+    fn cache_key_is_prefixed_with_fetcher_name() {
+        let k = default_cache_key("static", &ctx_with(None));
+        assert!(k.starts_with("static-"));
     }
 }

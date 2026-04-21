@@ -25,7 +25,7 @@ pub async fn run(config: &Config, wait: bool) -> io::Result<()> {
     let cache = Cache::open_default();
     let registry = Registry::with_builtins();
 
-    let entries = load_entries(cache.as_ref(), &config.widgets);
+    let entries = load_entries(cache.as_ref(), &registry, &config.widgets);
     let mut payloads = entries_to_payloads(&entries);
 
     let backend = CrosstermBackend::new(stdout());
@@ -58,13 +58,29 @@ pub async fn run(config: &Config, wait: bool) -> io::Result<()> {
     Ok(())
 }
 
-fn load_entries(cache: Option<&Cache>, widgets: &[WidgetConfig]) -> HashMap<WidgetId, CacheEntry> {
+fn fetch_context(w: &WidgetConfig, deadline: Duration) -> FetchContext {
+    FetchContext {
+        widget_id: w.id.clone(),
+        format: w.format.clone(),
+        timeout: deadline,
+    }
+}
+
+fn load_entries(
+    cache: Option<&Cache>,
+    registry: &Registry,
+    widgets: &[WidgetConfig],
+) -> HashMap<WidgetId, CacheEntry> {
     let Some(c) = cache else {
         return HashMap::new();
     };
     widgets
         .iter()
-        .filter_map(|w| c.load(&w.id).map(|e| (w.id.clone(), e)))
+        .filter_map(|w| {
+            let fetcher = registry.get(&w.fetcher)?;
+            let key = fetcher.cache_key(&fetch_context(w, Duration::from_secs(0)));
+            c.load(&key).map(|e| (w.id.clone(), e))
+        })
         .collect()
 }
 
@@ -90,11 +106,8 @@ async fn fetch_all(
         let Some(fetcher) = registry.get(&w.fetcher) else {
             continue;
         };
-        let ctx = FetchContext {
-            widget_id: w.id.clone(),
-            format: w.format.clone(),
-            timeout: deadline,
-        };
+        let ctx = fetch_context(w, deadline);
+        let cache_key = fetcher.cache_key(&ctx);
         let id = w.id.clone();
         let ttl = w.refresh_interval.unwrap_or(DEFAULT_REFRESH_SECS);
         set.spawn(async move {
@@ -102,17 +115,17 @@ async fn fetch_all(
                 .await
                 .ok()?
                 .ok()?;
-            Some((id, ttl, payload))
+            Some((id, cache_key, ttl, payload))
         });
     }
 
     let mut out = HashMap::new();
     while let Some(joined) = set.join_next().await {
-        let Ok(Some((id, ttl, payload))) = joined else {
+        let Ok(Some((id, key, ttl, payload))) = joined else {
             continue;
         };
         if let Some(c) = cache {
-            let _ = c.store(&id, &CacheEntry::new(payload.clone(), ttl));
+            let _ = c.store(&key, &CacheEntry::new(payload.clone(), ttl));
         }
         out.insert(id, payload);
     }
@@ -202,18 +215,22 @@ mod tests {
         assert!(!should_refresh(&cached, &widget("a", "static")));
     }
 
+    fn static_widget(id: &str, text: &str) -> WidgetConfig {
+        WidgetConfig {
+            id: id.into(),
+            fetcher: "static".into(),
+            render: crate::config::RenderType::Text,
+            format: Some(text.into()),
+            refresh_interval: Some(60),
+        }
+    }
+
     #[tokio::test]
     async fn fetch_all_populates_cache_and_returns_fresh_payloads() {
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let registry = Registry::with_builtins();
-        let widgets = vec![WidgetConfig {
-            id: "greeting".into(),
-            fetcher: "static".into(),
-            render: crate::config::RenderType::Text,
-            format: Some("Hi!".into()),
-            refresh_interval: Some(60),
-        }];
+        let widgets = vec![static_widget("greeting", "Hi!")];
 
         let fresh = fetch_all(
             &registry,
@@ -225,11 +242,66 @@ mod tests {
         .await;
 
         assert!(fresh.contains_key("greeting"));
-        let loaded = cache.load("greeting").unwrap();
+        let key = registry
+            .get("static")
+            .unwrap()
+            .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
+        let loaded = cache.load(&key).unwrap();
         match loaded.payload.body {
             Body::Text(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
             _ => panic!("expected text body"),
         }
+    }
+
+    #[tokio::test]
+    async fn widgets_sharing_fetcher_and_params_share_cache_file() {
+        // Two different widget ids, same fetcher + format → one cache entry, readable by either.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let registry = Registry::with_builtins();
+        let widgets = [
+            static_widget("greeting_project_a", "Hello!"),
+            static_widget("greeting_project_b", "Hello!"),
+        ];
+
+        // First widget populates the cache.
+        let _ = fetch_all(
+            &registry,
+            Some(&cache),
+            &widgets[..1],
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        // Second widget sees the shared entry when we look it up by its cache key.
+        let entries = load_entries(Some(&cache), &registry, &widgets[1..]);
+        assert!(entries.contains_key("greeting_project_b"));
+    }
+
+    #[tokio::test]
+    async fn widgets_with_different_params_do_not_collide() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let registry = Registry::with_builtins();
+        let first = vec![static_widget("a", "one")];
+        let second = vec![static_widget("b", "two")];
+
+        let _ = fetch_all(
+            &registry,
+            Some(&cache),
+            &first,
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        // Same widget id but different format should not be served the other's cache.
+        let entries = load_entries(Some(&cache), &registry, &second);
+        assert!(
+            entries.is_empty(),
+            "second widget should not read first widget's cache"
+        );
     }
 
     #[tokio::test]
