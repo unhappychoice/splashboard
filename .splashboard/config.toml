@@ -17,23 +17,23 @@ format = "welcome back"
 [[widget]]
 id = "clock"
 fetcher = "clock"
-render = { type = "ascii_art", pixel_size = "quadrant" }
+render = { type = "ascii_art", pixel_size = "quadrant", align = "center" }
 
 [[widget]]
 id = "clock_figlet"
 fetcher = "clock"
-render = { type = "ascii_art", style = "figlet" }
+render = { type = "ascii_art", style = "figlet", align = "center" }
 
 [[widget]]
 id = "typewriter"
 fetcher = "static"
-render = "animated_typewriter"
+render = { type = "animated_typewriter", align = "center" }
 format = "animated_typewriter:\nreveals character by character while --wait ticks"
 
 [[widget]]
 id = "notes"
 fetcher = "static"
-render = "list"
+render = { type = "list", align = "center" }
 format = "ratatui::List widget\nalternative to simple\nselectable items, later"
 
 # ── Entries ─────────────────────────────────────────────────────────
