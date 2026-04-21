@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::layout::{BorderStyle, Child, Layout};
+use crate::layout::{BorderStyle, Child, Flex, Layout};
 use crate::render::RenderSpec;
 
 const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
@@ -52,8 +52,23 @@ pub struct RowConfig {
     pub title: Option<String>,
     #[serde(default)]
     pub border: Option<BorderSpec>,
+    /// How children are placed along this row's horizontal axis when they don't fill the row.
+    /// `center` is the obvious use case: a narrower widget parked in the middle of its row.
+    #[serde(default)]
+    pub flex: Option<FlexSpec>,
     #[serde(default, rename = "child")]
     pub children: Vec<ChildConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FlexSpec {
+    Legacy,
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+    SpaceAround,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,9 +169,23 @@ fn find_local_at(dir: &Path) -> Option<PathBuf> {
 }
 
 fn to_row_child(row: &RowConfig) -> Child {
-    let inner = Layout::cols(row.children.iter().map(to_col_child).collect());
+    let mut inner = Layout::cols(row.children.iter().map(to_col_child).collect());
+    if let Some(f) = row.flex {
+        inner = inner.flexed(to_flex(f));
+    }
     let decorated = apply_panel(inner, row.title.as_deref(), row.border);
     make_child(row.height, decorated)
+}
+
+fn to_flex(f: FlexSpec) -> Flex {
+    match f {
+        FlexSpec::Legacy => Flex::Legacy,
+        FlexSpec::Start => Flex::Start,
+        FlexSpec::Center => Flex::Center,
+        FlexSpec::End => Flex::End,
+        FlexSpec::SpaceBetween => Flex::SpaceBetween,
+        FlexSpec::SpaceAround => Flex::SpaceAround,
+    }
 }
 
 fn to_col_child(c: &ChildConfig) -> Child {

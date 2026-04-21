@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction as RatDir, Layout as RatLayout, Rect},
+    layout::{Constraint, Direction as RatDir, Flex as RatFlex, Layout as RatLayout, Rect},
     widgets::{Block, BorderType, Borders},
 };
 
@@ -17,6 +17,7 @@ pub enum Layout {
         direction: Direction,
         children: Vec<Child>,
         panel: Option<Panel>,
+        flex: Flex,
     },
     Widget {
         id: WidgetId,
@@ -24,6 +25,21 @@ pub enum Layout {
     },
     #[allow(dead_code)]
     Empty,
+}
+
+/// How children are distributed along the stack's main axis when their constraints don't fill
+/// the available space. `Legacy` is ratatui's default (proportional fill with Fill constraints);
+/// `Center` / `Start` / `End` / `SpaceBetween` etc. take a narrower set of children and place
+/// them within the parent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Flex {
+    #[default]
+    Legacy,
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+    SpaceAround,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +89,7 @@ impl Layout {
             direction: Direction::Vertical,
             children,
             panel: None,
+            flex: Flex::Legacy,
         }
     }
 
@@ -81,6 +98,24 @@ impl Layout {
             direction: Direction::Horizontal,
             children,
             panel: None,
+            flex: Flex::Legacy,
+        }
+    }
+
+    pub fn flexed(self, flex: Flex) -> Self {
+        match self {
+            Self::Stack {
+                direction,
+                children,
+                panel,
+                flex: _,
+            } => Self::Stack {
+                direction,
+                children,
+                panel,
+                flex,
+            },
+            other => other,
         }
     }
 
@@ -111,12 +146,14 @@ impl Layout {
                 direction,
                 children,
                 panel,
+                flex,
             } => {
                 let p = f(panel.unwrap_or_default());
                 Self::Stack {
                     direction,
                     children,
                     panel: Some(p),
+                    flex,
                 }
             }
             Self::Widget { id, panel } => {
@@ -192,9 +229,12 @@ pub fn draw(
             direction,
             children,
             panel,
+            flex,
         } => {
             let inner = draw_panel(frame, area, panel);
-            draw_stack(frame, inner, *direction, children, widgets, specs, registry);
+            draw_stack(
+                frame, inner, *direction, *flex, children, widgets, specs, registry,
+            );
         }
         Layout::Widget { id, panel } => {
             let inner = draw_panel(frame, area, panel);
@@ -237,10 +277,12 @@ fn to_border_type(style: BorderStyle) -> BorderType {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_stack(
     frame: &mut Frame,
     area: Rect,
     direction: Direction,
+    flex: Flex,
     children: &[Child],
     widgets: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
@@ -250,9 +292,21 @@ fn draw_stack(
     let rects = RatLayout::default()
         .direction(to_ratatui_direction(direction))
         .constraints(constraints)
+        .flex(to_ratatui_flex(flex))
         .split(area);
     for (child, rect) in children.iter().zip(rects.iter()) {
         draw(frame, *rect, &child.layout, widgets, specs, registry);
+    }
+}
+
+fn to_ratatui_flex(flex: Flex) -> RatFlex {
+    match flex {
+        Flex::Legacy => RatFlex::Legacy,
+        Flex::Start => RatFlex::Start,
+        Flex::Center => RatFlex::Center,
+        Flex::End => RatFlex::End,
+        Flex::SpaceBetween => RatFlex::SpaceBetween,
+        Flex::SpaceAround => RatFlex::SpaceAround,
     }
 }
 
