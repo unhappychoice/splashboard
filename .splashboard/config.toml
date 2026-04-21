@@ -11,18 +11,18 @@ height = 32
 [[widget]]
 id = "greeting_simple"
 fetcher = "static"
-render = "simple"
-format = "render = \"simple\"\nratatui Paragraph; flows multi-line format"
+render = { type = "simple", align = "center" }
+format = "welcome back"
 
 [[widget]]
-id = "clock_blocks"
+id = "clock"
 fetcher = "clock"
-render = { type = "ascii_art", style = "blocks", pixel_size = "quadrant" }
+render = { type = "ascii_art", pixel_size = "quadrant", align = "center" }
 
 [[widget]]
 id = "clock_figlet"
 fetcher = "clock"
-render = { type = "ascii_art", style = "figlet" }
+render = { type = "ascii_art", style = "figlet", align = "center" }
 
 [[widget]]
 id = "typewriter"
@@ -34,7 +34,7 @@ format = "animated_typewriter:\nreveals character by character while --wait tick
 id = "notes"
 fetcher = "static"
 render = "list"
-format = "render = \"list\"\nratatui::List widget\ndifferent from table"
+format = "ratatui::List widget\nalternative to simple\nselectable items, later"
 
 # ── Entries ─────────────────────────────────────────────────────────
 
@@ -89,32 +89,39 @@ fetcher = "today"
 render = "calendar"
 
 # ── Layout ──────────────────────────────────────────────────────────
+# Hero row: clock front-and-center, chromeless. Greeting centered, also chromeless.
+# Below, widgets pick their own chrome — some bordered for separation, some naked.
+
+[[row]]
+height = { length = 2 }
+
+  [[row.child]]
+  widget = "greeting_simple"
+  border = "none"
 
 [[row]]
 height = { length = 4 }
 
   [[row.child]]
-  widget = "greeting_simple"
-  title = "simple"
+  widget = "clock"
+  border = "none"
+
+  [[row.child]]
+  widget = "clock_figlet"
+  border = "none"
+
+[[row]]
+height = { length = 4 }
 
   [[row.child]]
   widget = "typewriter"
   title = "animated_typewriter"
+  border = "rounded"
 
   [[row.child]]
   widget = "notes"
   title = "list"
-
-[[row]]
-height = { length = 6 }
-
-  [[row.child]]
-  widget = "clock_blocks"
-  title = "ascii_art (blocks)"
-
-  [[row.child]]
-  widget = "clock_figlet"
-  title = "ascii_art (figlet)"
+  border = "rounded"
 
 [[row]]
 height = { length = 3 }
@@ -122,10 +129,12 @@ height = { length = 3 }
   [[row.child]]
   widget = "disk_gauge"
   title = "gauge"
+  border = "rounded"
 
   [[row.child]]
   widget = "disk_line"
   title = "line_gauge"
+  border = "rounded"
 
 [[row]]
 height = { length = 5 }
@@ -133,10 +142,12 @@ height = { length = 5 }
   [[row.child]]
   widget = "commits"
   title = "sparkline"
+  border = "rounded"
 
   [[row.child]]
   widget = "prs"
   title = "bar_chart"
+  border = "rounded"
 
 [[row]]
 height = { length = 7 }
@@ -144,14 +155,17 @@ height = { length = 7 }
   [[row.child]]
   widget = "trend_line"
   title = "chart_line"
+  border = "rounded"
 
   [[row.child]]
   widget = "trend_dots"
   title = "scatter"
+  border = "rounded"
 
   [[row.child]]
   widget = "today"
   title = "calendar"
+  border = "rounded"
 
 [[row]]
 height = { length = 6 }
@@ -159,3 +173,4 @@ height = { length = 6 }
   [[row.child]]
   widget = "system"
   title = "table"
+  border = "rounded"

@@ -1,11 +1,16 @@
-use ratatui::{Frame, layout::Rect, widgets::Paragraph};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Rect},
+    widgets::Paragraph,
+};
 
 use crate::payload::{Body, LinesData};
 
 use super::{RenderOptions, Renderer, Shape};
 
 /// Plain-text renderer: stacks `LinesData.lines` into a ratatui `Paragraph`. The default
-/// renderer for the `Lines` shape, used for greetings, project notes, static blocks.
+/// renderer for the `Lines` shape, used for greetings, project notes, static blocks. Honours
+/// the `align` option (left / center / right).
 pub struct SimpleRenderer;
 
 impl Renderer for SimpleRenderer {
@@ -15,15 +20,24 @@ impl Renderer for SimpleRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Lines]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {
-            render_lines(frame, area, d);
+            render_lines(frame, area, d, opts);
         }
     }
 }
 
-fn render_lines(frame: &mut Frame, area: Rect, data: &LinesData) {
-    frame.render_widget(Paragraph::new(data.lines.join("\n")), area);
+fn render_lines(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
+    let p = Paragraph::new(data.lines.join("\n")).alignment(parse_align(opts.align.as_deref()));
+    frame.render_widget(p, area);
+}
+
+fn parse_align(s: Option<&str>) -> Alignment {
+    match s {
+        Some("center") => Alignment::Center,
+        Some("right") => Alignment::Right,
+        _ => Alignment::Left,
+    }
 }
 
 #[cfg(test)]

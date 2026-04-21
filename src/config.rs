@@ -77,9 +77,12 @@ pub enum SizeSpec {
     Percentage(u16),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BorderSpec {
+    /// No chrome at all — widget fills its full cell, no title drawn. Useful for hero
+    /// elements like a big clock that should own its slot without framing.
+    None,
     Plain,
     Rounded,
     Thick,
@@ -174,22 +177,29 @@ fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
 }
 
 fn apply_panel(layout: Layout, title: Option<&str>, border: Option<BorderSpec>) -> Layout {
+    // Explicit `border = "none"` opts out of chrome entirely — skip the panel even if a title
+    // was set (a bare title without a border to anchor it to doesn't render, and pretending it
+    // would be worse than dropping it).
+    if matches!(border, Some(BorderSpec::None)) {
+        return layout;
+    }
     let l = match title {
         Some(t) => layout.titled(t),
         None => layout,
     };
-    match border {
-        Some(b) => l.bordered(to_border_style(b)),
+    match border.and_then(to_border_style) {
+        Some(b) => l.bordered(b),
         None => l,
     }
 }
 
-fn to_border_style(b: BorderSpec) -> BorderStyle {
+fn to_border_style(b: BorderSpec) -> Option<BorderStyle> {
     match b {
-        BorderSpec::Plain => BorderStyle::Plain,
-        BorderSpec::Rounded => BorderStyle::Rounded,
-        BorderSpec::Thick => BorderStyle::Thick,
-        BorderSpec::Double => BorderStyle::Double,
+        BorderSpec::None => None,
+        BorderSpec::Plain => Some(BorderStyle::Plain),
+        BorderSpec::Rounded => Some(BorderStyle::Rounded),
+        BorderSpec::Thick => Some(BorderStyle::Thick),
+        BorderSpec::Double => Some(BorderStyle::Double),
     }
 }
 
