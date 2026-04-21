@@ -1,4 +1,4 @@
-use std::io::{self, IsTerminal, stdout};
+use std::io::{self, IsTerminal, stdin, stdout};
 
 use clap::{Parser, Subcommand};
 use ratatui::{Terminal, TerminalOptions, Viewport, backend::CrosstermBackend};
@@ -12,6 +12,8 @@ mod payload;
 mod render;
 mod shell;
 mod stubs;
+
+const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
 
 #[derive(Parser)]
 #[command(version, about = "A customizable terminal splash screen")]
@@ -42,20 +44,26 @@ fn main() -> io::Result<()> {
             print!("{}", shell::init_snippet(shell));
             Ok(())
         }
-        None if cli.on_cd => render_for_cd(),
-        None => render_splash(),
+        None => {
+            let _ = if cli.on_cd {
+                render_for_cd()
+            } else {
+                render_splash()
+            };
+            Ok(())
+        }
     }
 }
 
 fn render_splash() -> io::Result<()> {
-    if !stdout().is_terminal() {
+    if !should_render() {
         return Ok(());
     }
     draw(&load_full_config())
 }
 
 fn render_for_cd() -> io::Result<()> {
-    if !stdout().is_terminal() {
+    if !should_render() {
         return Ok(());
     }
     let Some(path) = config::resolve_cwd_only_path() else {
@@ -65,6 +73,17 @@ fn render_for_cd() -> io::Result<()> {
         return Ok(());
     };
     draw(&config)
+}
+
+fn should_render() -> bool {
+    stdout().is_terminal() && stdin().is_terminal() && allow_render(|k| std::env::var(k).ok())
+}
+
+fn allow_render(env: impl Fn(&str) -> Option<String>) -> bool {
+    if OPT_OUT_ENV_VARS.iter().any(|k| env(k).is_some()) {
+        return false;
+    }
+    !matches!(env("TERM").as_deref(), Some("dumb"))
 }
 
 fn draw(config: &Config) -> io::Result<()> {
@@ -86,4 +105,48 @@ fn load_full_config() -> Config {
     config::resolve_config_path()
         .and_then(|p| Config::load_or_default(&p).ok())
         .unwrap_or_else(Config::default_baked)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allow_render;
+
+    fn env_with(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == k)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[test]
+    fn allows_render_in_plain_env() {
+        assert!(allow_render(env_with(&[])));
+    }
+
+    #[test]
+    fn ci_env_blocks_render() {
+        assert!(!allow_render(env_with(&[("CI", "true")])));
+    }
+
+    #[test]
+    fn splashboard_silent_blocks_render() {
+        assert!(!allow_render(env_with(&[("SPLASHBOARD_SILENT", "1")])));
+    }
+
+    #[test]
+    fn no_splashboard_blocks_render() {
+        assert!(!allow_render(env_with(&[("NO_SPLASHBOARD", "1")])));
+    }
+
+    #[test]
+    fn dumb_terminal_blocks_render() {
+        assert!(!allow_render(env_with(&[("TERM", "dumb")])));
+    }
+
+    #[test]
+    fn normal_term_allows_render() {
+        assert!(allow_render(env_with(&[("TERM", "xterm-256color")])));
+    }
 }
