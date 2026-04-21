@@ -46,8 +46,8 @@ fn demo_widgets() -> [Payload; 6] {
     [
         greeting(),
         clock(),
-        cpu_gauge(),
-        memory_sparkline(),
+        disk_gauge(),
+        commits_sparkline(),
         system_list(),
         pr_counts(),
     ]
@@ -71,21 +71,21 @@ fn clock() -> Payload {
     )
 }
 
-fn cpu_gauge() -> Payload {
+fn disk_gauge() -> Payload {
     titled(
-        "CPU",
+        "Disk /",
         Body::Gauge(GaugeData {
-            value: 0.63,
-            label: Some("63%".into()),
+            value: 0.45,
+            label: Some("45% of 500 GB".into()),
         }),
     )
 }
 
-fn memory_sparkline() -> Payload {
+fn commits_sparkline() -> Payload {
     titled(
-        "Memory",
+        "Commits (14d)",
         Body::Sparkline(SparklineData {
-            values: vec![30, 45, 50, 55, 60, 58, 65, 70, 68, 62, 55, 50],
+            values: vec![2, 5, 0, 3, 7, 4, 1, 6, 9, 2, 3, 5, 8, 4],
         }),
     )
 }
@@ -118,20 +118,20 @@ fn system_list() -> Payload {
 
 fn pr_counts() -> Payload {
     titled(
-        "PRs",
+        "Open PRs",
         Body::BarChart(BarChartData {
             bars: vec![
                 Bar {
-                    label: "me".into(),
+                    label: "splsh".into(),
                     value: 3,
                 },
                 Bar {
-                    label: "team".into(),
-                    value: 5,
+                    label: "gtype".into(),
+                    value: 2,
                 },
                 Bar {
-                    label: "bot".into(),
-                    value: 2,
+                    label: "other".into(),
+                    value: 1,
                 },
             ],
         }),
