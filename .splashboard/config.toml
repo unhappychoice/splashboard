@@ -95,12 +95,17 @@ id = "trend_dots"
 fetcher = "trend"
 render = "scatter"
 
-# ── Bars ────────────────────────────────────────────────────────────
+# ── Bars: 2 renderers ───────────────────────────────────────────────
 
 [[widget]]
 id = "prs"
 fetcher = "github_prs"
 render = "bar_chart"
+
+[[widget]]
+id = "prs_pie"
+fetcher = "github_prs"
+render = "pie_chart"
 
 # ── Calendar ────────────────────────────────────────────────────────
 
@@ -222,7 +227,7 @@ height = { length = 3 }
   border = "rounded"
 
 [[row]]
-height = { length = 5 }
+height = { length = 7 }
 
   [[row.child]]
   widget = "commits"
@@ -232,6 +237,11 @@ height = { length = 5 }
   [[row.child]]
   widget = "prs"
   title = "bar_chart"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "prs_pie"
+  title = "pie_chart"
   border = "rounded"
 
 [[row]]
