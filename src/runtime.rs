@@ -74,7 +74,7 @@ pub async fn run(
 
     // Cache-first one-shot: no looping needed, paint what we have and exit.
     if loop_window.is_none() {
-        draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+        draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
         println!();
         return Ok(());
@@ -108,7 +108,7 @@ pub async fn run(
                 }
             }
             refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
-            draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+            draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
         Err(_) => {
             // Spawning the daemon failed (OOM, exec permission) — rare. Fall back to inline
@@ -125,7 +125,7 @@ pub async fn run(
             for (id, payload) in fresh {
                 payloads.insert(id, payload);
             }
-            draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+            draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
     }
 
@@ -276,14 +276,23 @@ fn draw<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
 ) -> io::Result<()> {
+    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads, specs, registry))?;
+    Ok(())
+}
+
+/// Same as [`draw`] but parks the cursor at the bottom-left of the inline area afterwards, so
+/// the caller's `println!()` lands one row below the splash instead of inside it. Call this
+/// only for the last draw of the run — intermediate frames in a loop get overwritten anyway.
+fn draw_final<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
         layout::draw(frame, area, root, payloads, specs, registry);
-        // Park the cursor at the bottom-left of the inline area — in absolute screen coords,
-        // not frame-relative — so the caller's `println!()` lands one line below the splash.
-        // `frame.set_cursor_position` takes terminal-absolute coordinates; the inline area
-        // usually doesn't start at y=0, so `area.height - 1` alone parks the cursor somewhere
-        // mid-viewport and the prompt overwrites everything below it.
         if area.height > 0 {
             frame.set_cursor_position(ratatui::layout::Position {
                 x: area.x,
