@@ -5,10 +5,20 @@ use crate::payload::BignumData;
 
 pub fn render(frame: &mut Frame, area: Rect, data: &BignumData) {
     let big = BigText::builder()
-        .pixel_size(PixelSize::Full)
+        .pixel_size(pick_pixel_size(area))
         .lines(vec![data.text.clone().into()])
         .build();
     frame.render_widget(big, area);
+}
+
+fn pick_pixel_size(area: Rect) -> PixelSize {
+    if area.height >= 8 {
+        PixelSize::Full
+    } else if area.height >= 4 {
+        PixelSize::Quadrant
+    } else {
+        PixelSize::Sextant
+    }
 }
 
 #[cfg(test)]
