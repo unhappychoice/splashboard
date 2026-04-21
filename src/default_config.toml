@@ -32,6 +32,11 @@ id = "prs"
 fetcher = "github_prs"
 render = "bar_chart"
 
+[[widget]]
+id = "contributions"
+fetcher = "contributions"
+render = { type = "heatmap", align = "center" }
+
 [[row]]
 height = { min = 6 }
 
@@ -40,6 +45,14 @@ height = { min = 6 }
 
   [[row.child]]
   widget = "clock"
+
+[[row]]
+height = { length = 8 }
+
+  [[row.child]]
+  widget = "contributions"
+  title = "Contributions (1y)"
+  border = "rounded"
 
 [[row]]
 height = { length = 5 }

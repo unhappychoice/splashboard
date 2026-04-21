@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarsData, Body, CalendarData, EntriesData, Entry, NumberSeriesData, Payload, PointSeries,
-    PointSeriesData, RatioData, Status,
+    Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, NumberSeriesData, Payload,
+    PointSeries, PointSeriesData, RatioData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
@@ -21,6 +21,7 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(SystemStub),
         Arc::new(GithubPrsStub),
         Arc::new(TrendStub),
+        Arc::new(ContributionsStub),
     ]
 }
 
@@ -155,6 +156,96 @@ impl Fetcher for TrendStub {
     }
 }
 
+/// Demo-quality contributions grid — stands in for the future `github_contributions` and
+/// `git_commits_activity` fetchers so the heatmap renderer has something to show out of the
+/// box. 7 weekdays × 52 weeks, deterministic pseudo-random counts seeded so the picture looks
+/// realistic (weekday peaks, weekends dim, occasional zero streaks).
+pub struct ContributionsStub;
+
+#[async_trait]
+impl Fetcher for ContributionsStub {
+    fn name(&self) -> &str {
+        "contributions"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        Ok(payload(Body::Heatmap(HeatmapData {
+            cells: fake_contributions(),
+            thresholds: None,
+            row_labels: None,
+            col_labels: Some(month_labels_for_last_52_weeks()),
+        })))
+    }
+}
+
+fn fake_contributions() -> Vec<Vec<u32>> {
+    // Deterministic LCG so the demo is stable across runs — visual regressions would be
+    // confusing if the stub produced different pictures every splash.
+    let mut state: u32 = 0x9E37_79B9;
+    let mut next = |max: u32| -> u32 {
+        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (state >> 16) % max.max(1)
+    };
+    (0..7)
+        .map(|day| {
+            (0..52)
+                .map(|_| {
+                    let weekday_peak = if (1..=5).contains(&day) { 8 } else { 3 };
+                    let roll = next(10);
+                    if roll < 3 {
+                        0
+                    } else {
+                        next(weekday_peak) + 1
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// One string per week column, non-empty only on the week whose range contains the 1st of a
+/// new month. The result slides with today's date so the demo always looks current.
+fn month_labels_for_last_52_weeks() -> Vec<String> {
+    use chrono::{Datelike, Duration, Local};
+    let today = Local::now().date_naive();
+    let start = today - Duration::days(51 * 7);
+    let mut out: Vec<String> = (0..52).map(|_| String::new()).collect();
+    let mut last_month = 0u32;
+    for week in 0..52 {
+        let week_start = start + Duration::days(week * 7);
+        for d in 0..7 {
+            let day = week_start + Duration::days(d);
+            if day.day() == 1 && day.month() != last_month {
+                out[week as usize] = short_month(day.month());
+                last_month = day.month();
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn short_month(m: u32) -> String {
+    match m {
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        12 => "Dec",
+        _ => "",
+    }
+    .to_string()
+}
+
 pub struct TodayStub;
 
 impl RealtimeFetcher for TodayStub {
@@ -202,9 +293,25 @@ mod tests {
     fn all_cached_stubs_are_registered() {
         let fetchers = stubs();
         let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
-        for expected in ["disk", "git_commits", "system", "github_prs", "trend"] {
+        for expected in [
+            "disk",
+            "git_commits",
+            "system",
+            "github_prs",
+            "trend",
+            "contributions",
+        ] {
             assert!(names.contains(&expected), "missing stub: {expected}");
         }
+    }
+
+    #[test]
+    fn contributions_stub_shape() {
+        let cells = fake_contributions();
+        assert_eq!(cells.len(), 7, "7 weekday rows");
+        assert!(cells.iter().all(|r| r.len() == 52), "52 week columns");
+        let total: u32 = cells.iter().flat_map(|r| r.iter().copied()).sum();
+        assert!(total > 0, "deterministic fake data must not be all zero");
     }
 
     #[test]

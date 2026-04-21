@@ -89,6 +89,13 @@ id = "today"
 fetcher = "today"
 render = "calendar"
 
+# ── Heatmap ─────────────────────────────────────────────────────────
+
+[[widget]]
+id = "contributions"
+fetcher = "contributions"
+render = { type = "heatmap", align = "center" }
+
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
 # even though it's narrower than the terminal. 2-column rows below keep the default Legacy
@@ -133,6 +140,12 @@ flex = "center"
   [[row.child]]
   widget = "notes"
   width = { length = 44 }
+
+[[row]]
+height = { length = 10 }
+
+  [[row.child]]
+  widget = "contributions"
 
 # ── Dense 2-column rows from here on, default Legacy flex ─────────────
 
@@ -187,3 +200,4 @@ height = { length = 6 }
   widget = "system"
   title = "table"
   border = "rounded"
+
