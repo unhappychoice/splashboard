@@ -4,8 +4,12 @@ use std::path::Path;
 use std::time::Duration;
 
 use ratatui::{
-    Terminal, TerminalOptions, Viewport,
+    Frame, Terminal, TerminalOptions, Viewport,
     backend::{Backend, CrosstermBackend},
+    layout::{Alignment, Rect},
+    style::{Color, Modifier, Style},
+    text::Line,
+    widgets::Paragraph,
 };
 use tokio::task::JoinSet;
 
@@ -187,7 +191,9 @@ pub async fn run(
     // Default viewport = sum of configured row heights so every widget fits without manual
     // tuning. Users can still override with `general.height` when they want padding or are
     // using Percentage sizes. Clamped to `terminal_rows - 1` so there's always one row left
-    // below the viewport for the shell prompt to land on cleanly.
+    // below the viewport for the shell prompt. When the configured height doesn't fit, the
+    // bottom row of the visible viewport is sacrificed for a `… +N rows` clip hint so users
+    // aren't silently missing widgets.
     let requested_height = config
         .general
         .height
@@ -195,13 +201,32 @@ pub async fn run(
     let term_rows = ratatui::crossterm::terminal::size()
         .map(|(_, h)| h)
         .unwrap_or(requested_height);
-    let viewport_lines = requested_height.min(term_rows.saturating_sub(1)).max(1);
+    let max_inline = term_rows.saturating_sub(1).max(1);
+    let clipping = requested_height > max_inline;
+    let viewport_lines = if clipping {
+        max_inline
+    } else {
+        requested_height
+    }
+    .max(1);
+    let hidden_rows = if clipping {
+        requested_height.saturating_sub(viewport_lines.saturating_sub(1))
+    } else {
+        0
+    };
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend, viewport_lines)?;
 
     // Cache-first one-shot: no looping needed, paint what we have and exit.
     if loop_window.is_none() {
-        draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+        draw_final(
+            &mut terminal,
+            &layout,
+            &payloads,
+            &specs,
+            &render_registry,
+            hidden_rows,
+        )?;
         let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
         finalize_splash(&mut terminal);
         return Ok(());
@@ -222,7 +247,14 @@ pub async fn run(
             let deadline = std::time::Instant::now() + window;
             loop {
                 refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
-                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+                draw(
+                    &mut terminal,
+                    &layout,
+                    &payloads,
+                    &specs,
+                    &render_registry,
+                    hidden_rows,
+                )?;
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
                 if remaining.is_zero() {
                     if wait {
@@ -241,7 +273,14 @@ pub async fn run(
                 }
             }
             refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
-            draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+            draw_final(
+                &mut terminal,
+                &layout,
+                &payloads,
+                &specs,
+                &render_registry,
+                hidden_rows,
+            )?;
         }
         Err(_) => {
             // Spawning the daemon failed (OOM, exec permission) — rare. Fall back to inline
@@ -261,7 +300,14 @@ pub async fn run(
             }
             // Realtime values in the fallback path are still fresh at this point — the compute
             // above was microseconds ago. No refresh needed before the single final draw.
-            draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+            draw_final(
+                &mut terminal,
+                &layout,
+                &payloads,
+                &specs,
+                &render_registry,
+                hidden_rows,
+            )?;
         }
     }
 
@@ -442,8 +488,19 @@ fn draw<B: Backend>(
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    hidden_rows: u16,
 ) -> io::Result<()> {
-    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads, specs, registry))?;
+    terminal.draw(|frame| {
+        draw_frame(
+            frame,
+            frame.area(),
+            root,
+            payloads,
+            specs,
+            registry,
+            hidden_rows,
+        )
+    })?;
     Ok(())
 }
 
@@ -458,12 +515,13 @@ fn draw_final<B: Backend>(
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    hidden_rows: u16,
 ) -> io::Result<()> {
-    let mut captured: Option<ratatui::layout::Rect> = None;
+    let mut captured: Option<Rect> = None;
     terminal.draw(|frame| {
         let area = frame.area();
         captured = Some(area);
-        layout::draw(frame, area, root, payloads, specs, registry);
+        draw_frame(frame, area, root, payloads, specs, registry, hidden_rows);
     })?;
     if let Some(area) = captured
         && area.height > 0
@@ -474,6 +532,43 @@ fn draw_final<B: Backend>(
         })?;
     }
     Ok(())
+}
+
+/// Renders the layout into the given area, sacrificing the bottom row for a `… +N rows` hint
+/// when the configured height doesn't fit and the viewport had to be clamped to the terminal.
+fn draw_frame(
+    frame: &mut Frame,
+    area: Rect,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+    hidden_rows: u16,
+) {
+    if hidden_rows > 0 && area.height > 1 {
+        let layout_area = Rect {
+            height: area.height - 1,
+            ..area
+        };
+        let hint_area = Rect {
+            y: area.y + area.height - 1,
+            height: 1,
+            ..area
+        };
+        layout::draw(frame, layout_area, root, payloads, specs, registry);
+        render_clip_hint(frame, hint_area, hidden_rows);
+    } else {
+        layout::draw(frame, area, root, payloads, specs, registry);
+    }
+}
+
+fn render_clip_hint(frame: &mut Frame, area: Rect, hidden_rows: u16) {
+    let text = format!("… +{hidden_rows} rows (terminal too short)");
+    let style = Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::DIM | Modifier::ITALIC);
+    let p = Paragraph::new(Line::from(text).style(style)).alignment(Alignment::Right);
+    frame.render_widget(p, area);
 }
 
 /// Hand back to the shell: show the cursor (ratatui hid it during drawing) and emit the
@@ -493,7 +588,9 @@ fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::Layout as LayoutTree;
     use crate::payload::{Body, LinesData};
+    use ratatui::{Terminal, backend::TestBackend};
 
     fn text_payload(line: &str) -> Payload {
         Payload {
@@ -504,6 +601,70 @@ mod tests {
                 lines: vec![line.into()],
             }),
         }
+    }
+
+    fn single_widget_tree(id: &str) -> LayoutTree {
+        LayoutTree::Widget {
+            id: id.into(),
+            panel: None,
+        }
+    }
+
+    fn row_text(buf: &ratatui::buffer::Buffer, y: u16) -> String {
+        (0..buf.area.width)
+            .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn draw_frame_hint_lands_on_bottom_row_when_clipping() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("top"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(50, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| draw_frame(f, f.area(), &root, &payloads, &specs, &registry, 7))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let bottom = row_text(&buf, 3);
+        assert!(
+            bottom.contains("…") && bottom.contains("+7"),
+            "expected clip hint in bottom row: {bottom:?}"
+        );
+        assert!(row_text(&buf, 0).contains("top"), "layout still rendered");
+    }
+
+    #[test]
+    fn draw_frame_without_clipping_paints_no_hint() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("only"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(50, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| draw_frame(f, f.area(), &root, &payloads, &specs, &registry, 0))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let joined: String = (0..3).map(|y| row_text(&buf, y)).collect();
+        assert!(!joined.contains("…"), "no marker expected: {joined:?}");
+        assert!(!joined.contains("terminal too short"));
+    }
+
+    #[test]
+    fn clip_hint_includes_marker_and_count() {
+        let backend = TestBackend::new(60, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render_clip_hint(f, f.area(), 42))
+            .unwrap();
+        let row = row_text(&terminal.backend().buffer().clone(), 0);
+        assert!(row.contains("…"), "marker missing: {row:?}");
+        assert!(row.contains("+42"), "count missing: {row:?}");
     }
 
     fn widget(id: &str, fetcher: &str) -> WidgetConfig {
