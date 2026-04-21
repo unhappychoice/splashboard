@@ -19,15 +19,16 @@ const CELL_W: u16 = 2;
 const CELL_H: u16 = 1;
 const CELL_GLYPH: &str = "■";
 
-/// Background gradient for the contribution-graph "grass" palette, level 0 → 4. Picked to be
-/// readable on both dark and light terminals without a theme system in place yet; will be
-/// replaced by theme lookups once #17 lands.
+/// Contribution-graph "grass" palette, level 0 → 4. Level 0 is GitHub's light-mode empty cell
+/// color (very light gray) so inactive days read as "no activity" rather than as a dark mass —
+/// the gradient feels lighter and the greens pop more. Will be replaced by theme lookups once
+/// #17 lands.
 const PALETTE: [Color; LEVELS] = [
-    Color::Rgb(0x15, 0x1B, 0x23),
-    Color::Rgb(0x0E, 0x44, 0x29),
-    Color::Rgb(0x00, 0x6D, 0x32),
-    Color::Rgb(0x26, 0xA6, 0x41),
-    Color::Rgb(0x39, 0xD3, 0x53),
+    Color::Rgb(0xEB, 0xED, 0xF0),
+    Color::Rgb(0x9B, 0xE9, 0xA8),
+    Color::Rgb(0x40, 0xC4, 0x63),
+    Color::Rgb(0x30, 0xA1, 0x4E),
+    Color::Rgb(0x21, 0x6E, 0x39),
 ];
 
 impl Renderer for HeatmapRenderer {
