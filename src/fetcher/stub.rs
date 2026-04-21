@@ -12,7 +12,7 @@ use crate::payload::{
     PointSeriesData, RatioData, Status,
 };
 
-use super::{FetchContext, FetchError, Fetcher, Safety};
+use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
 
 pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
     vec![
@@ -21,8 +21,11 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(SystemStub),
         Arc::new(GithubPrsStub),
         Arc::new(TrendStub),
-        Arc::new(TodayStub),
     ]
+}
+
+pub fn realtime_stubs() -> Vec<Arc<dyn RealtimeFetcher>> {
+    vec![Arc::new(TodayStub)]
 }
 
 pub struct DiskStub;
@@ -154,23 +157,22 @@ impl Fetcher for TrendStub {
 
 pub struct TodayStub;
 
-#[async_trait]
-impl Fetcher for TodayStub {
+impl RealtimeFetcher for TodayStub {
     fn name(&self) -> &str {
         "today"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
     }
-    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+    fn compute(&self, _: &FetchContext) -> Payload {
         use chrono::Datelike;
         let now = chrono::Local::now().date_naive();
-        Ok(payload(Body::Calendar(CalendarData {
+        payload(Body::Calendar(CalendarData {
             year: now.year(),
             month: now.month() as u8,
             day: Some(now.day() as u8),
             events: Vec::new(),
-        })))
+        }))
     }
 }
 
@@ -193,21 +195,24 @@ mod tests {
         assert_eq!(SystemStub.safety(), Safety::Safe);
         assert_eq!(GitCommitsStub.safety(), Safety::Exec);
         assert_eq!(GithubPrsStub.safety(), Safety::Network);
+        assert_eq!(RealtimeFetcher::safety(&TodayStub), Safety::Safe);
     }
 
     #[test]
-    fn all_stubs_are_registered() {
+    fn all_cached_stubs_are_registered() {
         let fetchers = stubs();
         let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
-        for expected in [
-            "disk",
-            "git_commits",
-            "system",
-            "github_prs",
-            "trend",
-            "today",
-        ] {
+        for expected in ["disk", "git_commits", "system", "github_prs", "trend"] {
             assert!(names.contains(&expected), "missing stub: {expected}");
         }
+    }
+
+    #[test]
+    fn realtime_stubs_includes_today() {
+        let names: Vec<String> = realtime_stubs()
+            .iter()
+            .map(|f| f.name().to_string())
+            .collect();
+        assert!(names.iter().any(|n| n == "today"));
     }
 }

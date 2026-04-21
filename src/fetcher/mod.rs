@@ -57,6 +57,16 @@ pub trait Fetcher: Send + Sync {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError>;
 }
 
+/// Fetchers whose value is intrinsically "right now" — wall clock, instantaneous system counters,
+/// countdowns. Contract: computed in <1ms, infallible, no I/O. Bypasses the disk cache entirely
+/// and is recomputed by the runtime on every frame. If a prospective fetcher can't meet that
+/// contract, it belongs on [`Fetcher`] instead.
+pub trait RealtimeFetcher: Send + Sync {
+    fn name(&self) -> &str;
+    fn safety(&self) -> Safety;
+    fn compute(&self, ctx: &FetchContext) -> Payload;
+}
+
 pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
     use sha2::{Digest, Sha256};
     let raw = format!("{}|{}", name, ctx.format.as_deref().unwrap_or(""));
@@ -65,28 +75,81 @@ pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
     format!("{name}-{hex}")
 }
 
+/// Registry entry — either a cache-backed async fetcher or a recompute-each-frame realtime one.
+/// The trust gate and name lookup work against this unified type; runtime unwraps to the specific
+/// kind only when it needs the kind-specific behavior (cache I/O vs. per-frame compute).
+#[derive(Clone)]
+pub enum RegisteredFetcher {
+    Cached(Arc<dyn Fetcher>),
+    Realtime(Arc<dyn RealtimeFetcher>),
+}
+
+impl RegisteredFetcher {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Cached(f) => f.name(),
+            Self::Realtime(f) => f.name(),
+        }
+    }
+    pub fn safety(&self) -> Safety {
+        match self {
+            Self::Cached(f) => f.safety(),
+            Self::Realtime(f) => f.safety(),
+        }
+    }
+    pub fn as_cached(&self) -> Option<Arc<dyn Fetcher>> {
+        match self {
+            Self::Cached(f) => Some(f.clone()),
+            Self::Realtime(_) => None,
+        }
+    }
+    pub fn as_realtime(&self) -> Option<Arc<dyn RealtimeFetcher>> {
+        match self {
+            Self::Realtime(f) => Some(f.clone()),
+            Self::Cached(_) => None,
+        }
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct Registry {
-    fetchers: HashMap<String, Arc<dyn Fetcher>>,
+    fetchers: HashMap<String, RegisteredFetcher>,
 }
 
 impl Registry {
     pub fn with_builtins() -> Self {
         let mut r = Self::default();
         r.register(Arc::new(static_text::StaticText));
-        r.register(Arc::new(clock::ClockFetcher));
+        r.register_realtime(Arc::new(clock::ClockFetcher));
         for f in stub::stubs() {
             r.register(f);
+        }
+        for f in stub::realtime_stubs() {
+            r.register_realtime(f);
         }
         r
     }
 
     pub fn register(&mut self, f: Arc<dyn Fetcher>) {
-        self.fetchers.insert(f.name().to_string(), f);
+        self.fetchers
+            .insert(f.name().to_string(), RegisteredFetcher::Cached(f));
     }
 
-    pub fn get(&self, name: &str) -> Option<Arc<dyn Fetcher>> {
+    pub fn register_realtime(&mut self, f: Arc<dyn RealtimeFetcher>) {
+        self.fetchers
+            .insert(f.name().to_string(), RegisteredFetcher::Realtime(f));
+    }
+
+    pub fn get(&self, name: &str) -> Option<RegisteredFetcher> {
         self.fetchers.get(name).cloned()
+    }
+
+    pub fn get_cached(&self, name: &str) -> Option<Arc<dyn Fetcher>> {
+        self.get(name).and_then(|f| f.as_cached())
+    }
+
+    pub fn get_realtime(&self, name: &str) -> Option<Arc<dyn RealtimeFetcher>> {
+        self.get(name).and_then(|f| f.as_realtime())
     }
 
     pub fn names(&self) -> Vec<&str> {
@@ -119,6 +182,25 @@ mod tests {
         }
     }
 
+    struct DummyRealtime(&'static str, Safety);
+
+    impl RealtimeFetcher for DummyRealtime {
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn safety(&self) -> Safety {
+            self.1
+        }
+        fn compute(&self, _: &FetchContext) -> Payload {
+            Payload {
+                icon: None,
+                status: None,
+                format: None,
+                body: Body::Lines(LinesData { lines: vec![] }),
+            }
+        }
+    }
+
     #[test]
     fn registry_register_and_get() {
         let mut r = Registry::default();
@@ -128,9 +210,46 @@ mod tests {
     }
 
     #[test]
+    fn registry_register_realtime_and_get() {
+        let mut r = Registry::default();
+        r.register_realtime(Arc::new(DummyRealtime("rt", Safety::Safe)));
+        let entry = r.get("rt").expect("must be present");
+        assert!(matches!(entry, RegisteredFetcher::Realtime(_)));
+        assert_eq!(entry.safety(), Safety::Safe);
+    }
+
+    #[test]
+    fn registry_name_collision_replaces() {
+        // Registering the same name twice — second wins. Prevents both-kinds-of-fetcher confusion.
+        let mut r = Registry::default();
+        r.register(Arc::new(Dummy("x", Safety::Safe)));
+        r.register_realtime(Arc::new(DummyRealtime("x", Safety::Network)));
+        let entry = r.get("x").unwrap();
+        assert!(matches!(entry, RegisteredFetcher::Realtime(_)));
+        assert_eq!(entry.safety(), Safety::Network);
+    }
+
+    #[test]
+    fn as_cached_and_as_realtime_are_mutually_exclusive() {
+        let cached = RegisteredFetcher::Cached(Arc::new(Dummy("c", Safety::Safe)));
+        assert!(cached.as_cached().is_some());
+        assert!(cached.as_realtime().is_none());
+        let rt = RegisteredFetcher::Realtime(Arc::new(DummyRealtime("r", Safety::Safe)));
+        assert!(rt.as_realtime().is_some());
+        assert!(rt.as_cached().is_none());
+    }
+
+    #[test]
     fn with_builtins_registers_static_fetcher() {
         let r = Registry::with_builtins();
         assert!(r.get("static").is_some());
+    }
+
+    #[test]
+    fn with_builtins_registers_clock_as_realtime() {
+        let r = Registry::with_builtins();
+        let entry = r.get("clock").expect("clock must be registered");
+        assert!(matches!(entry, RegisteredFetcher::Realtime(_)));
     }
 
     #[tokio::test]

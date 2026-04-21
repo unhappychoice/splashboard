@@ -192,7 +192,7 @@ fn store_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fetcher::{FetchContext, FetchError, Fetcher};
+    use crate::fetcher::{FetchContext, FetchError, Fetcher, RealtimeFetcher};
     use async_trait::async_trait;
     use std::sync::Arc;
 
@@ -211,6 +211,23 @@ mod tests {
         }
         async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
             unimplemented!("fake fetcher not invoked in tests")
+        }
+    }
+
+    struct FakeRealtime {
+        name: &'static str,
+        safety: Safety,
+    }
+
+    impl RealtimeFetcher for FakeRealtime {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn safety(&self) -> Safety {
+            self.safety
+        }
+        fn compute(&self, _: &FetchContext) -> Payload {
+            unimplemented!("fake realtime not invoked in tests")
         }
     }
 
@@ -382,6 +399,21 @@ mod tests {
         assert_eq!(fetchable_ids, vec!["g".to_string()]);
         assert!(gated_ids.iter().any(|s| s == "p"));
         assert!(gated_ids.iter().any(|s| s == "x"));
+    }
+
+    #[test]
+    fn partition_treats_realtime_safe_fetcher_as_fetchable_when_untrusted() {
+        // A realtime fetcher exposes safety via the unified Registry entry; a Safe realtime
+        // fetcher must not be gated just because it isn't the async Fetcher kind.
+        let mut registry = Registry::default();
+        registry.register_realtime(Arc::new(FakeRealtime {
+            name: "clock",
+            safety: Safety::Safe,
+        }));
+        let widgets = vec![widget("c", "clock")];
+        let (fetchable, gated) = partition_by_trust(&widgets, &registry, TrustDecision::Untrusted);
+        assert_eq!(fetchable.len(), 1);
+        assert!(gated.is_empty());
     }
 
     #[test]
