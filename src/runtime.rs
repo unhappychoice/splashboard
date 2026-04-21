@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{self, Stdout, stdout};
+use std::io::{self, stdout};
 use std::path::Path;
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
 /// (`animated_typewriter`) rely on this cadence to produce motion; sub-50ms would waste CPU,
 /// above 100ms would look choppy.
 const FRAME_TICK: Duration = Duration::from_millis(50);
-const VIEWPORT_LINES: u16 = 16;
+const DEFAULT_VIEWPORT_LINES: u16 = 16;
 
 pub async fn run(
     config: &Config,
@@ -55,8 +55,9 @@ pub async fn run(
     // Subsequent invocations (once the daemon has populated the cache) stay cache-first.
     let wait = wait || config.general.wait_for_fresh || entries.is_empty();
 
+    let viewport_lines = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
     let backend = CrosstermBackend::new(stdout());
-    let mut terminal = make_terminal(backend)?;
+    let mut terminal = make_terminal(backend, viewport_lines)?;
 
     // Cache-first: unless we're waiting, paint what we have from disk (plus trust placeholders)
     // immediately so the shell prompt is never blocked on fetch I/O.
@@ -239,11 +240,11 @@ fn should_refresh(cached: &HashMap<WidgetId, CacheEntry>, w: &WidgetConfig) -> b
     }
 }
 
-fn make_terminal<B: Backend>(backend: B) -> io::Result<Terminal<B>> {
+fn make_terminal<B: Backend>(backend: B, viewport_lines: u16) -> io::Result<Terminal<B>> {
     Terminal::with_options(
         backend,
         TerminalOptions {
-            viewport: Viewport::Inline(VIEWPORT_LINES),
+            viewport: Viewport::Inline(viewport_lines),
         },
     )
 }
@@ -264,11 +265,6 @@ fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
         .iter()
         .filter_map(|w| w.render.clone().map(|s| (w.id.clone(), s)))
         .collect()
-}
-
-#[allow(dead_code)]
-fn stdout_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
-    make_terminal(CrosstermBackend::new(stdout()))
 }
 
 #[cfg(test)]

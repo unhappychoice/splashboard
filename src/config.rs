@@ -23,6 +23,10 @@ pub struct Config {
 pub struct General {
     #[serde(default)]
     pub wait_for_fresh: bool,
+    /// Inline viewport height in rows. `None` uses the built-in default. Configs that ship more
+    /// widgets than fit in the default bump this to make room.
+    #[serde(default)]
+    pub height: Option<u16>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

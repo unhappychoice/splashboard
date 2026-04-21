@@ -8,7 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarsData, Body, EntriesData, Entry, NumberSeriesData, Payload, RatioData, Status,
+    Bar, BarsData, Body, CalendarData, EntriesData, Entry, NumberSeriesData, Payload, PointSeries,
+    PointSeriesData, RatioData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
@@ -19,6 +20,8 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(GitCommitsStub),
         Arc::new(SystemStub),
         Arc::new(GithubPrsStub),
+        Arc::new(TrendStub),
+        Arc::new(TodayStub),
     ]
 }
 
@@ -121,6 +124,56 @@ impl Fetcher for GithubPrsStub {
     }
 }
 
+pub struct TrendStub;
+
+#[async_trait]
+impl Fetcher for TrendStub {
+    fn name(&self) -> &str {
+        "trend"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        Ok(payload(Body::PointSeries(PointSeriesData {
+            series: vec![PointSeries {
+                name: "series".into(),
+                points: vec![
+                    (0.0, 20.0),
+                    (1.0, 22.5),
+                    (2.0, 19.8),
+                    (3.0, 24.1),
+                    (4.0, 23.0),
+                    (5.0, 25.6),
+                    (6.0, 22.0),
+                ],
+            }],
+        })))
+    }
+}
+
+pub struct TodayStub;
+
+#[async_trait]
+impl Fetcher for TodayStub {
+    fn name(&self) -> &str {
+        "today"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        use chrono::Datelike;
+        let now = chrono::Local::now().date_naive();
+        Ok(payload(Body::Calendar(CalendarData {
+            year: now.year(),
+            month: now.month() as u8,
+            day: Some(now.day() as u8),
+            events: Vec::new(),
+        })))
+    }
+}
+
 fn payload(body: Body) -> Payload {
     Payload {
         icon: None,
@@ -146,7 +199,14 @@ mod tests {
     fn all_stubs_are_registered() {
         let fetchers = stubs();
         let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
-        for expected in ["disk", "git_commits", "system", "github_prs"] {
+        for expected in [
+            "disk",
+            "git_commits",
+            "system",
+            "github_prs",
+            "trend",
+            "today",
+        ] {
             assert!(names.contains(&expected), "missing stub: {expected}");
         }
     }
