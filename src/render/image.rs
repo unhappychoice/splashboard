@@ -1,3 +1,6 @@
+use std::io::IsTerminal;
+use std::sync::OnceLock;
+
 use image::DynamicImage;
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use ratatui_image::{StatefulImage, picker::Picker};
@@ -13,10 +16,22 @@ pub fn render(frame: &mut Frame, area: Rect, data: &ImageData) {
 
 fn render_image(frame: &mut Frame, area: Rect, path: &str) -> Result<(), String> {
     let img = load_image(path)?;
-    let picker = Picker::from_fontsize((8, 16));
-    let mut protocol = picker.new_resize_protocol(img);
+    let mut protocol = picker().new_resize_protocol(img);
     frame.render_stateful_widget(StatefulImage::default(), area, &mut protocol);
     Ok(())
+}
+
+fn picker() -> Picker {
+    static CACHED: OnceLock<Picker> = OnceLock::new();
+    *CACHED.get_or_init(detect_picker)
+}
+
+fn detect_picker() -> Picker {
+    if std::io::stdin().is_terminal() {
+        Picker::from_query_stdio().unwrap_or_else(|_| Picker::from_fontsize((8, 16)))
+    } else {
+        Picker::from_fontsize((8, 16))
+    }
 }
 
 fn load_image(path: &str) -> Result<DynamicImage, String> {
