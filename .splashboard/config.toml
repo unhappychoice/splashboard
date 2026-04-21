@@ -141,6 +141,12 @@ flex = "center"
   widget = "notes"
   width = { length = 44 }
 
+[[row]]
+height = { length = 8 }
+
+  [[row.child]]
+  widget = "contributions"
+
 # ── Dense 2-column rows from here on, default Legacy flex ─────────────
 
 [[row]]
@@ -195,10 +201,3 @@ height = { length = 6 }
   title = "table"
   border = "rounded"
 
-[[row]]
-height = { length = 10 }
-
-  [[row.child]]
-  widget = "contributions"
-  title = "heatmap"
-  border = "rounded"
