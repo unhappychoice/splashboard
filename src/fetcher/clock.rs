@@ -1,36 +1,35 @@
 use std::fmt::Write;
 
-use async_trait::async_trait;
 use chrono::Local;
 
 use crate::payload::{Body, LinesData, Payload};
 
-use super::{FetchContext, FetchError, Fetcher, Safety};
+use super::{FetchContext, RealtimeFetcher, Safety};
 
 const DEFAULT_FORMAT: &str = "%H:%M";
 
 /// Renders the current local time. `format` follows chrono's strftime conventions; default is
-/// `%H:%M` (24h clock). Emits a Bignum payload so the default layout can lean on the big-text
-/// renderer for visual weight.
+/// `%H:%M` (24h clock). Classified as [`RealtimeFetcher`] so the value is recomputed on every
+/// frame instead of being pulled from a stale cache entry.
 pub struct ClockFetcher;
 
-#[async_trait]
-impl Fetcher for ClockFetcher {
+impl RealtimeFetcher for ClockFetcher {
     fn name(&self) -> &str {
         "clock"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
     }
-    async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
+    fn compute(&self, ctx: &FetchContext) -> Payload {
         let fmt = ctx.format.as_deref().unwrap_or(DEFAULT_FORMAT);
-        let text = format_now(fmt);
-        Ok(Payload {
+        Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData { lines: vec![text] }),
-        })
+            body: Body::Lines(LinesData {
+                lines: vec![format_now(fmt)],
+            }),
+        }
     }
 }
 
@@ -44,10 +43,7 @@ fn format_now(fmt: &str) -> String {
     if write!(&mut buf, "{}", now.format(fmt)).is_ok() {
         return buf;
     }
-    // The partial write on error may leave buf in an unusable state; discard it.
     let mut fallback = String::new();
-    // `write!` on the default format is infallible; `unwrap_or_default` keeps it panic-free
-    // even if some future version of chrono changes that invariant.
     let _ = write!(&mut fallback, "{}", now.format(DEFAULT_FORMAT));
     fallback
 }
@@ -73,32 +69,32 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn default_format_is_hh_mm() {
-        let text = first_line(ClockFetcher.fetch(&ctx(None)).await.unwrap());
+    #[test]
+    fn default_format_is_hh_mm() {
+        let text = first_line(ClockFetcher.compute(&ctx(None)));
         assert_eq!(text.len(), 5, "{text:?} should be HH:MM");
         assert_eq!(text.chars().nth(2), Some(':'));
     }
 
-    #[tokio::test]
-    async fn custom_format_is_honored() {
-        let text = first_line(ClockFetcher.fetch(&ctx(Some("%Y"))).await.unwrap());
+    #[test]
+    fn custom_format_is_honored() {
+        let text = first_line(ClockFetcher.compute(&ctx(Some("%Y"))));
         assert_eq!(text.len(), 4, "{text:?} should be YYYY");
     }
 
-    #[tokio::test]
-    async fn invalid_format_falls_back_without_panicking() {
+    #[test]
+    fn invalid_format_falls_back_without_panicking() {
         // `%Q` is not a recognised strftime directive; chrono's formatter returns `fmt::Error`
         // for it, which would panic through `to_string()`. Our wrapper must return a valid
         // default-formatted string instead.
-        let text = first_line(ClockFetcher.fetch(&ctx(Some("%Q"))).await.unwrap());
+        let text = first_line(ClockFetcher.compute(&ctx(Some("%Q"))));
         assert_eq!(text.len(), 5, "expected fallback HH:MM, got {text:?}");
         assert_eq!(text.chars().nth(2), Some(':'));
     }
 
-    #[tokio::test]
-    async fn literal_percent_in_format_does_not_crash() {
-        let text = first_line(ClockFetcher.fetch(&ctx(Some("now: %H:%M"))).await.unwrap());
+    #[test]
+    fn literal_percent_in_format_does_not_crash() {
+        let text = first_line(ClockFetcher.compute(&ctx(Some("now: %H:%M"))));
         assert!(text.starts_with("now: "));
     }
 }

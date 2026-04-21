@@ -18,6 +18,33 @@ use crate::payload::Payload;
 use crate::render::{self, RenderSpec};
 use crate::trust::{self, TrustStore};
 
+/// Split trust-passed widgets into cached (disk-backed, fetched async via daemon) and realtime
+/// (recomputed on every frame, no disk I/O). Keeps the rest of the runtime simple: cache-aware
+/// code only sees cached widgets, per-frame code only sees realtime widgets.
+fn split_by_fetcher_kind(
+    widgets: &[WidgetConfig],
+    registry: &Registry,
+) -> (Vec<WidgetConfig>, Vec<WidgetConfig>) {
+    widgets
+        .iter()
+        .cloned()
+        .partition(|w| registry.get_cached(&w.fetcher).is_some())
+}
+
+fn compute_realtime_payloads(
+    registry: &Registry,
+    widgets: &[WidgetConfig],
+) -> HashMap<WidgetId, Payload> {
+    widgets
+        .iter()
+        .filter_map(|w| {
+            let fetcher = registry.get_realtime(&w.fetcher)?;
+            let ctx = fetch_context(w, Duration::from_secs(0));
+            Some((w.id.clone(), fetcher.compute(&ctx)))
+        })
+        .collect()
+}
+
 const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
@@ -48,15 +75,23 @@ pub async fn run(
     let decision = TrustStore::load().decide(config_ident);
     let (fetchable, gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
 
-    let entries = load_entries(cache.as_ref(), &registry, &fetchable);
+    // Cached widgets go through disk cache + async daemon. Realtime widgets recompute each
+    // frame and never touch disk.
+    let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
+
+    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets);
     let mut payloads = entries_to_payloads(&entries);
+    payloads.extend(compute_realtime_payloads(&registry, &realtime_widgets));
     for w in &gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
 
-    // Load axis: decide whether to block on fresh data. Empty cache gets promoted to wait
-    // so we don't exit with a blank terminal on first run.
-    let wait = wait || config.general.wait_for_fresh || entries.is_empty();
+    // Load axis: decide whether to block on fresh data. If there are any cached widgets with no
+    // entry yet, promote to wait so we don't exit with a blank terminal on first run. Realtime
+    // widgets don't count — they're always fresh.
+    let wait = wait
+        || config.general.wait_for_fresh
+        || (!cached_widgets.is_empty() && entries.is_empty());
 
     // Render axis: decide whether any configured renderer needs repeat frames. Independent of
     // the load decision — an animated widget must animate regardless of cache state.
@@ -99,7 +134,14 @@ pub async fn run(
             // daemon finishes (if we were waiting for it) or the window expires.
             let deadline = std::time::Instant::now() + window;
             loop {
-                refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
+                refresh_payloads(
+                    &cache,
+                    &registry,
+                    &cached_widgets,
+                    &realtime_widgets,
+                    &gated,
+                    &mut payloads,
+                );
                 draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
                 if remaining.is_zero() {
@@ -118,7 +160,14 @@ pub async fn run(
                     tokio::time::sleep(tick).await;
                 }
             }
-            refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
+            refresh_payloads(
+                &cache,
+                &registry,
+                &cached_widgets,
+                &realtime_widgets,
+                &gated,
+                &mut payloads,
+            );
             draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
         Err(_) => {
@@ -128,7 +177,7 @@ pub async fn run(
             let fresh = fetch_all(
                 &registry,
                 cache.as_ref(),
-                &fetchable,
+                &cached_widgets,
                 &entries,
                 fetch_deadline,
             )
@@ -136,6 +185,8 @@ pub async fn run(
             for (id, payload) in fresh {
                 payloads.insert(id, payload);
             }
+            // Realtime values in the fallback path are still fresh at this point — the compute
+            // above was microseconds ago. No refresh needed before the single final draw.
             draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
     }
@@ -154,29 +205,33 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
     let registry = Registry::with_builtins();
     let decision = TrustStore::load().decide(config_ident);
     let (fetchable, _gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
-    let entries = load_entries(cache.as_ref(), &registry, &fetchable);
+    // Daemon only persists cached-fetcher output. Realtime widgets have no disk representation.
+    let (cached_widgets, _realtime) = split_by_fetcher_kind(&fetchable, &registry);
+    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets);
     let _ = fetch_all(
         &registry,
         cache.as_ref(),
-        &fetchable,
+        &cached_widgets,
         &entries,
         DAEMON_DEADLINE,
     )
     .await;
 }
 
-/// Rebuilds the payload map after the daemon has run: pulls fresh entries from the cache and
-/// re-applies the trust-gate placeholders on top. Used by both the `--wait` path and the
-/// first-run fallback so the two stay in sync.
+/// Rebuilds the payload map after the daemon has run: pulls fresh entries from the cache for
+/// cached widgets, recomputes realtime widgets, and re-applies the trust-gate placeholders on
+/// top. Used by both the `--wait` path and the first-run fallback so the two stay in sync.
 fn refresh_payloads(
     cache: &Option<Cache>,
     registry: &Registry,
-    fetchable: &[WidgetConfig],
+    cached_widgets: &[WidgetConfig],
+    realtime_widgets: &[WidgetConfig],
     gated: &[WidgetConfig],
     payloads: &mut HashMap<WidgetId, Payload>,
 ) {
-    let entries = load_entries(cache.as_ref(), registry, fetchable);
+    let entries = load_entries(cache.as_ref(), registry, cached_widgets);
     *payloads = entries_to_payloads(&entries);
+    payloads.extend(compute_realtime_payloads(registry, realtime_widgets));
     for w in gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
@@ -201,7 +256,7 @@ fn load_entries(
     widgets
         .iter()
         .filter_map(|w| {
-            let fetcher = registry.get(&w.fetcher)?;
+            let fetcher = registry.get_cached(&w.fetcher)?;
             let key = fetcher.cache_key(&fetch_context(w, Duration::from_secs(0)));
             c.load(&key).map(|e| (w.id.clone(), e))
         })
@@ -227,7 +282,7 @@ async fn fetch_all(
         if !should_refresh(cached, w) {
             continue;
         }
-        let Some(fetcher) = registry.get(&w.fetcher) else {
+        let Some(fetcher) = registry.get_cached(&w.fetcher) else {
             continue;
         };
         let ctx = fetch_context(w, deadline);
@@ -415,7 +470,7 @@ mod tests {
 
         assert!(fresh.contains_key("greeting"));
         let key = registry
-            .get("static")
+            .get_cached("static")
             .unwrap()
             .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
         let loaded = cache.load(&key).unwrap();
@@ -513,7 +568,7 @@ mod tests {
         let registry = Registry::with_builtins();
         let widgets = vec![static_widget("greeting", "Hi!")];
         let key = registry
-            .get("static")
+            .get_cached("static")
             .unwrap()
             .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
         let _held = cache.try_lock(&key).expect("first acquire");
