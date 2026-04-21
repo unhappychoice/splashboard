@@ -276,7 +276,20 @@ fn draw<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
 ) -> io::Result<()> {
-    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads, specs, registry))?;
+    terminal.draw(|frame| {
+        let area = frame.area();
+        layout::draw(frame, area, root, payloads, specs, registry);
+        // Park the cursor at the bottom-left of the inline area so the caller's `println!()`
+        // lands one line below the splash. Without this, widgets that leave the cursor mid-area
+        // (anything paragraph-shaped, especially while the typewriter is part-way through) let
+        // the shell prompt overwrite rendered content when the process exits.
+        if area.height > 0 {
+            frame.set_cursor_position(ratatui::layout::Position {
+                x: 0,
+                y: area.height - 1,
+            });
+        }
+    })?;
     Ok(())
 }
 
