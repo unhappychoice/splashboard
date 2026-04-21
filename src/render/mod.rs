@@ -257,7 +257,10 @@ fn render_empty_state(frame: &mut Frame, area: Rect) {
     // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
     // Centered both axes via a Fill / Length / Fill vertical layout.
     let lines: Vec<Line> = if area.height >= 2 {
-        vec![Line::from("◌").style(dim), Line::from("nothing here yet").style(dim)]
+        vec![
+            Line::from("◌").style(dim),
+            Line::from("nothing here yet").style(dim),
+        ]
     } else {
         vec![Line::from("◌ nothing here yet").style(dim)]
     };
@@ -422,7 +425,10 @@ mod tests {
         let spec = RenderSpec::Short("heatmap".into());
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 40, 5);
         let joined: String = (0..5).map(|y| line_text(&buf, y)).collect();
-        assert!(joined.contains("nothing here yet"), "missing caption: {joined:?}");
+        assert!(
+            joined.contains("nothing here yet"),
+            "missing caption: {joined:?}"
+        );
     }
 
     #[test]

@@ -106,8 +106,8 @@ fn load_body(path: &std::path::Path, file_format: &str, shape: &str) -> Result<B
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(empty_body(shape)),
         Err(e) => return Err(FetchError::Failed(format!("read failed: {e}"))),
     };
-    let text = std::str::from_utf8(&bytes)
-        .map_err(|e| FetchError::Failed(format!("utf-8: {e}")))?;
+    let text =
+        std::str::from_utf8(&bytes).map_err(|e| FetchError::Failed(format!("utf-8: {e}")))?;
     parse_body(text, file_format, shape)
 }
 
@@ -185,8 +185,12 @@ fn empty_body(shape: &str) -> Body {
         }),
         "number_series" => Body::NumberSeries(NumberSeriesData { values: Vec::new() }),
         "point_series" => Body::PointSeries(PointSeriesData { series: Vec::new() }),
-        "bars" => Body::Bars(BarsData { bars: Vec::<Bar>::new() }),
-        "image" => Body::Image(ImageData { path: String::new() }),
+        "bars" => Body::Bars(BarsData {
+            bars: Vec::<Bar>::new(),
+        }),
+        "image" => Body::Image(ImageData {
+            path: String::new(),
+        }),
         "calendar" => Body::Calendar(CalendarData {
             year: 1970,
             month: 1,

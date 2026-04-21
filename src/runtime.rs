@@ -89,9 +89,8 @@ pub async fn run(
     // Load axis: decide whether to block on fresh data. If there are any cached widgets with no
     // entry yet, promote to wait so we don't exit with a blank terminal on first run. Realtime
     // widgets don't count — they're always fresh.
-    let wait = wait
-        || config.general.wait_for_fresh
-        || (!cached_widgets.is_empty() && entries.is_empty());
+    let wait =
+        wait || config.general.wait_for_fresh || (!cached_widgets.is_empty() && entries.is_empty());
 
     // Render axis: decide whether any configured renderer needs repeat frames. Independent of
     // the load decision — an animated widget must animate regardless of cache state.

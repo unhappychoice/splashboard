@@ -199,11 +199,7 @@ fn fake_contributions() -> Vec<Vec<u32>> {
                 .map(|_| {
                     let weekday_peak = if (1..=5).contains(&day) { 8 } else { 3 };
                     let roll = next(10);
-                    if roll < 3 {
-                        0
-                    } else {
-                        next(weekday_peak) + 1
-                    }
+                    if roll < 3 { 0 } else { next(weekday_peak) + 1 }
                 })
                 .collect()
         })
@@ -323,17 +319,37 @@ impl Fetcher for GitRecentCommitsStub {
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         let now = chrono::Utc::now().timestamp();
         let events = vec![
-            event(now - 7 * 60, "feat(render): timeline renderer", None, Some(Status::Ok)),
-            event(now - 2 * 3600, "feat(render): badge renderer", None, Some(Status::Ok)),
+            event(
+                now - 7 * 60,
+                "feat(render): timeline renderer",
+                None,
+                Some(Status::Ok),
+            ),
+            event(
+                now - 2 * 3600,
+                "feat(render): badge renderer",
+                None,
+                Some(Status::Ok),
+            ),
             event(now - 26 * 3600, "docs: AGENTS.md", None, None),
             event(now - 4 * 86_400, "feat: readstore home layout", None, None),
-            event(now - 9 * 86_400, "chore: bump deps", None, Some(Status::Warn)),
+            event(
+                now - 9 * 86_400,
+                "chore: bump deps",
+                None,
+                Some(Status::Warn),
+            ),
         ];
         Ok(payload(Body::Timeline(TimelineData { events })))
     }
 }
 
-fn event(timestamp: i64, title: &str, detail: Option<&str>, status: Option<Status>) -> TimelineEvent {
+fn event(
+    timestamp: i64,
+    title: &str,
+    detail: Option<&str>,
+    status: Option<Status>,
+) -> TimelineEvent {
     TimelineEvent {
         timestamp,
         title: title.into(),

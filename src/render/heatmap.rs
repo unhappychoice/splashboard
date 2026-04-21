@@ -79,7 +79,13 @@ fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData, opts: &Rend
         ..area
     };
     if label_row {
-        paint_col_labels(frame.buffer_mut(), label_area, data, visible_cols, col_offset);
+        paint_col_labels(
+            frame.buffer_mut(),
+            label_area,
+            data,
+            visible_cols,
+            col_offset,
+        );
     }
     paint_cells(
         frame.buffer_mut(),
@@ -275,7 +281,9 @@ mod tests {
 
     #[test]
     fn renders_grid_without_panicking() {
-        let cells: Vec<Vec<u32>> = (0..7).map(|r| (0..20).map(|c| (r * c) as u32).collect()).collect();
+        let cells: Vec<Vec<u32>> = (0..7)
+            .map(|r| (0..20).map(|c| (r * c) as u32).collect())
+            .collect();
         let _ = render(cells, 40, 7);
     }
 
