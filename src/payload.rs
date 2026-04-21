@@ -46,6 +46,10 @@ pub enum Body {
     /// indicator per fetcher. Rows of badges are a composition concern handled by the nested
     /// layout (`combined_status_row`), not by a multi-entry payload.
     Badge(BadgeData),
+    /// Time-stamped events, newest first. Used by git_recent_commits, deploy history, ci
+    /// history. Timestamps are raw unix seconds so the renderer computes the `"3h ago"` label
+    /// at draw time — keeping cached payloads from going stale.
+    Timeline(TimelineData),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -132,6 +136,25 @@ pub struct HeatmapData {
 pub struct BadgeData {
     pub status: Status,
     pub label: String,
+}
+
+/// Time-stamped events for the timeline renderer. Timestamps are unix seconds UTC; the renderer
+/// formats a relative label (`"3h ago"`, `"yesterday"`, `"Apr 5"`) at draw time so cached
+/// payloads don't freeze stale relative strings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TimelineData {
+    pub events: Vec<TimelineEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TimelineEvent {
+    /// Unix seconds UTC.
+    pub timestamp: i64,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<Status>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -290,6 +313,45 @@ mod tests {
         assert_eq!(v["shape"], "badge");
         assert_eq!(v["data"]["status"], "error");
         assert_eq!(v["data"]["label"], "oncall paging");
+    }
+
+    #[test]
+    fn timeline_round_trips() {
+        let p = bare(Body::Timeline(TimelineData {
+            events: vec![
+                TimelineEvent {
+                    timestamp: 1_700_000_000,
+                    title: "merged #42".into(),
+                    detail: Some("feat(render): heatmap".into()),
+                    status: Some(Status::Ok),
+                },
+                TimelineEvent {
+                    timestamp: 1_699_990_000,
+                    title: "opened #41".into(),
+                    detail: None,
+                    status: None,
+                },
+            ],
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn timeline_serializes_with_expected_shape_tag() {
+        let p = bare(Body::Timeline(TimelineData {
+            events: vec![TimelineEvent {
+                timestamp: 1_700_000_000,
+                title: "x".into(),
+                detail: None,
+                status: None,
+            }],
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "timeline");
+        assert_eq!(v["data"]["events"][0]["timestamp"], 1_700_000_000_i64);
+        assert_eq!(v["data"]["events"][0]["title"], "x");
+        assert!(v["data"]["events"][0].get("detail").is_none());
+        assert!(v["data"]["events"][0].get("status").is_none());
     }
 
     #[test]
