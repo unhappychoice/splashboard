@@ -108,9 +108,17 @@ async fn fetch_all(
         };
         let ctx = fetch_context(w, deadline);
         let cache_key = fetcher.cache_key(&ctx);
+        let lock = match cache {
+            Some(c) => match c.try_lock(&cache_key) {
+                Some(l) => Some(l),
+                None => continue,
+            },
+            None => None,
+        };
         let id = w.id.clone();
         let ttl = w.refresh_interval.unwrap_or(DEFAULT_REFRESH_SECS);
         set.spawn(async move {
+            let _lock = lock;
             let payload = tokio::time::timeout(deadline, fetcher.fetch(&ctx))
                 .await
                 .ok()?
@@ -329,6 +337,40 @@ mod tests {
         .await;
 
         assert!(fresh.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_skips_widgets_whose_key_is_already_locked() {
+        // Simulates a second splashboard invocation arriving while the first still holds the
+        // fetch lock for the same cache key — the second should skip rather than duplicate the
+        // request. We hold the lock manually here to stand in for the "first" process.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("greeting", "Hi!")];
+        let key = registry
+            .get("static")
+            .unwrap()
+            .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
+        let _held = cache.try_lock(&key).expect("first acquire");
+
+        let fresh = fetch_all(
+            &registry,
+            Some(&cache),
+            &widgets,
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(
+            fresh.is_empty(),
+            "held lock should cause the fetch to be skipped"
+        );
+        assert!(
+            cache.load(&key).is_none(),
+            "no cache should be written when fetch is skipped"
+        );
     }
 
     #[tokio::test]

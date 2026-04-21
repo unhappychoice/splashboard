@@ -1,14 +1,17 @@
 #![allow(dead_code)]
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::payload::Payload;
 
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+const STALE_LOCK_THRESHOLD: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CacheEntry {
@@ -64,6 +67,68 @@ impl Cache {
     pub fn path_for(&self, widget_id: &str) -> PathBuf {
         self.dir.join(format!("{}.json", sanitize(widget_id)))
     }
+
+    /// Non-blocking: returns None if another process already holds the lock for this key. Locks
+    /// older than `STALE_LOCK_THRESHOLD` are stolen (assumed crashed).
+    pub fn try_lock(&self, key: &str) -> Option<Lock> {
+        Lock::try_acquire(&self.dir, key)
+    }
+}
+
+pub struct Lock {
+    path: PathBuf,
+}
+
+impl Lock {
+    pub fn try_acquire(dir: &Path, key: &str) -> Option<Self> {
+        Self::try_acquire_with(dir, key, STALE_LOCK_THRESHOLD)
+    }
+
+    fn try_acquire_with(dir: &Path, key: &str, stale_after: Duration) -> Option<Self> {
+        let path = lock_path_for(dir, key);
+        match create_exclusive(&path) {
+            Ok(()) => Some(Self { path }),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if is_lock_stale(&path, stale_after) {
+                    let _ = std::fs::remove_file(&path);
+                    create_exclusive(&path).ok().map(|_| Self { path })
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    }
+}
+
+impl Drop for Lock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn lock_path_for(dir: &Path, key: &str) -> PathBuf {
+    dir.join(format!("{}.lock", sanitize(key)))
+}
+
+fn create_exclusive(path: &Path) -> std::io::Result<()> {
+    ensure_parent(path)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)?;
+    writeln!(f, "{}", std::process::id())?;
+    Ok(())
+}
+
+fn is_lock_stale(path: &Path, threshold: Duration) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(mtime) = meta.modified() else {
+        return false;
+    };
+    mtime.elapsed().map(|d| d > threshold).unwrap_or(false)
 }
 
 fn tmp_path_for(final_path: &Path) -> PathBuf {
@@ -200,6 +265,57 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.to_string_lossy().contains("foo.json."));
         assert!(a.to_string_lossy().ends_with(".tmp"));
+    }
+
+    #[test]
+    fn lock_is_exclusive_until_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let held = Lock::try_acquire(dir.path(), "k").expect("first acquire succeeds");
+        assert!(
+            Lock::try_acquire(dir.path(), "k").is_none(),
+            "second acquire must fail while held"
+        );
+        drop(held);
+        assert!(
+            Lock::try_acquire(dir.path(), "k").is_some(),
+            "acquire succeeds after drop"
+        );
+    }
+
+    #[test]
+    fn stale_lock_is_stolen() {
+        let dir = tempfile::tempdir().unwrap();
+        // Plant a fake lock file.
+        let path = lock_path_for(dir.path(), "k");
+        std::fs::write(&path, "999999\n").unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+        let lock = Lock::try_acquire_with(dir.path(), "k", Duration::from_millis(1));
+        assert!(lock.is_some(), "stale lock should be stolen");
+    }
+
+    #[test]
+    fn fresh_lock_is_not_stolen() {
+        let dir = tempfile::tempdir().unwrap();
+        let _held = Lock::try_acquire(dir.path(), "k").unwrap();
+        let lock = Lock::try_acquire_with(dir.path(), "k", Duration::from_secs(60));
+        assert!(lock.is_none(), "fresh lock must not be stolen");
+    }
+
+    #[test]
+    fn lock_drop_removes_file() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let _lock = Lock::try_acquire(dir.path(), "k").unwrap();
+            assert!(lock_path_for(dir.path(), "k").exists());
+        }
+        assert!(!lock_path_for(dir.path(), "k").exists());
+    }
+
+    #[test]
+    fn different_keys_do_not_block_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let _a = Lock::try_acquire(dir.path(), "a").unwrap();
+        let _b = Lock::try_acquire(dir.path(), "b").unwrap();
     }
 
     #[test]
