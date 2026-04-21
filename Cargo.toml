@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "proce
 async-trait = "0.1"
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+sysinfo = "0.38.4"
 
 [dev-dependencies]
 tempfile = "3"

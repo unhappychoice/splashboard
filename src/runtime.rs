@@ -240,7 +240,6 @@ pub async fn run(
             // daemon finishes (if we were waiting for it) or the window expires.
             let buckets = WidgetBuckets {
                 cached: &cached_widgets,
-                realtime: &realtime_widgets,
                 gated: &gated,
                 shape_invalid: &shape_invalid,
             };
@@ -349,14 +348,15 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
 /// categories explicit at call sites.
 struct WidgetBuckets<'a> {
     cached: &'a [WidgetConfig],
-    realtime: &'a [WidgetConfig],
     gated: &'a [WidgetConfig],
     shape_invalid: &'a [(WidgetConfig, ShapeMismatch)],
 }
 
-/// Rebuilds the payload map after the daemon has run: pulls fresh entries from the cache for
-/// cached widgets, recomputes realtime widgets, and re-applies the trust-gate placeholders on
-/// top. Used by both the `--wait` path and the first-run fallback so the two stay in sync.
+/// Merges fresh daemon-written cache entries into the payload map between frames. Realtime
+/// payloads stay exactly as they were computed once before the loop — the animation window is
+/// short (2s) and recomputing per frame would make expensive fetchers like `process_top`
+/// scale badly. Trust-gate and shape-mismatch placeholders are re-applied defensively so a
+/// daemon-written entry can't leak into a gated slot.
 fn refresh_payloads(
     cache: &Option<Cache>,
     registry: &Registry,
@@ -365,12 +365,9 @@ fn refresh_payloads(
     payloads: &mut HashMap<WidgetId, Payload>,
 ) {
     let entries = load_entries(cache.as_ref(), registry, buckets.cached, shapes);
-    *payloads = entries_to_payloads(&entries);
-    payloads.extend(compute_realtime_payloads(
-        registry,
-        buckets.realtime,
-        shapes,
-    ));
+    for (id, payload) in entries_to_payloads(&entries) {
+        payloads.insert(id, payload);
+    }
     for w in buckets.gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
