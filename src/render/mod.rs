@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use ratatui::{
     Frame,
-    layout::{Alignment, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
+    text::Line,
     widgets::Paragraph,
 };
 use serde::Deserialize;
@@ -239,10 +240,25 @@ fn render_empty_state(frame: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let p = Paragraph::new("—")
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM));
-    frame.render_widget(p, area);
+    let dim = Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::ITALIC | Modifier::DIM);
+    // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
+    // Centered both axes via a Fill / Length / Fill vertical layout.
+    let lines: Vec<Line> = if area.height >= 2 {
+        vec![Line::from("◌").style(dim), Line::from("nothing here yet").style(dim)]
+    } else {
+        vec![Line::from("◌ nothing here yet").style(dim)]
+    };
+    let content_height = lines.len() as u16;
+    let chunks = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(content_height),
+        Constraint::Fill(1),
+    ])
+    .split(area);
+    let p = Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(p, chunks[1]);
 }
 
 /// `true` if any widget in `widgets` will be rendered by a renderer that declares itself
@@ -389,12 +405,9 @@ mod tests {
         };
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("heatmap".into());
-        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 3);
-        // The centered em-dash lands at column (20-1)/2 = 9 on the middle row-ish. Just
-        // check any row contains the em-dash — placement is centered so exact row depends on
-        // area height.
-        let has_dash = (0..3).any(|y| line_text(&buf, y).contains('—'));
-        assert!(has_dash, "expected — placeholder somewhere in the output");
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 40, 5);
+        let joined: String = (0..5).map(|y| line_text(&buf, y)).collect();
+        assert!(joined.contains("nothing here yet"), "missing caption: {joined:?}");
     }
 
     #[test]
