@@ -97,16 +97,15 @@ fetcher = "contributions"
 render = { type = "heatmap", align = "center" }
 
 # ── ReadStore demo ──────────────────────────────────────────────────
-# Renders whatever the user puts in $HOME/.splashboard/store/habit.json.
-# Example content: {"cells":[[3,1,0,5,8,0,0],[0,2,4,0,1,0,0], ...]}
-# Empty / missing file → empty heatmap (the slot is still present).
+# Renders whatever the user writes to $HOME/.splashboard/store/scratch.txt.
+# One line per row. Missing file → the "nothing here yet" placeholder.
 
 [[widget]]
-id = "habit"
+id = "scratch"
 fetcher = "read_store"
-shape = "heatmap"
-file_format = "json"
-render = { type = "heatmap", align = "center" }
+shape = "lines"
+file_format = "text"
+render = { type = "simple", align = "center" }
 
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
@@ -160,10 +159,10 @@ height = { length = 10 }
   widget = "contributions"
 
 [[row]]
-height = { length = 10 }
+height = { length = 5 }
 
   [[row.child]]
-  widget = "habit"
+  widget = "scratch"
 
 # ── Dense 2-column rows from here on, default Legacy flex ─────────────
 
