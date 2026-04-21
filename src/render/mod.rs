@@ -10,7 +10,6 @@ mod animated_typewriter;
 mod ascii_art;
 mod bar_chart;
 mod calendar;
-mod figlet;
 mod gauge;
 mod image;
 mod line_chart;
@@ -54,11 +53,15 @@ pub fn shape_of(body: &Body) -> Shape {
 
 /// Per-renderer configuration. Each renderer picks out the fields it cares about from this bag;
 /// others are ignored. Kept deliberately flat so config authors can write
-/// `render = { type = "ascii_art", pixel_size = "quadrant" }` without nesting.
+/// `render = { type = "ascii_art", style = "figlet" }` without nesting.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenderOptions {
-    /// ascii_art: "full" | "quadrant" | "sextant". None = adaptive (pick by area height).
+    /// ascii_art: "blocks" (default, tui-big-text) | "figlet" (figlet-rs).
+    #[serde(default)]
+    pub style: Option<String>,
+    /// ascii_art blocks style: "full" | "quadrant" | "sextant". None = adaptive (pick by area
+    /// height). Ignored by other styles.
     #[serde(default)]
     pub pixel_size: Option<String>,
 }
@@ -110,7 +113,6 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(text::SimpleRenderer));
         r.register(Arc::new(ascii_art::AsciiArtRenderer));
-        r.register(Arc::new(figlet::FigletRenderer));
         r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
         r.register(Arc::new(list::ListRenderer));
         r.register(Arc::new(table::TableRenderer));
@@ -214,7 +216,6 @@ mod tests {
         for name in [
             "simple",
             "ascii_art",
-            "figlet",
             "animated_typewriter",
             "list",
             "table",

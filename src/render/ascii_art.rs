@@ -1,14 +1,17 @@
-use ratatui::{Frame, layout::Rect};
+use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use tui_big_text::{BigText, PixelSize};
 
 use crate::payload::{Body, LinesData};
 
 use super::{RenderOptions, Renderer, Shape};
 
-/// ASCII-art text rendering over the `Lines` shape. Today this wraps `tui-big-text`'s
-/// half-block glyphs (selectable via `pixel_size`). Alternate styles — figlet, animated, etc.
-/// — will land as additional options on the same renderer name so users configure "ascii art,
-/// like this" rather than mentally juggling crate-specific renderer names.
+/// ASCII-art text rendering over the `Lines` shape. The `style` option selects the visual
+/// treatment; additional sub-options refine the chosen style.
+///
+/// - `style = "blocks"` (default): half-block glyphs via `tui-big-text`. Sub-option
+///   `pixel_size` = "full" | "quadrant" | "sextant"; unset picks by area height.
+/// - `style = "figlet"`: classic FIGlet ASCII art via `figlet-rs`. No sub-options yet
+///   (custom fonts land when we make a config decision on font bundling).
 pub struct AsciiArtRenderer;
 
 impl Renderer for AsciiArtRenderer {
@@ -20,12 +23,15 @@ impl Renderer for AsciiArtRenderer {
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {
-            render_ascii_art(frame, area, d, opts);
+            match opts.style.as_deref() {
+                Some("figlet") => render_figlet(frame, area, d),
+                _ => render_blocks(frame, area, d, opts),
+            }
         }
     }
 }
 
-fn render_ascii_art(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
+fn render_blocks(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
     let pixel_size = opts
         .pixel_size
         .as_deref()
@@ -37,6 +43,25 @@ fn render_ascii_art(frame: &mut Frame, area: Rect, data: &LinesData, opts: &Rend
         .lines(lines)
         .build();
     frame.render_widget(big, area);
+}
+
+fn render_figlet(frame: &mut Frame, area: Rect, data: &LinesData) {
+    let rendered = data
+        .lines
+        .iter()
+        .map(|l| figletify(l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    frame.render_widget(Paragraph::new(rendered), area);
+}
+
+fn figletify(text: &str) -> String {
+    let Ok(font) = figlet_rs::FIGfont::standard() else {
+        return text.to_string();
+    };
+    font.convert(text)
+        .map(|f| f.to_string())
+        .unwrap_or_else(|| text.to_string())
 }
 
 fn parse_pixel_size(s: &str) -> Option<PixelSize> {
@@ -77,10 +102,23 @@ mod tests {
     }
 
     #[test]
-    fn renders_without_panicking() {
+    fn default_style_uses_blocks() {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("ascii_art".into());
         let _ = render_to_buffer_with_spec(&payload("12:34"), Some(&spec), &registry, 40, 10);
+    }
+
+    #[test]
+    fn figlet_style_routes_through_figlet_rs() {
+        // `type = "ascii_art", style = "figlet"` should produce ASCII-art output without
+        // panicking — we don't assert specific glyphs since figlet fonts are ornate.
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W = toml::from_str(r#"render = { type = "ascii_art", style = "figlet" }"#).unwrap();
+        let registry = Registry::with_builtins();
+        let _ = render_to_buffer_with_spec(&payload("hi"), Some(&w.render), &registry, 60, 10);
     }
 
     #[test]
