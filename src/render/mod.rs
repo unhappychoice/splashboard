@@ -14,6 +14,7 @@ use crate::payload::{Body, Payload};
 
 mod animated_typewriter;
 mod ascii_art;
+mod badge;
 mod bar_chart;
 mod calendar;
 mod gauge;
@@ -44,6 +45,7 @@ pub enum Shape {
     Image,
     Calendar,
     Heatmap,
+    Badge,
 }
 
 pub fn shape_of(body: &Body) -> Shape {
@@ -57,6 +59,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::Image(_) => Shape::Image,
         Body::Calendar(_) => Shape::Calendar,
         Body::Heatmap(_) => Shape::Heatmap,
+        Body::Badge(_) => Shape::Badge,
     }
 }
 
@@ -136,6 +139,7 @@ impl Registry {
         r.register(Arc::new(text::SimpleRenderer));
         r.register(Arc::new(ascii_art::AsciiArtRenderer));
         r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
+        r.register(Arc::new(badge::BadgeRenderer));
         r.register(Arc::new(list::ListRenderer));
         r.register(Arc::new(table::TableRenderer));
         r.register(Arc::new(gauge::GaugeRenderer));
@@ -170,6 +174,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::Image => "image",
         Shape::Calendar => "calendar",
         Shape::Heatmap => "heatmap",
+        Shape::Badge => "badge",
     }
 }
 
@@ -311,6 +316,7 @@ mod tests {
             "simple",
             "ascii_art",
             "animated_typewriter",
+            "badge",
             "list",
             "table",
             "gauge",
@@ -339,6 +345,7 @@ mod tests {
             Shape::Image,
             Shape::Calendar,
             Shape::Heatmap,
+            Shape::Badge,
         ] {
             let name = default_renderer_for(s);
             let r = Registry::with_builtins();

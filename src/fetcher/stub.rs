@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, NumberSeriesData, Payload,
-    PointSeries, PointSeriesData, RatioData, Status,
+    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData,
+    NumberSeriesData, Payload, PointSeries, PointSeriesData, RatioData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
@@ -22,6 +22,9 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(GithubPrsStub),
         Arc::new(TrendStub),
         Arc::new(ContributionsStub),
+        Arc::new(CiStatusStub),
+        Arc::new(DeployStatusStub),
+        Arc::new(OncallStatusStub),
     ]
 }
 
@@ -246,6 +249,62 @@ fn short_month(m: u32) -> String {
     .to_string()
 }
 
+/// Single-badge stubs — each pairs with the badge renderer one-to-one. Split into three
+/// fetchers on purpose: a badge widget is "one indicator per fetcher". Mixing multiple
+/// statuses into a single payload is the `combined_status_row` concern, handled at the
+/// layout level, not in the data shape.
+pub struct CiStatusStub;
+
+#[async_trait]
+impl Fetcher for CiStatusStub {
+    fn name(&self) -> &str {
+        "ci_status"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        Ok(badge(Status::Ok, "build passing"))
+    }
+}
+
+pub struct DeployStatusStub;
+
+#[async_trait]
+impl Fetcher for DeployStatusStub {
+    fn name(&self) -> &str {
+        "deploy_status"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        Ok(badge(Status::Warn, "deploy degraded"))
+    }
+}
+
+pub struct OncallStatusStub;
+
+#[async_trait]
+impl Fetcher for OncallStatusStub {
+    fn name(&self) -> &str {
+        "oncall_status"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        Ok(badge(Status::Error, "oncall paging"))
+    }
+}
+
+fn badge(status: Status, label: &str) -> Payload {
+    payload(Body::Badge(BadgeData {
+        status,
+        label: label.into(),
+    }))
+}
+
 pub struct TodayStub;
 
 impl RealtimeFetcher for TodayStub {
@@ -300,6 +359,9 @@ mod tests {
             "github_prs",
             "trend",
             "contributions",
+            "ci_status",
+            "deploy_status",
+            "oncall_status",
         ] {
             assert!(names.contains(&expected), "missing stub: {expected}");
         }

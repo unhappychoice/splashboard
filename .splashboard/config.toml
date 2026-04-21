@@ -44,6 +44,26 @@ id = "system"
 fetcher = "system"
 render = "table"
 
+# ── Badge: one status per fetcher; a row of badges is a layout concern ─
+# Per-widget align converges the trio visually: the left slot right-aligns so its text hugs
+# the centre, the centre slot centres, the right slot left-aligns so its text hugs the
+# centre — the three labels cluster together inside a centred row.
+
+[[widget]]
+id = "ci"
+fetcher = "ci_status"
+render = { type = "badge", align = "right" }
+
+[[widget]]
+id = "deploy"
+fetcher = "deploy_status"
+render = { type = "badge", align = "center" }
+
+[[widget]]
+id = "oncall"
+fetcher = "oncall_status"
+render = { type = "badge", align = "left" }
+
 # ── Ratio: 2 renderers ──────────────────────────────────────────────
 
 [[widget]]
@@ -151,6 +171,22 @@ flex = "center"
   [[row.child]]
   widget = "notes"
   width = { length = 44 }
+
+[[row]]
+height = { length = 2 }
+flex = "center"
+
+  [[row.child]]
+  widget = "ci"
+  width = { length = 20 }
+
+  [[row.child]]
+  widget = "deploy"
+  width = { length = 20 }
+
+  [[row.child]]
+  widget = "oncall"
+  width = { length = 20 }
 
 [[row]]
 height = { length = 10 }
