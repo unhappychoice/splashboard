@@ -27,6 +27,7 @@ mod scatter;
 mod sparkline;
 mod table;
 mod text;
+mod timeline;
 
 #[cfg(test)]
 pub mod test_utils;
@@ -46,6 +47,7 @@ pub enum Shape {
     Calendar,
     Heatmap,
     Badge,
+    Timeline,
 }
 
 pub fn shape_of(body: &Body) -> Shape {
@@ -60,6 +62,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::Calendar(_) => Shape::Calendar,
         Body::Heatmap(_) => Shape::Heatmap,
         Body::Badge(_) => Shape::Badge,
+        Body::Timeline(_) => Shape::Timeline,
     }
 }
 
@@ -151,6 +154,7 @@ impl Registry {
         r.register(Arc::new(image::ImageRenderer));
         r.register(Arc::new(calendar::CalendarRenderer));
         r.register(Arc::new(heatmap::HeatmapRenderer));
+        r.register(Arc::new(timeline::TimelineRenderer));
         r
     }
 
@@ -175,6 +179,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::Calendar => "calendar",
         Shape::Heatmap => "heatmap",
         Shape::Badge => "badge",
+        Shape::Timeline => "timeline",
     }
 }
 
@@ -237,7 +242,8 @@ pub fn is_empty_body(body: &Body) -> bool {
         Body::Bars(d) => d.bars.is_empty(),
         Body::Image(d) => d.path.is_empty(),
         Body::Heatmap(d) => d.cells.is_empty() || d.cells.iter().all(|r| r.is_empty()),
-        Body::Calendar(_) | Body::Ratio(_) => false,
+        Body::Timeline(d) => d.events.is_empty(),
+        Body::Badge(_) | Body::Calendar(_) | Body::Ratio(_) => false,
     }
 }
 
@@ -251,7 +257,10 @@ fn render_empty_state(frame: &mut Frame, area: Rect) {
     // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
     // Centered both axes via a Fill / Length / Fill vertical layout.
     let lines: Vec<Line> = if area.height >= 2 {
-        vec![Line::from("◌").style(dim), Line::from("nothing here yet").style(dim)]
+        vec![
+            Line::from("◌").style(dim),
+            Line::from("nothing here yet").style(dim),
+        ]
     } else {
         vec![Line::from("◌ nothing here yet").style(dim)]
     };
@@ -328,6 +337,7 @@ mod tests {
             "image",
             "calendar",
             "heatmap",
+            "timeline",
         ] {
             assert!(r.get(name).is_some(), "missing builtin renderer: {name}");
         }
@@ -346,6 +356,7 @@ mod tests {
             Shape::Calendar,
             Shape::Heatmap,
             Shape::Badge,
+            Shape::Timeline,
         ] {
             let name = default_renderer_for(s);
             let r = Registry::with_builtins();
@@ -414,7 +425,10 @@ mod tests {
         let spec = RenderSpec::Short("heatmap".into());
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 40, 5);
         let joined: String = (0..5).map(|y| line_text(&buf, y)).collect();
-        assert!(joined.contains("nothing here yet"), "missing caption: {joined:?}");
+        assert!(
+            joined.contains("nothing here yet"),
+            "missing caption: {joined:?}"
+        );
     }
 
     #[test]
