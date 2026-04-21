@@ -9,7 +9,8 @@ use async_trait::async_trait;
 
 use crate::payload::{
     BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData,
-    NumberSeriesData, Payload, PointSeries, PointSeriesData, RatioData, Status,
+    NumberSeriesData, Payload, PointSeries, PointSeriesData, RatioData, Status, TimelineData,
+    TimelineEvent,
 };
 
 use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
@@ -25,6 +26,7 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(CiStatusStub),
         Arc::new(DeployStatusStub),
         Arc::new(OncallStatusStub),
+        Arc::new(GitRecentCommitsStub),
     ]
 }
 
@@ -305,6 +307,41 @@ fn badge(status: Status, label: &str) -> Payload {
     }))
 }
 
+/// Demo-quality recent-commit timeline. Offsets from `now` so the relative labels stay fresh
+/// (`Nm` / `Nh` / `Nd` / `Nw`) without the renderer caching stale "ago" strings. Stands in for
+/// the future `git_recent_commits` fetcher.
+pub struct GitRecentCommitsStub;
+
+#[async_trait]
+impl Fetcher for GitRecentCommitsStub {
+    fn name(&self) -> &str {
+        "git_recent_commits"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        let now = chrono::Utc::now().timestamp();
+        let events = vec![
+            event(now - 7 * 60, "feat(render): timeline renderer", None, Some(Status::Ok)),
+            event(now - 2 * 3600, "feat(render): badge renderer", None, Some(Status::Ok)),
+            event(now - 26 * 3600, "docs: AGENTS.md", None, None),
+            event(now - 4 * 86_400, "feat: readstore home layout", None, None),
+            event(now - 9 * 86_400, "chore: bump deps", None, Some(Status::Warn)),
+        ];
+        Ok(payload(Body::Timeline(TimelineData { events })))
+    }
+}
+
+fn event(timestamp: i64, title: &str, detail: Option<&str>, status: Option<Status>) -> TimelineEvent {
+    TimelineEvent {
+        timestamp,
+        title: title.into(),
+        detail: detail.map(|s| s.into()),
+        status,
+    }
+}
+
 pub struct TodayStub;
 
 impl RealtimeFetcher for TodayStub {
@@ -362,6 +399,7 @@ mod tests {
             "ci_status",
             "deploy_status",
             "oncall_status",
+            "git_recent_commits",
         ] {
             assert!(names.contains(&expected), "missing stub: {expected}");
         }

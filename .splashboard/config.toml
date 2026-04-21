@@ -116,6 +116,13 @@ id = "contributions"
 fetcher = "contributions"
 render = { type = "heatmap", align = "center" }
 
+# ── Timeline ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "recent_commits"
+fetcher = "git_recent_commits"
+render = "timeline"
+
 # ── ReadStore demo ──────────────────────────────────────────────────
 # Renders whatever the user writes to $HOME/.splashboard/store/scratch.txt.
 # One line per row. Missing file → the "nothing here yet" placeholder.
@@ -252,5 +259,10 @@ height = { length = 6 }
   [[row.child]]
   widget = "system"
   title = "table"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "recent_commits"
+  title = "timeline"
   border = "rounded"
 
