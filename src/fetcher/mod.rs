@@ -9,6 +9,8 @@ use async_trait::async_trait;
 
 use crate::payload::Payload;
 
+pub mod clock;
+pub mod static_text;
 pub mod stub;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +73,9 @@ pub struct Registry {
 impl Registry {
     pub fn with_builtins() -> Self {
         let mut r = Self::default();
-        for f in stub::builtins() {
+        r.register(Arc::new(static_text::StaticText));
+        r.register(Arc::new(clock::ClockFetcher));
+        for f in stub::stubs() {
             r.register(f);
         }
         r

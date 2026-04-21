@@ -1,68 +1,25 @@
+//! Placeholder fetchers that still return canned data. Each of these is blocked on a dedicated
+//! issue (#8 git, #9 system, #11 github) and will be replaced one-by-one. Keeping them in a
+//! single module makes it obvious at a glance which parts of the default dashboard aren't real
+//! yet.
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarChartData, BignumData, Body, GaugeData, ListData, ListItem, Payload, SparklineData,
-    Status, TextData,
+    Bar, BarChartData, Body, GaugeData, ListData, ListItem, Payload, SparklineData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
-pub fn builtins() -> Vec<Arc<dyn Fetcher>> {
+pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
     vec![
-        Arc::new(StaticText),
-        Arc::new(ClockFetcher),
         Arc::new(DiskStub),
         Arc::new(GitCommitsStub),
         Arc::new(SystemStub),
         Arc::new(GithubPrsStub),
     ]
-}
-
-/// Emits `format` verbatim, splitting on `\n` so users can ship multi-line fixed text blocks
-/// ("welcome to this project", setup notes, etc.) without needing a dedicated fetcher.
-pub struct StaticText;
-
-#[async_trait]
-impl Fetcher for StaticText {
-    fn name(&self) -> &str {
-        "static"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-    async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let source = ctx.format.as_deref().unwrap_or("");
-        let lines = if source.is_empty() {
-            Vec::new()
-        } else {
-            source.split('\n').map(String::from).collect()
-        };
-        Ok(payload(Body::Text(TextData { lines })))
-    }
-}
-
-/// Renders the current local time. `format` follows chrono's strftime conventions; default is
-/// `%H:%M` (24h clock). Emits a Bignum payload so the default layout can lean on the big-text
-/// renderer for visual weight.
-pub struct ClockFetcher;
-
-const CLOCK_DEFAULT_FORMAT: &str = "%H:%M";
-
-#[async_trait]
-impl Fetcher for ClockFetcher {
-    fn name(&self) -> &str {
-        "clock"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-    async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let fmt = ctx.format.as_deref().unwrap_or(CLOCK_DEFAULT_FORMAT);
-        let text = chrono::Local::now().format(fmt).to_string();
-        Ok(payload(Body::Bignum(BignumData { text })))
-    }
 }
 
 pub struct DiskStub;
@@ -175,118 +132,22 @@ fn payload(body: Body) -> Payload {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
 
-    fn ctx(format: Option<&str>) -> FetchContext {
-        FetchContext {
-            widget_id: "w".into(),
-            format: format.map(String::from),
-            timeout: Duration::from_secs(1),
-        }
-    }
-
-    #[tokio::test]
-    async fn static_text_single_line() {
-        let p = StaticText.fetch(&ctx(Some("Hello!"))).await.unwrap();
-        match p.body {
-            Body::Text(t) => assert_eq!(t.lines, vec!["Hello!".to_string()]),
-            _ => panic!("expected text body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn static_text_splits_on_newline() {
-        let p = StaticText
-            .fetch(&ctx(Some("line one\nline two\nline three")))
-            .await
-            .unwrap();
-        match p.body {
-            Body::Text(t) => {
-                assert_eq!(
-                    t.lines,
-                    vec![
-                        "line one".to_string(),
-                        "line two".to_string(),
-                        "line three".to_string(),
-                    ]
-                );
-            }
-            _ => panic!("expected text body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn static_text_missing_format_is_empty() {
-        let p = StaticText.fetch(&ctx(None)).await.unwrap();
-        match p.body {
-            Body::Text(t) => assert!(t.lines.is_empty()),
-            _ => panic!("expected text body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn static_text_empty_format_is_empty() {
-        let p = StaticText.fetch(&ctx(Some(""))).await.unwrap();
-        match p.body {
-            Body::Text(t) => assert!(t.lines.is_empty()),
-            _ => panic!("expected text body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn static_text_trailing_newline_keeps_empty_line() {
-        // Users who don't want the trailing blank shouldn't trail a \n; we preserve split
-        // semantics so the rendered output matches the format string byte-for-byte.
-        let p = StaticText.fetch(&ctx(Some("a\n"))).await.unwrap();
-        match p.body {
-            Body::Text(t) => assert_eq!(t.lines, vec!["a".to_string(), "".to_string()]),
-            _ => panic!("expected text body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn clock_default_format_is_hh_mm() {
-        let p = ClockFetcher.fetch(&ctx(None)).await.unwrap();
-        match p.body {
-            Body::Bignum(d) => {
-                assert_eq!(d.text.len(), 5, "{:?} should be HH:MM", d.text);
-                assert_eq!(d.text.chars().nth(2), Some(':'));
-            }
-            _ => panic!("expected bignum body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn clock_honors_custom_format() {
-        let p = ClockFetcher.fetch(&ctx(Some("%Y"))).await.unwrap();
-        match p.body {
-            Body::Bignum(d) => assert_eq!(d.text.len(), 4, "{:?} should be 4-digit year", d.text),
-            _ => panic!("expected bignum body"),
-        }
-    }
-
     #[test]
-    fn builtins_cover_default_config_fetchers() {
-        let fetchers = builtins();
-        let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
-        for expected in [
-            "static",
-            "clock",
-            "disk",
-            "git_commits",
-            "system",
-            "github_prs",
-        ] {
-            assert!(names.contains(&expected), "missing builtin: {expected}");
-        }
-    }
-
-    #[test]
-    fn safety_classification_marks_exec_and_network() {
+    fn safety_classification_matches_feature_surface() {
+        assert_eq!(DiskStub.safety(), Safety::Safe);
+        assert_eq!(SystemStub.safety(), Safety::Safe);
         assert_eq!(GitCommitsStub.safety(), Safety::Exec);
         assert_eq!(GithubPrsStub.safety(), Safety::Network);
-        assert_eq!(StaticText.safety(), Safety::Safe);
+    }
+
+    #[test]
+    fn all_stubs_are_registered() {
+        let fetchers = stubs();
+        let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
+        for expected in ["disk", "git_commits", "system", "github_prs"] {
+            assert!(names.contains(&expected), "missing stub: {expected}");
+        }
     }
 }
