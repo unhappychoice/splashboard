@@ -177,20 +177,19 @@ fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
 }
 
 fn apply_panel(layout: Layout, title: Option<&str>, border: Option<BorderSpec>) -> Layout {
-    // Explicit `border = "none"` opts out of chrome entirely — skip the panel even if a title
-    // was set (a bare title without a border to anchor it to doesn't render, and pretending it
-    // would be worse than dropping it).
-    if matches!(border, Some(BorderSpec::None)) {
+    // Chrome is opt-in: no border, no panel — even if a title was set. A bare title has no
+    // border to render on, so dropping it cleanly is better than pretending. Users who want
+    // the framed-with-label look set `border = "rounded"` (or plain/thick/double) explicitly
+    // on the widgets that deserve it (charts, tables), keeping hero widgets (clock, greeting)
+    // chromeless by default.
+    let Some(style) = border.and_then(to_border_style) else {
         return layout;
-    }
+    };
     let l = match title {
         Some(t) => layout.titled(t),
         None => layout,
     };
-    match border.and_then(to_border_style) {
-        Some(b) => l.bordered(b),
-        None => l,
-    }
+    l.bordered(style)
 }
 
 fn to_border_style(b: BorderSpec) -> Option<BorderStyle> {

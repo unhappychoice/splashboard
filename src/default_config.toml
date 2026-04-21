@@ -37,11 +37,9 @@ height = { min = 6 }
 
   [[row.child]]
   widget = "greeting"
-  title = "Greeting"
 
   [[row.child]]
   widget = "clock"
-  title = "Clock"
 
 [[row]]
 height = { length = 5 }
@@ -49,10 +47,12 @@ height = { length = 5 }
   [[row.child]]
   widget = "disk"
   title = "Disk /"
+  border = "rounded"
 
   [[row.child]]
   widget = "commits"
   title = "Commits (14d)"
+  border = "rounded"
 
 [[row]]
 height = { length = 5 }
@@ -60,7 +60,9 @@ height = { length = 5 }
   [[row.child]]
   widget = "system"
   title = "System"
+  border = "rounded"
 
   [[row.child]]
   widget = "prs"
   title = "Open PRs"
+  border = "rounded"
