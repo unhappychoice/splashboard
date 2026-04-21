@@ -17,13 +17,14 @@ pub struct Payload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "render", content = "data", rename_all = "lowercase")]
+#[serde(tag = "render", content = "data", rename_all = "snake_case")]
 pub enum Body {
     Text(TextData),
     List(ListData),
     Gauge(GaugeData),
     Sparkline(SparklineData),
-    Chart(ChartData),
+    LineChart(LineChartData),
+    BarChart(BarChartData),
     Bignum(BignumData),
     Image(ImageData),
 }
@@ -57,7 +58,7 @@ pub struct ListItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GaugeData {
-    pub value: f32,
+    pub value: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
@@ -68,22 +69,25 @@ pub struct SparklineData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ChartData {
-    pub kind: ChartKind,
-    pub series: Vec<ChartSeries>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ChartKind {
-    Line,
-    Bar,
+pub struct LineChartData {
+    pub series: Vec<LineSeries>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ChartSeries {
+pub struct LineSeries {
     pub name: String,
     pub points: Vec<(f64, f64)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BarChartData {
+    pub bars: Vec<Bar>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Bar {
+    pub label: String,
+    pub value: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -177,15 +181,38 @@ mod tests {
     }
 
     #[test]
-    fn chart_round_trips() {
-        let p = bare(Body::Chart(ChartData {
-            kind: ChartKind::Line,
-            series: vec![ChartSeries {
+    fn line_chart_round_trips() {
+        let p = bare(Body::LineChart(LineChartData {
+            series: vec![LineSeries {
                 name: "temp".into(),
                 points: vec![(0.0, 20.0), (1.0, 21.5)],
             }],
         }));
         assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn bar_chart_round_trips() {
+        let p = bare(Body::BarChart(BarChartData {
+            bars: vec![
+                Bar {
+                    label: "a".into(),
+                    value: 3,
+                },
+                Bar {
+                    label: "b".into(),
+                    value: 5,
+                },
+            ],
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn bar_chart_tag_uses_snake_case() {
+        let p = bare(Body::BarChart(BarChartData { bars: vec![] }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["render"], "bar_chart");
     }
 
     #[test]
