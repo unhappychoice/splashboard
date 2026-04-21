@@ -131,7 +131,10 @@ fn is_lock_stale(path: &Path, threshold: Duration) -> bool {
     mtime.elapsed().map(|d| d > threshold).unwrap_or(false)
 }
 
-fn tmp_path_for(final_path: &Path) -> PathBuf {
+/// Builds a per-invocation unique tmp path next to `final_path`. Pid keeps it distinct across
+/// processes; the atomic counter keeps it distinct across concurrent calls within one process.
+/// Exported so other modules (e.g. trust store) can share the write-tmp-then-rename idiom.
+pub(crate) fn tmp_path_for(final_path: &Path) -> PathBuf {
     let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     let file_name = final_path

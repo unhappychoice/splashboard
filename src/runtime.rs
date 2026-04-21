@@ -23,7 +23,11 @@ const WAIT_DEADLINE: Duration = Duration::from_secs(5);
 const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
 const VIEWPORT_LINES: u16 = 16;
 
-pub async fn run(config: &Config, config_path: Option<&Path>, wait: bool) -> io::Result<()> {
+pub async fn run(
+    config: &Config,
+    config_ident: Option<(&Path, &str)>,
+    wait: bool,
+) -> io::Result<()> {
     let wait = wait || config.general.wait_for_fresh;
     let layout = config.to_layout();
     let cache = Cache::open_default();
@@ -32,7 +36,7 @@ pub async fn run(config: &Config, config_path: Option<&Path>, wait: bool) -> io:
     // Split widgets into what we can fetch vs what we must gate behind trust. Gated slots render
     // a canned "🔒 requires trust" placeholder so the layout stays intact and the user can see
     // what needs unlocking.
-    let decision = TrustStore::load().decide(config_path);
+    let decision = TrustStore::load().decide(config_ident);
     let (fetchable, gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
 
     let entries = load_entries(cache.as_ref(), &registry, &fetchable);
@@ -51,7 +55,7 @@ pub async fn run(config: &Config, config_path: Option<&Path>, wait: bool) -> io:
         draw(&mut terminal, &layout, &payloads)?;
     }
 
-    match daemon::spawn_fetch_daemon(config_path) {
+    match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
         Ok(child) => {
             if wait {
                 // Block on the daemon (with a hard ceiling) and then redraw with whatever it
@@ -91,10 +95,10 @@ pub async fn run(config: &Config, config_path: Option<&Path>, wait: bool) -> io:
 /// nowhere (daemon has no stdio) and simply leave stale cache in place. The daemon re-checks
 /// trust itself because it loads config via its own command-line argument, not from shared
 /// state.
-pub async fn fetch_and_persist(config: &Config, config_path: Option<&Path>) {
+pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &str)>) {
     let cache = Cache::open_default();
     let registry = Registry::with_builtins();
-    let decision = TrustStore::load().decide(config_path);
+    let decision = TrustStore::load().decide(config_ident);
     let (fetchable, _gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
     let entries = load_entries(cache.as_ref(), &registry, &fetchable);
     let _ = fetch_all(

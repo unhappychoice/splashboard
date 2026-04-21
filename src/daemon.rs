@@ -11,11 +11,17 @@ use crate::runtime;
 /// config, drives the fetchers, writes the cache, and exits. The parent splashboard invocation
 /// either detaches from this child and exits, or (in `--wait` mode) blocks on it with a deadline.
 pub async fn run_fetch_only(config_path: Option<&Path>) -> io::Result<()> {
-    let config = match config_path {
-        Some(p) => Config::load_or_default(p).map_err(io::Error::other)?,
-        None => Config::default_baked(),
+    // Read config bytes once; compute hash + parse from that buffer so the trust check can't be
+    // TOCTOU'd between parse and hash.
+    let (config, ident) = match config_path {
+        Some(p) => {
+            let (c, h) = crate::trust::load_config_and_hash(p)?;
+            (c, Some((p, h)))
+        }
+        None => (Config::default_baked(), None),
     };
-    runtime::fetch_and_persist(&config, config_path).await;
+    let ident_ref = ident.as_ref().map(|(p, h)| (*p, h.as_str()));
+    runtime::fetch_and_persist(&config, ident_ref).await;
     Ok(())
 }
 

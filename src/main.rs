@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use crate::config::{Config, WidgetConfig};
 use crate::fetcher::{Registry, Safety};
 use crate::shell::Shell;
-use crate::trust::{TrustStore, hash_file};
+use crate::trust::{TrustStore, load_config_and_hash};
 
 mod cache;
 mod config;
@@ -101,8 +101,9 @@ async fn render_splash(wait: bool) -> io::Result<()> {
     if !should_render() {
         return Ok(());
     }
-    let (config, path) = load_full_config()?;
-    runtime::run(&config, path.as_deref(), wait).await
+    let (config, ident) = load_full_config()?;
+    let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
+    runtime::run(&config, ident_ref, wait).await
 }
 
 async fn render_for_cd(wait: bool) -> io::Result<()> {
@@ -112,8 +113,8 @@ async fn render_for_cd(wait: bool) -> io::Result<()> {
     let Some(path) = config::resolve_cwd_only_path() else {
         return Ok(());
     };
-    let config = Config::load_or_default(&path).map_err(io::Error::other)?;
-    runtime::run(&config, Some(&path), wait).await
+    let (config, hash) = load_config_and_hash(&path).map_err(io::Error::other)?;
+    runtime::run(&config, Some((&path, &hash)), wait).await
 }
 
 fn should_render() -> bool {
@@ -140,13 +141,18 @@ fn is_large_enough(width: u16, height: u16) -> bool {
     width >= MIN_WIDTH && height >= MIN_HEIGHT
 }
 
-fn load_full_config() -> io::Result<(Config, Option<PathBuf>)> {
-    let path = config::resolve_config_path();
-    let config = match &path {
-        Some(p) => Config::load_or_default(p).map_err(io::Error::other)?,
-        None => Config::default_baked(),
-    };
-    Ok((config, path))
+/// Returns the resolved config plus an optional `(path, hash)` pair. Missing file / baked
+/// default produces `None` — trust gating treats that as implicitly trusted. When a file is
+/// present, reading and hashing happen in a single [`load_config_and_hash`] call so the trust
+/// check can't be TOCTOU'd between parse and hash.
+fn load_full_config() -> io::Result<(Config, Option<(PathBuf, String)>)> {
+    match config::resolve_config_path() {
+        Some(p) => {
+            let (config, hash) = load_config_and_hash(&p).map_err(io::Error::other)?;
+            Ok((config, Some((p, hash))))
+        }
+        None => Ok((Config::default_baked(), None)),
+    }
 }
 
 fn run_trust(path: Option<PathBuf>) -> io::Result<()> {
@@ -156,15 +162,17 @@ fn run_trust(path: Option<PathBuf>) -> io::Result<()> {
         );
         return Ok(());
     };
-    let config = Config::load_or_default(&target).map_err(io::Error::other)?;
+    // Read the bytes once so the hash we show the user matches the hash we store — and so an
+    // attacker can't swap the file between "here's what it asks for" and "ok I trust it".
+    let (config, hash) = load_config_and_hash(&target).map_err(io::Error::other)?;
     let registry = Registry::with_builtins();
-    print_trust_summary(&target, &config.widgets, &registry)?;
+    print_trust_summary(&target, &hash, &config.widgets, &registry)?;
     if !prompt_yes_no("Trust this config?")? {
         println!("not trusted");
         return Ok(());
     }
     let mut store = TrustStore::load();
-    store.trust(&target)?;
+    store.trust(&target, hash)?;
     println!("trusted: {}", target.display());
     Ok(())
 }
@@ -175,10 +183,11 @@ fn run_revoke(path: Option<PathBuf>) -> io::Result<()> {
         return Ok(());
     };
     let mut store = TrustStore::load();
+    let display = sanitize_for_display(&target.display().to_string());
     if store.revoke(&target)? {
-        println!("revoked: {}", target.display());
+        println!("revoked: {display}");
     } else {
-        println!("not trusted: {}", target.display());
+        println!("not trusted: {display}");
     }
     Ok(())
 }
@@ -186,7 +195,11 @@ fn run_revoke(path: Option<PathBuf>) -> io::Result<()> {
 fn run_list_trusted() -> io::Result<()> {
     let store = TrustStore::load();
     for entry in store.list() {
-        println!("{}  {}", entry.sha256, entry.path.display());
+        println!(
+            "{}  {}",
+            entry.sha256,
+            sanitize_for_display(&entry.path.display().to_string())
+        );
     }
     Ok(())
 }
@@ -197,11 +210,16 @@ fn resolve_trust_target(override_path: Option<PathBuf>) -> Option<PathBuf> {
 
 fn print_trust_summary(
     path: &Path,
+    hash: &str,
     widgets: &[WidgetConfig],
     registry: &Registry,
 ) -> io::Result<()> {
-    println!("Config: {}", path.display());
-    let hash = hash_file(path).unwrap_or_else(|_| "???".into());
+    // Paths and widget ids/fetchers flow into the terminal unmodified; sanitize control chars so
+    // a malicious config can't spoof the prompt with ANSI escape sequences.
+    println!(
+        "Config: {}",
+        sanitize_for_display(&path.display().to_string())
+    );
     println!("sha256: {hash}");
     println!();
 
@@ -218,7 +236,11 @@ fn print_trust_summary(
         if declared == 0 {
             println!("This config requests:");
         }
-        println!("  - {label:<7}: {} ({})", w.id, w.fetcher);
+        println!(
+            "  - {label:<7}: {} ({})",
+            sanitize_for_display(&w.id),
+            sanitize_for_display(&w.fetcher)
+        );
         declared += 1;
     }
     if declared == 0 {
@@ -226,6 +248,20 @@ fn print_trust_summary(
     }
     println!();
     Ok(())
+}
+
+/// Replaces control characters (including ANSI escape initiators) with U+FFFD so a hostile
+/// config can't draw over the trust prompt to make it look like something else.
+fn sanitize_for_display(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_control() {
+                char::REPLACEMENT_CHARACTER
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 fn prompt_yes_no(question: &str) -> io::Result<bool> {
@@ -293,5 +329,25 @@ mod tests {
     #[test]
     fn below_min_height_fails() {
         assert!(!super::is_large_enough(80, 15));
+    }
+
+    #[test]
+    fn sanitize_replaces_control_chars() {
+        let evil = "legit\x1b[2Kspoof";
+        let safe = super::sanitize_for_display(evil);
+        assert!(!safe.contains('\x1b'));
+        assert!(safe.contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn sanitize_preserves_normal_text() {
+        let s = super::sanitize_for_display("hello/world-dashboard_01");
+        assert_eq!(s, "hello/world-dashboard_01");
+    }
+
+    #[test]
+    fn sanitize_replaces_newline_and_tab() {
+        let s = super::sanitize_for_display("a\nb\tc");
+        assert_eq!(s.matches('\u{FFFD}').count(), 2);
     }
 }

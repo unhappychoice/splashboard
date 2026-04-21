@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::config::{WidgetConfig, default_global_path};
+use crate::cache::tmp_path_for;
+use crate::config::{Config, WidgetConfig, default_global_path};
 use crate::fetcher::{Registry, Safety};
 use crate::payload::{Body, Payload, TextData};
 
@@ -35,9 +36,9 @@ pub struct TrustEntry {
 }
 
 impl TrustStore {
-    /// Loads the on-disk store, or returns an empty store if it's missing or corrupt. We
-    /// deliberately do not surface corruption errors: a broken trust store must not cause the
-    /// splash to misbehave. Worst case: user re-runs `splashboard trust`.
+    /// Loads the on-disk store, or returns an empty store if it's missing or corrupt. A broken
+    /// trust store must never cause the splash to misbehave; the worst case is that the user
+    /// needs to re-run `splashboard trust`.
     pub fn load() -> Self {
         store_path()
             .and_then(|p| std::fs::read_to_string(&p).ok())
@@ -45,6 +46,8 @@ impl TrustStore {
             .unwrap_or_default()
     }
 
+    /// Atomic write so a concurrent invocation or crashed write never leaves the store empty
+    /// (which would silently untrust every entry). Same tmp+rename idiom as the payload cache.
     pub fn save(&self) -> io::Result<()> {
         let Some(path) = store_path() else {
             return Err(io::Error::other("could not resolve trust store path"));
@@ -52,23 +55,37 @@ impl TrustStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let toml = toml::to_string(self).map_err(io::Error::other)?;
-        std::fs::write(&path, toml)
+        let body = toml::to_string(self).map_err(io::Error::other)?;
+        let tmp = tmp_path_for(&path);
+        std::fs::write(&tmp, body)?;
+        std::fs::rename(tmp, path)?;
+        Ok(())
     }
 
-    pub fn decide(&self, config_path: Option<&Path>) -> TrustDecision {
+    /// Caller is expected to have already read the config bytes and hashed them (via
+    /// [`load_config_and_hash`]). Re-hashing here would open a TOCTOU window: a trusted file
+    /// could be swapped for an attacker-crafted one between the caller's load and our hash.
+    pub fn decide(&self, ident: Option<(&Path, &str)>) -> TrustDecision {
+        self.decide_with_global(ident, default_global_path().as_deref())
+    }
+
+    fn decide_with_global(
+        &self,
+        ident: Option<(&Path, &str)>,
+        global: Option<&Path>,
+    ) -> TrustDecision {
         if trust_all_override() {
             return TrustDecision::ImplicitlyTrusted;
         }
-        let Some(path) = config_path else {
+        let Some((path, hash)) = ident else {
             return TrustDecision::ImplicitlyTrusted;
         };
-        if is_global(path) {
+        // Literal equality only. A symlink that resolves to the global config is NOT the global
+        // config — the attacker controls the cwd it runs in, which subverts the whole point of
+        // trusting global configs.
+        if global == Some(path) {
             return TrustDecision::ImplicitlyTrusted;
         }
-        let Ok(hash) = hash_file(path) else {
-            return TrustDecision::Untrusted;
-        };
         let canon = canonicalize_or(path);
         for entry in &self.entries {
             if canonicalize_or(&entry.path) == canon && entry.sha256 == hash {
@@ -78,8 +95,7 @@ impl TrustStore {
         TrustDecision::Untrusted
     }
 
-    pub fn trust(&mut self, path: &Path) -> io::Result<()> {
-        let hash = hash_file(path)?;
+    pub fn trust(&mut self, path: &Path, hash: String) -> io::Result<()> {
         let canon = path.canonicalize()?;
         self.entries.retain(|e| canonicalize_or(&e.path) != canon);
         self.entries.push(TrustEntry {
@@ -103,6 +119,28 @@ impl TrustStore {
     pub fn list(&self) -> &[TrustEntry] {
         &self.entries
     }
+}
+
+/// Reads the config bytes once and returns both the parsed `Config` and its sha256. All
+/// trust-sensitive callers MUST use this instead of `Config::load_or_default` + `hash_file` —
+/// two separate reads would let an attacker swap the file between the load and the hash.
+pub fn load_config_and_hash(path: &Path) -> io::Result<(Config, String)> {
+    let bytes = std::fs::read(path)?;
+    let hash = hash_bytes(&bytes);
+    let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
+    let config = Config::parse(text).map_err(io::Error::other)?;
+    Ok((config, hash))
+}
+
+pub fn hash_file(path: &Path) -> io::Result<String> {
+    Ok(hash_bytes(&std::fs::read(path)?))
+}
+
+pub fn hash_bytes(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Partitions widgets into (fetchable, gated). Widgets whose fetcher requires trust
@@ -136,24 +174,11 @@ pub fn requires_trust_placeholder() -> Payload {
     }
 }
 
-pub fn hash_file(path: &Path) -> io::Result<String> {
-    let data = std::fs::read(path)?;
-    let digest = Sha256::digest(&data);
-    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
-}
-
 fn trust_all_override() -> bool {
     matches!(
         std::env::var(TRUST_ALL_ENV).ok().as_deref(),
         Some("1") | Some("true")
     )
-}
-
-fn is_global(path: &Path) -> bool {
-    let Some(global) = default_global_path() else {
-        return false;
-    };
-    canonicalize_or(path) == canonicalize_or(&global)
 }
 
 fn canonicalize_or(path: &Path) -> PathBuf {
@@ -234,7 +259,16 @@ mod tests {
     }
 
     #[test]
-    fn decide_none_path_is_implicitly_trusted() {
+    fn load_config_and_hash_returns_matching_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(".splashboard.toml");
+        std::fs::write(&p, "").unwrap();
+        let (_cfg, hash) = load_config_and_hash(&p).unwrap();
+        assert_eq!(hash, hash_file(&p).unwrap());
+    }
+
+    #[test]
+    fn decide_none_ident_is_implicitly_trusted() {
         let store = TrustStore::default();
         assert_eq!(store.decide(None), TrustDecision::ImplicitlyTrusted);
     }
@@ -244,8 +278,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(".splashboard.toml");
         std::fs::write(&p, "").unwrap();
+        let hash = hash_file(&p).unwrap();
         let store = TrustStore::default();
-        assert_eq!(store.decide(Some(&p)), TrustDecision::Untrusted);
+        assert_eq!(store.decide(Some((&p, &hash))), TrustDecision::Untrusted);
     }
 
     #[test]
@@ -258,26 +293,59 @@ mod tests {
         let store = TrustStore {
             entries: vec![TrustEntry {
                 path: canon,
-                sha256: hash,
+                sha256: hash.clone(),
             }],
         };
-        assert_eq!(store.decide(Some(&p)), TrustDecision::Trusted);
+        assert_eq!(store.decide(Some((&p, &hash))), TrustDecision::Trusted);
     }
 
     #[test]
-    fn decide_detects_modification_after_trust() {
+    fn decide_rejects_mismatched_hash_even_if_path_matches() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(".splashboard.toml");
         std::fs::write(&p, "original").unwrap();
-        let hash = hash_file(&p).unwrap();
+        let stored_hash = hash_file(&p).unwrap();
         let store = TrustStore {
             entries: vec![TrustEntry {
                 path: p.canonicalize().unwrap(),
-                sha256: hash,
+                sha256: stored_hash,
             }],
         };
-        std::fs::write(&p, "tampered").unwrap();
-        assert_eq!(store.decide(Some(&p)), TrustDecision::Untrusted);
+        // Simulate attacker swapping the file: caller passes a hash that doesn't match the entry.
+        let attacker_hash = "f".repeat(64);
+        assert_eq!(
+            store.decide(Some((&p, &attacker_hash))),
+            TrustDecision::Untrusted
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_to_global_is_not_implicitly_trusted() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let fake_global = dir.path().join("global.toml");
+        std::fs::write(&fake_global, "content").unwrap();
+        let local = dir.path().join(".splashboard.toml");
+        symlink(&fake_global, &local).unwrap();
+        // Sanity: the symlink canonicalizes to the global path.
+        assert_eq!(canonicalize_or(&local), canonicalize_or(&fake_global));
+        // But decide must NOT treat the symlink as the global config.
+        let store = TrustStore::default();
+        let hash = hash_file(&local).unwrap();
+        let decision = store.decide_with_global(Some((&local, &hash)), Some(&fake_global));
+        assert_eq!(decision, TrustDecision::Untrusted);
+    }
+
+    #[test]
+    fn literal_global_path_is_implicitly_trusted() {
+        let dir = tempfile::tempdir().unwrap();
+        let global = dir.path().join("global.toml");
+        std::fs::write(&global, "x").unwrap();
+        let hash = hash_file(&global).unwrap();
+        let store = TrustStore::default();
+        let decision = store.decide_with_global(Some((&global, &hash)), Some(&global));
+        assert_eq!(decision, TrustDecision::ImplicitlyTrusted);
     }
 
     #[test]
@@ -319,8 +387,6 @@ mod tests {
 
     #[test]
     fn partition_keeps_unknown_fetchers_in_fetchable_when_untrusted() {
-        // Unknown fetchers will simply be skipped at fetch time; gating them away isn't useful
-        // since they can't actually reach anything anyway.
         let registry = registry_with(&[("static", Safety::Safe)]);
         let widgets = vec![widget("x", "mystery")];
         let (fetchable, gated) = partition_by_trust(&widgets, &registry, TrustDecision::Untrusted);
