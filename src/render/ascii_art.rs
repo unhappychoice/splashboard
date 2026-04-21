@@ -24,7 +24,7 @@ impl Renderer for AsciiArtRenderer {
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {
             match opts.style.as_deref() {
-                Some("figlet") => render_figlet(frame, area, d),
+                Some("figlet") => render_figlet(frame, area, d, opts),
                 _ => render_blocks(frame, area, d, opts),
             }
         }
@@ -37,22 +37,65 @@ fn render_blocks(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderO
         .as_deref()
         .and_then(parse_pixel_size)
         .unwrap_or_else(|| pick_pixel_size(area));
+    let natural_width = blocks_width(&data.lines, pixel_size);
+    let target = align_rect(area, natural_width, opts.align.as_deref());
     let lines: Vec<_> = data.lines.iter().map(|s| s.clone().into()).collect();
     let big = BigText::builder()
         .pixel_size(pixel_size)
         .lines(lines)
         .build();
-    frame.render_widget(big, area);
+    frame.render_widget(big, target);
 }
 
-fn render_figlet(frame: &mut Frame, area: Rect, data: &LinesData) {
+fn render_figlet(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
     let rendered = data
         .lines
         .iter()
         .map(|l| figletify(l))
         .collect::<Vec<_>>()
         .join("\n");
-    frame.render_widget(Paragraph::new(rendered), area);
+    let p = Paragraph::new(rendered).alignment(parse_alignment(opts.align.as_deref()));
+    frame.render_widget(p, area);
+}
+
+/// Maximum natural width (in terminal cells) of a tui-big-text block string at the given
+/// pixel size. Based on the 8x8 base font; `pixels_per_cell` compresses each axis. Only the
+/// three variants we recognise in `parse_pixel_size` are listed — anything else falls back to
+/// a conservative default.
+fn blocks_width(lines: &[String], pixel_size: PixelSize) -> u16 {
+    let max_chars = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
+    let glyph_cols = match pixel_size {
+        PixelSize::Full => 8,
+        PixelSize::Quadrant => 4,
+        PixelSize::Sextant => 4,
+        _ => 4,
+    };
+    max_chars.saturating_mul(glyph_cols)
+}
+
+fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
+    if content_width == 0 || content_width >= area.width {
+        return area;
+    }
+    let offset = match align {
+        Some("center") => (area.width - content_width) / 2,
+        Some("right") => area.width - content_width,
+        _ => return area,
+    };
+    Rect {
+        x: area.x + offset,
+        y: area.y,
+        width: content_width,
+        height: area.height,
+    }
+}
+
+fn parse_alignment(s: Option<&str>) -> ratatui::layout::Alignment {
+    match s {
+        Some("center") => ratatui::layout::Alignment::Center,
+        Some("right") => ratatui::layout::Alignment::Right,
+        _ => ratatui::layout::Alignment::Left,
+    }
 }
 
 fn figletify(text: &str) -> String {

@@ -68,7 +68,18 @@ pub async fn run(
         (true, _) => Some(WAIT_DEADLINE),
     };
 
-    let viewport_lines = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
+    // Default viewport = sum of configured row heights so every widget fits without manual
+    // tuning. Users can still override with `general.height` when they want padding or are
+    // using Percentage sizes. Clamped to `terminal_rows - 1` so there's always one row left
+    // below the viewport for the shell prompt to land on cleanly.
+    let requested_height = config
+        .general
+        .height
+        .unwrap_or_else(|| config.computed_height().max(DEFAULT_VIEWPORT_LINES));
+    let term_rows = ratatui::crossterm::terminal::size()
+        .map(|(_, h)| h)
+        .unwrap_or(requested_height);
+    let viewport_lines = requested_height.min(term_rows.saturating_sub(1)).max(1);
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend, viewport_lines)?;
 

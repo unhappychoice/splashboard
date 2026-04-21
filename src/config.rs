@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::layout::{BorderStyle, Child, Layout};
+use crate::layout::{BorderStyle, Child, Flex, Layout};
 use crate::render::RenderSpec;
 
 const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
@@ -52,8 +52,23 @@ pub struct RowConfig {
     pub title: Option<String>,
     #[serde(default)]
     pub border: Option<BorderSpec>,
+    /// How children are placed along this row's horizontal axis when they don't fill the row.
+    /// `center` is the obvious use case: a narrower widget parked in the middle of its row.
+    #[serde(default)]
+    pub flex: Option<FlexSpec>,
     #[serde(default, rename = "child")]
     pub children: Vec<ChildConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FlexSpec {
+    Legacy,
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+    SpaceAround,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,9 +92,12 @@ pub enum SizeSpec {
     Percentage(u16),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BorderSpec {
+    /// No chrome at all — widget fills its full cell, no title drawn. Useful for hero
+    /// elements like a big clock that should own its slot without framing.
+    None,
     Plain,
     Rounded,
     Thick,
@@ -105,6 +123,26 @@ impl Config {
 
     pub fn to_layout(&self) -> Layout {
         Layout::rows(self.rows.iter().map(to_row_child).collect())
+    }
+
+    /// Sum of row heights — what the inline viewport needs to be to fit every row without
+    /// clipping the bottom. Non-Length sizes fall back to reasonable approximations
+    /// (Min/Max use their value, Fill contributes a small default, Percentage is ignored
+    /// since it can't resolve without a known viewport).
+    pub fn computed_height(&self) -> u16 {
+        self.rows
+            .iter()
+            .map(|r| row_height_estimate(r.height))
+            .sum()
+    }
+}
+
+fn row_height_estimate(size: Option<SizeSpec>) -> u16 {
+    match size {
+        Some(SizeSpec::Length(n)) | Some(SizeSpec::Min(n)) | Some(SizeSpec::Max(n)) => n,
+        Some(SizeSpec::Fill(_)) => 3,
+        Some(SizeSpec::Percentage(_)) => 0,
+        None => 3,
     }
 }
 
@@ -151,9 +189,23 @@ fn find_local_at(dir: &Path) -> Option<PathBuf> {
 }
 
 fn to_row_child(row: &RowConfig) -> Child {
-    let inner = Layout::cols(row.children.iter().map(to_col_child).collect());
+    let mut inner = Layout::cols(row.children.iter().map(to_col_child).collect());
+    if let Some(f) = row.flex {
+        inner = inner.flexed(to_flex(f));
+    }
     let decorated = apply_panel(inner, row.title.as_deref(), row.border);
     make_child(row.height, decorated)
+}
+
+fn to_flex(f: FlexSpec) -> Flex {
+    match f {
+        FlexSpec::Legacy => Flex::Legacy,
+        FlexSpec::Start => Flex::Start,
+        FlexSpec::Center => Flex::Center,
+        FlexSpec::End => Flex::End,
+        FlexSpec::SpaceBetween => Flex::SpaceBetween,
+        FlexSpec::SpaceAround => Flex::SpaceAround,
+    }
 }
 
 fn to_col_child(c: &ChildConfig) -> Child {
@@ -174,22 +226,28 @@ fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
 }
 
 fn apply_panel(layout: Layout, title: Option<&str>, border: Option<BorderSpec>) -> Layout {
+    // Chrome is opt-in: no border, no panel — even if a title was set. A bare title has no
+    // border to render on, so dropping it cleanly is better than pretending. Users who want
+    // the framed-with-label look set `border = "rounded"` (or plain/thick/double) explicitly
+    // on the widgets that deserve it (charts, tables), keeping hero widgets (clock, greeting)
+    // chromeless by default.
+    let Some(style) = border.and_then(to_border_style) else {
+        return layout;
+    };
     let l = match title {
         Some(t) => layout.titled(t),
         None => layout,
     };
-    match border {
-        Some(b) => l.bordered(to_border_style(b)),
-        None => l,
-    }
+    l.bordered(style)
 }
 
-fn to_border_style(b: BorderSpec) -> BorderStyle {
+fn to_border_style(b: BorderSpec) -> Option<BorderStyle> {
     match b {
-        BorderSpec::Plain => BorderStyle::Plain,
-        BorderSpec::Rounded => BorderStyle::Rounded,
-        BorderSpec::Thick => BorderStyle::Thick,
-        BorderSpec::Double => BorderStyle::Double,
+        BorderSpec::None => None,
+        BorderSpec::Plain => Some(BorderStyle::Plain),
+        BorderSpec::Rounded => Some(BorderStyle::Rounded),
+        BorderSpec::Thick => Some(BorderStyle::Thick),
+        BorderSpec::Double => Some(BorderStyle::Double),
     }
 }
 

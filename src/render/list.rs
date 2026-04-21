@@ -8,6 +8,23 @@ use crate::payload::{Body, LinesData};
 
 use super::{RenderOptions, Renderer, Shape};
 
+fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
+    if content_width == 0 || content_width >= area.width {
+        return area;
+    }
+    let offset = match align {
+        Some("center") => (area.width - content_width) / 2,
+        Some("right") => area.width - content_width,
+        _ => return area,
+    };
+    Rect {
+        x: area.x + offset,
+        y: area.y,
+        width: content_width,
+        height: area.height,
+    }
+}
+
 /// Renders lines through ratatui's `List` widget. Behaviourally close to `simple` today; the
 /// distinction matters once we add list-specific options (bullet marker, highlight selected
 /// item, scrollbar). Alternate renderer for the `Lines` shape so tests of the 1→N dispatch
@@ -21,20 +38,27 @@ impl Renderer for ListRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Lines]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {
-            render_list(frame, area, d);
+            render_list(frame, area, d, opts);
         }
     }
 }
 
-fn render_list(frame: &mut Frame, area: Rect, data: &LinesData) {
+fn render_list(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
+    let max = data
+        .lines
+        .iter()
+        .map(|l| l.chars().count() as u16)
+        .max()
+        .unwrap_or(0);
+    let target = align_rect(area, max, opts.align.as_deref());
     let items: Vec<ListItem> = data
         .lines
         .iter()
         .map(|l| ListItem::new(l.clone()))
         .collect();
-    frame.render_widget(List::new(items), area);
+    frame.render_widget(List::new(items), target);
 }
 
 #[cfg(test)]

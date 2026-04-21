@@ -1,7 +1,11 @@
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use ratatui::{Frame, layout::Rect, widgets::Paragraph};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Rect},
+    widgets::Paragraph,
+};
 
 use crate::payload::{Body, LinesData};
 
@@ -25,18 +29,27 @@ impl Renderer for AnimatedTypewriterRenderer {
     fn animates(&self) -> bool {
         true
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {
-            render_typewriter(frame, area, d);
+            render_typewriter(frame, area, d, opts);
         }
     }
 }
 
-fn render_typewriter(frame: &mut Frame, area: Rect, data: &LinesData) {
+fn render_typewriter(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
     let total: usize = data.lines.iter().map(|l| l.chars().count() + 1).sum();
     let budget = chars_revealed(total);
     let revealed = reveal(&data.lines, budget);
-    frame.render_widget(Paragraph::new(revealed), area);
+    let p = Paragraph::new(revealed).alignment(parse_align(opts.align.as_deref()));
+    frame.render_widget(p, area);
+}
+
+fn parse_align(s: Option<&str>) -> Alignment {
+    match s {
+        Some("center") => Alignment::Center,
+        Some("right") => Alignment::Right,
+        _ => Alignment::Left,
+    }
 }
 
 /// Characters that should be visible given the time elapsed since render loop start.

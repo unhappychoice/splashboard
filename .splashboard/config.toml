@@ -4,37 +4,38 @@
 
 [general]
 wait_for_fresh = false
-height = 32
+# `height` omitted — runtime auto-sizes the inline viewport to fit every configured row.
+# Set it explicitly if you want padding below the last widget.
 
 # ── Lines shape: 4 renderers ──────────────────────────────────────────
 
 [[widget]]
 id = "greeting_simple"
 fetcher = "static"
-render = "simple"
-format = "render = \"simple\"\nratatui Paragraph; flows multi-line format"
+render = { type = "simple", align = "center" }
+format = "welcome back"
 
 [[widget]]
-id = "clock_blocks"
+id = "clock"
 fetcher = "clock"
-render = { type = "ascii_art", style = "blocks", pixel_size = "quadrant" }
+render = { type = "ascii_art", pixel_size = "quadrant", align = "center" }
 
 [[widget]]
 id = "clock_figlet"
 fetcher = "clock"
-render = { type = "ascii_art", style = "figlet" }
+render = { type = "ascii_art", style = "figlet", align = "center" }
 
 [[widget]]
 id = "typewriter"
 fetcher = "static"
-render = "animated_typewriter"
+render = { type = "animated_typewriter", align = "center" }
 format = "animated_typewriter:\nreveals character by character while --wait ticks"
 
 [[widget]]
 id = "notes"
 fetcher = "static"
-render = "list"
-format = "render = \"list\"\nratatui::List widget\ndifferent from table"
+render = { type = "list", align = "center" }
+format = "ratatui::List widget\nalternative to simple\nselectable items, later"
 
 # ── Entries ─────────────────────────────────────────────────────────
 
@@ -89,32 +90,51 @@ fetcher = "today"
 render = "calendar"
 
 # ── Layout ──────────────────────────────────────────────────────────
+# Hero band: single-child rows with flex=center so the widget sits in the middle of the row
+# even though it's narrower than the terminal. 2-column rows below keep the default Legacy
+# flex so children split the row proportionally.
 
 [[row]]
-height = { length = 4 }
+height = { length = 2 }
+flex = "center"
 
   [[row.child]]
   widget = "greeting_simple"
-  title = "simple"
+  width = { length = 24 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
 
   [[row.child]]
-  widget = "typewriter"
-  title = "animated_typewriter"
-
-  [[row.child]]
-  widget = "notes"
-  title = "list"
+  widget = "clock"
+  width = { length = 22 }
 
 [[row]]
 height = { length = 6 }
-
-  [[row.child]]
-  widget = "clock_blocks"
-  title = "ascii_art (blocks)"
+flex = "center"
 
   [[row.child]]
   widget = "clock_figlet"
-  title = "ascii_art (figlet)"
+  width = { length = 44 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
+
+  [[row.child]]
+  widget = "typewriter"
+  width = { length = 64 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
+
+  [[row.child]]
+  widget = "notes"
+  width = { length = 44 }
+
+# ── Dense 2-column rows from here on, default Legacy flex ─────────────
 
 [[row]]
 height = { length = 3 }
@@ -122,10 +142,12 @@ height = { length = 3 }
   [[row.child]]
   widget = "disk_gauge"
   title = "gauge"
+  border = "rounded"
 
   [[row.child]]
   widget = "disk_line"
   title = "line_gauge"
+  border = "rounded"
 
 [[row]]
 height = { length = 5 }
@@ -133,10 +155,12 @@ height = { length = 5 }
   [[row.child]]
   widget = "commits"
   title = "sparkline"
+  border = "rounded"
 
   [[row.child]]
   widget = "prs"
   title = "bar_chart"
+  border = "rounded"
 
 [[row]]
 height = { length = 7 }
@@ -144,14 +168,17 @@ height = { length = 7 }
   [[row.child]]
   widget = "trend_line"
   title = "chart_line"
+  border = "rounded"
 
   [[row.child]]
   widget = "trend_dots"
   title = "scatter"
+  border = "rounded"
 
   [[row.child]]
   widget = "today"
   title = "calendar"
+  border = "rounded"
 
 [[row]]
 height = { length = 6 }
@@ -159,3 +186,4 @@ height = { length = 6 }
   [[row.child]]
   widget = "system"
   title = "table"
+  border = "rounded"

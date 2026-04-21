@@ -64,6 +64,11 @@ pub struct RenderOptions {
     /// height). Ignored by other styles.
     #[serde(default)]
     pub pixel_size: Option<String>,
+    /// Horizontal alignment of the rendered content within its cell: "left" (default),
+    /// "center", or "right". Not every renderer honours this — simple text and ascii_art do;
+    /// structural renderers (table, gauge, charts) ignore it.
+    #[serde(default)]
+    pub align: Option<String>,
 }
 
 /// What the TOML accepts for `render`. Short form `render = "simple"` uses defaults; long form
