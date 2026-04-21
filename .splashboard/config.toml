@@ -226,13 +226,13 @@ height = { length = 3 }
   title = "line_gauge"
   border = "rounded"
 
-[[row]]
-height = { length = 7 }
-
   [[row.child]]
   widget = "commits"
   title = "sparkline"
   border = "rounded"
+
+[[row]]
+height = { length = 11 }
 
   [[row.child]]
   widget = "prs"
