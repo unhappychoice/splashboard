@@ -6,9 +6,11 @@ use serde::Deserialize;
 
 use crate::payload::{Body, Payload};
 
+mod animated_typewriter;
 mod ascii_art;
 mod bar_chart;
 mod calendar;
+mod figlet;
 mod gauge;
 mod image;
 mod line_chart;
@@ -108,6 +110,8 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(text::SimpleRenderer));
         r.register(Arc::new(ascii_art::AsciiArtRenderer));
+        r.register(Arc::new(figlet::FigletRenderer));
+        r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
         r.register(Arc::new(list::ListRenderer));
         r.register(Arc::new(table::TableRenderer));
         r.register(Arc::new(gauge::GaugeRenderer));
@@ -210,6 +214,8 @@ mod tests {
         for name in [
             "simple",
             "ascii_art",
+            "figlet",
+            "animated_typewriter",
             "list",
             "table",
             "gauge",

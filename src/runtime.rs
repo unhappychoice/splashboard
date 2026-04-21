@@ -22,6 +22,10 @@ const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
 const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
+/// Frame interval while waiting on the daemon. Animated renderers
+/// (`animated_typewriter`) rely on this cadence to produce motion; sub-50ms would waste CPU,
+/// above 100ms would look choppy.
+const FRAME_TICK: Duration = Duration::from_millis(50);
 const VIEWPORT_LINES: u16 = 16;
 
 pub async fn run(
@@ -62,11 +66,27 @@ pub async fn run(
     }
 
     match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
-        Ok(child) => {
+        Ok(mut child) => {
             if wait {
-                // Block on the daemon (with a hard ceiling) and then draw with whatever it
-                // managed to write before the deadline.
-                let _ = wait_for_daemon(child, WAIT_DEADLINE).await;
+                // Tick a frame every FRAME_TICK until the daemon finishes or WAIT_DEADLINE
+                // elapses. Repeated draws give animated renderers something to animate, and
+                // let cache writes from the daemon show up as soon as they land.
+                let deadline = std::time::Instant::now() + WAIT_DEADLINE;
+                loop {
+                    refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
+                    draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    if remaining.is_zero() {
+                        let _ = child.start_kill();
+                        break;
+                    }
+                    let tick = remaining.min(FRAME_TICK);
+                    match tokio::time::timeout(tick, child.wait()).await {
+                        Ok(_) => break,
+                        Err(_) => continue,
+                    }
+                }
+                // Final frame after the daemon's last write.
                 refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
                 draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
             }
@@ -127,20 +147,6 @@ fn refresh_payloads(
     *payloads = entries_to_payloads(&entries);
     for w in gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
-    }
-}
-
-async fn wait_for_daemon(mut child: tokio::process::Child, deadline: Duration) -> io::Result<()> {
-    match tokio::time::timeout(deadline, child.wait()).await {
-        Ok(Ok(_status)) => Ok(()),
-        Ok(Err(e)) => Err(e),
-        Err(_elapsed) => {
-            let _ = child.start_kill();
-            Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "fetch daemon timed out",
-            ))
-        }
     }
 }
 
