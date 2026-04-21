@@ -1,56 +1,25 @@
+//! Placeholder fetchers that still return canned data. Each of these is blocked on a dedicated
+//! issue (#8 git, #9 system, #11 github) and will be replaced one-by-one. Keeping them in a
+//! single module makes it obvious at a glance which parts of the default dashboard aren't real
+//! yet.
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarChartData, BignumData, Body, GaugeData, ListData, ListItem, Payload, SparklineData,
-    Status, TextData,
+    Bar, BarChartData, Body, GaugeData, ListData, ListItem, Payload, SparklineData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
-pub fn builtins() -> Vec<Arc<dyn Fetcher>> {
+pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
     vec![
-        Arc::new(StaticText),
-        Arc::new(ClockStub),
         Arc::new(DiskStub),
         Arc::new(GitCommitsStub),
         Arc::new(SystemStub),
         Arc::new(GithubPrsStub),
     ]
-}
-
-pub struct StaticText;
-
-#[async_trait]
-impl Fetcher for StaticText {
-    fn name(&self) -> &str {
-        "static"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-    async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let line = ctx.format.clone().unwrap_or_default();
-        Ok(payload(Body::Text(TextData { lines: vec![line] })))
-    }
-}
-
-pub struct ClockStub;
-
-#[async_trait]
-impl Fetcher for ClockStub {
-    fn name(&self) -> &str {
-        "clock"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Bignum(BignumData {
-            text: "12:34".into(),
-        })))
-    }
 }
 
 pub struct DiskStub;
@@ -163,53 +132,22 @@ fn payload(body: Body) -> Payload {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
 
-    fn ctx(format: Option<&str>) -> FetchContext {
-        FetchContext {
-            widget_id: "w".into(),
-            format: format.map(String::from),
-            timeout: Duration::from_secs(1),
-        }
-    }
-
-    #[tokio::test]
-    async fn static_text_uses_format_field() {
-        let p = StaticText.fetch(&ctx(Some("Hello!"))).await.unwrap();
-        match p.body {
-            Body::Text(t) => assert_eq!(t.lines, vec!["Hello!".to_string()]),
-            _ => panic!("expected text body"),
-        }
-    }
-
-    #[tokio::test]
-    async fn clock_stub_emits_bignum() {
-        let p = ClockStub.fetch(&ctx(None)).await.unwrap();
-        assert!(matches!(p.body, Body::Bignum(_)));
-    }
-
     #[test]
-    fn builtins_cover_default_config_fetchers() {
-        let fetchers = builtins();
-        let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
-        for expected in [
-            "static",
-            "clock",
-            "disk",
-            "git_commits",
-            "system",
-            "github_prs",
-        ] {
-            assert!(names.contains(&expected), "missing builtin: {expected}");
-        }
-    }
-
-    #[test]
-    fn safety_classification_marks_exec_and_network() {
+    fn safety_classification_matches_feature_surface() {
+        assert_eq!(DiskStub.safety(), Safety::Safe);
+        assert_eq!(SystemStub.safety(), Safety::Safe);
         assert_eq!(GitCommitsStub.safety(), Safety::Exec);
         assert_eq!(GithubPrsStub.safety(), Safety::Network);
-        assert_eq!(StaticText.safety(), Safety::Safe);
+    }
+
+    #[test]
+    fn all_stubs_are_registered() {
+        let fetchers = stubs();
+        let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
+        for expected in ["disk", "git_commits", "system", "github_prs"] {
+            assert!(names.contains(&expected), "missing stub: {expected}");
+        }
     }
 }
