@@ -282,10 +282,7 @@ impl RealtimeFetcher for ProcessTopFetcher {
         let rows = top_processes(&sys, PROCESS_TOP_COUNT);
         match ctx.shape.unwrap_or(Shape::Entries) {
             Shape::Lines => payload(Body::Lines(LinesData {
-                lines: rows
-                    .iter()
-                    .map(|(n, c)| format!("{n}  {c:.1}%"))
-                    .collect(),
+                lines: rows.iter().map(|(n, c)| format!("{n}  {c:.1}%")).collect(),
             })),
             _ => payload(Body::Entries(EntriesData {
                 items: rows
@@ -319,9 +316,11 @@ impl Fetcher for DiskFetcher {
                 bars: disk_bars(&disks),
             })),
             Shape::Lines => payload(Body::Lines(LinesData {
-                lines: vec![primary_disk(&disks)
-                    .map(|(t, a)| disk_label(t, a))
-                    .unwrap_or_else(|| "no disks detected".into())],
+                lines: vec![
+                    primary_disk(&disks)
+                        .map(|(t, a)| disk_label(t, a))
+                        .unwrap_or_else(|| "no disks detected".into()),
+                ],
             })),
             _ => primary_disk(&disks)
                 .map(|(total, available)| {
