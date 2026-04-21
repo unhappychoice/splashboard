@@ -112,7 +112,7 @@ impl Config {
     }
 }
 
-pub const LOCAL_CONFIG_FILENAME: &str = ".splashboard.toml";
+pub const LOCAL_CONFIG_CANDIDATES: &[&str] = &[".splashboard/config.toml", ".splashboard.toml"];
 
 pub fn resolve_config_path() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
@@ -122,9 +122,11 @@ pub fn resolve_config_path() -> Option<PathBuf> {
 fn find_local(start: &Path) -> Option<PathBuf> {
     let mut current = Some(start);
     while let Some(dir) = current {
-        let candidate = dir.join(LOCAL_CONFIG_FILENAME);
-        if candidate.is_file() {
-            return Some(candidate);
+        for name in LOCAL_CONFIG_CANDIDATES {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
         current = dir.parent();
     }
@@ -282,21 +284,41 @@ widget = "x"
     }
 
     #[test]
-    fn find_local_picks_up_file_in_cwd() {
+    fn find_local_picks_up_flat_file() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(LOCAL_CONFIG_FILENAME), "").unwrap();
-        let found = find_local(dir.path()).unwrap();
-        assert_eq!(found, dir.path().join(LOCAL_CONFIG_FILENAME));
+        let file = dir.path().join(".splashboard.toml");
+        std::fs::write(&file, "").unwrap();
+        assert_eq!(find_local(dir.path()).unwrap(), file);
+    }
+
+    #[test]
+    fn find_local_picks_up_directory_form() {
+        let dir = tempfile::tempdir().unwrap();
+        let subdir = dir.path().join(".splashboard");
+        std::fs::create_dir(&subdir).unwrap();
+        let file = subdir.join("config.toml");
+        std::fs::write(&file, "").unwrap();
+        assert_eq!(find_local(dir.path()).unwrap(), file);
+    }
+
+    #[test]
+    fn find_local_prefers_directory_form_when_both_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".splashboard")).unwrap();
+        let dir_file = dir.path().join(".splashboard/config.toml");
+        std::fs::write(&dir_file, "").unwrap();
+        std::fs::write(dir.path().join(".splashboard.toml"), "").unwrap();
+        assert_eq!(find_local(dir.path()).unwrap(), dir_file);
     }
 
     #[test]
     fn find_local_walks_up_to_ancestor() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join(LOCAL_CONFIG_FILENAME), "").unwrap();
+        let file = root.path().join(".splashboard.toml");
+        std::fs::write(&file, "").unwrap();
         let nested = root.path().join("a").join("b").join("c");
         std::fs::create_dir_all(&nested).unwrap();
-        let found = find_local(&nested).unwrap();
-        assert_eq!(found, root.path().join(LOCAL_CONFIG_FILENAME));
+        assert_eq!(find_local(&nested).unwrap(), file);
     }
 
     #[test]
