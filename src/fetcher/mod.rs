@@ -14,6 +14,7 @@ pub mod clock;
 pub mod read_store;
 pub mod static_text;
 pub mod stub;
+pub mod system;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Safety {
@@ -182,6 +183,12 @@ impl Registry {
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register_realtime(Arc::new(clock::ClockFetcher));
+        for f in system::realtime_fetchers() {
+            r.register_realtime(f);
+        }
+        for f in system::cached_fetchers() {
+            r.register(f);
+        }
         for f in stub::stubs() {
             r.register(f);
         }
