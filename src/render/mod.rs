@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ratatui::{Frame, layout::Rect, widgets::Paragraph};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Rect},
+    style::{Color, Modifier, Style},
+    widgets::Paragraph,
+};
 use serde::Deserialize;
 
 use crate::payload::{Body, Payload};
@@ -170,6 +175,11 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
 /// Resolves a renderer by spec (or shape default), compat-checks it, and renders. An unknown
 /// renderer name or a shape/renderer mismatch draws an in-band error rather than panicking —
 /// a misconfigured widget should show what's wrong, not crash the splash.
+///
+/// Bodies that carry no usable data short-circuit to [`render_empty_state`] before dispatch so
+/// every widget shows the same "nothing here yet" placeholder instead of each renderer's
+/// individual no-op. Keeps user-written ReadStore widgets, and any widget whose upstream data
+/// hasn't arrived yet, visually present rather than appearing as absent layout.
 pub fn render_payload(
     frame: &mut Frame,
     area: Rect,
@@ -177,6 +187,10 @@ pub fn render_payload(
     spec: Option<&RenderSpec>,
     registry: &Registry,
 ) {
+    if is_empty_body(&payload.body) {
+        render_empty_state(frame, area);
+        return;
+    }
     let shape = shape_of(&payload.body);
     let (name, options) = match spec {
         Some(s) => (s.renderer_name().to_string(), s.options()),
@@ -198,6 +212,37 @@ pub fn render_payload(
         return;
     }
     renderer.render(frame, area, &payload.body, &options);
+}
+
+/// `true` when the body has no meaningful data to render. Callers (most usefully
+/// [`render_payload`]) use this to substitute an empty-state placeholder rather than letting a
+/// specific renderer silently draw nothing.
+///
+/// Note on specific shapes:
+/// - `Ratio` is never considered empty (0.0 is legitimate, e.g. "0% disk used").
+/// - `Calendar` is never considered empty (month/year are always present).
+/// - Everything else checks its natural collection.
+pub fn is_empty_body(body: &Body) -> bool {
+    match body {
+        Body::Lines(d) => d.lines.is_empty() || d.lines.iter().all(|l| l.is_empty()),
+        Body::Entries(d) => d.items.is_empty(),
+        Body::NumberSeries(d) => d.values.is_empty(),
+        Body::PointSeries(d) => d.series.iter().all(|s| s.points.is_empty()),
+        Body::Bars(d) => d.bars.is_empty(),
+        Body::Image(d) => d.path.is_empty(),
+        Body::Heatmap(d) => d.cells.is_empty() || d.cells.iter().all(|r| r.is_empty()),
+        Body::Calendar(_) | Body::Ratio(_) => false,
+    }
+}
+
+fn render_empty_state(frame: &mut Frame, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let p = Paragraph::new("—")
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM));
+    frame.render_widget(p, area);
 }
 
 /// `true` if any widget in `widgets` will be rendered by a renderer that declares itself
@@ -287,6 +332,69 @@ mod tests {
                 "default renderer {name} doesn't accept its shape {s:?}"
             );
         }
+    }
+
+    #[test]
+    fn is_empty_body_matches_expectations() {
+        use crate::payload::{
+            BarsData, EntriesData, HeatmapData, ImageData, LinesData, NumberSeriesData,
+            PointSeriesData, RatioData,
+        };
+        // Empty cases.
+        assert!(is_empty_body(&Body::Lines(LinesData { lines: vec![] })));
+        assert!(is_empty_body(&Body::Lines(LinesData {
+            lines: vec![String::new()],
+        })));
+        assert!(is_empty_body(&Body::Entries(EntriesData { items: vec![] })));
+        assert!(is_empty_body(&Body::NumberSeries(NumberSeriesData {
+            values: vec![],
+        })));
+        assert!(is_empty_body(&Body::PointSeries(PointSeriesData {
+            series: vec![],
+        })));
+        assert!(is_empty_body(&Body::Bars(BarsData { bars: vec![] })));
+        assert!(is_empty_body(&Body::Image(ImageData {
+            path: String::new(),
+        })));
+        assert!(is_empty_body(&Body::Heatmap(HeatmapData {
+            cells: vec![],
+            thresholds: None,
+            row_labels: None,
+            col_labels: None,
+        })));
+        // Non-empty and "structurally always present" cases.
+        assert!(!is_empty_body(&Body::Lines(LinesData {
+            lines: vec!["x".into()],
+        })));
+        assert!(!is_empty_body(&Body::Ratio(RatioData {
+            value: 0.0,
+            label: None,
+        })));
+    }
+
+    #[test]
+    fn empty_body_renders_placeholder_not_specific_renderer() {
+        use crate::payload::{HeatmapData, Payload};
+        use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Heatmap(HeatmapData {
+                cells: vec![],
+                thresholds: None,
+                row_labels: None,
+                col_labels: None,
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("heatmap".into());
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 3);
+        // The centered em-dash lands at column (20-1)/2 = 9 on the middle row-ish. Just
+        // check any row contains the em-dash — placement is centered so exact row depends on
+        // area height.
+        let has_dash = (0..3).any(|y| line_text(&buf, y).contains('—'));
+        assert!(has_dash, "expected — placeholder somewhere in the output");
     }
 
     #[test]
