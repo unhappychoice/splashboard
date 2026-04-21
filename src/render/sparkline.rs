@@ -1,14 +1,33 @@
 use ratatui::{Frame, layout::Rect, widgets::Sparkline};
 
-use crate::payload::SparklineData;
+use crate::payload::{Body, NumberSeriesData};
 
-pub fn render(frame: &mut Frame, area: Rect, data: &SparklineData) {
+use super::{RenderOptions, Renderer, Shape};
+
+pub struct SparklineRenderer;
+
+impl Renderer for SparklineRenderer {
+    fn name(&self) -> &str {
+        "sparkline"
+    }
+    fn accepts(&self) -> &[Shape] {
+        &[Shape::NumberSeries]
+    }
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+        if let Body::NumberSeries(d) = body {
+            render_sparkline(frame, area, d);
+        }
+    }
+}
+
+fn render_sparkline(frame: &mut Frame, area: Rect, data: &NumberSeriesData) {
     frame.render_widget(Sparkline::default().data(&data.values), area);
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::payload::{Body, Payload, SparklineData};
+    use super::*;
+    use crate::payload::{NumberSeriesData, Payload};
     use crate::render::test_utils::render_to_buffer;
 
     fn payload(values: Vec<u64>) -> Payload {
@@ -16,7 +35,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Sparkline(SparklineData { values }),
+            body: Body::NumberSeries(NumberSeriesData { values }),
         }
     }
 

@@ -8,7 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarChartData, Body, GaugeData, ListData, ListItem, Payload, SparklineData, Status,
+    Bar, BarsData, Body, CalendarData, EntriesData, Entry, NumberSeriesData, Payload, PointSeries,
+    PointSeriesData, RatioData, Status,
 };
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
@@ -19,6 +20,8 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(GitCommitsStub),
         Arc::new(SystemStub),
         Arc::new(GithubPrsStub),
+        Arc::new(TrendStub),
+        Arc::new(TodayStub),
     ]
 }
 
@@ -33,7 +36,7 @@ impl Fetcher for DiskStub {
         Safety::Safe
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Gauge(GaugeData {
+        Ok(payload(Body::Ratio(RatioData {
             value: 0.45,
             label: Some("45% of 500 GB".into()),
         })))
@@ -51,7 +54,7 @@ impl Fetcher for GitCommitsStub {
         Safety::Exec
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Sparkline(SparklineData {
+        Ok(payload(Body::NumberSeries(NumberSeriesData {
             values: vec![2, 5, 0, 3, 7, 4, 1, 6, 9, 2, 3, 5, 8, 4],
         })))
     }
@@ -69,19 +72,19 @@ impl Fetcher for SystemStub {
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         let ok = Some(Status::Ok);
-        Ok(payload(Body::List(ListData {
+        Ok(payload(Body::Entries(EntriesData {
             items: vec![
-                ListItem {
+                Entry {
                     key: "os".into(),
                     value: Some("linux".into()),
                     status: ok,
                 },
-                ListItem {
+                Entry {
                     key: "uptime".into(),
                     value: Some("3d 2h".into()),
                     status: ok,
                 },
-                ListItem {
+                Entry {
                     key: "load".into(),
                     value: Some("0.28".into()),
                     status: ok,
@@ -102,7 +105,7 @@ impl Fetcher for GithubPrsStub {
         Safety::Network
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::BarChart(BarChartData {
+        Ok(payload(Body::Bars(BarsData {
             bars: vec![
                 Bar {
                     label: "splsh".into(),
@@ -117,6 +120,56 @@ impl Fetcher for GithubPrsStub {
                     value: 1,
                 },
             ],
+        })))
+    }
+}
+
+pub struct TrendStub;
+
+#[async_trait]
+impl Fetcher for TrendStub {
+    fn name(&self) -> &str {
+        "trend"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        Ok(payload(Body::PointSeries(PointSeriesData {
+            series: vec![PointSeries {
+                name: "series".into(),
+                points: vec![
+                    (0.0, 20.0),
+                    (1.0, 22.5),
+                    (2.0, 19.8),
+                    (3.0, 24.1),
+                    (4.0, 23.0),
+                    (5.0, 25.6),
+                    (6.0, 22.0),
+                ],
+            }],
+        })))
+    }
+}
+
+pub struct TodayStub;
+
+#[async_trait]
+impl Fetcher for TodayStub {
+    fn name(&self) -> &str {
+        "today"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
+        use chrono::Datelike;
+        let now = chrono::Local::now().date_naive();
+        Ok(payload(Body::Calendar(CalendarData {
+            year: now.year(),
+            month: now.month() as u8,
+            day: Some(now.day() as u8),
+            events: Vec::new(),
         })))
     }
 }
@@ -146,7 +199,14 @@ mod tests {
     fn all_stubs_are_registered() {
         let fetchers = stubs();
         let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
-        for expected in ["disk", "git_commits", "system", "github_prs"] {
+        for expected in [
+            "disk",
+            "git_commits",
+            "system",
+            "github_prs",
+            "trend",
+            "today",
+        ] {
             assert!(names.contains(&expected), "missing stub: {expected}");
         }
     }

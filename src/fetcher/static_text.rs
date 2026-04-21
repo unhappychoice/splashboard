@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::payload::{Body, Payload, TextData};
+use crate::payload::{Body, LinesData, Payload};
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
@@ -29,7 +29,7 @@ impl Fetcher for StaticText {
             icon: None,
             status: None,
             format: None,
-            body: Body::Text(TextData { lines }),
+            body: Body::Lines(LinesData { lines }),
         })
     }
 }
@@ -50,7 +50,7 @@ mod tests {
 
     fn text_lines(p: Payload) -> Vec<String> {
         match p.body {
-            Body::Text(t) => t.lines,
+            Body::Lines(t) => t.lines,
             _ => panic!("expected text body"),
         }
     }

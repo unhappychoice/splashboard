@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{self, Stdout, stdout};
+use std::io::{self, stdout};
 use std::path::Path;
 use std::time::Duration;
 
@@ -15,13 +15,21 @@ use crate::daemon;
 use crate::fetcher::{FetchContext, Registry};
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
+use crate::render::{self, RenderSpec};
 use crate::trust::{self, TrustStore};
 
 const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
 const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
-const VIEWPORT_LINES: u16 = 16;
+/// Frame interval while inside the multi-frame render loop. Animated renderers rely on this
+/// cadence to produce motion; sub-50ms would waste CPU, above 100ms would look choppy.
+const FRAME_TICK: Duration = Duration::from_millis(50);
+/// How long to run the render loop when the only reason for looping is animation (no wait).
+/// Long enough for `animated_typewriter` to finish typing; short enough to not noticeably
+/// delay the shell on cache-warm startups.
+const ANIMATION_WINDOW: Duration = Duration::from_secs(2);
+const DEFAULT_VIEWPORT_LINES: u16 = 16;
 
 pub async fn run(
     config: &Config,
@@ -31,6 +39,8 @@ pub async fn run(
     let layout = config.to_layout();
     let cache = Cache::open_default();
     let registry = Registry::with_builtins();
+    let render_registry = render::Registry::with_builtins();
+    let specs = render_specs(&config.widgets);
 
     // Split widgets into what we can fetch vs what we must gate behind trust. Gated slots render
     // a canned "🔒 requires trust" placeholder so the layout stays intact and the user can see
@@ -44,48 +54,82 @@ pub async fn run(
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
 
-    // No cache hits yet → promote to --wait behavior so we don't exit with a blank terminal.
-    // Subsequent invocations (once the daemon has populated the cache) stay cache-first.
+    // Load axis: decide whether to block on fresh data. Empty cache gets promoted to wait
+    // so we don't exit with a blank terminal on first run.
     let wait = wait || config.general.wait_for_fresh || entries.is_empty();
 
-    let backend = CrosstermBackend::new(stdout());
-    let mut terminal = make_terminal(backend)?;
+    // Render axis: decide whether any configured renderer needs repeat frames. Independent of
+    // the load decision — an animated widget must animate regardless of cache state.
+    let animated = render::any_widget_animates(&config.widgets, &render_registry);
 
-    // Cache-first: unless we're waiting, paint what we have from disk (plus trust placeholders)
-    // immediately so the shell prompt is never blocked on fetch I/O.
-    let drew_cached = !wait && !payloads.is_empty();
-    if drew_cached {
-        draw(&mut terminal, &layout, &payloads)?;
+    let loop_window = match (wait, animated) {
+        (false, false) => None,
+        (false, true) => Some(ANIMATION_WINDOW),
+        (true, _) => Some(WAIT_DEADLINE),
+    };
+
+    let viewport_lines = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
+    let backend = CrosstermBackend::new(stdout());
+    let mut terminal = make_terminal(backend, viewport_lines)?;
+
+    // Cache-first one-shot: no looping needed, paint what we have and exit.
+    if loop_window.is_none() {
+        draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+        let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
+        finalize_splash(&mut terminal);
+        return Ok(());
     }
 
+    let window = loop_window.unwrap();
     match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
-        Ok(child) => {
-            if wait {
-                // Block on the daemon (with a hard ceiling) and then draw with whatever it
-                // managed to write before the deadline.
-                let _ = wait_for_daemon(child, WAIT_DEADLINE).await;
+        Ok(mut child) => {
+            // Multi-frame loop: ticks the frame every FRAME_TICK so animated renderers can
+            // animate; picks up daemon-written cache entries as they land; stops when the
+            // daemon finishes (if we were waiting for it) or the window expires.
+            let deadline = std::time::Instant::now() + window;
+            loop {
                 refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
-                draw(&mut terminal, &layout, &payloads)?;
+                draw(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    if wait {
+                        let _ = child.start_kill();
+                    }
+                    break;
+                }
+                let tick = remaining.min(FRAME_TICK);
+                if wait {
+                    match tokio::time::timeout(tick, child.wait()).await {
+                        Ok(_) => break,
+                        Err(_) => continue,
+                    }
+                } else {
+                    tokio::time::sleep(tick).await;
+                }
             }
-            // Steady state (!wait): child is detached, it keeps fetching after we exit. Next
-            // invocation picks up its output from the cache.
+            refresh_payloads(&cache, &registry, &fetchable, &gated, &mut payloads);
+            draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
         Err(_) => {
-            // Failing to spawn the daemon is rare (OOM, exec permission). Fall back to inline
-            // fetch so the user still gets fresh data this invocation.
-            let deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
-            let fresh = fetch_all(&registry, cache.as_ref(), &fetchable, &entries, deadline).await;
-            let changed = !fresh.is_empty();
+            // Spawning the daemon failed (OOM, exec permission) — rare. Fall back to inline
+            // fetch and a single final draw so the user still sees something useful.
+            let fetch_deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
+            let fresh = fetch_all(
+                &registry,
+                cache.as_ref(),
+                &fetchable,
+                &entries,
+                fetch_deadline,
+            )
+            .await;
             for (id, payload) in fresh {
                 payloads.insert(id, payload);
             }
-            if !drew_cached || changed {
-                draw(&mut terminal, &layout, &payloads)?;
-            }
+            draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         }
     }
 
-    println!();
+    finalize_splash(&mut terminal);
     Ok(())
 }
 
@@ -124,20 +168,6 @@ fn refresh_payloads(
     *payloads = entries_to_payloads(&entries);
     for w in gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
-    }
-}
-
-async fn wait_for_daemon(mut child: tokio::process::Child, deadline: Duration) -> io::Result<()> {
-    match tokio::time::timeout(deadline, child.wait()).await {
-        Ok(Ok(_status)) => Ok(()),
-        Ok(Err(e)) => Err(e),
-        Err(_elapsed) => {
-            let _ = child.start_kill();
-            Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "fetch daemon timed out",
-            ))
-        }
     }
 }
 
@@ -230,11 +260,11 @@ fn should_refresh(cached: &HashMap<WidgetId, CacheEntry>, w: &WidgetConfig) -> b
     }
 }
 
-fn make_terminal<B: Backend>(backend: B) -> io::Result<Terminal<B>> {
+fn make_terminal<B: Backend>(backend: B, viewport_lines: u16) -> io::Result<Terminal<B>> {
     Terminal::with_options(
         backend,
         TerminalOptions {
-            viewport: Viewport::Inline(VIEWPORT_LINES),
+            viewport: Viewport::Inline(viewport_lines),
         },
     )
 }
@@ -243,27 +273,67 @@ fn draw<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
     payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
 ) -> io::Result<()> {
-    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads))?;
+    terminal.draw(|frame| layout::draw(frame, frame.area(), root, payloads, specs, registry))?;
     Ok(())
 }
 
-#[allow(dead_code)]
-fn stdout_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
-    make_terminal(CrosstermBackend::new(stdout()))
+/// Same as [`draw`] but parks the cursor at the bottom-left of the inline area afterwards, so
+/// the caller's `println!()` lands one row below the splash instead of inside it. Moves via
+/// the backend rather than `Frame::set_cursor_position` — the latter re-shows the cursor and
+/// we want it to stay hidden (matches ratatui's default for every intermediate draw). The
+/// caller is responsible for re-showing the cursor just before returning to the shell.
+fn draw_final<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+) -> io::Result<()> {
+    let mut captured: Option<ratatui::layout::Rect> = None;
+    terminal.draw(|frame| {
+        let area = frame.area();
+        captured = Some(area);
+        layout::draw(frame, area, root, payloads, specs, registry);
+    })?;
+    if let Some(area) = captured
+        && area.height > 0
+    {
+        terminal.set_cursor_position(ratatui::layout::Position {
+            x: area.x,
+            y: area.y + area.height - 1,
+        })?;
+    }
+    Ok(())
+}
+
+/// Hand back to the shell: show the cursor (ratatui hid it during drawing) and emit the
+/// trailing newline that moves the cursor past the inline viewport.
+fn finalize_splash<B: Backend>(terminal: &mut Terminal<B>) {
+    let _ = terminal.show_cursor();
+    println!();
+}
+
+fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
+    widgets
+        .iter()
+        .filter_map(|w| w.render.clone().map(|s| (w.id.clone(), s)))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Body, TextData};
+    use crate::payload::{Body, LinesData};
 
     fn text_payload(line: &str) -> Payload {
         Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::Text(TextData {
+            body: Body::Lines(LinesData {
                 lines: vec![line.into()],
             }),
         }
@@ -273,7 +343,7 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: fetcher.into(),
-            render: crate::config::RenderType::Text,
+            render: None,
             format: None,
             refresh_interval: Some(60),
         }
@@ -310,7 +380,7 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: "static".into(),
-            render: crate::config::RenderType::Text,
+            render: None,
             format: Some(text.into()),
             refresh_interval: Some(60),
         }
@@ -339,7 +409,7 @@ mod tests {
             .cache_key(&fetch_context(&widgets[0], Duration::from_secs(0)));
         let loaded = cache.load(&key).unwrap();
         match loaded.payload.body {
-            Body::Text(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
+            Body::Lines(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
             _ => panic!("expected text body"),
         }
     }
@@ -403,7 +473,7 @@ mod tests {
         let widgets = vec![WidgetConfig {
             id: "greeting".into(),
             fetcher: "static".into(),
-            render: crate::config::RenderType::Text,
+            render: None,
             format: Some("Hi!".into()),
             refresh_interval: Some(60),
         }];

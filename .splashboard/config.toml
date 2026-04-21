@@ -1,0 +1,161 @@
+# Dogfood config for the splashboard repo itself. Every shape and every registered renderer
+# appears somewhere below so `cargo run` in this directory doubles as a visual smoke test for
+# the 3-axis registry. Real users' configs will be much smaller.
+
+[general]
+wait_for_fresh = false
+height = 32
+
+# ── Lines shape: 4 renderers ──────────────────────────────────────────
+
+[[widget]]
+id = "greeting_simple"
+fetcher = "static"
+render = "simple"
+format = "render = \"simple\"\nratatui Paragraph; flows multi-line format"
+
+[[widget]]
+id = "clock_blocks"
+fetcher = "clock"
+render = { type = "ascii_art", style = "blocks", pixel_size = "quadrant" }
+
+[[widget]]
+id = "clock_figlet"
+fetcher = "clock"
+render = { type = "ascii_art", style = "figlet" }
+
+[[widget]]
+id = "typewriter"
+fetcher = "static"
+render = "animated_typewriter"
+format = "animated_typewriter:\nreveals character by character while --wait ticks"
+
+[[widget]]
+id = "notes"
+fetcher = "static"
+render = "list"
+format = "render = \"list\"\nratatui::List widget\ndifferent from table"
+
+# ── Entries ─────────────────────────────────────────────────────────
+
+[[widget]]
+id = "system"
+fetcher = "system"
+render = "table"
+
+# ── Ratio: 2 renderers ──────────────────────────────────────────────
+
+[[widget]]
+id = "disk_gauge"
+fetcher = "disk"
+render = "gauge"
+
+[[widget]]
+id = "disk_line"
+fetcher = "disk"
+render = "line_gauge"
+
+# ── NumberSeries ────────────────────────────────────────────────────
+
+[[widget]]
+id = "commits"
+fetcher = "git_commits"
+render = "sparkline"
+
+# ── PointSeries: 2 renderers ────────────────────────────────────────
+
+[[widget]]
+id = "trend_line"
+fetcher = "trend"
+render = "chart_line"
+
+[[widget]]
+id = "trend_dots"
+fetcher = "trend"
+render = "scatter"
+
+# ── Bars ────────────────────────────────────────────────────────────
+
+[[widget]]
+id = "prs"
+fetcher = "github_prs"
+render = "bar_chart"
+
+# ── Calendar ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "today"
+fetcher = "today"
+render = "calendar"
+
+# ── Layout ──────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 4 }
+
+  [[row.child]]
+  widget = "greeting_simple"
+  title = "simple"
+
+  [[row.child]]
+  widget = "typewriter"
+  title = "animated_typewriter"
+
+  [[row.child]]
+  widget = "notes"
+  title = "list"
+
+[[row]]
+height = { length = 6 }
+
+  [[row.child]]
+  widget = "clock_blocks"
+  title = "ascii_art (blocks)"
+
+  [[row.child]]
+  widget = "clock_figlet"
+  title = "ascii_art (figlet)"
+
+[[row]]
+height = { length = 3 }
+
+  [[row.child]]
+  widget = "disk_gauge"
+  title = "gauge"
+
+  [[row.child]]
+  widget = "disk_line"
+  title = "line_gauge"
+
+[[row]]
+height = { length = 5 }
+
+  [[row.child]]
+  widget = "commits"
+  title = "sparkline"
+
+  [[row.child]]
+  widget = "prs"
+  title = "bar_chart"
+
+[[row]]
+height = { length = 7 }
+
+  [[row.child]]
+  widget = "trend_line"
+  title = "chart_line"
+
+  [[row.child]]
+  widget = "trend_dots"
+  title = "scatter"
+
+  [[row.child]]
+  widget = "today"
+  title = "calendar"
+
+[[row]]
+height = { length = 6 }
+
+  [[row.child]]
+  widget = "system"
+  title = "table"

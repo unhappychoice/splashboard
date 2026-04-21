@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use crate::cache::tmp_path_for;
 use crate::config::{Config, WidgetConfig, default_global_path};
 use crate::fetcher::{Registry, Safety};
-use crate::payload::{Body, Payload, TextData};
+use crate::payload::{Body, LinesData, Payload};
 
 const TRUST_ALL_ENV: &str = "SPLASHBOARD_TRUST_ALL";
 
@@ -168,7 +168,7 @@ pub fn requires_trust_placeholder() -> Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::Text(TextData {
+        body: Body::Lines(LinesData {
             lines: vec!["🔒 requires trust".into(), "run `splashboard trust`".into()],
         }),
     }
@@ -192,7 +192,6 @@ fn store_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::RenderType;
     use crate::fetcher::{FetchContext, FetchError, Fetcher};
     use async_trait::async_trait;
     use std::sync::Arc;
@@ -230,7 +229,7 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: fetcher.into(),
-            render: RenderType::Text,
+            render: None,
             format: None,
             refresh_interval: None,
         }
@@ -411,11 +410,11 @@ mod tests {
     fn placeholder_has_lock_icon_in_first_line() {
         let p = requires_trust_placeholder();
         match p.body {
-            Body::Text(t) => {
+            Body::Lines(t) => {
                 assert!(t.lines[0].contains("🔒"));
                 assert!(t.lines[1].contains("splashboard trust"));
             }
-            _ => panic!("expected text body"),
+            _ => panic!("expected lines body"),
         }
     }
 }

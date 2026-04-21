@@ -4,13 +4,13 @@ wait_for_fresh = false
 [[widget]]
 id = "greeting"
 fetcher = "static"
-render = "text"
+render = "simple"
 format = "Hello, splashboard!"
 
 [[widget]]
 id = "clock"
 fetcher = "clock"
-render = "bignum"
+render = "ascii_art"
 
 [[widget]]
 id = "disk"
@@ -25,7 +25,7 @@ render = "sparkline"
 [[widget]]
 id = "system"
 fetcher = "system"
-render = "list"
+render = "table"
 
 [[widget]]
 id = "prs"

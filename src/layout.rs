@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::payload::Payload;
-use crate::render::render_payload;
+use crate::render::{Registry, RenderSpec, render_payload};
 
 pub type WidgetId = String;
 
@@ -179,7 +179,14 @@ impl Child {
     }
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, layout: &Layout, widgets: &HashMap<WidgetId, Payload>) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    layout: &Layout,
+    widgets: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &Registry,
+) {
     match layout {
         Layout::Stack {
             direction,
@@ -187,12 +194,12 @@ pub fn draw(frame: &mut Frame, area: Rect, layout: &Layout, widgets: &HashMap<Wi
             panel,
         } => {
             let inner = draw_panel(frame, area, panel);
-            draw_stack(frame, inner, *direction, children, widgets);
+            draw_stack(frame, inner, *direction, children, widgets, specs, registry);
         }
         Layout::Widget { id, panel } => {
             let inner = draw_panel(frame, area, panel);
             if let Some(payload) = widgets.get(id) {
-                render_payload(frame, inner, payload);
+                render_payload(frame, inner, payload, specs.get(id), registry);
             }
         }
         Layout::Empty => {}
@@ -236,6 +243,8 @@ fn draw_stack(
     direction: Direction,
     children: &[Child],
     widgets: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &Registry,
 ) {
     let constraints: Vec<Constraint> = children.iter().map(|c| to_constraint(c.size)).collect();
     let rects = RatLayout::default()
@@ -243,7 +252,7 @@ fn draw_stack(
         .constraints(constraints)
         .split(area);
     for (child, rect) in children.iter().zip(rects.iter()) {
-        draw(frame, *rect, &child.layout, widgets);
+        draw(frame, *rect, &child.layout, widgets, specs, registry);
     }
 }
 
@@ -269,7 +278,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::payload::{Body, Payload, TextData};
+    use crate::payload::{Body, LinesData, Payload};
     use crate::render::test_utils::{line_text, render_to_buffer_with};
 
     fn text_widget(lines: &[&str]) -> Payload {
@@ -277,7 +286,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Text(TextData {
+            body: Body::Lines(LinesData {
                 lines: lines.iter().map(|s| s.to_string()).collect(),
             }),
         }

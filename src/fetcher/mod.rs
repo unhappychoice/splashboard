@@ -97,7 +97,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Body, TextData};
+    use crate::payload::{Body, LinesData};
 
     struct Dummy(&'static str, Safety);
 
@@ -114,7 +114,7 @@ mod tests {
                 icon: None,
                 status: None,
                 format: None,
-                body: Body::Text(TextData { lines: vec![] }),
+                body: Body::Lines(LinesData { lines: vec![] }),
             })
         }
     }
@@ -142,7 +142,7 @@ mod tests {
             timeout: Duration::from_secs(1),
         };
         let p = f.fetch(&ctx).await.unwrap();
-        assert!(matches!(p.body, Body::Text(_)));
+        assert!(matches!(p.body, Body::Lines(_)));
         assert_eq!(f.safety(), Safety::Network);
     }
 

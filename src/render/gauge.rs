@@ -1,8 +1,26 @@
 use ratatui::{Frame, layout::Rect, widgets::Gauge};
 
-use crate::payload::GaugeData;
+use crate::payload::{Body, RatioData};
 
-pub fn render(frame: &mut Frame, area: Rect, data: &GaugeData) {
+use super::{RenderOptions, Renderer, Shape};
+
+pub struct GaugeRenderer;
+
+impl Renderer for GaugeRenderer {
+    fn name(&self) -> &str {
+        "gauge"
+    }
+    fn accepts(&self) -> &[Shape] {
+        &[Shape::Ratio]
+    }
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+        if let Body::Ratio(d) = body {
+            render_gauge(frame, area, d);
+        }
+    }
+}
+
+fn render_gauge(frame: &mut Frame, area: Rect, data: &RatioData) {
     let ratio = data.value.clamp(0.0, 1.0);
     let mut gauge = Gauge::default().ratio(ratio);
     if let Some(label) = &data.label {
@@ -13,7 +31,8 @@ pub fn render(frame: &mut Frame, area: Rect, data: &GaugeData) {
 
 #[cfg(test)]
 mod tests {
-    use crate::payload::{Body, GaugeData, Payload};
+    use super::*;
+    use crate::payload::{Payload, RatioData};
     use crate::render::test_utils::render_to_buffer;
 
     fn payload(value: f64, label: Option<&str>) -> Payload {
@@ -21,7 +40,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Gauge(GaugeData {
+            body: Body::Ratio(RatioData {
                 value,
                 label: label.map(String::from),
             }),

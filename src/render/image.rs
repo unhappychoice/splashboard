@@ -5,9 +5,27 @@ use image::DynamicImage;
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use ratatui_image::{StatefulImage, picker::Picker};
 
-use crate::payload::ImageData;
+use crate::payload::{Body, ImageData};
 
-pub fn render(frame: &mut Frame, area: Rect, data: &ImageData) {
+use super::{RenderOptions, Renderer, Shape};
+
+pub struct ImageRenderer;
+
+impl Renderer for ImageRenderer {
+    fn name(&self) -> &str {
+        "image"
+    }
+    fn accepts(&self) -> &[Shape] {
+        &[Shape::Image]
+    }
+    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+        if let Body::Image(d) = body {
+            render_image_payload(frame, area, d);
+        }
+    }
+}
+
+fn render_image_payload(frame: &mut Frame, area: Rect, data: &ImageData) {
     match render_image(frame, area, &data.path) {
         Ok(()) => {}
         Err(msg) => frame.render_widget(Paragraph::new(msg), area),
@@ -43,7 +61,8 @@ fn load_image(path: &str) -> Result<DynamicImage, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::payload::{Body, ImageData, Payload};
+    use super::*;
+    use crate::payload::{ImageData, Payload};
     use crate::render::test_utils::{line_text, render_to_buffer};
 
     fn payload(path: &str) -> Payload {
