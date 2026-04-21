@@ -3,17 +3,23 @@ use std::io::{self, stdout};
 
 use ratatui::{Terminal, TerminalOptions, Viewport, backend::CrosstermBackend};
 
-use crate::layout::{Child, Layout, WidgetId};
+use crate::config::Config;
+use crate::layout::WidgetId;
 use crate::payload::{
     Bar, BarChartData, BignumData, Body, GaugeData, ListData, ListItem, Payload, SparklineData,
     Status, TextData,
 };
 
+mod config;
 mod layout;
 mod payload;
 mod render;
 
 fn main() -> io::Result<()> {
+    let config = load_config();
+    let root = config.to_layout();
+    let widgets = widgets_for(&config);
+
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::with_options(
         backend,
@@ -21,42 +27,35 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Inline(16),
         },
     )?;
-    let root = demo_layout();
-    let widgets = demo_widgets();
     terminal.draw(|frame| layout::draw(frame, frame.area(), &root, &widgets))?;
     println!();
     Ok(())
 }
 
-fn demo_layout() -> Layout {
-    Layout::rows(vec![
-        Child::min(6, row(&[("greeting", "Greeting"), ("clock", "Clock")])),
-        Child::length(5, row(&[("disk", "Disk /"), ("commits", "Commits (14d)")])),
-        Child::length(5, row(&[("system", "System"), ("prs", "Open PRs")])),
-    ])
+fn load_config() -> Config {
+    config::resolve_config_path()
+        .and_then(|p| Config::load_or_default(&p).ok())
+        .unwrap_or_else(Config::default_baked)
 }
 
-fn row(widgets: &[(&str, &str)]) -> Layout {
-    Layout::cols(
-        widgets
-            .iter()
-            .map(|(id, title)| Child::fill(1, Layout::widget(*id).titled(*title)))
-            .collect(),
-    )
+fn widgets_for(config: &Config) -> HashMap<WidgetId, Payload> {
+    config
+        .widgets
+        .iter()
+        .filter_map(|w| stub_payload(&w.id).map(|p| (w.id.clone(), p)))
+        .collect()
 }
 
-fn demo_widgets() -> HashMap<WidgetId, Payload> {
-    [
-        ("greeting", greeting()),
-        ("clock", clock()),
-        ("disk", disk_gauge()),
-        ("commits", commits_sparkline()),
-        ("system", system_list()),
-        ("prs", pr_counts()),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_string(), v))
-    .collect()
+fn stub_payload(id: &str) -> Option<Payload> {
+    match id {
+        "greeting" => Some(greeting()),
+        "clock" => Some(clock()),
+        "disk" => Some(disk_gauge()),
+        "commits" => Some(commits_sparkline()),
+        "system" => Some(system_list()),
+        "prs" => Some(pr_counts()),
+        _ => None,
+    }
 }
 
 fn greeting() -> Payload {

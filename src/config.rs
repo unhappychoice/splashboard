@@ -1,0 +1,319 @@
+#![allow(dead_code)]
+
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
+
+use crate::layout::{BorderStyle, Child, Layout};
+
+const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct Config {
+    #[serde(default)]
+    pub general: General,
+    #[serde(default, rename = "widget")]
+    pub widgets: Vec<WidgetConfig>,
+    #[serde(default, rename = "row")]
+    pub rows: Vec<RowConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct General {
+    #[serde(default)]
+    pub wait_for_fresh: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WidgetConfig {
+    pub id: String,
+    pub fetcher: String,
+    pub render: RenderType,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub refresh_interval: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderType {
+    Text,
+    List,
+    Gauge,
+    Sparkline,
+    LineChart,
+    BarChart,
+    Bignum,
+    Image,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RowConfig {
+    #[serde(default)]
+    pub height: Option<SizeSpec>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub border: Option<BorderSpec>,
+    #[serde(default, rename = "child")]
+    pub children: Vec<ChildConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChildConfig {
+    pub widget: String,
+    #[serde(default)]
+    pub width: Option<SizeSpec>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub border: Option<BorderSpec>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SizeSpec {
+    Fill(u16),
+    Length(u16),
+    Min(u16),
+    Max(u16),
+    Percentage(u16),
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BorderSpec {
+    Plain,
+    Rounded,
+    Thick,
+    Double,
+}
+
+impl Config {
+    pub fn default_baked() -> Self {
+        toml::from_str(DEFAULT_CONFIG).expect("built-in default config must parse")
+    }
+
+    pub fn load_or_default(path: &Path) -> Result<Self, String> {
+        match std::fs::read_to_string(path) {
+            Ok(s) => Self::parse(&s).map_err(|e| format!("{}: {e}", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default_baked()),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
+    }
+
+    pub fn parse(toml_str: &str) -> Result<Self, String> {
+        toml::from_str(toml_str).map_err(|e| e.to_string())
+    }
+
+    pub fn to_layout(&self) -> Layout {
+        Layout::rows(self.rows.iter().map(to_row_child).collect())
+    }
+}
+
+pub const LOCAL_CONFIG_FILENAME: &str = ".splashboard.toml";
+
+pub fn resolve_config_path() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    find_local(&cwd).or_else(default_global_path)
+}
+
+fn find_local(start: &Path) -> Option<PathBuf> {
+    let mut current = Some(start);
+    while let Some(dir) = current {
+        let candidate = dir.join(LOCAL_CONFIG_FILENAME);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        current = dir.parent();
+    }
+    None
+}
+
+fn default_global_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("splashboard").join("config.toml"))
+}
+
+fn to_row_child(row: &RowConfig) -> Child {
+    let inner = Layout::cols(row.children.iter().map(to_col_child).collect());
+    let decorated = apply_panel(inner, row.title.as_deref(), row.border);
+    make_child(row.height, decorated)
+}
+
+fn to_col_child(c: &ChildConfig) -> Child {
+    let leaf = Layout::widget(c.widget.clone());
+    let decorated = apply_panel(leaf, c.title.as_deref(), c.border);
+    make_child(c.width, decorated)
+}
+
+fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
+    match size {
+        Some(SizeSpec::Fill(w)) => Child::fill(w, layout),
+        Some(SizeSpec::Length(n)) => Child::length(n, layout),
+        Some(SizeSpec::Min(n)) => Child::min(n, layout),
+        Some(SizeSpec::Max(n)) => Child::max(n, layout),
+        Some(SizeSpec::Percentage(p)) => Child::percentage(p, layout),
+        None => Child::fill(1, layout),
+    }
+}
+
+fn apply_panel(layout: Layout, title: Option<&str>, border: Option<BorderSpec>) -> Layout {
+    let l = match title {
+        Some(t) => layout.titled(t),
+        None => layout,
+    };
+    match border {
+        Some(b) => l.bordered(to_border_style(b)),
+        None => l,
+    }
+}
+
+fn to_border_style(b: BorderSpec) -> BorderStyle {
+    match b {
+        BorderSpec::Plain => BorderStyle::Plain,
+        BorderSpec::Rounded => BorderStyle::Rounded,
+        BorderSpec::Thick => BorderStyle::Thick,
+        BorderSpec::Double => BorderStyle::Double,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_baked_config_parses() {
+        let _ = Config::default_baked();
+    }
+
+    #[test]
+    fn default_baked_has_expected_widgets() {
+        let c = Config::default_baked();
+        let ids: Vec<&str> = c.widgets.iter().map(|w| w.id.as_str()).collect();
+        assert!(ids.contains(&"greeting"));
+        assert!(ids.contains(&"clock"));
+        assert!(ids.contains(&"prs"));
+    }
+
+    #[test]
+    fn minimal_config_parses() {
+        let toml = r#"
+[[widget]]
+id = "x"
+fetcher = "static"
+render = "text"
+
+[[row]]
+height = { length = 3 }
+[[row.child]]
+widget = "x"
+"#;
+        let c = Config::parse(toml).unwrap();
+        assert_eq!(c.widgets.len(), 1);
+        assert_eq!(c.rows.len(), 1);
+        assert_eq!(c.rows[0].children.len(), 1);
+    }
+
+    #[test]
+    fn size_spec_accepts_variants() {
+        let toml = r#"
+[[widget]]
+id = "x"
+fetcher = "f"
+render = "text"
+
+[[row]]
+height = { fill = 2 }
+[[row.child]]
+widget = "x"
+width = { percentage = 50 }
+
+[[row]]
+height = { min = 6 }
+[[row.child]]
+widget = "x"
+width = { max = 30 }
+"#;
+        let c = Config::parse(toml).unwrap();
+        assert!(matches!(c.rows[0].height, Some(SizeSpec::Fill(2))));
+        assert!(matches!(
+            c.rows[0].children[0].width,
+            Some(SizeSpec::Percentage(50))
+        ));
+        assert!(matches!(c.rows[1].height, Some(SizeSpec::Min(6))));
+        assert!(matches!(
+            c.rows[1].children[0].width,
+            Some(SizeSpec::Max(30))
+        ));
+    }
+
+    #[test]
+    fn border_spec_parses_all_styles() {
+        for name in ["plain", "rounded", "thick", "double"] {
+            let toml = format!(
+                r#"
+[[widget]]
+id = "x"
+fetcher = "f"
+render = "text"
+
+[[row]]
+border = "{name}"
+[[row.child]]
+widget = "x"
+"#
+            );
+            Config::parse(&toml).unwrap();
+        }
+    }
+
+    #[test]
+    fn invalid_toml_returns_error() {
+        let r = Config::parse("this is not [valid toml");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn missing_file_falls_back_to_default() {
+        let path = Path::new("/does/not/exist.toml");
+        let c = Config::load_or_default(path).unwrap();
+        assert!(!c.widgets.is_empty());
+    }
+
+    #[test]
+    fn find_local_picks_up_file_in_cwd() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(LOCAL_CONFIG_FILENAME), "").unwrap();
+        let found = find_local(dir.path()).unwrap();
+        assert_eq!(found, dir.path().join(LOCAL_CONFIG_FILENAME));
+    }
+
+    #[test]
+    fn find_local_walks_up_to_ancestor() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join(LOCAL_CONFIG_FILENAME), "").unwrap();
+        let nested = root.path().join("a").join("b").join("c");
+        std::fs::create_dir_all(&nested).unwrap();
+        let found = find_local(&nested).unwrap();
+        assert_eq!(found, root.path().join(LOCAL_CONFIG_FILENAME));
+    }
+
+    #[test]
+    fn find_local_returns_none_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(find_local(dir.path()).is_none());
+    }
+
+    #[test]
+    fn to_layout_builds_nested_rows_of_cols() {
+        let c = Config::default_baked();
+        let layout = c.to_layout();
+        match layout {
+            Layout::Stack { children, .. } => {
+                assert!(!children.is_empty());
+            }
+            _ => panic!("expected Stack at root"),
+        }
+    }
+}

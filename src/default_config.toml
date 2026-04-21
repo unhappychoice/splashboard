@@ -1,0 +1,65 @@
+[general]
+wait_for_fresh = false
+
+[[widget]]
+id = "greeting"
+fetcher = "static"
+render = "text"
+
+[[widget]]
+id = "clock"
+fetcher = "clock"
+render = "bignum"
+
+[[widget]]
+id = "disk"
+fetcher = "disk"
+render = "gauge"
+
+[[widget]]
+id = "commits"
+fetcher = "git_commits"
+render = "sparkline"
+
+[[widget]]
+id = "system"
+fetcher = "system"
+render = "list"
+
+[[widget]]
+id = "prs"
+fetcher = "github_prs"
+render = "bar_chart"
+
+[[row]]
+height = { min = 6 }
+
+  [[row.child]]
+  widget = "greeting"
+  title = "Greeting"
+
+  [[row.child]]
+  widget = "clock"
+  title = "Clock"
+
+[[row]]
+height = { length = 5 }
+
+  [[row.child]]
+  widget = "disk"
+  title = "Disk /"
+
+  [[row.child]]
+  widget = "commits"
+  title = "Commits (14d)"
+
+[[row]]
+height = { length = 5 }
+
+  [[row.child]]
+  widget = "system"
+  title = "System"
+
+  [[row.child]]
+  widget = "prs"
+  title = "Open PRs"

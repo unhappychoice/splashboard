@@ -15,6 +15,11 @@ categories = ["command-line-utilities"]
 ratatui = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
+dirs = "5"
 tui-big-text = "0.7"
 ratatui-image = "4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[dev-dependencies]
+tempfile = "3"
