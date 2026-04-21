@@ -45,10 +45,6 @@ pub struct WidgetConfig {
     /// read_store: file format — "json", "toml", or "text". Other fetchers ignore it.
     #[serde(default)]
     pub file_format: Option<String>,
-    /// read_store: target payload shape the file deserializes into — "heatmap", "lines",
-    /// "entries", etc. Other fetchers ignore it.
-    #[serde(default)]
-    pub shape: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

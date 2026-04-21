@@ -106,7 +106,7 @@ render = "bar_chart"
 
 [[widget]]
 id = "today"
-fetcher = "today"
+fetcher = "clock"
 render = "calendar"
 
 # ── Heatmap ─────────────────────────────────────────────────────────
@@ -130,7 +130,6 @@ render = "timeline"
 [[widget]]
 id = "scratch"
 fetcher = "read_store"
-shape = "lines"
 file_format = "text"
 render = { type = "simple", align = "center" }
 

@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::payload::Payload;
+use crate::payload::{Body, LinesData, Payload};
+use crate::render::Shape;
 
 pub mod clock;
 pub mod read_store;
@@ -46,15 +47,28 @@ pub struct FetchContext {
     /// read_store file encoding — "json" / "toml" / "text". Set by config; ignored by
     /// fetchers that don't read files.
     pub file_format: Option<String>,
-    /// read_store target shape — "heatmap" / "lines" / "entries" / ... Set by config;
-    /// ignored by fetchers that don't produce shape-dependent output.
-    pub shape: Option<String>,
+    /// Target shape the fetcher should emit. Derived at the runtime boundary from the
+    /// widget's renderer (renderers are single-shape today) or the fetcher's
+    /// [`Fetcher::default_shape`] when no renderer is specified. Multi-shape fetchers branch
+    /// on this; single-shape fetchers ignore it.
+    pub shape: Option<Shape>,
 }
 
 #[async_trait]
 pub trait Fetcher: Send + Sync {
     fn name(&self) -> &str;
     fn safety(&self) -> Safety;
+    /// Shapes this fetcher can emit. Single-shape fetchers (static_text, disk) return one
+    /// variant; fetchers whose one physical read can be reshaped for different widgets (clock,
+    /// read_store) list every variant they accept. Validated against the renderer-derived
+    /// shape at the runtime boundary so an unsupported pairing renders a placeholder rather
+    /// than silently returning the wrong Body.
+    fn shapes(&self) -> &[Shape];
+    /// Shape used when config doesn't specify a renderer. Must be an element of `shapes()`.
+    /// Defaults to the first entry so simple single-shape fetchers don't need to override.
+    fn default_shape(&self) -> Shape {
+        self.shapes()[0]
+    }
     /// Identity of this fetcher-invocation for caching. Two calls that share a key see the same
     /// payload. Default covers the common case (`name + format`); fetchers whose output depends on
     /// more (cwd, repo, URL) override this to mix those in.
@@ -71,7 +85,34 @@ pub trait Fetcher: Send + Sync {
 pub trait RealtimeFetcher: Send + Sync {
     fn name(&self) -> &str;
     fn safety(&self) -> Safety;
+    fn shapes(&self) -> &[Shape];
+    fn default_shape(&self) -> Shape {
+        self.shapes()[0]
+    }
     fn compute(&self, ctx: &FetchContext) -> Payload;
+}
+
+/// Fetcher can't emit the shape the renderer expects. Surfaced as a placeholder so the splash
+/// keeps rendering even when the config pairs, say, `fetcher = "disk"` with `render = "calendar"`.
+#[derive(Debug, Clone)]
+pub struct ShapeMismatch {
+    pub fetcher: String,
+    pub requested: Shape,
+}
+
+/// Structure mirrors [`crate::trust::requires_trust_placeholder`] — a two-line hint so the user
+/// can tell what's wrong without opening logs.
+pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
+    let lines = vec![
+        format!("⚠ {} can't emit {}", err.fetcher, err.requested.as_str()),
+        "check `render` in config".into(),
+    ];
+    Payload {
+        icon: None,
+        status: None,
+        format: None,
+        body: Body::Lines(LinesData { lines }),
+    }
 }
 
 pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
@@ -104,6 +145,18 @@ impl RegisteredFetcher {
             Self::Realtime(f) => f.safety(),
         }
     }
+    pub fn shapes(&self) -> Vec<Shape> {
+        match self {
+            Self::Cached(f) => f.shapes().to_vec(),
+            Self::Realtime(f) => f.shapes().to_vec(),
+        }
+    }
+    pub fn default_shape(&self) -> Shape {
+        match self {
+            Self::Cached(f) => f.default_shape(),
+            Self::Realtime(f) => f.default_shape(),
+        }
+    }
     pub fn as_cached(&self) -> Option<Arc<dyn Fetcher>> {
         match self {
             Self::Cached(f) => Some(f.clone()),
@@ -131,9 +184,6 @@ impl Registry {
         r.register_realtime(Arc::new(clock::ClockFetcher));
         for f in stub::stubs() {
             r.register(f);
-        }
-        for f in stub::realtime_stubs() {
-            r.register_realtime(f);
         }
         r
     }
@@ -180,6 +230,9 @@ mod tests {
         fn safety(&self) -> Safety {
             self.1
         }
+        fn shapes(&self) -> &[Shape] {
+            &[Shape::Lines]
+        }
         async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
             Ok(Payload {
                 icon: None,
@@ -198,6 +251,9 @@ mod tests {
         }
         fn safety(&self) -> Safety {
             self.1
+        }
+        fn shapes(&self) -> &[Shape] {
+            &[Shape::Lines]
         }
         fn compute(&self, _: &FetchContext) -> Payload {
             Payload {

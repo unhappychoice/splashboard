@@ -58,7 +58,7 @@ Produces a `Payload`. Two flavors:
 
 Key invariants:
 
-- Each fetcher currently declares **one output Shape**. Multi-shape fetchers are planned via #44 (`fn shapes(&self) -> &[Shape]`) — until that lands, "same data, different presentation" means either (a) two fetchers or (b) ReadStore + user-shaped file.
+- Each fetcher declares its supported shapes via **`fn shapes(&self) -> &[Shape]`**. Multi-shape fetchers (`clock`, `read_store`) branch on `ctx.shape` inside `fetch` / `compute`; the runtime validates the config-requested shape against the list before dispatch and renders a placeholder on mismatch instead of crashing. Single-shape fetchers just return a one-element slice.
 - Each fetcher declares a **`Safety`** class:
   - `Safe` — renders even in untrusted local configs. Local-only reads, or fixed-host authenticated network (the token only leaves to a known host).
   - `Network` — trust-gated when the URL or query is config-provided (rss, calendar, any fetcher that takes a user URL).
@@ -66,7 +66,7 @@ Key invariants:
 
 - `ReadStore` (`src/fetcher/read_store.rs`) is the escape hatch for "I want a custom widget": user writes `$HOME/.splashboard/store/<id>.<ext>`, splashboard deserializes per the declared shape. Always `Safe` (fixed path, no traversal).
 
-- Fetchers declare their output shape implicitly today (the `Body` variant they return). Renderers are compat-checked against that shape at dispatch time.
+- Fetchers declare their output shape(s) explicitly via `shapes()`. Renderers are compat-checked against the emitted `Body` variant at dispatch time.
 
 - Both kinds register into the shared `Registry` via `with_builtins()`. Lookup is name-keyed; realtime and cached live in the same namespace, same name = collision (last one wins).
 
@@ -160,7 +160,7 @@ Prioritization rubric (see #41 for the full version):
 
 ## When in doubt
 
-- **"Which fetcher does this belong in?"** — same underlying read, different presentation = same fetcher, different shape (once #44 lands; today, grudgingly, split). Genuinely different data = different fetcher.
+- **"Which fetcher does this belong in?"** — same underlying read, different presentation = same fetcher, different shape (add the variant to `shapes()` and branch in `fetch` / `compute`). Genuinely different data = different fetcher.
 - **"Which renderer?"** — does an existing one accept this shape? Use it. Need different visuals? Register a new renderer that also accepts the shape; don't invent a new shape.
 - **"Is this Safe or Network?"** — ask "can config control where the traffic goes?". If yes → Network. If the URL is hardcoded in the struct → Safe, even with auth (the token only leaves to a known host).
 - **"Realtime or cached?"** — can this fetch ever take > 1ms or ever fail? Cached. Otherwise realtime.

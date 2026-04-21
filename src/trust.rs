@@ -193,6 +193,7 @@ fn store_path() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::fetcher::{FetchContext, FetchError, Fetcher, RealtimeFetcher};
+    use crate::render::Shape;
     use async_trait::async_trait;
     use std::sync::Arc;
 
@@ -208,6 +209,9 @@ mod tests {
         }
         fn safety(&self) -> Safety {
             self.safety
+        }
+        fn shapes(&self) -> &[Shape] {
+            &[Shape::Lines]
         }
         async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
             unimplemented!("fake fetcher not invoked in tests")
@@ -225,6 +229,9 @@ mod tests {
         }
         fn safety(&self) -> Safety {
             self.safety
+        }
+        fn shapes(&self) -> &[Shape] {
+            &[Shape::Lines]
         }
         fn compute(&self, _: &FetchContext) -> Payload {
             unimplemented!("fake realtime not invoked in tests")

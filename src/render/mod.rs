@@ -66,6 +66,26 @@ pub fn shape_of(body: &Body) -> Shape {
     }
 }
 
+impl Shape {
+    /// Stable snake_case label. Used in cache keys and error messages; kept short so cache-key
+    /// lengths stay reasonable.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Lines => "lines",
+            Self::Entries => "entries",
+            Self::Ratio => "ratio",
+            Self::NumberSeries => "number_series",
+            Self::PointSeries => "point_series",
+            Self::Bars => "bars",
+            Self::Image => "image",
+            Self::Calendar => "calendar",
+            Self::Heatmap => "heatmap",
+            Self::Badge => "badge",
+            Self::Timeline => "timeline",
+        }
+    }
+}
+
 /// Per-renderer configuration. Each renderer picks out the fields it cares about from this bag;
 /// others are ignored. Kept deliberately flat so config authors can write
 /// `render = { type = "ascii_art", style = "figlet" }` without nesting.

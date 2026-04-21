@@ -8,12 +8,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData,
-    NumberSeriesData, Payload, PointSeries, PointSeriesData, RatioData, Status, TimelineData,
-    TimelineEvent,
+    BadgeData, Bar, BarsData, Body, EntriesData, Entry, HeatmapData, NumberSeriesData, Payload,
+    PointSeries, PointSeriesData, RatioData, Status, TimelineData, TimelineEvent,
 };
+use crate::render::Shape;
 
-use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
+use super::{FetchContext, FetchError, Fetcher, Safety};
 
 pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
     vec![
@@ -30,10 +30,6 @@ pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
     ]
 }
 
-pub fn realtime_stubs() -> Vec<Arc<dyn RealtimeFetcher>> {
-    vec![Arc::new(TodayStub)]
-}
-
 pub struct DiskStub;
 
 #[async_trait]
@@ -43,6 +39,9 @@ impl Fetcher for DiskStub {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Ratio]
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::Ratio(RatioData {
@@ -62,6 +61,9 @@ impl Fetcher for GitCommitsStub {
     fn safety(&self) -> Safety {
         Safety::Exec
     }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::NumberSeries]
+    }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::NumberSeries(NumberSeriesData {
             values: vec![2, 5, 0, 3, 7, 4, 1, 6, 9, 2, 3, 5, 8, 4],
@@ -78,6 +80,9 @@ impl Fetcher for SystemStub {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Entries]
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         let ok = Some(Status::Ok);
@@ -113,6 +118,9 @@ impl Fetcher for GithubPrsStub {
     fn safety(&self) -> Safety {
         Safety::Network
     }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Bars]
+    }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::Bars(BarsData {
             bars: vec![
@@ -142,6 +150,9 @@ impl Fetcher for TrendStub {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::PointSeries]
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::PointSeries(PointSeriesData {
@@ -174,6 +185,9 @@ impl Fetcher for ContributionsStub {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Heatmap]
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::Heatmap(HeatmapData {
@@ -261,6 +275,9 @@ impl Fetcher for CiStatusStub {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Badge]
+    }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(badge(Status::Ok, "build passing"))
     }
@@ -276,6 +293,9 @@ impl Fetcher for DeployStatusStub {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Badge]
+    }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(badge(Status::Warn, "deploy degraded"))
     }
@@ -290,6 +310,9 @@ impl Fetcher for OncallStatusStub {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Badge]
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(badge(Status::Error, "oncall paging"))
@@ -315,6 +338,9 @@ impl Fetcher for GitRecentCommitsStub {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Timeline]
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         let now = chrono::Utc::now().timestamp();
@@ -358,27 +384,6 @@ fn event(
     }
 }
 
-pub struct TodayStub;
-
-impl RealtimeFetcher for TodayStub {
-    fn name(&self) -> &str {
-        "today"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-    fn compute(&self, _: &FetchContext) -> Payload {
-        use chrono::Datelike;
-        let now = chrono::Local::now().date_naive();
-        payload(Body::Calendar(CalendarData {
-            year: now.year(),
-            month: now.month() as u8,
-            day: Some(now.day() as u8),
-            events: Vec::new(),
-        }))
-    }
-}
-
 fn payload(body: Body) -> Payload {
     Payload {
         icon: None,
@@ -398,7 +403,6 @@ mod tests {
         assert_eq!(SystemStub.safety(), Safety::Safe);
         assert_eq!(GitCommitsStub.safety(), Safety::Exec);
         assert_eq!(GithubPrsStub.safety(), Safety::Network);
-        assert_eq!(RealtimeFetcher::safety(&TodayStub), Safety::Safe);
     }
 
     #[test]
@@ -428,14 +432,5 @@ mod tests {
         assert!(cells.iter().all(|r| r.len() == 52), "52 week columns");
         let total: u32 = cells.iter().flat_map(|r| r.iter().copied()).sum();
         assert!(total > 0, "deterministic fake data must not be all zero");
-    }
-
-    #[test]
-    fn realtime_stubs_includes_today() {
-        let names: Vec<String> = realtime_stubs()
-            .iter()
-            .map(|f| f.name().to_string())
-            .collect();
-        assert!(names.iter().any(|n| n == "today"));
     }
 }
