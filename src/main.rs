@@ -1,25 +1,109 @@
-use std::collections::HashMap;
-use std::io::{self, stdout};
+use std::io::{self, IsTerminal, stdin, stdout};
 
+use clap::{Parser, Subcommand};
 use ratatui::{Terminal, TerminalOptions, Viewport, backend::CrosstermBackend};
 
 use crate::config::Config;
-use crate::layout::WidgetId;
-use crate::payload::{
-    Bar, BarChartData, BignumData, Body, GaugeData, ListData, ListItem, Payload, SparklineData,
-    Status, TextData,
-};
+use crate::shell::Shell;
 
 mod config;
 mod layout;
 mod payload;
 mod render;
+mod shell;
+mod stubs;
+
+const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
+const MIN_WIDTH: u16 = 40;
+const MIN_HEIGHT: u16 = 16;
+
+#[derive(Parser)]
+#[command(version, about = "A customizable terminal splash screen")]
+struct Cli {
+    /// Render only if the current directory directly holds a config file; otherwise exit
+    /// silently. Intended for cd-hook invocations so the splash shows exactly once per project
+    /// entry instead of on every subdirectory navigation.
+    #[arg(long)]
+    on_cd: bool,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Emit a shell init snippet; source it from your rc file to render on new shells and on cd.
+    Init {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+}
 
 fn main() -> io::Result<()> {
-    let config = load_config();
-    let root = config.to_layout();
-    let widgets = widgets_for(&config);
+    let cli = Cli::parse();
+    match cli.command {
+        Some(Command::Init { shell }) => {
+            print!("{}", shell::init_snippet(shell));
+            Ok(())
+        }
+        None => {
+            let _ = if cli.on_cd {
+                render_for_cd()
+            } else {
+                render_splash()
+            };
+            Ok(())
+        }
+    }
+}
 
+fn render_splash() -> io::Result<()> {
+    if !should_render() {
+        return Ok(());
+    }
+    draw(&load_full_config())
+}
+
+fn render_for_cd() -> io::Result<()> {
+    if !should_render() {
+        return Ok(());
+    }
+    let Some(path) = config::resolve_cwd_only_path() else {
+        return Ok(());
+    };
+    let Ok(config) = Config::load_or_default(&path) else {
+        return Ok(());
+    };
+    draw(&config)
+}
+
+fn should_render() -> bool {
+    stdout().is_terminal()
+        && stdin().is_terminal()
+        && allow_render(|k| std::env::var(k).ok())
+        && meets_minimum_size()
+}
+
+fn allow_render(env: impl Fn(&str) -> Option<String>) -> bool {
+    if OPT_OUT_ENV_VARS.iter().any(|k| env(k).is_some()) {
+        return false;
+    }
+    !matches!(env("TERM").as_deref(), Some("dumb"))
+}
+
+fn meets_minimum_size() -> bool {
+    ratatui::crossterm::terminal::size()
+        .map(|(w, h)| is_large_enough(w, h))
+        .unwrap_or(false)
+}
+
+fn is_large_enough(width: u16, height: u16) -> bool {
+    width >= MIN_WIDTH && height >= MIN_HEIGHT
+}
+
+fn draw(config: &Config) -> io::Result<()> {
+    let root = config.to_layout();
+    let widgets = stubs::widgets_for(config.widgets.iter().map(|w| &w.id));
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::with_options(
         backend,
@@ -32,104 +116,68 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn load_config() -> Config {
+fn load_full_config() -> Config {
     config::resolve_config_path()
         .and_then(|p| Config::load_or_default(&p).ok())
         .unwrap_or_else(Config::default_baked)
 }
 
-fn widgets_for(config: &Config) -> HashMap<WidgetId, Payload> {
-    config
-        .widgets
-        .iter()
-        .filter_map(|w| stub_payload(&w.id).map(|p| (w.id.clone(), p)))
-        .collect()
-}
+#[cfg(test)]
+mod tests {
+    use super::allow_render;
 
-fn stub_payload(id: &str) -> Option<Payload> {
-    match id {
-        "greeting" => Some(greeting()),
-        "clock" => Some(clock()),
-        "disk" => Some(disk_gauge()),
-        "commits" => Some(commits_sparkline()),
-        "system" => Some(system_list()),
-        "prs" => Some(pr_counts()),
-        _ => None,
+    fn env_with(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == k)
+                .map(|(_, v)| (*v).to_string())
+        }
     }
-}
 
-fn greeting() -> Payload {
-    payload(Body::Text(TextData {
-        lines: vec!["Hello, splashboard!".into()],
-    }))
-}
+    #[test]
+    fn allows_render_in_plain_env() {
+        assert!(allow_render(env_with(&[])));
+    }
 
-fn clock() -> Payload {
-    payload(Body::Bignum(BignumData {
-        text: "12:34".into(),
-    }))
-}
+    #[test]
+    fn ci_env_blocks_render() {
+        assert!(!allow_render(env_with(&[("CI", "true")])));
+    }
 
-fn disk_gauge() -> Payload {
-    payload(Body::Gauge(GaugeData {
-        value: 0.45,
-        label: Some("45% of 500 GB".into()),
-    }))
-}
+    #[test]
+    fn splashboard_silent_blocks_render() {
+        assert!(!allow_render(env_with(&[("SPLASHBOARD_SILENT", "1")])));
+    }
 
-fn commits_sparkline() -> Payload {
-    payload(Body::Sparkline(SparklineData {
-        values: vec![2, 5, 0, 3, 7, 4, 1, 6, 9, 2, 3, 5, 8, 4],
-    }))
-}
+    #[test]
+    fn no_splashboard_blocks_render() {
+        assert!(!allow_render(env_with(&[("NO_SPLASHBOARD", "1")])));
+    }
 
-fn system_list() -> Payload {
-    let ok = Some(Status::Ok);
-    payload(Body::List(ListData {
-        items: vec![
-            ListItem {
-                key: "os".into(),
-                value: Some("linux".into()),
-                status: ok,
-            },
-            ListItem {
-                key: "uptime".into(),
-                value: Some("3d 2h".into()),
-                status: ok,
-            },
-            ListItem {
-                key: "load".into(),
-                value: Some("0.28".into()),
-                status: ok,
-            },
-        ],
-    }))
-}
+    #[test]
+    fn dumb_terminal_blocks_render() {
+        assert!(!allow_render(env_with(&[("TERM", "dumb")])));
+    }
 
-fn pr_counts() -> Payload {
-    payload(Body::BarChart(BarChartData {
-        bars: vec![
-            Bar {
-                label: "splsh".into(),
-                value: 3,
-            },
-            Bar {
-                label: "gtype".into(),
-                value: 2,
-            },
-            Bar {
-                label: "other".into(),
-                value: 1,
-            },
-        ],
-    }))
-}
+    #[test]
+    fn normal_term_allows_render() {
+        assert!(allow_render(env_with(&[("TERM", "xterm-256color")])));
+    }
 
-fn payload(body: Body) -> Payload {
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body,
+    #[test]
+    fn large_enough_size_passes() {
+        assert!(super::is_large_enough(80, 24));
+        assert!(super::is_large_enough(super::MIN_WIDTH, super::MIN_HEIGHT));
+    }
+
+    #[test]
+    fn below_min_width_fails() {
+        assert!(!super::is_large_enough(39, 40));
+    }
+
+    #[test]
+    fn below_min_height_fails() {
+        assert!(!super::is_large_enough(80, 15));
     }
 }
