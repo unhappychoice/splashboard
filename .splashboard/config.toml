@@ -142,7 +142,7 @@ flex = "center"
   width = { length = 44 }
 
 [[row]]
-height = { length = 8 }
+height = { length = 10 }
 
   [[row.child]]
   widget = "contributions"
