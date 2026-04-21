@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders},
 };
 
 use crate::payload::{Body, Payload};
@@ -9,6 +9,7 @@ use crate::payload::{Body, Payload};
 mod bar_chart;
 mod bignum;
 mod gauge;
+mod image;
 mod line_chart;
 mod list;
 mod sparkline;
@@ -30,9 +31,7 @@ pub fn render_payload(frame: &mut Frame, area: Rect, payload: &Payload) {
         Body::LineChart(d) => line_chart::render(frame, inner, d),
         Body::BarChart(d) => bar_chart::render(frame, inner, d),
         Body::Bignum(d) => bignum::render(frame, inner, d),
-        Body::Image(_) => {
-            frame.render_widget(Paragraph::new("[image: renderer pending]"), inner);
-        }
+        Body::Image(d) => image::render(frame, inner, d),
     }
 }
 
