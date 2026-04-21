@@ -76,7 +76,7 @@ pub async fn run(
     if loop_window.is_none() {
         draw_final(&mut terminal, &layout, &payloads, &specs, &render_registry)?;
         let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
-        println!();
+        finalize_splash(&mut terminal);
         return Ok(());
     }
 
@@ -129,7 +129,7 @@ pub async fn run(
         }
     }
 
-    println!();
+    finalize_splash(&mut terminal);
     Ok(())
 }
 
@@ -281,8 +281,10 @@ fn draw<B: Backend>(
 }
 
 /// Same as [`draw`] but parks the cursor at the bottom-left of the inline area afterwards, so
-/// the caller's `println!()` lands one row below the splash instead of inside it. Call this
-/// only for the last draw of the run — intermediate frames in a loop get overwritten anyway.
+/// the caller's `println!()` lands one row below the splash instead of inside it. Moves via
+/// the backend rather than `Frame::set_cursor_position` — the latter re-shows the cursor and
+/// we want it to stay hidden (matches ratatui's default for every intermediate draw). The
+/// caller is responsible for re-showing the cursor just before returning to the shell.
 fn draw_final<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
@@ -290,17 +292,28 @@ fn draw_final<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
 ) -> io::Result<()> {
+    let mut captured: Option<ratatui::layout::Rect> = None;
     terminal.draw(|frame| {
         let area = frame.area();
+        captured = Some(area);
         layout::draw(frame, area, root, payloads, specs, registry);
-        if area.height > 0 {
-            frame.set_cursor_position(ratatui::layout::Position {
-                x: area.x,
-                y: area.y + area.height - 1,
-            });
-        }
     })?;
+    if let Some(area) = captured
+        && area.height > 0
+    {
+        terminal.set_cursor_position(ratatui::layout::Position {
+            x: area.x,
+            y: area.y + area.height - 1,
+        })?;
+    }
     Ok(())
+}
+
+/// Hand back to the shell: show the cursor (ratatui hid it during drawing) and emit the
+/// trailing newline that moves the cursor past the inline viewport.
+fn finalize_splash<B: Backend>(terminal: &mut Terminal<B>) {
+    let _ = terminal.show_cursor();
+    println!();
 }
 
 fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
