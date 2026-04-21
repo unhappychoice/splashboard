@@ -2,6 +2,8 @@ use std::io::{self, stdout};
 
 use ratatui::{Terminal, TerminalOptions, Viewport, backend::CrosstermBackend, widgets::Paragraph};
 
+mod payload;
+
 fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::with_options(
