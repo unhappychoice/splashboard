@@ -96,6 +96,18 @@ id = "contributions"
 fetcher = "contributions"
 render = { type = "heatmap", align = "center" }
 
+# ── ReadStore demo ──────────────────────────────────────────────────
+# Renders whatever the user puts in $HOME/.splashboard/store/habit.json.
+# Example content: {"cells":[[3,1,0,5,8,0,0],[0,2,4,0,1,0,0], ...]}
+# Empty / missing file → empty heatmap (the slot is still present).
+
+[[widget]]
+id = "habit"
+fetcher = "read_store"
+shape = "heatmap"
+file_format = "json"
+render = { type = "heatmap", align = "center" }
+
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
 # even though it's narrower than the terminal. 2-column rows below keep the default Legacy
@@ -146,6 +158,12 @@ height = { length = 10 }
 
   [[row.child]]
   widget = "contributions"
+
+[[row]]
+height = { length = 10 }
+
+  [[row.child]]
+  widget = "habit"
 
 # ── Dense 2-column rows from here on, default Legacy flex ─────────────
 

@@ -59,6 +59,7 @@ mod tests {
             widget_id: "clock".into(),
             format: format.map(String::from),
             timeout: Duration::from_secs(1),
+            ..Default::default()
         }
     }
 

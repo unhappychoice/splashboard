@@ -186,7 +186,7 @@ fn canonicalize_or(path: &Path) -> PathBuf {
 }
 
 fn store_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("splashboard").join("trusted.toml"))
+    crate::paths::trust_store_path()
 }
 
 #[cfg(test)]
@@ -246,9 +246,7 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: fetcher.into(),
-            render: None,
-            format: None,
-            refresh_interval: None,
+            ..Default::default()
         }
     }
 

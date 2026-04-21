@@ -29,7 +29,7 @@ pub struct General {
     pub height: Option<u16>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct WidgetConfig {
     pub id: String,
     pub fetcher: String,
@@ -42,6 +42,13 @@ pub struct WidgetConfig {
     pub format: Option<String>,
     #[serde(default)]
     pub refresh_interval: Option<u64>,
+    /// read_store: file format — "json", "toml", or "text". Other fetchers ignore it.
+    #[serde(default)]
+    pub file_format: Option<String>,
+    /// read_store: target payload shape the file deserializes into — "heatmap", "lines",
+    /// "entries", etc. Other fetchers ignore it.
+    #[serde(default)]
+    pub shape: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -167,7 +174,7 @@ pub fn resolve_local_config_path() -> Option<PathBuf> {
 }
 
 pub fn default_global_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("splashboard").join("config.toml"))
+    crate::paths::config_path()
 }
 
 fn find_local(start: &Path) -> Option<PathBuf> {
