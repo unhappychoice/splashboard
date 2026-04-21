@@ -1,10 +1,12 @@
-use std::io::{self, IsTerminal, stdin, stdout};
-use std::path::PathBuf;
+use std::io::{self, BufRead, IsTerminal, Write, stdin, stdout};
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
-use crate::config::Config;
+use crate::config::{Config, WidgetConfig};
+use crate::fetcher::{Registry, Safety};
 use crate::shell::Shell;
+use crate::trust::{TrustStore, hash_file};
 
 mod cache;
 mod config;
@@ -15,6 +17,7 @@ mod payload;
 mod render;
 mod runtime;
 mod shell;
+mod trust;
 
 const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
 const MIN_WIDTH: u16 = 40;
@@ -45,6 +48,21 @@ enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Grant this project-local config permission to run Network and Exec widgets. Safe widgets
+    /// always run regardless; this is the consent step for anything that talks to the outside
+    /// world. Defaults to the nearest `.splashboard.toml` walking up from the current directory.
+    Trust {
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+    },
+    /// Remove trust for a project-local config. Network and Exec widgets in it will render the
+    /// "🔒 requires trust" placeholder until re-trusted.
+    Revoke {
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+    },
+    /// Print the currently trusted local configs.
+    ListTrusted,
     /// Internal: run fetchers and update the cache. Spawned as a detached child by the main
     /// splashboard invocation; not intended to be run directly.
     #[command(hide = true)]
@@ -63,6 +81,9 @@ async fn main() -> io::Result<()> {
             Ok(())
         }
         Some(Command::FetchOnly { config }) => daemon::run_fetch_only(config.as_deref()).await,
+        Some(Command::Trust { path }) => run_trust(path),
+        Some(Command::Revoke { path }) => run_revoke(path),
+        Some(Command::ListTrusted) => run_list_trusted(),
         None => {
             // Swallow render errors at the shell-facing boundary so a broken splash never breaks
             // the user's prompt. Internal paths (FetchOnly above) still propagate errors.
@@ -126,6 +147,93 @@ fn load_full_config() -> io::Result<(Config, Option<PathBuf>)> {
         None => Config::default_baked(),
     };
     Ok((config, path))
+}
+
+fn run_trust(path: Option<PathBuf>) -> io::Result<()> {
+    let Some(target) = resolve_trust_target(path) else {
+        eprintln!(
+            "no project-local config found (run from inside a directory with .splashboard.toml)"
+        );
+        return Ok(());
+    };
+    let config = Config::load_or_default(&target).map_err(io::Error::other)?;
+    let registry = Registry::with_builtins();
+    print_trust_summary(&target, &config.widgets, &registry)?;
+    if !prompt_yes_no("Trust this config?")? {
+        println!("not trusted");
+        return Ok(());
+    }
+    let mut store = TrustStore::load();
+    store.trust(&target)?;
+    println!("trusted: {}", target.display());
+    Ok(())
+}
+
+fn run_revoke(path: Option<PathBuf>) -> io::Result<()> {
+    let Some(target) = resolve_trust_target(path) else {
+        eprintln!("no project-local config found");
+        return Ok(());
+    };
+    let mut store = TrustStore::load();
+    if store.revoke(&target)? {
+        println!("revoked: {}", target.display());
+    } else {
+        println!("not trusted: {}", target.display());
+    }
+    Ok(())
+}
+
+fn run_list_trusted() -> io::Result<()> {
+    let store = TrustStore::load();
+    for entry in store.list() {
+        println!("{}  {}", entry.sha256, entry.path.display());
+    }
+    Ok(())
+}
+
+fn resolve_trust_target(override_path: Option<PathBuf>) -> Option<PathBuf> {
+    override_path.or_else(config::resolve_local_config_path)
+}
+
+fn print_trust_summary(
+    path: &Path,
+    widgets: &[WidgetConfig],
+    registry: &Registry,
+) -> io::Result<()> {
+    println!("Config: {}", path.display());
+    let hash = hash_file(path).unwrap_or_else(|_| "???".into());
+    println!("sha256: {hash}");
+    println!();
+
+    let mut declared = 0usize;
+    for w in widgets {
+        let Some(fetcher) = registry.get(&w.fetcher) else {
+            continue;
+        };
+        let label = match fetcher.safety() {
+            Safety::Safe => continue,
+            Safety::Network => "network",
+            Safety::Exec => "exec",
+        };
+        if declared == 0 {
+            println!("This config requests:");
+        }
+        println!("  - {label:<7}: {} ({})", w.id, w.fetcher);
+        declared += 1;
+    }
+    if declared == 0 {
+        println!("(no Network or Exec widgets — nothing to trust)");
+    }
+    println!();
+    Ok(())
+}
+
+fn prompt_yes_no(question: &str) -> io::Result<bool> {
+    print!("{question} [y/N] ");
+    stdout().flush()?;
+    let mut line = String::new();
+    stdin().lock().read_line(&mut line)?;
+    Ok(matches!(line.trim(), "y" | "Y" | "yes" | "Yes"))
 }
 
 #[cfg(test)]

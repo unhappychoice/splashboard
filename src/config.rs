@@ -124,6 +124,18 @@ pub fn resolve_cwd_only_path() -> Option<PathBuf> {
     find_local_at(&cwd)
 }
 
+/// Walks up from the current directory looking for a project-local config. Used by the trust
+/// commands so `splashboard trust` / `revoke` target the nearest `.splashboard.toml` the same
+/// way `splashboard` itself would pick one up.
+pub fn resolve_local_config_path() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    find_local(&cwd)
+}
+
+pub fn default_global_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("splashboard").join("config.toml"))
+}
+
 fn find_local(start: &Path) -> Option<PathBuf> {
     let mut current = Some(start);
     while let Some(dir) = current {
@@ -140,10 +152,6 @@ fn find_local_at(dir: &Path) -> Option<PathBuf> {
         .iter()
         .map(|name| dir.join(name))
         .find(|p| p.is_file())
-}
-
-fn default_global_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("splashboard").join("config.toml"))
 }
 
 fn to_row_child(row: &RowConfig) -> Child {

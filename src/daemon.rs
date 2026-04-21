@@ -15,7 +15,7 @@ pub async fn run_fetch_only(config_path: Option<&Path>) -> io::Result<()> {
         Some(p) => Config::load_or_default(p).map_err(io::Error::other)?,
         None => Config::default_baked(),
     };
-    runtime::fetch_and_persist(&config).await;
+    runtime::fetch_and_persist(&config, config_path).await;
     Ok(())
 }
 

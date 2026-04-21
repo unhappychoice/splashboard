@@ -93,6 +93,32 @@ splashboard init bash >> ~/.bashrc
 # splashboard init fish >> ~/.config/fish/config.fish
 ```
 
+## Security / threat model
+
+Per-directory configs (`.splashboard.toml` walked up from `cwd`) mean that `cd`-ing into an adversarial repo could auto-run a splash. To bound what that splash can do, widgets are classified by fetcher capability:
+
+| class | examples | runs on cd into unknown repo? |
+|---|---|---|
+| **Safe** — pure local read | clock, greeting, git status, disk | yes, always |
+| **Network** — HTTP | github, weather, rss, calendar | only after `splashboard trust` |
+| **Exec** — subprocess | plugin, command widget | only after `splashboard trust` |
+
+Until the local config is trusted, Network and Exec widgets render a `🔒 requires trust` placeholder — the layout stays intact so the user can preview what an unlock would enable. Global config (`~/.config/splashboard/config.toml`) and the baked-in default are implicitly trusted; only project-local configs need explicit consent.
+
+```
+splashboard trust          # trust the nearest project-local config (prints capability diff, prompts y/N)
+splashboard revoke         # revert
+splashboard list-trusted   # show all trusted configs
+```
+
+The trust store lives at `~/.local/share/splashboard/trusted.toml` keyed by `{ canonical_path, sha256 }`. Editing a trusted config invalidates trust — cd back into the repo and the gated slots return to placeholders until re-trusted.
+
+**What trust protects against:** arbitrary code execution from unknown repos, arbitrary URL exfil on `cd`.
+
+**What trust does not protect against:** data the user consciously opts into. A trusted `github` widget sends `GITHUB_TOKEN` to `api.github.com` — that's the whole point. Built-in network fetchers hardcode their hosts so a rubber-stamped trust can't redirect tokens elsewhere; plugins are referenced by name against the user-installed pool (`~/.local/share/splashboard/plugins/`) so a cloned repo can't introduce a new executable; the `command` widget is only accepted from the global config.
+
+Escape hatch: `SPLASHBOARD_TRUST_ALL=1` bypasses the check (CI use, documented as insecure).
+
 ## Status
 
 Early design phase. See [Issues](https://github.com/unhappychoice/splashboard/issues) for the roadmap.
