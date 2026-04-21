@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use crate::payload::Payload;
 
 pub mod clock;
+pub mod read_store;
 pub mod static_text;
 pub mod stub;
 
@@ -37,11 +38,17 @@ impl fmt::Display for FetchError {
 
 impl std::error::Error for FetchError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FetchContext {
     pub widget_id: String,
     pub format: Option<String>,
     pub timeout: Duration,
+    /// read_store file encoding — "json" / "toml" / "text". Set by config; ignored by
+    /// fetchers that don't read files.
+    pub file_format: Option<String>,
+    /// read_store target shape — "heatmap" / "lines" / "entries" / ... Set by config;
+    /// ignored by fetchers that don't produce shape-dependent output.
+    pub shape: Option<String>,
 }
 
 #[async_trait]
@@ -120,6 +127,7 @@ impl Registry {
     pub fn with_builtins() -> Self {
         let mut r = Self::default();
         r.register(Arc::new(static_text::StaticText));
+        r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register_realtime(Arc::new(clock::ClockFetcher));
         for f in stub::stubs() {
             r.register(f);
@@ -259,6 +267,7 @@ mod tests {
             widget_id: "w".into(),
             format: None,
             timeout: Duration::from_secs(1),
+            ..Default::default()
         };
         let p = f.fetch(&ctx).await.unwrap();
         assert!(matches!(p.body, Body::Lines(_)));
@@ -270,6 +279,7 @@ mod tests {
             widget_id: "w".into(),
             format: format.map(String::from),
             timeout: Duration::from_secs(1),
+            ..Default::default()
         }
     }
 

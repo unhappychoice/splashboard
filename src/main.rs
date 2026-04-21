@@ -13,6 +13,7 @@ mod config;
 mod daemon;
 mod fetcher;
 mod layout;
+mod paths;
 mod payload;
 mod render;
 mod runtime;

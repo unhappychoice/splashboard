@@ -45,6 +45,7 @@ mod tests {
             widget_id: "x".into(),
             format: format.map(String::from),
             timeout: Duration::from_secs(1),
+            ..Default::default()
         }
     }
 

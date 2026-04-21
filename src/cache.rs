@@ -40,8 +40,7 @@ pub struct Cache {
 
 impl Cache {
     pub fn open_default() -> Option<Self> {
-        let dir = dirs::cache_dir()?.join("splashboard");
-        Self::open(dir)
+        Self::open(crate::paths::cache_dir()?)
     }
 
     pub fn open(dir: PathBuf) -> Option<Self> {

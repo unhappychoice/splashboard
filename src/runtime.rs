@@ -242,6 +242,8 @@ fn fetch_context(w: &WidgetConfig, deadline: Duration) -> FetchContext {
         widget_id: w.id.clone(),
         format: w.format.clone(),
         timeout: deadline,
+        file_format: w.file_format.clone(),
+        shape: w.shape.clone(),
     }
 }
 
@@ -409,9 +411,8 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: fetcher.into(),
-            render: None,
-            format: None,
             refresh_interval: Some(60),
+            ..Default::default()
         }
     }
 
@@ -446,9 +447,9 @@ mod tests {
         WidgetConfig {
             id: id.into(),
             fetcher: "static".into(),
-            render: None,
             format: Some(text.into()),
             refresh_interval: Some(60),
+            ..Default::default()
         }
     }
 
@@ -539,9 +540,9 @@ mod tests {
         let widgets = vec![WidgetConfig {
             id: "greeting".into(),
             fetcher: "static".into(),
-            render: None,
             format: Some("Hi!".into()),
             refresh_interval: Some(60),
+            ..Default::default()
         }];
         let mut cached = HashMap::new();
         cached.insert("greeting".into(), CacheEntry::new(text_payload("old"), 60));
