@@ -11,6 +11,8 @@ mod bar_chart;
 mod gauge;
 mod image;
 mod line_chart;
+mod line_gauge;
+mod list;
 mod sparkline;
 mod table;
 mod text;
@@ -102,8 +104,10 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(text::SimpleRenderer));
         r.register(Arc::new(ascii_art::AsciiArtRenderer));
+        r.register(Arc::new(list::ListRenderer));
         r.register(Arc::new(table::TableRenderer));
         r.register(Arc::new(gauge::GaugeRenderer));
+        r.register(Arc::new(line_gauge::LineGaugeRenderer));
         r.register(Arc::new(sparkline::SparklineRenderer));
         r.register(Arc::new(line_chart::LineChartRenderer));
         r.register(Arc::new(bar_chart::BarChartRenderer));
@@ -199,8 +203,10 @@ mod tests {
         for name in [
             "simple",
             "ascii_art",
+            "list",
             "table",
             "gauge",
+            "line_gauge",
             "sparkline",
             "chart_line",
             "bar_chart",
