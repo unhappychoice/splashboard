@@ -18,7 +18,6 @@ mod tests {
 
     fn payload(value: f64, label: Option<&str>) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,

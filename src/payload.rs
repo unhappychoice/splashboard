@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Payload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<Status>,
@@ -111,7 +109,6 @@ mod tests {
 
     fn bare(body: Body) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,
@@ -122,7 +119,6 @@ mod tests {
     #[test]
     fn text_round_trips() {
         let p = Payload {
-            title: Some("Git".into()),
             icon: None,
             status: None,
             format: Some("{branch}".into()),
@@ -135,10 +131,9 @@ mod tests {
 
     #[test]
     fn text_parses_from_spec_example() {
-        let json = r#"{"render":"text","data":{"lines":["main"]},"title":"Git"}"#;
+        let json = r#"{"render":"text","data":{"lines":["main"]}}"#;
         let p: Payload = serde_json::from_str(json).unwrap();
         assert!(matches!(p.body, Body::Text(_)));
-        assert_eq!(p.title.as_deref(), Some("Git"));
     }
 
     #[test]
@@ -235,7 +230,7 @@ mod tests {
     fn optional_fields_absent_in_serialization() {
         let p = bare(Body::Text(TextData { lines: vec![] }));
         let json = serde_json::to_string(&p).unwrap();
-        assert!(!json.contains("title"));
         assert!(!json.contains("icon"));
+        assert!(!json.contains("status"));
     }
 }

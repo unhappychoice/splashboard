@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction as RatDir, Layout as RatLayout, Rect},
+    widgets::{Block, BorderType, Borders},
 };
 
 use crate::payload::Payload;
@@ -15,8 +16,12 @@ pub enum Layout {
     Stack {
         direction: Direction,
         children: Vec<Child>,
+        panel: Option<Panel>,
     },
-    Widget(WidgetId),
+    Widget {
+        id: WidgetId,
+        panel: Option<Panel>,
+    },
     #[allow(dead_code)]
     Empty,
 }
@@ -38,8 +43,28 @@ pub enum Size {
     Fill(u16),
     Length(u16),
     Min(u16),
+    #[allow(dead_code)]
     Max(u16),
+    #[allow(dead_code)]
     Percentage(u16),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Panel {
+    pub title: Option<String>,
+    pub border: BorderStyle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BorderStyle {
+    #[default]
+    Plain,
+    #[allow(dead_code)]
+    Rounded,
+    #[allow(dead_code)]
+    Thick,
+    #[allow(dead_code)]
+    Double,
 }
 
 impl Layout {
@@ -47,6 +72,7 @@ impl Layout {
         Self::Stack {
             direction: Direction::Vertical,
             children,
+            panel: None,
         }
     }
 
@@ -54,16 +80,63 @@ impl Layout {
         Self::Stack {
             direction: Direction::Horizontal,
             children,
+            panel: None,
         }
     }
 
     pub fn widget(id: impl Into<WidgetId>) -> Self {
-        Self::Widget(id.into())
+        Self::Widget {
+            id: id.into(),
+            panel: None,
+        }
     }
 
     #[allow(dead_code)]
     pub fn empty() -> Self {
         Self::Empty
+    }
+
+    pub fn titled(self, title: impl Into<String>) -> Self {
+        self.with_panel(|p| p.title(title))
+    }
+
+    #[allow(dead_code)]
+    pub fn bordered(self, border: BorderStyle) -> Self {
+        self.with_panel(|p| p.border(border))
+    }
+
+    fn with_panel(self, f: impl FnOnce(Panel) -> Panel) -> Self {
+        match self {
+            Self::Stack {
+                direction,
+                children,
+                panel,
+            } => {
+                let p = f(panel.unwrap_or_default());
+                Self::Stack {
+                    direction,
+                    children,
+                    panel: Some(p),
+                }
+            }
+            Self::Widget { id, panel } => {
+                let p = f(panel.unwrap_or_default());
+                Self::Widget { id, panel: Some(p) }
+            }
+            Self::Empty => Self::Empty,
+        }
+    }
+}
+
+impl Panel {
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn border(mut self, border: BorderStyle) -> Self {
+        self.border = border;
+        self
     }
 }
 
@@ -111,13 +184,49 @@ pub fn draw(frame: &mut Frame, area: Rect, layout: &Layout, widgets: &HashMap<Wi
         Layout::Stack {
             direction,
             children,
-        } => draw_stack(frame, area, *direction, children, widgets),
-        Layout::Widget(id) => {
+            panel,
+        } => {
+            let inner = draw_panel(frame, area, panel);
+            draw_stack(frame, inner, *direction, children, widgets);
+        }
+        Layout::Widget { id, panel } => {
+            let inner = draw_panel(frame, area, panel);
             if let Some(payload) = widgets.get(id) {
-                render_payload(frame, area, payload);
+                render_payload(frame, inner, payload);
             }
         }
         Layout::Empty => {}
+    }
+}
+
+fn draw_panel(frame: &mut Frame, area: Rect, panel: &Option<Panel>) -> Rect {
+    match panel {
+        None => area,
+        Some(p) => {
+            let block = build_block(p);
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+            inner
+        }
+    }
+}
+
+fn build_block(panel: &Panel) -> Block<'_> {
+    let mut b = Block::default()
+        .borders(Borders::ALL)
+        .border_type(to_border_type(panel.border));
+    if let Some(t) = panel.title.as_deref() {
+        b = b.title(t.to_string());
+    }
+    b
+}
+
+fn to_border_type(style: BorderStyle) -> BorderType {
+    match style {
+        BorderStyle::Plain => BorderType::Plain,
+        BorderStyle::Rounded => BorderType::Rounded,
+        BorderStyle::Thick => BorderType::Thick,
+        BorderStyle::Double => BorderType::Double,
     }
 }
 
@@ -165,7 +274,6 @@ mod tests {
 
     fn text_widget(lines: &[&str]) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,
@@ -183,11 +291,46 @@ mod tests {
     }
 
     #[test]
-    fn widget_leaf_renders() {
+    fn bare_widget_renders_content_at_top() {
         let l = Layout::widget("g");
         let w = widgets(&[("g", text_widget(&["hello"]))]);
         let buf = render_to_buffer_with(&l, &w, 20, 5);
+        assert!(line_text(&buf, 0).contains("hello"));
+    }
+
+    #[test]
+    fn widget_with_panel_draws_border_and_title() {
+        let l = Layout::widget("g").titled("Greeting");
+        let w = widgets(&[("g", text_widget(&["hello"]))]);
+        let buf = render_to_buffer_with(&l, &w, 20, 5);
+        let top = line_text(&buf, 0);
+        assert!(top.contains("Greeting"));
         assert!(line_text(&buf, 1).contains("hello"));
+    }
+
+    #[test]
+    fn stack_with_panel_wraps_children() {
+        let l = Layout::cols(vec![
+            Child::fill(1, Layout::widget("a")),
+            Child::fill(1, Layout::widget("b")),
+        ])
+        .titled("System");
+        let w = widgets(&[("a", text_widget(&["cpu"])), ("b", text_widget(&["mem"]))]);
+        let buf = render_to_buffer_with(&l, &w, 40, 5);
+        assert!(line_text(&buf, 0).contains("System"));
+        let inner = line_text(&buf, 1);
+        assert!(inner.contains("cpu"));
+        assert!(inner.contains("mem"));
+    }
+
+    #[test]
+    fn bordered_style_applies_rounded_corners() {
+        let l = Layout::widget("g")
+            .titled("T")
+            .bordered(BorderStyle::Rounded);
+        let w = widgets(&[("g", text_widget(&["x"]))]);
+        let buf = render_to_buffer_with(&l, &w, 20, 5);
+        assert!(line_text(&buf, 0).contains("╭"));
     }
 
     #[test]
@@ -240,7 +383,7 @@ mod tests {
             ("c", text_widget(&["c"])),
         ]);
         let buf = render_to_buffer_with(&l, &w, 40, 5);
-        let row = line_text(&buf, 1);
+        let row = line_text(&buf, 0);
         assert!(row.contains("a"));
         assert!(row.contains("b"));
         assert!(row.contains("c"));
@@ -260,7 +403,7 @@ mod tests {
             ("r", text_widget(&["right"])),
         ]);
         let buf = render_to_buffer_with(&l, &w, 40, 5);
-        let row1 = line_text(&buf, 1);
+        let row1 = line_text(&buf, 0);
         assert!(row1.contains("left"));
         assert!(row1.contains("right"));
     }

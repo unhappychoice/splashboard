@@ -51,7 +51,6 @@ mod tests {
 
     fn payload(series: Vec<LineSeries>) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,

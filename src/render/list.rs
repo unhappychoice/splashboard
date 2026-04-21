@@ -39,7 +39,6 @@ mod tests {
 
     fn payload(items: Vec<ListItem>) -> Payload {
         Payload {
-            title: None,
             icon: None,
             status: None,
             format: None,
@@ -55,7 +54,7 @@ mod tests {
             status: Some(Status::Ok),
         }]);
         let buf = render_to_buffer(&p, 30, 5);
-        let row = line_text(&buf, 1);
+        let row = line_text(&buf, 0);
         assert!(row.contains("uptime"));
         assert!(row.contains("3d"));
     }
