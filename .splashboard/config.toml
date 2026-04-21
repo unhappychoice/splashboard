@@ -133,6 +133,55 @@ fetcher = "read_store"
 file_format = "text"
 render = { type = "simple", align = "center" }
 
+# ── clock_* family showcase ──────────────────────────────────────────
+# Sibling fetchers under the `clock_` prefix. Each has a narrow Options struct and a small
+# shapes() list — easier to grok one widget at a time than a mode-dispatching mega-fetcher.
+
+[[widget]]
+id = "world_clock"
+fetcher = "clock_timezones"
+render = "table"
+  [widget.options]
+  timezones = ["Asia/Tokyo", "Europe/London", "America/New_York"]
+
+[[widget]]
+id = "year_progress"
+fetcher = "clock_ratio"
+render = "gauge"
+  [widget.options]
+  period = "year"
+
+[[widget]]
+id = "business_hours"
+fetcher = "clock_state"
+render = { type = "badge", align = "center" }
+  [widget.options]
+  kind = "business_hours"
+
+[[widget]]
+id = "moon"
+fetcher = "clock_derived"
+render = { type = "simple", align = "center" }
+  [widget.options]
+  kind = "moon_phase"
+
+[[widget]]
+id = "sun"
+fetcher = "clock_sunrise"
+render = { type = "simple", align = "center" }
+  [widget.options]
+  lat = 35.6762
+  lon = 139.6503
+  timezone = "Asia/Tokyo"
+
+[[widget]]
+id = "newyear_countdown"
+fetcher = "clock_countdown"
+render = { type = "simple", align = "center" }
+  [widget.options]
+  target = "2027-01-01"
+  target_label = "New Year"
+
 # ── System fetchers (sysinfo-backed, cross-platform) ─────────────────
 # Each fetcher is multi-shape; the renderer pick below is one valid pairing.
 
@@ -322,5 +371,46 @@ height = { length = 7 }
   [[row.child]]
   widget = "processes"
   title = "process_top"
+  border = "rounded"
+
+# ── Clock options showcase rows ──────────────────────────────────────
+
+[[row]]
+height = { length = 5 }
+
+  [[row.child]]
+  widget = "world_clock"
+  title = "clock_timezones"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "year_progress"
+  title = "clock_ratio"
+  border = "rounded"
+
+[[row]]
+height = { length = 3 }
+
+  [[row.child]]
+  widget = "business_hours"
+  title = "clock_state"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "moon"
+  title = "clock_derived"
+  border = "rounded"
+
+[[row]]
+height = { length = 3 }
+
+  [[row.child]]
+  widget = "sun"
+  title = "clock_sunrise"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "newyear_countdown"
+  title = "clock_countdown"
   border = "rounded"
 

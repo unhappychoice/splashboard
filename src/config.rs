@@ -45,6 +45,11 @@ pub struct WidgetConfig {
     /// read_store: file format — "json", "toml", or "text". Other fetchers ignore it.
     #[serde(default)]
     pub file_format: Option<String>,
+    /// Fetcher-specific options as a TOML sub-table (`[widget.options]`). Each fetcher
+    /// deserializes the keys it cares about; unknown keys are ignored so upgrading the
+    /// fetcher never invalidates old configs.
+    #[serde(default)]
+    pub options: Option<toml::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

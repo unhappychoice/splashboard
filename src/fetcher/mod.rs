@@ -54,6 +54,9 @@ pub struct FetchContext {
     /// [`Fetcher::default_shape`] when no renderer is specified. Multi-shape fetchers branch
     /// on this; single-shape fetchers ignore it.
     pub shape: Option<Shape>,
+    /// Fetcher-specific options passed through from `[widget.options]`. Each fetcher
+    /// deserializes its own typed view; unknown keys are ignored.
+    pub options: Option<toml::Value>,
 }
 
 #[async_trait]
@@ -183,7 +186,9 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
-        r.register_realtime(Arc::new(clock::ClockFetcher));
+        for f in clock::realtime_fetchers() {
+            r.register_realtime(f);
+        }
         for f in system::realtime_fetchers() {
             r.register_realtime(f);
         }

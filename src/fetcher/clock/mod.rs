@@ -1,0 +1,185 @@
+//! `clock_*` fetcher family. The base `clock` displays the current time (with optional
+//! timezone and Calendar events); each sibling module handles a distinct temporal feature —
+//! world-clock strip, countdowns, period ratios, business/weekend/night state, sunrise/sunset,
+//! and date-derived values. Shared primitives (tz resolution, safe strftime, julian day) live in
+//! `common`.
+
+mod common;
+pub mod countdown;
+pub mod derived;
+pub mod ratio;
+pub mod state;
+pub mod sunrise;
+pub mod timezones;
+
+use std::sync::Arc;
+
+use chrono::{DateTime, Datelike, FixedOffset, Timelike};
+use serde::Deserialize;
+
+use crate::payload::{Body, CalendarData, EntriesData, Entry, LinesData, Payload};
+use crate::render::Shape;
+
+use super::{FetchContext, RealtimeFetcher, Safety};
+
+pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
+    vec![
+        Arc::new(ClockFetcher),
+        Arc::new(timezones::ClockTimezonesFetcher),
+        Arc::new(countdown::ClockCountdownFetcher),
+        Arc::new(ratio::ClockRatioFetcher),
+        Arc::new(state::ClockStateFetcher),
+        Arc::new(sunrise::ClockSunriseFetcher),
+        Arc::new(derived::ClockDerivedFetcher),
+    ]
+}
+
+const BASE_SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Calendar];
+
+/// Base clock — renders "now" as a formatted string, key/value breakdown, or month calendar.
+/// Options: `timezone` (IANA name) and `events` (days-of-month highlighted in Calendar shape).
+pub struct ClockFetcher;
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClockOptions {
+    #[serde(default)]
+    pub timezone: Option<String>,
+    #[serde(default)]
+    pub events: Option<Vec<u8>>,
+}
+
+impl RealtimeFetcher for ClockFetcher {
+    fn name(&self) -> &str {
+        "clock"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        BASE_SHAPES
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: ClockOptions = match common::parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return common::placeholder(&msg),
+        };
+        let now = common::now_in(opts.timezone.as_deref());
+        let shape = ctx.shape.unwrap_or(Shape::Lines);
+        let body = match shape {
+            Shape::Entries => Body::Entries(EntriesData {
+                items: entries(&now),
+            }),
+            Shape::Calendar => Body::Calendar(CalendarData {
+                year: now.year(),
+                month: now.month() as u8,
+                day: Some(now.day() as u8),
+                events: opts.events.unwrap_or_default(),
+            }),
+            _ => Body::Lines(LinesData {
+                lines: vec![common::safe_format(
+                    &now,
+                    ctx.format.as_deref().unwrap_or(common::DEFAULT_FORMAT),
+                )],
+            }),
+        };
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body,
+        }
+    }
+}
+
+fn entries(now: &DateTime<FixedOffset>) -> Vec<Entry> {
+    [
+        ("year", format!("{:04}", now.year())),
+        ("month", format!("{:02}", now.month())),
+        ("day", format!("{:02}", now.day())),
+        ("hour", format!("{:02}", now.hour())),
+        ("minute", format!("{:02}", now.minute())),
+        ("second", format!("{:02}", now.second())),
+    ]
+    .into_iter()
+    .map(|(k, v)| Entry {
+        key: k.into(),
+        value: Some(v),
+        status: None,
+    })
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    fn ctx(shape: Option<Shape>, options: Option<&str>) -> FetchContext {
+        let options = options.map(|s| toml::from_str::<toml::Value>(s).unwrap());
+        FetchContext {
+            widget_id: "clock".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn default_shape_is_lines_with_colon() {
+        let p = ClockFetcher.compute(&ctx(None, None));
+        match p.body {
+            Body::Lines(d) => {
+                assert_eq!(d.lines.len(), 1);
+                assert!(d.lines[0].contains(':'));
+            }
+            _ => panic!("expected lines"),
+        }
+    }
+
+    #[test]
+    fn entries_shape_emits_six_rows() {
+        let p = ClockFetcher.compute(&ctx(Some(Shape::Entries), None));
+        match p.body {
+            Body::Entries(d) => assert_eq!(d.items.len(), 6),
+            _ => panic!("expected entries"),
+        }
+    }
+
+    #[test]
+    fn calendar_shape_accepts_events_option() {
+        let p = ClockFetcher.compute(&ctx(Some(Shape::Calendar), Some("events = [3, 15]")));
+        match p.body {
+            Body::Calendar(d) => assert_eq!(d.events, vec![3, 15]),
+            _ => panic!("expected calendar"),
+        }
+    }
+
+    #[test]
+    fn unknown_option_is_rejected_to_placeholder() {
+        let p = ClockFetcher.compute(&ctx(Some(Shape::Lines), Some("bogus = 1")));
+        match p.body {
+            Body::Lines(d) => assert!(d.lines[0].starts_with("⚠")),
+            _ => panic!("expected placeholder lines"),
+        }
+    }
+
+    #[test]
+    fn realtime_fetchers_registers_full_family() {
+        let fetchers = realtime_fetchers();
+        let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
+        for expected in [
+            "clock",
+            "clock_timezones",
+            "clock_countdown",
+            "clock_ratio",
+            "clock_state",
+            "clock_sunrise",
+            "clock_derived",
+        ] {
+            assert!(names.contains(&expected), "missing: {expected}");
+        }
+    }
+}
