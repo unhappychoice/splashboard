@@ -119,18 +119,27 @@ pub fn resolve_config_path() -> Option<PathBuf> {
     find_local(&cwd).or_else(default_global_path)
 }
 
+pub fn resolve_cwd_only_path() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    find_local_at(&cwd)
+}
+
 fn find_local(start: &Path) -> Option<PathBuf> {
     let mut current = Some(start);
     while let Some(dir) = current {
-        for name in LOCAL_CONFIG_CANDIDATES {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
+        if let Some(path) = find_local_at(dir) {
+            return Some(path);
         }
         current = dir.parent();
     }
     None
+}
+
+fn find_local_at(dir: &Path) -> Option<PathBuf> {
+    LOCAL_CONFIG_CANDIDATES
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|p| p.is_file())
 }
 
 fn default_global_path() -> Option<PathBuf> {
@@ -325,6 +334,16 @@ widget = "x"
     fn find_local_returns_none_when_absent() {
         let dir = tempfile::tempdir().unwrap();
         assert!(find_local(dir.path()).is_none());
+    }
+
+    #[test]
+    fn find_local_at_does_not_walk_up() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join(".splashboard.toml"), "").unwrap();
+        let nested = root.path().join("sub");
+        std::fs::create_dir(&nested).unwrap();
+        assert!(find_local_at(&nested).is_none());
+        assert!(find_local(&nested).is_some());
     }
 
     #[test]

@@ -30,7 +30,7 @@ mod tests {
     fn bash_snippet_hooks_prompt_command() {
         let s = init_snippet(Shell::Bash);
         assert!(s.contains("PROMPT_COMMAND"));
-        assert!(s.contains("__splashboard_render"));
+        assert!(s.contains("__splashboard_on_chpwd"));
     }
 
     #[test]
@@ -56,5 +56,17 @@ mod tests {
         assert!(init_snippet(Shell::Bash).contains("$-"));
         assert!(init_snippet(Shell::Zsh).contains("interactive"));
         assert!(init_snippet(Shell::Fish).contains("is-interactive"));
+    }
+
+    #[test]
+    fn cd_hooks_call_on_cd_flag_not_bare_splash() {
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell] {
+            let s = init_snippet(shell);
+            assert!(
+                s.contains("splashboard --on-cd"),
+                "{:?} snippet missing --on-cd",
+                shell
+            );
+        }
     }
 }
