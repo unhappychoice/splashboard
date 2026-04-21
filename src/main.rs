@@ -1,4 +1,5 @@
 use std::io::{self, IsTerminal, stdin, stdout};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
@@ -7,6 +8,7 @@ use crate::shell::Shell;
 
 mod cache;
 mod config;
+mod daemon;
 mod fetcher;
 mod layout;
 mod payload;
@@ -43,6 +45,13 @@ enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Internal: run fetchers and update the cache. Spawned as a detached child by the main
+    /// splashboard invocation; not intended to be run directly.
+    #[command(hide = true)]
+    FetchOnly {
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -53,7 +62,10 @@ async fn main() -> io::Result<()> {
             print!("{}", shell::init_snippet(shell));
             Ok(())
         }
+        Some(Command::FetchOnly { config }) => daemon::run_fetch_only(config.as_deref()).await,
         None => {
+            // Swallow render errors at the shell-facing boundary so a broken splash never breaks
+            // the user's prompt. Internal paths (FetchOnly above) still propagate errors.
             let _ = if cli.on_cd {
                 render_for_cd(cli.wait).await
             } else {
@@ -68,7 +80,8 @@ async fn render_splash(wait: bool) -> io::Result<()> {
     if !should_render() {
         return Ok(());
     }
-    runtime::run(&load_full_config(), wait).await
+    let (config, path) = load_full_config()?;
+    runtime::run(&config, path.as_deref(), wait).await
 }
 
 async fn render_for_cd(wait: bool) -> io::Result<()> {
@@ -78,10 +91,8 @@ async fn render_for_cd(wait: bool) -> io::Result<()> {
     let Some(path) = config::resolve_cwd_only_path() else {
         return Ok(());
     };
-    let Ok(config) = Config::load_or_default(&path) else {
-        return Ok(());
-    };
-    runtime::run(&config, wait).await
+    let config = Config::load_or_default(&path).map_err(io::Error::other)?;
+    runtime::run(&config, Some(&path), wait).await
 }
 
 fn should_render() -> bool {
@@ -108,10 +119,13 @@ fn is_large_enough(width: u16, height: u16) -> bool {
     width >= MIN_WIDTH && height >= MIN_HEIGHT
 }
 
-fn load_full_config() -> Config {
-    config::resolve_config_path()
-        .and_then(|p| Config::load_or_default(&p).ok())
-        .unwrap_or_else(Config::default_baked)
+fn load_full_config() -> io::Result<(Config, Option<PathBuf>)> {
+    let path = config::resolve_config_path();
+    let config = match &path {
+        Some(p) => Config::load_or_default(p).map_err(io::Error::other)?,
+        None => Config::default_baked(),
+    };
+    Ok((config, path))
 }
 
 #[cfg(test)]
