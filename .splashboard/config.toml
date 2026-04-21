@@ -21,11 +21,6 @@ fetcher = "clock"
 render = { type = "ascii_art", pixel_size = "quadrant", align = "center" }
 
 [[widget]]
-id = "clock_figlet"
-fetcher = "clock"
-render = { type = "ascii_art", style = "figlet", align = "center" }
-
-[[widget]]
 id = "typewriter"
 fetcher = "static"
 render = { type = "animated_typewriter", align = "center" }
@@ -95,12 +90,17 @@ id = "trend_dots"
 fetcher = "trend"
 render = "scatter"
 
-# ── Bars ────────────────────────────────────────────────────────────
+# ── Bars: 2 renderers ───────────────────────────────────────────────
 
 [[widget]]
 id = "prs"
 fetcher = "github_prs"
 render = "bar_chart"
+
+[[widget]]
+id = "prs_pie"
+fetcher = "github_prs"
+render = "pie_chart"
 
 # ── Calendar ────────────────────────────────────────────────────────
 
@@ -153,14 +153,6 @@ flex = "center"
   [[row.child]]
   widget = "clock"
   width = { length = 22 }
-
-[[row]]
-height = { length = 6 }
-flex = "center"
-
-  [[row.child]]
-  widget = "clock_figlet"
-  width = { length = 44 }
 
 [[row]]
 height = { length = 4 }
@@ -221,17 +213,22 @@ height = { length = 3 }
   title = "line_gauge"
   border = "rounded"
 
-[[row]]
-height = { length = 5 }
-
   [[row.child]]
   widget = "commits"
   title = "sparkline"
   border = "rounded"
 
+[[row]]
+height = { length = 12 }
+
   [[row.child]]
   widget = "prs"
   title = "bar_chart"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "prs_pie"
+  title = "pie_chart"
   border = "rounded"
 
 [[row]]

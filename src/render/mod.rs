@@ -23,6 +23,7 @@ mod image;
 mod line_chart;
 mod line_gauge;
 mod list;
+mod pie_chart;
 mod scatter;
 mod sparkline;
 mod table;
@@ -171,6 +172,7 @@ impl Registry {
         r.register(Arc::new(line_chart::LineChartRenderer));
         r.register(Arc::new(scatter::ScatterRenderer));
         r.register(Arc::new(bar_chart::BarChartRenderer));
+        r.register(Arc::new(pie_chart::PieChartRenderer));
         r.register(Arc::new(image::ImageRenderer));
         r.register(Arc::new(calendar::CalendarRenderer));
         r.register(Arc::new(heatmap::HeatmapRenderer));
@@ -354,6 +356,7 @@ mod tests {
             "chart_line",
             "scatter",
             "bar_chart",
+            "pie_chart",
             "image",
             "calendar",
             "heatmap",
