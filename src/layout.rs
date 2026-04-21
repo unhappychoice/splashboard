@@ -38,6 +38,8 @@ pub enum Size {
     Fill(u16),
     Length(u16),
     Min(u16),
+    Max(u16),
+    Percentage(u16),
 }
 
 impl Layout {
@@ -86,6 +88,22 @@ impl Child {
             layout,
         }
     }
+
+    #[allow(dead_code)]
+    pub fn max(rows_or_cols: u16, layout: Layout) -> Self {
+        Self {
+            size: Size::Max(rows_or_cols),
+            layout,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn percentage(percent: u16, layout: Layout) -> Self {
+        Self {
+            size: Size::Percentage(percent),
+            layout,
+        }
+    }
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, layout: &Layout, widgets: &HashMap<WidgetId, Payload>) {
@@ -125,6 +143,8 @@ fn to_constraint(size: Size) -> Constraint {
         Size::Fill(w) => Constraint::Fill(w),
         Size::Length(n) => Constraint::Length(n),
         Size::Min(n) => Constraint::Min(n),
+        Size::Max(n) => Constraint::Max(n),
+        Size::Percentage(p) => Constraint::Percentage(p),
     }
 }
 
@@ -205,6 +225,25 @@ mod tests {
             .join(" ");
         assert!(upper.contains("top-content"));
         assert!(lower.contains("bot-content"));
+    }
+
+    #[test]
+    fn percentage_and_max_constraints_render() {
+        let l = Layout::cols(vec![
+            Child::percentage(30, Layout::widget("a")),
+            Child::max(10, Layout::widget("b")),
+            Child::fill(1, Layout::widget("c")),
+        ]);
+        let w = widgets(&[
+            ("a", text_widget(&["a"])),
+            ("b", text_widget(&["b"])),
+            ("c", text_widget(&["c"])),
+        ]);
+        let buf = render_to_buffer_with(&l, &w, 40, 5);
+        let row = line_text(&buf, 1);
+        assert!(row.contains("a"));
+        assert!(row.contains("b"));
+        assert!(row.contains("c"));
     }
 
     #[test]
