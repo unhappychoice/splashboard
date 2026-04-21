@@ -68,7 +68,14 @@ pub async fn run(
         (true, _) => Some(WAIT_DEADLINE),
     };
 
-    let viewport_lines = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
+    // Cap the inline viewport at terminal_height - 1 so there's always one row left below it
+    // for the shell prompt to land on cleanly. If we exceed the terminal height, the final
+    // `println!()` on exit forces a scroll and shaves off the top of the splash.
+    let requested_height = config.general.height.unwrap_or(DEFAULT_VIEWPORT_LINES);
+    let term_rows = ratatui::crossterm::terminal::size()
+        .map(|(_, h)| h)
+        .unwrap_or(requested_height);
+    let viewport_lines = requested_height.min(term_rows.saturating_sub(1)).max(1);
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend, viewport_lines)?;
 
