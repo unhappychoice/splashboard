@@ -1,8 +1,11 @@
-use ratatui::{Frame, layout::Rect, widgets::BarChart};
+use ratatui::{Frame, layout::Rect, style::Style, widgets::BarChart};
 
 use crate::payload::{BarsData, Body};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 pub struct ChartBarRenderer;
 
@@ -13,20 +16,39 @@ impl Renderer for ChartBarRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Bars(d) = body {
-            render_bars(frame, area, d);
+            render_bars(frame, area, d, theme);
         }
     }
 }
 
-fn render_bars(frame: &mut Frame, area: Rect, data: &BarsData) {
+fn render_bars(frame: &mut Frame, area: Rect, data: &BarsData, theme: &Theme) {
     let bars: Vec<(&str, u64)> = data
         .bars
         .iter()
         .map(|b| (b.label.as_str(), b.value))
         .collect();
-    frame.render_widget(BarChart::default().data(&bars).bar_width(3), area);
+    // `label_style` colours the per-bar category name, `value_style` the value printed
+    // on top of each bar. Leave the bar fill to ratatui's default for now.
+    frame.render_widget(
+        BarChart::default()
+            .data(&bars)
+            .bar_width(3)
+            .label_style(Style::default().fg(theme.text))
+            .value_style(Style::default().fg(theme.text)),
+        area,
+    );
 }
 
 #[cfg(test)]

@@ -7,6 +7,16 @@
 [general]
 wait_for_fresh = false
 # `height` omitted — runtime auto-sizes the inline viewport to fit every configured row.
+# Outer breathing room: 2 cols on each side (horizontal is roughly half-width per cell) and
+# 1 row top/bottom so the splash doesn't hug the terminal edge. Viewport bg still paints
+# the padded ring so the padding takes the theme colour, not the terminal default.
+padding = { x = 2, y = 1 }
+
+# ── Theme ────────────────────────────────────────────────────────────
+# No `preset` → the built-in "Splash" signature default (coral/teal accents on deep-ocean
+# navy). Swap to `tokyo_night` / `nord` / `dracula` / `gruvbox_dark` / `catppuccin_mocha`
+# to try a preset; any sibling keys override individual tokens on top. Users on light
+# terminals can set `bg = "reset"` / `bg_subtle = "reset"` to disable the paint.
 
 # ── Hero band (Text / TextBlock shapes, 4 renderers) ─────────────────
 
@@ -217,6 +227,7 @@ render = "grid_table"
 [[row]]
 height = { length = 2 }
 flex = "center"
+bg = "subtle"
 
   [[row.child]]
   widget = "greeting_text"
@@ -225,6 +236,7 @@ flex = "center"
 [[row]]
 height = { length = 4 }
 flex = "center"
+bg = "subtle"
 
   [[row.child]]
   widget = "clock"

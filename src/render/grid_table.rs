@@ -1,13 +1,21 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
-    style::{Color, Style},
+    style::Style,
     widgets::{Row, Table},
 };
 
-use crate::payload::{Body, EntriesData, Entry, Status};
+use crate::payload::{Body, EntriesData, Entry};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[
+    theme::STATUS_OK,
+    theme::STATUS_WARN,
+    theme::STATUS_ERROR,
+    theme::TEXT,
+];
 
 /// Key/value table renderer over the `Entries` shape. Internally a ratatui `Table` with two
 /// columns (key, value) — the name reflects the widget, not the data, so future alternative
@@ -21,36 +29,44 @@ impl Renderer for GridTableRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Entries]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Entries(d) = body {
-            render_entries(frame, area, d);
+            render_entries(frame, area, d, theme);
         }
     }
 }
 
-fn render_entries(frame: &mut Frame, area: Rect, data: &EntriesData) {
-    let rows = data.items.iter().map(to_row);
+fn render_entries(frame: &mut Frame, area: Rect, data: &EntriesData, theme: &Theme) {
+    let rows = data.items.iter().map(|e| to_row(e, theme));
     let widths = [Constraint::Percentage(40), Constraint::Percentage(60)];
-    frame.render_widget(Table::new(rows, widths), area);
+    // Base row style = theme.text. Per-row status colours set via `.style` on the row
+    // itself, which patches on top of the table-level base — so untagged rows pick up the
+    // chrome colour instead of leaking the terminal fg.
+    frame.render_widget(
+        Table::new(rows, widths).style(Style::default().fg(theme.text)),
+        area,
+    );
 }
 
-fn to_row(item: &Entry) -> Row<'_> {
+fn to_row<'a>(item: &'a Entry, theme: &Theme) -> Row<'a> {
     let mut row = Row::new(vec![
         item.key.clone(),
         item.value.clone().unwrap_or_default(),
     ]);
     if let Some(status) = item.status {
-        row = row.style(Style::default().fg(status_color(status)));
+        row = row.style(Style::default().fg(super::status_badge::status_color(status, theme)));
     }
     row
-}
-
-fn status_color(status: Status) -> Color {
-    match status {
-        Status::Ok => Color::Green,
-        Status::Warn => Color::Yellow,
-        Status::Error => Color::Red,
-    }
 }
 
 #[cfg(test)]

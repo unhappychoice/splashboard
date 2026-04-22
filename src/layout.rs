@@ -3,11 +3,14 @@ use std::collections::HashMap;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction as RatDir, Flex as RatFlex, Layout as RatLayout, Rect},
+    style::{Color, Style},
+    text::Span,
     widgets::{Block, BorderType, Borders},
 };
 
 use crate::payload::Payload;
 use crate::render::{Registry, RenderSpec, render_payload};
+use crate::theme::Theme;
 
 pub type WidgetId = String;
 
@@ -18,13 +21,27 @@ pub enum Layout {
         children: Vec<Child>,
         panel: Option<Panel>,
         flex: Flex,
+        bg: BgLevel,
     },
     Widget {
         id: WidgetId,
         panel: Option<Panel>,
+        bg: BgLevel,
     },
     #[allow(dead_code)]
     Empty,
+}
+
+/// Which semantic background a row / widget paints behind its content. `Default` is a no-op
+/// (inherits whatever the viewport already has, typically `theme.bg`); `Subtle` paints
+/// `theme.bg_subtle` so a config can split e.g. a header band from the main content band.
+/// Both resolve against the theme at draw time rather than carrying a literal colour, so
+/// swapping presets gives a consistent hierarchy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BgLevel {
+    #[default]
+    Default,
+    Subtle,
 }
 
 /// How children are distributed along the stack's main axis when their constraints don't fill
@@ -90,6 +107,7 @@ impl Layout {
             children,
             panel: None,
             flex: Flex::Legacy,
+            bg: BgLevel::Default,
         }
     }
 
@@ -99,6 +117,7 @@ impl Layout {
             children,
             panel: None,
             flex: Flex::Legacy,
+            bg: BgLevel::Default,
         }
     }
 
@@ -109,11 +128,13 @@ impl Layout {
                 children,
                 panel,
                 flex: _,
+                bg,
             } => Self::Stack {
                 direction,
                 children,
                 panel,
                 flex,
+                bg,
             },
             other => other,
         }
@@ -123,6 +144,7 @@ impl Layout {
         Self::Widget {
             id: id.into(),
             panel: None,
+            bg: BgLevel::Default,
         }
     }
 
@@ -140,6 +162,30 @@ impl Layout {
         self.with_panel(|p| p.border(border))
     }
 
+    pub fn with_bg(self, level: BgLevel) -> Self {
+        match self {
+            Self::Stack {
+                direction,
+                children,
+                panel,
+                flex,
+                bg: _,
+            } => Self::Stack {
+                direction,
+                children,
+                panel,
+                flex,
+                bg: level,
+            },
+            Self::Widget { id, panel, bg: _ } => Self::Widget {
+                id,
+                panel,
+                bg: level,
+            },
+            Self::Empty => Self::Empty,
+        }
+    }
+
     fn with_panel(self, f: impl FnOnce(Panel) -> Panel) -> Self {
         match self {
             Self::Stack {
@@ -147,6 +193,7 @@ impl Layout {
                 children,
                 panel,
                 flex,
+                bg,
             } => {
                 let p = f(panel.unwrap_or_default());
                 Self::Stack {
@@ -154,11 +201,16 @@ impl Layout {
                     children,
                     panel: Some(p),
                     flex,
+                    bg,
                 }
             }
-            Self::Widget { id, panel } => {
+            Self::Widget { id, panel, bg } => {
                 let p = f(panel.unwrap_or_default());
-                Self::Widget { id, panel: Some(p) }
+                Self::Widget {
+                    id,
+                    panel: Some(p),
+                    bg,
+                }
             }
             Self::Empty => Self::Empty,
         }
@@ -216,6 +268,7 @@ impl Child {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -223,6 +276,7 @@ pub fn draw(
     widgets: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &Registry,
+    theme: &Theme,
 ) {
     match layout {
         Layout::Stack {
@@ -230,27 +284,45 @@ pub fn draw(
             children,
             panel,
             flex,
+            bg,
         } => {
-            let inner = draw_panel(frame, area, panel);
+            paint_bg(frame, area, *bg, theme);
+            let inner = draw_panel(frame, area, panel, theme);
             draw_stack(
-                frame, inner, *direction, *flex, children, widgets, specs, registry,
+                frame, inner, *direction, *flex, children, widgets, specs, registry, theme,
             );
         }
-        Layout::Widget { id, panel } => {
-            let inner = draw_panel(frame, area, panel);
+        Layout::Widget { id, panel, bg } => {
+            paint_bg(frame, area, *bg, theme);
+            let inner = draw_panel(frame, area, panel, theme);
             if let Some(payload) = widgets.get(id) {
-                render_payload(frame, inner, payload, specs.get(id), registry);
+                render_payload(frame, inner, payload, specs.get(id), registry, theme);
             }
         }
         Layout::Empty => {}
     }
 }
 
-fn draw_panel(frame: &mut Frame, area: Rect, panel: &Option<Panel>) -> Rect {
+/// Fills `area` with the theme colour corresponding to `level`. `Default` is a no-op (cells
+/// stay whatever the parent/viewport painted); `Subtle` paints `theme.bg_subtle`. A
+/// themed-subtle resolving to `Color::Reset` also no-ops so users opting into `bg = "subtle"`
+/// without a matching theme override don't accidentally clear existing cells.
+fn paint_bg(frame: &mut Frame, area: Rect, level: BgLevel, theme: &Theme) {
+    let color = match level {
+        BgLevel::Default => return,
+        BgLevel::Subtle => theme.bg_subtle,
+    };
+    if color == Color::Reset {
+        return;
+    }
+    frame.render_widget(Block::default().style(Style::default().bg(color)), area);
+}
+
+fn draw_panel(frame: &mut Frame, area: Rect, panel: &Option<Panel>, theme: &Theme) -> Rect {
     match panel {
         None => area,
         Some(p) => {
-            let block = build_block(p);
+            let block = build_block(p, theme);
             let inner = block.inner(area);
             frame.render_widget(block, area);
             inner
@@ -258,12 +330,16 @@ fn draw_panel(frame: &mut Frame, area: Rect, panel: &Option<Panel>) -> Rect {
     }
 }
 
-fn build_block(panel: &Panel) -> Block<'_> {
+fn build_block<'a>(panel: &'a Panel, theme: &Theme) -> Block<'a> {
     let mut b = Block::default()
         .borders(Borders::ALL)
-        .border_type(to_border_type(panel.border));
+        .border_type(to_border_type(panel.border))
+        .border_style(Style::default().fg(theme.panel_border));
     if let Some(t) = panel.title.as_deref() {
-        b = b.title(t.to_string());
+        b = b.title(Span::styled(
+            t.to_string(),
+            Style::default().fg(theme.panel_title),
+        ));
     }
     b
 }
@@ -287,6 +363,7 @@ fn draw_stack(
     widgets: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &Registry,
+    theme: &Theme,
 ) {
     let constraints: Vec<Constraint> = children.iter().map(|c| to_constraint(c.size)).collect();
     let rects = RatLayout::default()
@@ -295,7 +372,7 @@ fn draw_stack(
         .flex(to_ratatui_flex(flex))
         .split(area);
     for (child, rect) in children.iter().zip(rects.iter()) {
-        draw(frame, *rect, &child.layout, widgets, specs, registry);
+        draw(frame, *rect, &child.layout, widgets, specs, registry, theme);
     }
 }
 

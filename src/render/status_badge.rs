@@ -7,8 +7,16 @@ use ratatui::{
 };
 
 use crate::payload::{BadgeData, Body, Status};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[
+    theme::STATUS_OK,
+    theme::STATUS_WARN,
+    theme::STATUS_ERROR,
+    theme::TEXT,
+];
 
 /// Traffic-light / badge renderer: a single coloured dot (● green / yellow / red) driven by
 /// `BadgeData.status`, followed by `BadgeData.label`. One indicator per widget — CI, deploy,
@@ -25,28 +33,45 @@ impl Renderer for StatusBadgeRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Badge]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Badge(d) = body {
-            render_badge(frame, area, d, opts);
+            render_badge(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_badge(frame: &mut Frame, area: Rect, data: &BadgeData, opts: &RenderOptions) {
+fn render_badge(
+    frame: &mut Frame,
+    area: Rect,
+    data: &BadgeData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
+    let label = Style::default().fg(theme.text);
     let line = Line::from(vec![
-        Span::styled(DOT, Style::default().fg(status_color(data.status))),
-        Span::raw(" "),
-        Span::raw(data.label.clone()),
+        Span::styled(DOT, Style::default().fg(status_color(data.status, theme))),
+        Span::styled(" ", label),
+        Span::styled(data.label.clone(), label),
     ]);
     let p = Paragraph::new(line).alignment(parse_align(opts.align.as_deref()));
     frame.render_widget(p, area);
 }
 
-fn status_color(status: Status) -> Color {
+pub(super) fn status_color(status: Status, theme: &Theme) -> Color {
     match status {
-        Status::Ok => Color::Green,
-        Status::Warn => Color::Yellow,
-        Status::Error => Color::Red,
+        Status::Ok => theme.status_ok,
+        Status::Warn => theme.status_warn,
+        Status::Error => theme.status_error,
     }
 }
 
@@ -92,21 +117,24 @@ mod tests {
     }
 
     #[test]
-    fn ok_maps_to_green() {
+    fn ok_maps_to_theme_status_ok() {
         let buf = render(Status::Ok, "x", 10, 1);
-        assert_eq!(buf.cell((0, 0)).unwrap().fg, Color::Green);
+        let theme = crate::theme::Theme::default();
+        assert_eq!(buf.cell((0, 0)).unwrap().fg, theme.status_ok);
     }
 
     #[test]
-    fn warn_maps_to_yellow() {
+    fn warn_maps_to_theme_status_warn() {
         let buf = render(Status::Warn, "x", 10, 1);
-        assert_eq!(buf.cell((0, 0)).unwrap().fg, Color::Yellow);
+        let theme = crate::theme::Theme::default();
+        assert_eq!(buf.cell((0, 0)).unwrap().fg, theme.status_warn);
     }
 
     #[test]
-    fn error_maps_to_red() {
+    fn error_maps_to_theme_status_error() {
         let buf = render(Status::Error, "x", 10, 1);
-        assert_eq!(buf.cell((0, 0)).unwrap().fg, Color::Red);
+        let theme = crate::theme::Theme::default();
+        assert_eq!(buf.cell((0, 0)).unwrap().fg, theme.status_error);
     }
 
     #[test]

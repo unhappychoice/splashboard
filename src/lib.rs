@@ -11,4 +11,5 @@ pub mod render;
 pub mod runtime;
 pub mod samples;
 pub mod shell;
+pub mod theme;
 pub mod trust;

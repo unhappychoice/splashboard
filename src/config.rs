@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::layout::{BorderStyle, Child, Flex, Layout};
+use crate::layout::{BgLevel, BorderStyle, Child, Flex, Layout};
 use crate::render::RenderSpec;
+use crate::theme::ThemeConfig;
 
 const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
 
@@ -13,6 +14,10 @@ const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
 pub struct Config {
     #[serde(default)]
     pub general: General,
+    /// Semantic colour overrides. Omitted keys use the built-in defaults; see
+    /// [`crate::theme`] for the list of tokens.
+    #[serde(default)]
+    pub theme: ThemeConfig,
     #[serde(default, rename = "widget")]
     pub widgets: Vec<WidgetConfig>,
     #[serde(default, rename = "row")]
@@ -27,6 +32,36 @@ pub struct General {
     /// widgets than fit in the default bump this to make room.
     #[serde(default)]
     pub height: Option<u16>,
+    /// Space reserved around the root layout. `padding = 1` pads one cell on all four sides;
+    /// `padding = { x = 2, y = 1 }` splits horizontal / vertical. The viewport bg (if any)
+    /// still paints across the whole splash area so the padded band shows the theme colour,
+    /// not the terminal background.
+    #[serde(default)]
+    pub padding: Option<PaddingSpec>,
+}
+
+/// Uniform or split padding. Short form `padding = 1` applies the same value to all sides;
+/// long form `{ x, y }` sets horizontal (left + right) and vertical (top + bottom) separately.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(untagged)]
+pub enum PaddingSpec {
+    Uniform(u16),
+    Axes {
+        #[serde(default)]
+        x: u16,
+        #[serde(default)]
+        y: u16,
+    },
+}
+
+impl PaddingSpec {
+    /// (`x`, `y`) where `x` is left+right-per-side and `y` is top+bottom-per-side.
+    pub fn xy(&self) -> (u16, u16) {
+        match self {
+            Self::Uniform(n) => (*n, *n),
+            Self::Axes { x, y } => (*x, *y),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -64,8 +99,22 @@ pub struct RowConfig {
     /// `center` is the obvious use case: a narrower widget parked in the middle of its row.
     #[serde(default)]
     pub flex: Option<FlexSpec>,
+    /// Which semantic background paints this row. `default` (or omitted) inherits the
+    /// viewport bg; `subtle` paints `theme.bg_subtle` — use it to lift header/footer bands
+    /// visually off the main content.
+    #[serde(default)]
+    pub bg: Option<BgSpec>,
     #[serde(default, rename = "child")]
     pub children: Vec<ChildConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BgSpec {
+    /// Inherit whatever the viewport painted (usually `theme.bg`).
+    Default,
+    /// Paint `theme.bg_subtle` behind this slot — for header/footer/callout bands.
+    Subtle,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -88,6 +137,9 @@ pub struct ChildConfig {
     pub title: Option<String>,
     #[serde(default)]
     pub border: Option<BorderSpec>,
+    /// Per-child background; see [`RowConfig::bg`].
+    #[serde(default)]
+    pub bg: Option<BgSpec>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -138,10 +190,18 @@ impl Config {
     /// (Min/Max use their value, Fill contributes a small default, Percentage is ignored
     /// since it can't resolve without a known viewport).
     pub fn computed_height(&self) -> u16 {
-        self.rows
+        let rows: u16 = self
+            .rows
             .iter()
             .map(|r| row_height_estimate(r.height))
-            .sum()
+            .sum();
+        let pad_y = self
+            .general
+            .padding
+            .map(|p| p.xy().1)
+            .unwrap_or(0)
+            .saturating_mul(2);
+        rows.saturating_add(pad_y)
     }
 }
 
@@ -202,6 +262,7 @@ fn to_row_child(row: &RowConfig) -> Child {
         inner = inner.flexed(to_flex(f));
     }
     let decorated = apply_panel(inner, row.title.as_deref(), row.border);
+    let decorated = apply_bg(decorated, row.bg);
     make_child(row.height, decorated)
 }
 
@@ -219,7 +280,15 @@ fn to_flex(f: FlexSpec) -> Flex {
 fn to_col_child(c: &ChildConfig) -> Child {
     let leaf = Layout::widget(c.widget.clone());
     let decorated = apply_panel(leaf, c.title.as_deref(), c.border);
+    let decorated = apply_bg(decorated, c.bg);
     make_child(c.width, decorated)
+}
+
+fn apply_bg(layout: Layout, bg: Option<BgSpec>) -> Layout {
+    match bg {
+        None | Some(BgSpec::Default) => layout,
+        Some(BgSpec::Subtle) => layout.with_bg(BgLevel::Subtle),
+    }
 }
 
 fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
@@ -348,6 +417,26 @@ widget = "x"
             );
             Config::parse(&toml).unwrap();
         }
+    }
+
+    #[test]
+    fn bg_spec_parses_on_row_and_child() {
+        let toml = r#"
+[[widget]]
+id = "x"
+fetcher = "static"
+render = "text_plain"
+
+[[row]]
+bg = "subtle"
+height = { length = 2 }
+[[row.child]]
+widget = "x"
+bg = "default"
+"#;
+        let c = Config::parse(toml).unwrap();
+        assert_eq!(c.rows[0].bg, Some(BgSpec::Subtle));
+        assert_eq!(c.rows[0].children[0].bg, Some(BgSpec::Default));
     }
 
     #[test]

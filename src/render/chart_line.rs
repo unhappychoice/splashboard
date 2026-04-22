@@ -1,13 +1,17 @@
 use ratatui::{
     Frame,
     layout::Rect,
+    style::Style,
     symbols::Marker,
     widgets::{Axis, Chart, Dataset, GraphType},
 };
 
 use crate::payload::{Body, PointSeries, PointSeriesData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
 pub struct ChartLineRenderer;
 
@@ -18,15 +22,30 @@ impl Renderer for ChartLineRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::PointSeries]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::PointSeries(d) = body {
-            render_line_chart(frame, area, d);
+            render_line_chart(frame, area, d, theme);
         }
     }
 }
 
-fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData) {
-    let datasets: Vec<Dataset> = data.series.iter().map(to_dataset).collect();
+fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData, theme: &Theme) {
+    let datasets: Vec<Dataset> = data
+        .series
+        .iter()
+        .enumerate()
+        .map(|(i, s)| to_dataset(s, theme.series_color(i)))
+        .collect();
     let (x_bounds, y_bounds) = bounds(&data.series);
     let chart = Chart::new(datasets)
         .x_axis(Axis::default().bounds(x_bounds))
@@ -34,11 +53,12 @@ fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData) {
     frame.render_widget(chart, area);
 }
 
-fn to_dataset(series: &PointSeries) -> Dataset<'_> {
+fn to_dataset(series: &PointSeries, color: ratatui::style::Color) -> Dataset<'_> {
     Dataset::default()
         .name(series.name.clone())
         .marker(Marker::Braille)
         .graph_type(GraphType::Line)
+        .style(Style::default().fg(color))
         .data(&series.points)
 }
 

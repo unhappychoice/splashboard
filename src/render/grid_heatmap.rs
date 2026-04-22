@@ -1,8 +1,11 @@
-use ratatui::{Frame, buffer::Buffer, layout::Rect, style::Color};
+use ratatui::{Frame, buffer::Buffer, layout::Rect};
 
 use crate::payload::{Body, HeatmapData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_HEATMAP, theme::TEXT];
 
 /// 2D intensity grid — GitHub-style contribution graph and any other daily/periodic heatmap.
 /// Each cell takes two terminal columns and one row so the grid reads as "dots of equal width"
@@ -19,18 +22,6 @@ const CELL_W: u16 = 2;
 const CELL_H: u16 = 1;
 const CELL_GLYPH: &str = "■";
 
-/// Contribution-graph "grass" palette, level 0 → 4. Level 0 is GitHub's light-mode empty cell
-/// color (very light gray) so inactive days read as "no activity" rather than as a dark mass —
-/// the gradient feels lighter and the greens pop more. Will be replaced by theme lookups once
-/// #17 lands.
-const PALETTE: [Color; LEVELS] = [
-    Color::Rgb(0xEB, 0xED, 0xF0),
-    Color::Rgb(0x9B, 0xE9, 0xA8),
-    Color::Rgb(0x40, 0xC4, 0x63),
-    Color::Rgb(0x30, 0xA1, 0x4E),
-    Color::Rgb(0x21, 0x6E, 0x39),
-];
-
 impl Renderer for GridHeatmapRenderer {
     fn name(&self) -> &str {
         "grid_heatmap"
@@ -38,14 +29,30 @@ impl Renderer for GridHeatmapRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Heatmap]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Heatmap(d) = body {
-            render_heatmap(frame, area, d, opts);
+            render_heatmap(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData, opts: &RenderOptions) {
+fn render_heatmap(
+    frame: &mut Frame,
+    area: Rect,
+    data: &HeatmapData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     if data.cells.is_empty() || data.cells[0].is_empty() || area.width == 0 || area.height == 0 {
         return;
     }
@@ -85,6 +92,7 @@ fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData, opts: &Rend
             data,
             visible_cols,
             col_offset,
+            theme,
         );
     }
     paint_cells(
@@ -94,6 +102,7 @@ fn render_heatmap(frame: &mut Frame, area: Rect, data: &HeatmapData, opts: &Rend
         &thresholds,
         visible_cols,
         col_offset,
+        theme,
     );
 }
 
@@ -125,6 +134,7 @@ fn visible_col_window(data: &HeatmapData, grid_area: Rect) -> (usize, usize) {
     (visible_cols, col_offset)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_cells(
     buf: &mut Buffer,
     area: Rect,
@@ -132,6 +142,7 @@ fn paint_cells(
     thresholds: &[u32],
     visible_cols: usize,
     col_offset: usize,
+    theme: &Theme,
 ) {
     let rows = data.cells.len();
     let max_visible_rows = (area.height / CELL_H) as usize;
@@ -140,7 +151,7 @@ fn paint_cells(
         for c in 0..visible_cols {
             let value = data.cells[r][c + col_offset];
             let level = bucket(value, thresholds);
-            let color = PALETTE[level];
+            let color = theme.heatmap_level(level);
             let x = area.x + (c as u16) * CELL_W;
             let y = area.y + (r as u16) * CELL_H;
             if let Some(cell) = buf.cell_mut((x, y)) {
@@ -159,6 +170,7 @@ fn paint_col_labels(
     data: &HeatmapData,
     visible_cols: usize,
     col_offset: usize,
+    theme: &Theme,
 ) {
     // Labels live on the top row of `area` (which includes the label row; `grid_area` starts
     // one row below). Write each non-empty label at its column's x-origin, extending as far
@@ -181,6 +193,7 @@ fn paint_col_labels(
         for (i, ch) in label.chars().take(max_chars).enumerate() {
             if let Some(cell) = buf.cell_mut((x0 + i as u16, area.y)) {
                 cell.set_symbol(&ch.to_string());
+                cell.set_fg(theme.text);
             }
         }
         next_label_start = c;

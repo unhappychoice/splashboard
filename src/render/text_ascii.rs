@@ -1,10 +1,13 @@
-use ratatui::{Frame, layout::Rect, widgets::Paragraph};
+use ratatui::{Frame, layout::Rect, style::Style, widgets::Paragraph};
 use tui_big_text::{BigText, PixelSize};
 
 use crate::options::OptionSchema;
 use crate::payload::{Body, TextData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -53,17 +56,33 @@ impl Renderer for TextAsciiRenderer {
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Text(d) = body {
             match opts.style.as_deref() {
-                Some("figlet") => render_figlet(frame, area, d, opts),
-                _ => render_blocks(frame, area, d, opts),
+                Some("figlet") => render_figlet(frame, area, d, opts, theme),
+                _ => render_blocks(frame, area, d, opts, theme),
             }
         }
     }
 }
 
-fn render_blocks(frame: &mut Frame, area: Rect, data: &TextData, opts: &RenderOptions) {
+fn render_blocks(
+    frame: &mut Frame,
+    area: Rect,
+    data: &TextData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let pixel_size = opts
         .pixel_size
         .as_deref()
@@ -73,14 +92,23 @@ fn render_blocks(frame: &mut Frame, area: Rect, data: &TextData, opts: &RenderOp
     let target = align_rect(area, natural_width, opts.align.as_deref());
     let big = BigText::builder()
         .pixel_size(pixel_size)
+        .style(Style::default().fg(theme.text))
         .lines(vec![data.value.clone().into()])
         .build();
     frame.render_widget(big, target);
 }
 
-fn render_figlet(frame: &mut Frame, area: Rect, data: &TextData, opts: &RenderOptions) {
+fn render_figlet(
+    frame: &mut Frame,
+    area: Rect,
+    data: &TextData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let rendered = figletify(&data.value);
-    let p = Paragraph::new(rendered).alignment(parse_alignment(opts.align.as_deref()));
+    let p = Paragraph::new(rendered)
+        .style(Style::default().fg(theme.text))
+        .alignment(parse_alignment(opts.align.as_deref()));
     frame.render_widget(p, area);
 }
 

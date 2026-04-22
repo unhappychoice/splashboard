@@ -2,14 +2,24 @@ use chrono::{Datelike, TimeZone, Utc};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::Paragraph,
 };
 
 use crate::payload::{Body, Status, TimelineData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[
+    theme::STATUS_OK,
+    theme::STATUS_WARN,
+    theme::STATUS_ERROR,
+    theme::TEXT_DIM,
+    theme::TEXT_SECONDARY,
+    theme::TEXT,
+];
 
 /// Time-stamped event list. Each row shows a compact relative prefix (`"3h"`, `"2d"`, `"Apr 5"`)
 /// computed at draw time against the current clock — cached payloads never freeze a stale
@@ -25,9 +35,19 @@ impl Renderer for ListTimelineRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Timeline]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Timeline(d) = body {
-            render_timeline_at(frame, area, d, opts, Utc::now().timestamp());
+            render_timeline_at(frame, area, d, opts, Utc::now().timestamp(), theme);
         }
     }
 }
@@ -38,6 +58,7 @@ fn render_timeline_at(
     data: &TimelineData,
     opts: &RenderOptions,
     now: i64,
+    theme: &Theme,
 ) {
     let prefixes: Vec<String> = data
         .events
@@ -49,9 +70,7 @@ fn render_timeline_at(
         .map(|p| p.chars().count())
         .max()
         .unwrap_or(0);
-    let dim = Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::DIM);
+    let dim = Style::default().fg(theme.text_dim);
 
     let mut lines: Vec<Line> = Vec::with_capacity(data.events.len() * 2);
     let mut content_width: usize = 0;
@@ -60,20 +79,25 @@ fn render_timeline_at(
         content_width = content_width.max(head.chars().count() + event.title.chars().count());
         lines.push(Line::from(vec![
             Span::styled(head, dim),
-            Span::styled(event.title.clone(), status_style(event.status)),
+            Span::styled(event.title.clone(), status_style(event.status, theme)),
         ]));
         if let Some(detail) = &event.detail {
             let indent = format!("{}{SEPARATOR}", " ".repeat(prefix_width));
             content_width = content_width.max(indent.chars().count() + detail.chars().count());
             lines.push(Line::from(vec![
                 Span::styled(indent, dim),
-                Span::styled(detail.clone(), Style::default().fg(Color::Gray)),
+                Span::styled(detail.clone(), Style::default().fg(theme.text_secondary)),
             ]));
         }
     }
 
     let target = align_rect(area, content_width as u16, opts.align.as_deref());
-    frame.render_widget(Paragraph::new(lines), target);
+    // Base `theme.text` so event titles without status, and any padding chars around
+    // styled spans, inherit the chrome colour instead of the terminal fg.
+    frame.render_widget(
+        Paragraph::new(lines).style(Style::default().fg(theme.text)),
+        target,
+    );
 }
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
@@ -104,11 +128,9 @@ fn pad_left(s: &str, width: usize) -> String {
     out
 }
 
-fn status_style(status: Option<Status>) -> Style {
+fn status_style(status: Option<Status>, theme: &Theme) -> Style {
     match status {
-        Some(Status::Ok) => Style::default().fg(Color::Green),
-        Some(Status::Warn) => Style::default().fg(Color::Yellow),
-        Some(Status::Error) => Style::default().fg(Color::Red),
+        Some(s) => Style::default().fg(super::status_badge::status_color(s, theme)),
         None => Style::default(),
     }
 }
@@ -178,8 +200,9 @@ mod tests {
     fn render_at(data: &TimelineData, now: i64, w: u16, h: u16) -> Buffer {
         let backend = TestBackend::new(w, h);
         let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
         terminal
-            .draw(|f| render_timeline_at(f, f.area(), data, &RenderOptions::default(), now))
+            .draw(|f| render_timeline_at(f, f.area(), data, &RenderOptions::default(), now, &theme))
             .unwrap();
         terminal.backend().buffer().clone()
     }
@@ -301,7 +324,10 @@ mod tests {
         // Title follows the separator " │ " — scan for the 'b' of "build".
         let row = row_text(&buf, 0);
         let col = row.find("build").expect("title should appear") as u16;
-        assert_eq!(buf.cell((col, 0)).unwrap().fg, Color::Red);
+        assert_eq!(
+            buf.cell((col, 0)).unwrap().fg,
+            Theme::default().status_error
+        );
     }
 
     #[test]

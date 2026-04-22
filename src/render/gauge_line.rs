@@ -1,8 +1,11 @@
-use ratatui::{Frame, layout::Rect, widgets::LineGauge};
+use ratatui::{Frame, layout::Rect, style::Style, text::Span, widgets::LineGauge};
 
 use crate::payload::{Body, RatioData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 /// Compact progress indicator: a single-line bar, ratio filled. Good for dense dashboards where
 /// the full-height `gauge_circle` block renderer is too tall. Alternate renderer for the `Ratio` shape.
@@ -15,18 +18,28 @@ impl Renderer for GaugeLineRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Ratio(d) = body {
-            render_line_gauge(frame, area, d);
+            render_line_gauge(frame, area, d, theme);
         }
     }
 }
 
-fn render_line_gauge(frame: &mut Frame, area: Rect, data: &RatioData) {
+fn render_line_gauge(frame: &mut Frame, area: Rect, data: &RatioData, theme: &Theme) {
     let ratio = data.value.clamp(0.0, 1.0);
     let mut gauge = LineGauge::default().ratio(ratio);
     if let Some(label) = &data.label {
-        gauge = gauge.label(label.clone());
+        gauge = gauge.label(Span::styled(label.clone(), Style::default().fg(theme.text)));
     }
     frame.render_widget(gauge, area);
 }

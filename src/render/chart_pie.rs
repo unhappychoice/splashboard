@@ -1,27 +1,18 @@
-use ratatui::{Frame, layout::Rect, style::Color};
+use ratatui::{Frame, layout::Rect};
 use tui_piechart::{PieChart, PieSlice};
 
 use crate::payload::{BarsData, Body};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
+
 /// Pie-chart renderer. Consumes the same `Bars` shape as `chart_bar`, so one fetcher feeds
 /// either — `render = "chart_pie"` vs `render = "chart_bar"` is a config choice. Slice colours
-/// cycle through a fixed palette in input order; labels and percentages come from the widget.
+/// cycle through the shared `series` palette in input order; labels and percentages come from
+/// the widget.
 pub struct ChartPieRenderer;
-
-const PALETTE: &[Color] = &[
-    Color::Red,
-    Color::Blue,
-    Color::Green,
-    Color::Yellow,
-    Color::Magenta,
-    Color::Cyan,
-    Color::LightRed,
-    Color::LightBlue,
-    Color::LightGreen,
-    Color::LightYellow,
-];
 
 impl Renderer for ChartPieRenderer {
     fn name(&self) -> &str {
@@ -30,19 +21,29 @@ impl Renderer for ChartPieRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Bars(d) = body {
-            render_pie(frame, area, d);
+            render_pie(frame, area, d, theme);
         }
     }
 }
 
-fn render_pie(frame: &mut Frame, area: Rect, data: &BarsData) {
+fn render_pie(frame: &mut Frame, area: Rect, data: &BarsData, theme: &Theme) {
     let slices: Vec<PieSlice> = data
         .bars
         .iter()
         .enumerate()
-        .map(|(i, b)| PieSlice::new(b.label.as_str(), b.value as f64, PALETTE[i % PALETTE.len()]))
+        .map(|(i, b)| PieSlice::new(b.label.as_str(), b.value as f64, theme.series_color(i)))
         .collect();
     frame.render_widget(
         PieChart::new(slices)
@@ -124,7 +125,8 @@ mod tests {
 
     #[test]
     fn more_bars_than_palette_does_not_panic() {
-        let many: Vec<Bar> = (0..PALETTE.len() + 3)
+        let palette_len = Theme::default().palette_series.len();
+        let many: Vec<Bar> = (0..palette_len + 3)
             .map(|i| bar(&format!("b{i}"), (i as u64) + 1))
             .collect();
         let _ = render(many, 80, 30);

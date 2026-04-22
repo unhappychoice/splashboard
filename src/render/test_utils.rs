@@ -5,6 +5,7 @@ use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
 use crate::render::{Registry, RenderSpec, render_payload};
+use crate::theme::Theme;
 
 /// Render a single payload through the default renderer for its shape.
 pub fn render_to_buffer(payload: &Payload, width: u16, height: u16) -> Buffer {
@@ -22,8 +23,9 @@ pub fn render_to_buffer_with_spec(
 ) -> Buffer {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
+    let theme = Theme::default();
     terminal
-        .draw(|f| render_payload(f, f.area(), payload, spec, registry))
+        .draw(|f| render_payload(f, f.area(), payload, spec, registry, &theme))
         .unwrap();
     terminal.backend().buffer().clone()
 }
@@ -47,10 +49,11 @@ pub fn render_to_buffer_with_layout_and_specs(
     height: u16,
 ) -> Buffer {
     let registry = Registry::with_builtins();
+    let theme = Theme::default();
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| layout::draw(f, f.area(), root, widgets, specs, &registry))
+        .draw(|f| layout::draw(f, f.area(), root, widgets, specs, &registry, &theme))
         .unwrap();
     terminal.backend().buffer().clone()
 }

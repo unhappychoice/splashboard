@@ -1,14 +1,17 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::calendar::{CalendarEventStore, Monthly},
 };
 use time::{Date, Month};
 
 use crate::payload::{Body, CalendarData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::ACCENT_TODAY, theme::ACCENT_EVENT, theme::TEXT];
 
 /// Month-view calendar for the `Calendar` shape. Highlights `day` (today / focus) and marks
 /// each day in `events`. Silently no-ops on invalid dates — a splash must never panic on bad
@@ -22,14 +25,24 @@ impl Renderer for GridCalendarRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Calendar]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Calendar(d) = body {
-            render_calendar(frame, area, d);
+            render_calendar(frame, area, d, theme);
         }
     }
 }
 
-fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData) {
+fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &Theme) {
     let Some(month) = month_from_u8(data.month) else {
         return;
     };
@@ -44,16 +57,21 @@ fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData) {
         events.add(
             today,
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.accent_today)
                 .add_modifier(Modifier::BOLD),
         );
     }
     for day in &data.events {
         if let Ok(date) = Date::from_calendar_date(data.year, month, *day) {
-            events.add(date, Style::default().fg(Color::Cyan));
+            events.add(date, Style::default().fg(theme.accent_event));
         }
     }
-    frame.render_widget(Monthly::new(anchor, events), area);
+    // `default_style` paints the grid of non-event day numbers + header so unmarked days
+    // match the Splash text colour instead of leaking the terminal fg against the navy bg.
+    frame.render_widget(
+        Monthly::new(anchor, events).default_style(Style::default().fg(theme.text)),
+        area,
+    );
 }
 
 fn month_from_u8(m: u8) -> Option<Month> {
