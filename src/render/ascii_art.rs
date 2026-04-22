@@ -164,9 +164,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Text(TextData {
-                value: text.into(),
-            }),
+            body: Body::Text(TextData { value: text.into() }),
         }
     }
 

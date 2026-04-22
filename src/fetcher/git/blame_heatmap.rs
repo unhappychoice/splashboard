@@ -45,7 +45,9 @@ impl Fetcher for GitBlameHeatmap {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Heatmap => samples::heatmap_grid(5, 10),
-            Shape::Text => samples::text("src/main.rs (18), src/render/mod.rs (12), src/fetcher/mod.rs (9)"),
+            Shape::Text => {
+                samples::text("src/main.rs (18), src/render/mod.rs (12), src/fetcher/mod.rs (9)")
+            }
             _ => return None,
         })
     }

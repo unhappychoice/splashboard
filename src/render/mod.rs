@@ -445,9 +445,7 @@ mod tests {
             col_labels: None,
         })));
         // Non-empty and "structurally always present" cases.
-        assert!(!is_empty_body(&Body::Text(TextData {
-            value: "x".into(),
-        })));
+        assert!(!is_empty_body(&Body::Text(TextData { value: "x".into() })));
         assert!(!is_empty_body(&Body::TextBlock(TextBlockData {
             lines: vec!["x".into()],
         })));
@@ -488,11 +486,6 @@ mod tests {
         // the plain `simple` renderer and the `ascii_art` renderer — users pick via config.
         let r = Registry::with_builtins();
         assert!(r.get("simple").unwrap().accepts().contains(&Shape::Text));
-        assert!(
-            r.get("ascii_art")
-                .unwrap()
-                .accepts()
-                .contains(&Shape::Text)
-        );
+        assert!(r.get("ascii_art").unwrap().accepts().contains(&Shape::Text));
     }
 }

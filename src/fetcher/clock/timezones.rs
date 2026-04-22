@@ -134,10 +134,8 @@ mod tests {
 
     #[test]
     fn invalid_zone_renders_placeholder_time() {
-        let p = ClockTimezonesFetcher.compute(&ctx(
-            Some(Shape::TextBlock),
-            "timezones = [\"Not/AZone\"]",
-        ));
+        let p = ClockTimezonesFetcher
+            .compute(&ctx(Some(Shape::TextBlock), "timezones = [\"Not/AZone\"]"));
         match p.body {
             Body::TextBlock(d) => assert!(d.lines[0].ends_with("??")),
             _ => panic!("expected text_block"),
