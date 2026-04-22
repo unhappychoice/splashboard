@@ -1,9 +1,11 @@
-use ratatui::{Frame, layout::Rect, widgets::Sparkline};
+use ratatui::{Frame, layout::Rect, style::Style, widgets::Sparkline};
 
 use crate::payload::{Body, NumberSeriesData};
 use crate::theme::Theme;
 
 use super::{Registry, RenderOptions, Renderer, Shape};
+
+const ZERO_BASELINE: &str = "▁";
 
 pub struct ChartSparklineRenderer;
 
@@ -20,19 +22,45 @@ impl Renderer for ChartSparklineRenderer {
         area: Rect,
         body: &Body,
         _opts: &RenderOptions,
-        _theme: &Theme,
+        theme: &Theme,
         _registry: &Registry,
     ) {
         if let Body::NumberSeries(d) = body {
-            render_sparkline(frame, area, d);
+            render_sparkline(frame, area, d, theme);
         }
     }
 }
 
-fn render_sparkline(frame: &mut Frame, area: Rect, data: &NumberSeriesData) {
+fn render_sparkline(frame: &mut Frame, area: Rect, data: &NumberSeriesData, theme: &Theme) {
     let start = data.values.len().saturating_sub(area.width as usize);
     let visible = &data.values[start..];
     frame.render_widget(Sparkline::default().data(visible), area);
+    draw_zero_baseline(frame, area, visible, theme);
+}
+
+/// ratatui `Sparkline` renders a 0-value column as empty space, which makes a sparse series
+/// ("nothing happened for 50 days") visually indistinguishable from "no data / padding".
+/// Paint the minimum block glyph on the bottom row at each 0-value column after the sparkline
+/// draws, so every point in the visible window registers as a tick.
+fn draw_zero_baseline(frame: &mut Frame, area: Rect, visible: &[u64], theme: &Theme) {
+    if area.height == 0 {
+        return;
+    }
+    let bottom = area.y + area.height - 1;
+    let style = Style::default().fg(theme.text_dim);
+    for (i, &value) in visible.iter().enumerate() {
+        if value != 0 {
+            continue;
+        }
+        let x = area.x + i as u16;
+        if x >= area.x + area.width {
+            break;
+        }
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, bottom)) {
+            cell.set_symbol(ZERO_BASELINE);
+            cell.set_style(style);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -79,5 +107,26 @@ mod tests {
             rightmost.chars().any(|c| c != ' '),
             "expected recent spikes in rightmost cells, got: {rightmost:?}"
         );
+    }
+
+    /// ratatui renders value=0 as empty, so a sparse series ("no activity for a week") reads
+    /// as "no data". We post-draw `▁` on the bottom row at each zero-column so every visible
+    /// datum leaves a mark.
+    #[test]
+    fn zero_values_draw_baseline_tick() {
+        let values = vec![0u64, 5, 0, 0, 8, 0];
+        let buf = render_to_buffer(&payload(values.clone()), 6, 3);
+        let bottom_row: String = (0..6)
+            .map(|x| buf.cell((x, 2)).unwrap().symbol().to_string())
+            .collect();
+        for (x, &v) in values.iter().enumerate() {
+            if v == 0 {
+                assert_eq!(
+                    buf.cell((x as u16, 2)).unwrap().symbol(),
+                    "▁",
+                    "zero column {x} should carry baseline, got row: {bottom_row:?}"
+                );
+            }
+        }
     }
 }
