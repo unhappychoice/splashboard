@@ -44,6 +44,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: ${{ matrix.os == 'ubuntu-latest' && 'llvm-tools-preview' || '' }}
       - uses: Swatinem/rust-cache@v2
+      - if: matrix.os == 'ubuntu-latest'
+        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Run tests
+        if: matrix.os != 'ubuntu-latest'
         run: cargo test --all-targets
+      - name: Run tests with coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo llvm-cov --package splashboard --lcov --output-path lcov.info
+      - name: Upload to Codecov
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
