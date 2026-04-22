@@ -14,6 +14,7 @@ use crate::samples;
 
 pub mod clock;
 pub mod git;
+pub mod github;
 pub mod read_store;
 pub mod static_text;
 pub mod stub;
@@ -232,6 +233,9 @@ impl Registry {
             r.register(f);
         }
         for f in git::fetchers() {
+            r.register(f);
+        }
+        for f in github::fetchers() {
             r.register(f);
         }
         for f in stub::stubs() {

@@ -1,5 +1,5 @@
 //! Placeholder fetchers that still return canned data. Each of these is blocked on a dedicated
-//! issue (#11 github) and will be replaced one-by-one. Keeping them in a single module makes it
+//! widget initiative and will be replaced one-by-one. Keeping them in a single module makes it
 //! obvious at a glance which parts of the default dashboard aren't real yet.
 
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::payload::{
-    BadgeData, Bar, BarsData, Body, HeatmapData, Payload, PointSeries, PointSeriesData, Status,
+    BadgeData, Body, HeatmapData, Payload, PointSeries, PointSeriesData, Status,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -16,52 +16,12 @@ use super::{FetchContext, FetchError, Fetcher, Safety};
 
 pub fn stubs() -> Vec<Arc<dyn Fetcher>> {
     vec![
-        Arc::new(GithubPrsStub),
         Arc::new(TrendStub),
         Arc::new(ContributionsStub),
         Arc::new(CiStatusStub),
         Arc::new(DeployStatusStub),
         Arc::new(OncallStatusStub),
     ]
-}
-
-pub struct GithubPrsStub;
-
-#[async_trait]
-impl Fetcher for GithubPrsStub {
-    fn name(&self) -> &str {
-        "github_prs"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Network
-    }
-    fn shapes(&self) -> &[Shape] {
-        &[Shape::Bars]
-    }
-    fn sample_body(&self, shape: Shape) -> Option<Body> {
-        match shape {
-            Shape::Bars => Some(samples::bars(&[("alice", 5), ("bob", 3), ("charlie", 2)])),
-            _ => None,
-        }
-    }
-    async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Bars(BarsData {
-            bars: vec![
-                Bar {
-                    label: "splsh".into(),
-                    value: 3,
-                },
-                Bar {
-                    label: "gtype".into(),
-                    value: 2,
-                },
-                Bar {
-                    label: "other".into(),
-                    value: 1,
-                },
-            ],
-        })))
-    }
 }
 
 pub struct TrendStub;
@@ -293,16 +253,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn safety_classification_matches_feature_surface() {
-        assert_eq!(GithubPrsStub.safety(), Safety::Network);
-    }
-
-    #[test]
     fn all_cached_stubs_are_registered() {
         let fetchers = stubs();
         let names: Vec<&str> = fetchers.iter().map(|f| f.name()).collect();
         for expected in [
-            "github_prs",
             "trend",
             "contributions",
             "ci_status",

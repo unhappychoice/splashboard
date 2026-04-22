@@ -29,8 +29,8 @@ render = "table"
 
 [[widget]]
 id = "prs"
-fetcher = "github_prs"
-render = "bar_chart"
+fetcher = "github_my_prs"
+render = "list"
 
 [[widget]]
 id = "contributions"
