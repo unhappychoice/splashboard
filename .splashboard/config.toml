@@ -1,13 +1,14 @@
-# Dogfood config for the splashboard repo itself. Every shape and every registered renderer
-# appears somewhere below so `cargo run` in this directory doubles as a visual smoke test for
-# the 3-axis registry. Real users' configs will be much smaller.
+# Dogfood config for the splashboard repo itself. Exercises every shipped fetcher family
+# (static, clock_*, system_*, git_*, github_*, read_store) paired with a renderer that fits
+# the data. Renderers intentionally dropped from this showcase: bar_chart / pie_chart /
+# chart_line / scatter / calendar — they add visual noise without exercising anything the
+# other showcases don't already cover.
 
 [general]
 wait_for_fresh = false
 # `height` omitted — runtime auto-sizes the inline viewport to fit every configured row.
-# Set it explicitly if you want padding below the last widget.
 
-# ── Lines shape: 4 renderers ──────────────────────────────────────────
+# ── Hero band (Lines shape, 4 renderers) ──────────────────────────────
 
 [[widget]]
 id = "greeting_simple"
@@ -32,34 +33,75 @@ fetcher = "static"
 render = { type = "list", align = "center" }
 format = "ratatui::List widget\nalternative to simple\nselectable items, later"
 
-# ── Entries ─────────────────────────────────────────────────────────
+# ── GitHub activity ──────────────────────────────────────────────────
+# Every repo-scope fetcher (repo_prs / repo_issues / repo_stars / action_*) auto-detects the
+# owner/name slug from the cwd's git remote. User-scope (my_prs / review_requests /
+# notifications / contributions) is tied to whoever's GH_TOKEN is loaded. Missing token →
+# the fetchers render the shared placeholder payload rather than crashing the splash.
+
+[[widget]]
+id = "gh_action_status"
+fetcher = "github_action_status"
+render = { type = "badge", align = "center" }
+
+[[widget]]
+id = "gh_action_history"
+fetcher = "github_action_history"
+render = "sparkline"
+
+[[widget]]
+id = "gh_stars"
+fetcher = "github_repo_stars"
+render = { type = "simple", align = "center" }
+
+[[widget]]
+id = "gh_contributions"
+fetcher = "github_contributions"
+render = { type = "heatmap", align = "center" }
+
+[[widget]]
+id = "gh_my_prs"
+fetcher = "github_my_prs"
+render = "list"
+
+[[widget]]
+id = "gh_review_requests"
+fetcher = "github_review_requests"
+render = "list"
+
+[[widget]]
+id = "gh_repo_prs"
+fetcher = "github_repo_prs"
+render = "list"
+
+[[widget]]
+id = "gh_repo_issues"
+fetcher = "github_repo_issues"
+render = "list"
+
+[[widget]]
+id = "gh_notifications"
+fetcher = "github_notifications"
+render = "timeline"
+
+[[widget]]
+id = "gh_releases"
+fetcher = "github_recent_releases"
+render = "timeline"
+
+[[widget]]
+id = "gh_contributors"
+fetcher = "github_contributors_monthly"
+render = "table"
+  [widget.options]
+  limit = 5
+
+# ── System ───────────────────────────────────────────────────────────
 
 [[widget]]
 id = "system"
 fetcher = "system"
 render = "table"
-
-# ── Badge: one status per fetcher; a row of badges is a layout concern ─
-# Per-widget align converges the trio visually: the left slot right-aligns so its text hugs
-# the centre, the centre slot centres, the right slot left-aligns so its text hugs the
-# centre — the three labels cluster together inside a centred row.
-
-[[widget]]
-id = "ci"
-fetcher = "ci_status"
-render = { type = "badge", align = "right" }
-
-[[widget]]
-id = "deploy"
-fetcher = "deploy_status"
-render = { type = "badge", align = "center" }
-
-[[widget]]
-id = "oncall"
-fetcher = "oncall_status"
-render = { type = "badge", align = "left" }
-
-# ── Ratio: 2 renderers ──────────────────────────────────────────────
 
 [[widget]]
 id = "disk_gauge"
@@ -71,52 +113,12 @@ id = "disk_line"
 fetcher = "disk_usage"
 render = "line_gauge"
 
-# ── NumberSeries ────────────────────────────────────────────────────
+# ── Git (local, on-disk) ─────────────────────────────────────────────
 
 [[widget]]
 id = "commits"
 fetcher = "git_commits_activity"
 render = "sparkline"
-
-# ── PointSeries: 2 renderers ────────────────────────────────────────
-
-[[widget]]
-id = "trend_line"
-fetcher = "trend"
-render = "chart_line"
-
-[[widget]]
-id = "trend_dots"
-fetcher = "trend"
-render = "scatter"
-
-# ── Bars: 2 renderers ───────────────────────────────────────────────
-
-[[widget]]
-id = "prs"
-fetcher = "github_prs"
-render = "bar_chart"
-
-[[widget]]
-id = "prs_pie"
-fetcher = "github_prs"
-render = "pie_chart"
-
-# ── Calendar ────────────────────────────────────────────────────────
-
-[[widget]]
-id = "today"
-fetcher = "clock"
-render = "calendar"
-
-# ── Heatmap ─────────────────────────────────────────────────────────
-
-[[widget]]
-id = "contributions"
-fetcher = "contributions"
-render = { type = "heatmap", align = "center" }
-
-# ── Timeline ────────────────────────────────────────────────────────
 
 [[widget]]
 id = "recent_commits"
@@ -134,8 +136,6 @@ file_format = "text"
 render = { type = "simple", align = "center" }
 
 # ── clock_* family showcase ──────────────────────────────────────────
-# Sibling fetchers under the `clock_` prefix. Each has a narrow Options struct and a small
-# shapes() list — easier to grok one widget at a time than a mode-dispatching mega-fetcher.
 
 [[widget]]
 id = "world_clock"
@@ -182,8 +182,7 @@ render = { type = "simple", align = "center" }
   target = "2027-01-01"
   target_label = "New Year"
 
-# ── System fetchers (sysinfo-backed, cross-platform) ─────────────────
-# Each fetcher is multi-shape; the renderer pick below is one valid pairing.
+# ── system_* fetchers (sysinfo-backed, cross-platform) ───────────────
 
 [[widget]]
 id = "cpu"
@@ -247,27 +246,85 @@ flex = "center"
   widget = "notes"
   width = { length = 44 }
 
+# ── GitHub band ──────────────────────────────────────────────────────
+
 [[row]]
 height = { length = 2 }
 flex = "center"
 
   [[row.child]]
-  widget = "ci"
-  width = { length = 20 }
+  widget = "gh_action_status"
+  width = { length = 36 }
+
+[[row]]
+height = { length = 3 }
 
   [[row.child]]
-  widget = "deploy"
-  width = { length = 20 }
+  widget = "gh_action_history"
+  title = "github_action_history"
+  border = "rounded"
 
   [[row.child]]
-  widget = "oncall"
-  width = { length = 20 }
+  widget = "gh_stars"
+  title = "github_repo_stars"
+  border = "rounded"
 
 [[row]]
 height = { length = 10 }
 
   [[row.child]]
-  widget = "contributions"
+  widget = "gh_contributions"
+  title = "github_contributions (草)"
+  border = "rounded"
+
+[[row]]
+height = { length = 8 }
+
+  [[row.child]]
+  widget = "gh_my_prs"
+  title = "github_my_prs"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "gh_review_requests"
+  title = "github_review_requests"
+  border = "rounded"
+
+[[row]]
+height = { length = 8 }
+
+  [[row.child]]
+  widget = "gh_repo_prs"
+  title = "github_repo_prs"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "gh_repo_issues"
+  title = "github_repo_issues"
+  border = "rounded"
+
+[[row]]
+height = { length = 8 }
+
+  [[row.child]]
+  widget = "gh_notifications"
+  title = "github_notifications"
+  border = "rounded"
+
+  [[row.child]]
+  widget = "gh_releases"
+  title = "github_recent_releases"
+  border = "rounded"
+
+[[row]]
+height = { length = 7 }
+
+  [[row.child]]
+  widget = "gh_contributors"
+  title = "github_contributors_monthly"
+  border = "rounded"
+
+# ── ReadStore ────────────────────────────────────────────────────────
 
 [[row]]
 height = { length = 5 }
@@ -275,7 +332,7 @@ height = { length = 5 }
   [[row.child]]
   widget = "scratch"
 
-# ── Dense 2-column rows from here on, default Legacy flex ─────────────
+# ── Ratio / NumberSeries / Entries / Timeline ────────────────────────
 
 [[row]]
 height = { length = 3 }
@@ -296,37 +353,6 @@ height = { length = 3 }
   border = "rounded"
 
 [[row]]
-height = { length = 12 }
-
-  [[row.child]]
-  widget = "prs"
-  title = "bar_chart"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "prs_pie"
-  title = "pie_chart"
-  border = "rounded"
-
-[[row]]
-height = { length = 7 }
-
-  [[row.child]]
-  widget = "trend_line"
-  title = "chart_line"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "trend_dots"
-  title = "scatter"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "today"
-  title = "calendar"
-  border = "rounded"
-
-[[row]]
 height = { length = 6 }
 
   [[row.child]]
@@ -338,6 +364,8 @@ height = { length = 6 }
   widget = "recent_commits"
   title = "timeline"
   border = "rounded"
+
+# ── system_* showcase rows ───────────────────────────────────────────
 
 [[row]]
 height = { length = 3 }
@@ -373,7 +401,7 @@ height = { length = 7 }
   title = "system_processes"
   border = "rounded"
 
-# ── Clock options showcase rows ──────────────────────────────────────
+# ── clock_* showcase rows ────────────────────────────────────────────
 
 [[row]]
 height = { length = 5 }
@@ -413,4 +441,3 @@ height = { length = 3 }
   widget = "newyear_countdown"
   title = "clock_countdown"
   border = "rounded"
-
