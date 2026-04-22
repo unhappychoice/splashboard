@@ -9,16 +9,16 @@
 //!
 //! Mapping conventions (applied uniformly across presets so swapping one for another gives a
 //! predictable shift rather than a surprise):
-//! - `bg` = palette background. Opt-in — rendered only when non-Reset.
-//! - `text` = palette foreground.
-//! - `border` = the palette's "panel / surface" tone (slightly dimmer than foreground).
-//! - `title` = the palette's primary accent blue/purple.
-//! - `status_ok` / `warn` / `error` = the palette's green / yellow / red.
-//! - `dim` = palette comment colour (used where DIM modifier used to apply);
-//!   `secondary` = a step brighter than `dim`, for detail text under titles.
-//! - `today` = yellow; `event` = cyan. Matches the hard-coded defaults' semantics.
-//! - `series` = 10-entry cycle drawn from the palette's accent colours.
-//! - `heatmap_ramp` = 5-step gradient from a near-background tone up to the palette's green.
+//! - `bg` / `bg_subtle` = palette background + one step lifted.
+//! - `text` = palette foreground; `text_dim` = comment tone; `text_secondary` = a step
+//!   brighter than `text_dim`.
+//! - `panel_border` = the palette's "panel / surface" tone (slightly dimmer than `text`).
+//! - `panel_title` = the palette's primary accent blue/purple.
+//! - `status_ok` / `status_warn` / `status_error` = the palette's green / yellow / red.
+//! - `accent_today` = yellow; `accent_event` = cyan.
+//! - `palette_series` = 10-entry cycle drawn from the palette's accent colours.
+//! - `palette_heatmap` = 5-step gradient from a near-background tone up to the palette's
+//!   green.
 
 use ratatui::style::Color;
 
@@ -26,7 +26,13 @@ use super::Theme;
 
 /// Names of every built-in preset, in the order they appear below. Used for
 /// `[theme] preset = "..."` lookups and the "unknown preset" error message.
+/// `"splash"` is the signature default, reachable either by omitting `[theme]
+/// preset = "..."` entirely or by spelling it out. `"default"` is a generic
+/// alias for the same thing — kept so configs using preset-switching harnesses
+/// don't have to special-case the built-in.
 pub const KNOWN: &[&str] = &[
+    "splash",
+    "default",
     "tokyo_night",
     "nord",
     "dracula",
@@ -39,6 +45,7 @@ pub const KNOWN: &[&str] = &[
 /// default theme.
 pub fn by_name(name: &str) -> Option<Theme> {
     match name {
+        "splash" | "default" => Some(splash()),
         "tokyo_night" => Some(tokyo_night()),
         "nord" => Some(nord()),
         "dracula" => Some(dracula()),
@@ -46,6 +53,13 @@ pub fn by_name(name: &str) -> Option<Theme> {
         "catppuccin_mocha" => Some(catppuccin_mocha()),
         _ => None,
     }
+}
+
+/// The "Splash" signature palette — coral + cyan-teal on deep-ocean navy. Identical to
+/// [`Theme::default`], but exposed as a named function for symmetry with the other
+/// presets and so it appears in the preset catalog.
+pub fn splash() -> Theme {
+    Theme::default()
 }
 
 pub fn tokyo_night() -> Theme {
@@ -252,6 +266,19 @@ mod tests {
     #[test]
     fn unknown_name_returns_none() {
         assert!(by_name("doesnotexist").is_none());
+    }
+
+    #[test]
+    fn splash_and_default_both_resolve_to_the_same_theme() {
+        // Alias check: users should get identical palettes whether they write the
+        // signature name or the generic keyword, so preset-switching UIs don't have
+        // to branch on which spelling is current.
+        let splash = by_name("splash").unwrap();
+        let default = by_name("default").unwrap();
+        let implicit = Theme::default();
+        assert_eq!(splash.bg, default.bg);
+        assert_eq!(splash.bg, implicit.bg);
+        assert_eq!(splash.panel_title, implicit.panel_title);
     }
 
     #[test]
