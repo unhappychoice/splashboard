@@ -332,7 +332,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::payload::{Body, LinesData, Payload};
+    use crate::payload::{Body, Payload, TextBlockData};
     use crate::render::test_utils::{line_text, render_to_buffer_with};
 
     fn text_widget(lines: &[&str]) -> Payload {
@@ -340,7 +340,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData {
+            body: Body::TextBlock(TextBlockData {
                 lines: lines.iter().map(|s| s.to_string()).collect(),
             }),
         }

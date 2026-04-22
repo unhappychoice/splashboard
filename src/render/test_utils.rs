@@ -12,7 +12,7 @@ pub fn render_to_buffer(payload: &Payload, width: u16, height: u16) -> Buffer {
 }
 
 /// Render a single payload through a specific renderer spec — used when a test needs to
-/// exercise a non-default renderer (e.g. `ascii_art` for a `Lines` payload).
+/// exercise a non-default renderer (e.g. `ascii_art` for a `Text` payload).
 pub fn render_to_buffer_with_spec(
     payload: &Payload,
     spec: Option<&RenderSpec>,

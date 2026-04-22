@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, LinesData, Payload, TimelineData, TimelineEvent};
+use crate::payload::{
+    Body, EntriesData, Entry, Payload, TextBlockData, TimelineData, TimelineEvent,
+};
 use crate::render::Shape;
 use crate::samples;
 
@@ -14,7 +16,7 @@ use super::common::{
     RepoSlug, cache_key, parse_options, parse_timestamp, payload, placeholder, resolve_repo,
 };
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 5;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -65,7 +67,7 @@ impl Fetcher for GithubRecentReleases {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["v0.3.0  2026-04-10", "v0.2.1  2026-03-05"]),
+            Shape::TextBlock => samples::text_block(&["v0.3.0  2026-04-10", "v0.2.1  2026-03-05"]),
             Shape::Entries => {
                 samples::entries(&[("v0.3.0", "2026-04-10"), ("v0.2.1", "2026-03-05")])
             }
@@ -93,7 +95,7 @@ impl Fetcher for GithubRecentReleases {
         let items: Vec<Release> = rest_get(&path).await?;
         Ok(payload(render_body(
             &items,
-            ctx.shape.unwrap_or(Shape::Lines),
+            ctx.shape.unwrap_or(Shape::TextBlock),
         )))
     }
 }
@@ -138,7 +140,7 @@ fn render_body(items: &[Release], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
-        _ => Body::Lines(LinesData {
+        _ => Body::TextBlock(TextBlockData {
             lines: items
                 .iter()
                 .map(|r| {

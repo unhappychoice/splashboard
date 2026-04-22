@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use crate::cache::tmp_path_for;
 use crate::config::{Config, WidgetConfig, default_global_path};
 use crate::fetcher::{Registry, Safety};
-use crate::payload::{Body, LinesData, Payload};
+use crate::payload::{Body, Payload, TextBlockData};
 
 const TRUST_ALL_ENV: &str = "SPLASHBOARD_TRUST_ALL";
 
@@ -168,7 +168,7 @@ pub fn requires_trust_placeholder() -> Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::Lines(LinesData {
+        body: Body::TextBlock(TextBlockData {
             lines: vec!["🔒 requires trust".into(), "run `splashboard trust`".into()],
         }),
     }
@@ -211,7 +211,7 @@ mod tests {
             self.safety
         }
         fn shapes(&self) -> &[Shape] {
-            &[Shape::Lines]
+            &[Shape::Text]
         }
         async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
             unimplemented!("fake fetcher not invoked in tests")
@@ -231,7 +231,7 @@ mod tests {
             self.safety
         }
         fn shapes(&self) -> &[Shape] {
-            &[Shape::Lines]
+            &[Shape::Text]
         }
         fn compute(&self, _: &FetchContext) -> Payload {
             unimplemented!("fake realtime not invoked in tests")
@@ -447,11 +447,11 @@ mod tests {
     fn placeholder_has_lock_icon_in_first_line() {
         let p = requires_trust_placeholder();
         match p.body {
-            Body::Lines(t) => {
+            Body::TextBlock(t) => {
                 assert!(t.lines[0].contains("🔒"));
                 assert!(t.lines[1].contains("splashboard trust"));
             }
-            _ => panic!("expected lines body"),
+            _ => panic!("expected text_block body"),
         }
     }
 }

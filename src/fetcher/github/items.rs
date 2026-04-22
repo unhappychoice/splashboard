@@ -4,7 +4,7 @@
 
 use serde::Deserialize;
 
-use crate::payload::{Body, EntriesData, Entry, LinesData, TimelineData, TimelineEvent};
+use crate::payload::{Body, EntriesData, Entry, TextBlockData, TimelineData, TimelineEvent};
 use crate::render::Shape;
 
 use super::common::{RepoSlug, parse_timestamp};
@@ -37,10 +37,10 @@ pub fn repo_from_url(url: &str) -> Option<RepoSlug> {
     RepoSlug::parse(rest)
 }
 
-/// Renders issue / PR items to one of `Lines` / `Entries` / `Timeline`. When `include_repo` is
-/// true, each line/event is prefixed with `owner/name` — used by user-scope fetchers that
-/// return items across many repos. Per-repo fetchers pass `false` so the repo name isn't
-/// repeated on every row.
+/// Renders issue / PR items to one of `TextBlock` / `Entries` / `Timeline`. When
+/// `include_repo` is true, each line/event is prefixed with `owner/name` — used by user-scope
+/// fetchers that return items across many repos. Per-repo fetchers pass `false` so the repo
+/// name isn't repeated on every row.
 pub fn render_items(items: &[IssueItem], shape: Shape, include_repo: bool) -> Body {
     match shape {
         Shape::Entries => Body::Entries(EntriesData {
@@ -64,7 +64,7 @@ pub fn render_items(items: &[IssueItem], shape: Shape, include_repo: bool) -> Bo
                 })
                 .collect(),
         }),
-        _ => Body::Lines(LinesData {
+        _ => Body::TextBlock(TextBlockData {
             lines: items
                 .iter()
                 .map(|i| format!("{} {}", short_label(i, include_repo), i.title))

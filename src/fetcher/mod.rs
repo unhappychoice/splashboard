@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, LinesData, Payload};
+use crate::payload::{Body, Payload, TextBlockData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -140,7 +140,7 @@ pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::Lines(LinesData { lines }),
+        body: Body::TextBlock(TextBlockData { lines }),
     }
 }
 
@@ -277,7 +277,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Body, LinesData};
+    use crate::payload::{Body, TextData};
 
     struct Dummy(&'static str, Safety);
 
@@ -290,14 +290,16 @@ mod tests {
             self.1
         }
         fn shapes(&self) -> &[Shape] {
-            &[Shape::Lines]
+            &[Shape::Text]
         }
         async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
             Ok(Payload {
                 icon: None,
                 status: None,
                 format: None,
-                body: Body::Lines(LinesData { lines: vec![] }),
+                body: Body::Text(TextData {
+                    value: String::new(),
+                }),
             })
         }
     }
@@ -312,14 +314,16 @@ mod tests {
             self.1
         }
         fn shapes(&self) -> &[Shape] {
-            &[Shape::Lines]
+            &[Shape::Text]
         }
         fn compute(&self, _: &FetchContext) -> Payload {
             Payload {
                 icon: None,
                 status: None,
                 format: None,
-                body: Body::Lines(LinesData { lines: vec![] }),
+                body: Body::Text(TextData {
+                    value: String::new(),
+                }),
             }
         }
     }
@@ -385,7 +389,7 @@ mod tests {
             ..Default::default()
         };
         let p = f.fetch(&ctx).await.unwrap();
-        assert!(matches!(p.body, Body::Lines(_)));
+        assert!(matches!(p.body, Body::Text(_)));
         assert_eq!(f.safety(), Safety::Network);
     }
 

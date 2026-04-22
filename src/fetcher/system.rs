@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use sysinfo::{Disks, ProcessesToUpdate, System};
 
-use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, LinesData, Payload, RatioData};
+use crate::payload::{
+    Bar, BarsData, Body, EntriesData, Entry, Payload, RatioData, TextBlockData, TextData,
+};
 use crate::render::Shape;
 use crate::samples;
 
@@ -30,8 +32,8 @@ pub fn cached_fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![Arc::new(DiskFetcher)]
 }
 
-/// `os / host / uptime / load / cpu / memory` rollup. Entries by default; `Lines` collapses each
-/// row to `"key: value"` so the same fetcher can feed the `text` / `ascii_art` renderers.
+/// `os / host / uptime / load / cpu / memory` rollup. `Entries` by default; `TextBlock`
+/// collapses each row to `"key: value"` so the same fetcher can feed the plain text renderer.
 pub struct SystemFetcher {
     state: Mutex<System>,
     os: String,
@@ -65,7 +67,7 @@ impl RealtimeFetcher for SystemFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Entries, Shape::Lines]
+        &[Shape::Entries, Shape::TextBlock]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
@@ -77,7 +79,7 @@ impl RealtimeFetcher for SystemFetcher {
                 ("cpu", "18%"),
                 ("memory", "67%"),
             ]),
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "os: linux",
                 "host: dev",
                 "uptime: 3d 4h",
@@ -101,7 +103,7 @@ impl RealtimeFetcher for SystemFetcher {
             ("memory", format!("{:.0}%", memory_ratio(&sys) * 100.0)),
         ];
         match ctx.shape.unwrap_or(Shape::Entries) {
-            Shape::Lines => payload(Body::Lines(LinesData {
+            Shape::TextBlock => payload(Body::TextBlock(TextBlockData {
                 lines: rows.iter().map(|(k, v)| format!("{k}: {v}")).collect(),
             })),
             _ => payload(Body::Entries(EntriesData {
@@ -111,7 +113,7 @@ impl RealtimeFetcher for SystemFetcher {
     }
 }
 
-/// Aggregated CPU usage across all cores. `Ratio` (0..=1) for gauges, `Lines` for plain text.
+/// Aggregated CPU usage across all cores. `Ratio` (0..=1) for gauges, `Text` for plain text.
 pub struct CpuLoadFetcher {
     state: Mutex<System>,
 }
@@ -140,12 +142,12 @@ impl RealtimeFetcher for CpuLoadFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Ratio, Shape::Lines]
+        &[Shape::Ratio, Shape::Text]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Ratio => samples::ratio(0.42, "cpu"),
-            Shape::Lines => samples::lines(&["42%"]),
+            Shape::Text => samples::text("42%"),
             _ => return None,
         })
     }
@@ -156,7 +158,7 @@ impl RealtimeFetcher for CpuLoadFetcher {
         let ratio = (f64::from(pct) / 100.0).clamp(0.0, 1.0);
         let label = format!("{pct:.0}%");
         match ctx.shape.unwrap_or(Shape::Ratio) {
-            Shape::Lines => payload(Body::Lines(LinesData { lines: vec![label] })),
+            Shape::Text => payload(Body::Text(TextData { value: label })),
             _ => payload(Body::Ratio(RatioData {
                 value: ratio,
                 label: Some(label),
@@ -165,7 +167,7 @@ impl RealtimeFetcher for CpuLoadFetcher {
     }
 }
 
-/// RAM usage. `Ratio` by default, `Lines` as `"3.2 GB / 16 GB"`, `Entries` as used/total/free rows.
+/// RAM usage. `Ratio` by default, `Text` as `"3.2 GB / 16 GB"`, `Entries` as used/total/free rows.
 pub struct MemoryFetcher {
     state: Mutex<System>,
 }
@@ -194,12 +196,12 @@ impl RealtimeFetcher for MemoryFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Ratio, Shape::Lines, Shape::Entries]
+        &[Shape::Ratio, Shape::Text, Shape::Entries]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Ratio => samples::ratio(0.67, "memory"),
-            Shape::Lines => samples::lines(&["6.4 GiB / 16 GiB"]),
+            Shape::Text => samples::text("6.4 GiB / 16 GiB"),
             Shape::Entries => samples::entries(&[
                 ("used", "6.4 GiB"),
                 ("total", "16 GiB"),
@@ -216,7 +218,7 @@ impl RealtimeFetcher for MemoryFetcher {
         let ratio = ratio_of(used, total);
         let label = format!("{} / {}", format_bytes(used), format_bytes(total));
         match ctx.shape.unwrap_or(Shape::Ratio) {
-            Shape::Lines => payload(Body::Lines(LinesData { lines: vec![label] })),
+            Shape::Text => payload(Body::Text(TextData { value: label })),
             Shape::Entries => payload(Body::Entries(EntriesData {
                 items: vec![
                     entry("used", &format_bytes(used)),
@@ -243,22 +245,22 @@ impl RealtimeFetcher for UptimeFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Lines]
+        &[Shape::Text]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         match shape {
-            Shape::Lines => Some(samples::lines(&["3d 4h 12m"])),
+            Shape::Text => Some(samples::text("3d 4h 12m")),
             _ => None,
         }
     }
     fn compute(&self, _: &FetchContext) -> Payload {
-        payload(Body::Lines(LinesData {
-            lines: vec![format_uptime(System::uptime())],
+        payload(Body::Text(TextData {
+            value: format_uptime(System::uptime()),
         }))
     }
 }
 
-/// 1 / 5 / 15-minute load average. `Lines` default; `Entries` splits the three windows.
+/// 1 / 5 / 15-minute load average. `Text` default; `Entries` splits the three windows.
 /// Windows doesn't expose load average — shown as `"n/a (windows)"` there.
 pub struct LoadAverageFetcher;
 
@@ -270,11 +272,11 @@ impl RealtimeFetcher for LoadAverageFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Lines, Shape::Entries]
+        &[Shape::Text, Shape::Entries]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["0.42  0.38  0.31"]),
+            Shape::Text => samples::text("0.42  0.38  0.31"),
             Shape::Entries => {
                 samples::entries(&[("1min", "0.42"), ("5min", "0.38"), ("15min", "0.31")])
             }
@@ -283,7 +285,7 @@ impl RealtimeFetcher for LoadAverageFetcher {
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let la = System::load_average();
-        match ctx.shape.unwrap_or(Shape::Lines) {
+        match ctx.shape.unwrap_or(Shape::Text) {
             Shape::Entries => payload(Body::Entries(EntriesData {
                 items: vec![
                     entry("1min", &format_load(la.one)),
@@ -291,15 +293,15 @@ impl RealtimeFetcher for LoadAverageFetcher {
                     entry("15min", &format_load(la.fifteen)),
                 ],
             })),
-            _ => payload(Body::Lines(LinesData {
-                lines: vec![load_line(la.one, la.five, la.fifteen)],
+            _ => payload(Body::Text(TextData {
+                value: load_line(la.one, la.five, la.fifteen),
             })),
         }
     }
 }
 
-/// Top N processes by CPU usage. `Entries` default (`"python": "42.1%"`), `Lines` collapses to
-/// one process per row.
+/// Top N processes by CPU usage. `Entries` default (`"python": "42.1%"`), `TextBlock` collapses
+/// to one process per row.
 pub struct ProcessTopFetcher {
     state: Mutex<System>,
 }
@@ -330,7 +332,7 @@ impl RealtimeFetcher for ProcessTopFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Entries, Shape::Lines]
+        &[Shape::Entries, Shape::TextBlock]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
@@ -340,7 +342,7 @@ impl RealtimeFetcher for ProcessTopFetcher {
                 ("firefox", "6.3%"),
                 ("zsh", "2.1%"),
             ]),
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "node       12.4%",
                 "cargo       8.1%",
                 "firefox     6.3%",
@@ -354,7 +356,7 @@ impl RealtimeFetcher for ProcessTopFetcher {
         sys.refresh_processes(ProcessesToUpdate::All, true);
         let rows = top_processes(&sys, PROCESS_TOP_COUNT);
         match ctx.shape.unwrap_or(Shape::Entries) {
-            Shape::Lines => payload(Body::Lines(LinesData {
+            Shape::TextBlock => payload(Body::TextBlock(TextBlockData {
                 lines: rows.iter().map(|(n, c)| format!("{n}  {c:.1}%")).collect(),
             })),
             _ => payload(Body::Entries(EntriesData {
@@ -368,7 +370,7 @@ impl RealtimeFetcher for ProcessTopFetcher {
 }
 
 /// Disk usage. Cached (mount scan on each refresh is a syscall, not <1ms). Defaults to the
-/// largest disk as `Ratio`; `Lines` renders `"45% of 500 GB"`; `Bars` lists every mount.
+/// largest disk as `Ratio`; `Text` renders `"45% of 500 GB"`; `Bars` lists every mount.
 pub struct DiskFetcher;
 
 #[async_trait]
@@ -380,12 +382,12 @@ impl Fetcher for DiskFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Ratio, Shape::Lines, Shape::Bars]
+        &[Shape::Ratio, Shape::Text, Shape::Bars]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Ratio => samples::ratio(0.58, "disk"),
-            Shape::Lines => samples::lines(&["58% of 400 GB"]),
+            Shape::Text => samples::text("58% of 400 GB"),
             Shape::Bars => samples::bars(&[("/", 42), ("/home", 110), ("/data", 200)]),
             _ => return None,
         })
@@ -396,12 +398,10 @@ impl Fetcher for DiskFetcher {
             Shape::Bars => payload(Body::Bars(BarsData {
                 bars: disk_bars(&disks),
             })),
-            Shape::Lines => payload(Body::Lines(LinesData {
-                lines: vec![
-                    primary_disk(&disks)
-                        .map(|(t, a)| disk_label(t, a))
-                        .unwrap_or_else(|| "no disks detected".into()),
-                ],
+            Shape::Text => payload(Body::Text(TextData {
+                value: primary_disk(&disks)
+                    .map(|(t, a)| disk_label(t, a))
+                    .unwrap_or_else(|| "no disks detected".into()),
             })),
             _ => primary_disk(&disks)
                 .map(|(total, available)| {
@@ -412,8 +412,8 @@ impl Fetcher for DiskFetcher {
                     }))
                 })
                 .unwrap_or_else(|| {
-                    payload(Body::Lines(LinesData {
-                        lines: vec!["no disks detected".into()],
+                    payload(Body::Text(TextData {
+                        value: "no disks detected".into(),
                     }))
                 }),
         })
@@ -588,9 +588,9 @@ mod tests {
     }
 
     #[test]
-    fn cpu_load_emits_lines_when_requested() {
-        let p = CpuLoadFetcher::new().compute(&ctx_with_shape(Some(Shape::Lines)));
-        assert!(matches!(p.body, Body::Lines(_)));
+    fn cpu_load_emits_text_when_requested() {
+        let p = CpuLoadFetcher::new().compute(&ctx_with_shape(Some(Shape::Text)));
+        assert!(matches!(p.body, Body::Text(_)));
     }
 
     #[test]
@@ -613,18 +613,18 @@ mod tests {
     }
 
     #[test]
-    fn uptime_emits_single_line() {
+    fn uptime_emits_text() {
         let p = UptimeFetcher.compute(&ctx_with_shape(None));
-        let Body::Lines(l) = p.body else {
-            panic!("expected lines");
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
         };
-        assert_eq!(l.lines.len(), 1);
+        assert!(!t.value.is_empty());
     }
 
     #[test]
-    fn load_average_defaults_to_lines() {
+    fn load_average_defaults_to_text() {
         let p = LoadAverageFetcher.compute(&ctx_with_shape(None));
-        assert!(matches!(p.body, Body::Lines(_)));
+        assert!(matches!(p.body, Body::Text(_)));
     }
 
     #[test]
@@ -647,10 +647,10 @@ mod tests {
     }
 
     #[test]
-    fn system_lines_shape_returns_key_value_strings() {
-        let p = SystemFetcher::new().compute(&ctx_with_shape(Some(Shape::Lines)));
-        let Body::Lines(l) = p.body else {
-            panic!("expected lines");
+    fn system_text_block_shape_returns_key_value_strings() {
+        let p = SystemFetcher::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
+        let Body::TextBlock(l) = p.body else {
+            panic!("expected text_block");
         };
         assert_eq!(l.lines.len(), 6);
         assert!(l.lines.iter().all(|s| s.contains(": ")));
@@ -666,10 +666,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn disk_defaults_to_ratio_or_lines_fallback() {
+    async fn disk_defaults_to_ratio_or_text_fallback() {
         let ctx = ctx_with_shape(None);
         let p = DiskFetcher.fetch(&ctx).await.unwrap();
-        assert!(matches!(p.body, Body::Ratio(_) | Body::Lines(_)));
+        assert!(matches!(p.body, Body::Ratio(_) | Body::Text(_)));
     }
 
     #[tokio::test]

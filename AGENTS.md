@@ -30,7 +30,8 @@ Splitting those axes is the whole design. Treat them as separate concerns; resis
 
 The **data-shape contract** between fetchers and renderers. Each `Body` variant corresponds to one `Shape`:
 
-- `Lines` — zero or more text lines
+- `Text` — exactly one string (clock time, branch name, greeting)
+- `TextBlock` — zero or more lines of text (recent commits, welcome notes, todo items)
 - `Entries` — key/value rows with optional status
 - `Ratio` — a single `0..=1` value + optional label
 - `NumberSeries` — `Vec<u64>`, histograms / sparklines
@@ -81,7 +82,7 @@ Consumes a `Payload` + `RenderOptions` and draws into a ratatui `Frame`. Each re
 
 Key invariants:
 
-- **One shape can feed multiple renderers**. `Lines` → `simple`, `ascii_art`, `animated_typewriter`. That flexibility is the point; resist "one shape, one renderer".
+- **One shape can feed multiple renderers**. `Text` → `simple`, `ascii_art`, `animated_typewriter`. That flexibility is the point; resist "one shape, one renderer".
 
 - **Empty-state handling is centralized**. `render::render_payload` short-circuits any body that `is_empty_body()` considers empty to the shared "nothing here yet" placeholder. Don't bake empty handling into individual renderers.
 

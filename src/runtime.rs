@@ -587,7 +587,7 @@ fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
 mod tests {
     use super::*;
     use crate::layout::Layout as LayoutTree;
-    use crate::payload::{Body, LinesData};
+    use crate::payload::{Body, TextData};
     use ratatui::{Terminal, backend::TestBackend};
 
     fn text_payload(line: &str) -> Payload {
@@ -595,9 +595,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData {
-                lines: vec![line.into()],
-            }),
+            body: Body::Text(TextData { value: line.into() }),
         }
     }
 
@@ -735,8 +733,8 @@ mod tests {
             .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
         let loaded = cache.load(&key).unwrap();
         match loaded.payload.body {
-            Body::Lines(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
-            _ => panic!("expected text body"),
+            Body::TextBlock(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
+            _ => panic!("expected text_block body"),
         }
     }
 
@@ -898,7 +896,7 @@ mod tests {
         let w = widget_with_render("t", "clock", None);
         assert_eq!(
             derive_shape(&w, &registry, &render_registry),
-            Some(Shape::Lines)
+            Some(Shape::Text)
         );
     }
 
@@ -909,7 +907,7 @@ mod tests {
         let w = widget_with_render("t", "clock", Some("definitely_not_a_renderer"));
         assert_eq!(
             derive_shape(&w, &registry, &render_registry),
-            Some(Shape::Lines)
+            Some(Shape::Text)
         );
     }
 
@@ -954,7 +952,7 @@ mod tests {
             widget_with_render("c", "clock", Some("calendar")),
         ];
         let mut shapes = HashMap::new();
-        shapes.insert("a".into(), Shape::Lines);
+        shapes.insert("a".into(), Shape::Text);
         shapes.insert("b".into(), Shape::Entries);
         shapes.insert("c".into(), Shape::Calendar);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);

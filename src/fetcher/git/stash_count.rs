@@ -5,9 +5,9 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::Text, Shape::Entries];
 
 /// Number of entries in the stash reflog. A missing `refs/stash` ref or an absent reflog returns
 /// zero — both are common (no stashes yet) and shouldn't surface as an error.
@@ -29,7 +29,7 @@ impl Fetcher for GitStashCount {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["3 stashes"]),
+            Shape::Text => samples::text("3 stashes"),
             Shape::Entries => samples::entries(&[("stashes", "3")]),
             _ => return None,
         })
@@ -39,7 +39,7 @@ impl Fetcher for GitStashCount {
         let count = stash_count(&repo)?;
         Ok(payload(render_body(
             count,
-            ctx.shape.unwrap_or(Shape::Lines),
+            ctx.shape.unwrap_or(Shape::Text),
         )))
     }
 }
@@ -66,12 +66,12 @@ fn render_body(count: usize, shape: Shape) -> Body {
         }),
         _ => {
             if count == 0 {
-                lines_body(Vec::new())
+                text_body("")
             } else {
-                lines_body(vec![format!(
+                text_body(format!(
                     "{count} stash{}",
                     if count == 1 { "" } else { "es" }
-                )])
+                ))
             }
         }
     }
@@ -98,12 +98,12 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_is_empty_when_none() {
+    fn text_shape_is_empty_when_none() {
         let (_tmp, repo) = make_repo();
         commit(&repo, "initial");
-        let body = render_body(stash_count(&repo).unwrap(), Shape::Lines);
+        let body = render_body(stash_count(&repo).unwrap(), Shape::Text);
         match body {
-            Body::Lines(d) => assert!(d.lines.is_empty()),
+            Body::Text(d) => assert!(d.value.is_empty()),
             _ => panic!(),
         }
     }

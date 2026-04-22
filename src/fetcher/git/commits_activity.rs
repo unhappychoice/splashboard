@@ -8,16 +8,16 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Heatmap, Shape::NumberSeries, Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Heatmap, Shape::NumberSeries, Shape::Text];
 const WEEKS: usize = 52;
 const DAYS_PER_WEEK: usize = 7;
 
 /// Commit count per day over the last 52 weeks, anchored like GitHub: rightmost column contains
 /// today's week, rows are weekdays (0 = Sunday .. 6 = Saturday). `Heatmap` is the default; the
 /// `NumberSeries` alt flattens the grid into a 364-point array for sparkline rendering;
-/// `Lines` emits a one-line summary.
+/// `Text` emits a one-line summary.
 pub struct GitCommitsActivity;
 
 #[async_trait]
@@ -43,7 +43,7 @@ impl Fetcher for GitCommitsActivity {
             Shape::NumberSeries => samples::number_series(&[
                 2, 5, 3, 8, 4, 9, 6, 11, 7, 3, 4, 6, 2, 5, 8, 10, 7, 4, 9, 6,
             ]),
-            Shape::Lines => samples::lines(&["42 commits this month"]),
+            Shape::Text => samples::text("42 commits this month"),
             _ => return None,
         })
     }
@@ -142,12 +142,12 @@ fn render_body(grid: Vec<Vec<u32>>, today: NaiveDate, shape: Shape) -> Body {
         Shape::NumberSeries => Body::NumberSeries(NumberSeriesData {
             values: flatten_by_day(&grid),
         }),
-        Shape::Lines => {
+        Shape::Text => {
             let total: u64 = grid.iter().flatten().map(|v| *v as u64).sum();
             if total == 0 {
-                lines_body(Vec::new())
+                text_body("")
             } else {
-                lines_body(vec![format!("{total} commits in the last {WEEKS} weeks")])
+                text_body(format!("{total} commits in the last {WEEKS} weeks"))
             }
         }
         _ => Body::Heatmap(HeatmapData {
@@ -232,15 +232,12 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_summary() {
+    fn text_shape_summary() {
         let mut grid = vec![vec![0u32; WEEKS]; DAYS_PER_WEEK];
         grid[0][0] = 5;
-        let body = render_body(grid, any_weekday(), Shape::Lines);
+        let body = render_body(grid, any_weekday(), Shape::Text);
         match body {
-            Body::Lines(d) => {
-                assert_eq!(d.lines.len(), 1);
-                assert!(d.lines[0].contains("5 commits"));
-            }
+            Body::Text(d) => assert!(d.value.contains("5 commits")),
             _ => panic!(),
         }
     }

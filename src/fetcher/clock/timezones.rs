@@ -5,13 +5,13 @@ use chrono::{DateTime, FixedOffset, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
-use crate::payload::{Body, EntriesData, Entry, LinesData, Payload};
+use crate::payload::{Body, EntriesData, Entry, Payload, TextBlockData};
 use crate::render::Shape;
 use crate::samples;
 
 use super::common;
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries];
 
 pub struct ClockTimezonesFetcher;
 
@@ -34,7 +34,7 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "UTC         14:35",
                 "Tokyo       23:35",
                 "New York    10:35",
@@ -51,7 +51,7 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let fmt = ctx.format.as_deref().unwrap_or(common::DEFAULT_FORMAT);
-        let shape = ctx.shape.unwrap_or(Shape::Lines);
+        let shape = ctx.shape.unwrap_or(Shape::TextBlock);
         let rows: Vec<(String, String)> = opts
             .timezones
             .iter()
@@ -68,7 +68,7 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
                     })
                     .collect(),
             }),
-            _ => Body::Lines(LinesData {
+            _ => Body::TextBlock(TextBlockData {
                 lines: rows.into_iter().map(|(n, t)| format!("{n} {t}")).collect(),
             }),
         };
@@ -109,14 +109,14 @@ mod tests {
     }
 
     #[test]
-    fn lines_emits_one_row_per_zone() {
+    fn text_block_emits_one_row_per_zone() {
         let p = ClockTimezonesFetcher.compute(&ctx(
-            Some(Shape::Lines),
+            Some(Shape::TextBlock),
             "timezones = [\"Asia/Tokyo\", \"UTC\"]",
         ));
         match p.body {
-            Body::Lines(d) => assert_eq!(d.lines.len(), 2),
-            _ => panic!("expected lines"),
+            Body::TextBlock(d) => assert_eq!(d.lines.len(), 2),
+            _ => panic!("expected text_block"),
         }
     }
 
@@ -134,11 +134,11 @@ mod tests {
 
     #[test]
     fn invalid_zone_renders_placeholder_time() {
-        let p =
-            ClockTimezonesFetcher.compute(&ctx(Some(Shape::Lines), "timezones = [\"Not/AZone\"]"));
+        let p = ClockTimezonesFetcher
+            .compute(&ctx(Some(Shape::TextBlock), "timezones = [\"Not/AZone\"]"));
         match p.body {
-            Body::Lines(d) => assert!(d.lines[0].ends_with("??")),
-            _ => panic!("expected lines"),
+            Body::TextBlock(d) => assert!(d.lines[0].ends_with("??")),
+            _ => panic!("expected text_block"),
         }
     }
 }

@@ -5,11 +5,11 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::Text, Shape::Entries];
 
-/// Most recent annotated-or-lightweight tag by committer time of the peeled commit. `Lines` emits
+/// Most recent annotated-or-lightweight tag by committer time of the peeled commit. `Text` emits
 /// just the tag name; `Entries` adds the target short hash and the commit time as ISO date so a
 /// two-line "latest release" widget has somewhere to put the date.
 pub struct GitLatestTag;
@@ -26,14 +26,14 @@ impl Fetcher for GitLatestTag {
         SHAPES
     }
     fn default_shape(&self) -> Shape {
-        Shape::Lines
+        Shape::Text
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["v1.2.3"]),
+            Shape::Text => samples::text("v1.2.3"),
             Shape::Entries => samples::entries(&[
                 ("tag", "v1.2.3"),
                 ("short", "a1b2c3d"),
@@ -44,13 +44,13 @@ impl Fetcher for GitLatestTag {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
-        build(&repo, ctx.shape.unwrap_or(Shape::Lines))
+        build(&repo, ctx.shape.unwrap_or(Shape::Text))
     }
 }
 
 fn build(repo: &gix::Repository, shape: Shape) -> Result<Payload, FetchError> {
     let Some(tag) = latest_tag(repo)? else {
-        return Ok(payload(lines_body(Vec::new())));
+        return Ok(payload(text_body("")));
     };
     let body = match shape {
         Shape::Entries => Body::Entries(EntriesData {
@@ -60,7 +60,7 @@ fn build(repo: &gix::Repository, shape: Shape) -> Result<Payload, FetchError> {
                 entry("date", &tag.iso_date),
             ],
         }),
-        _ => lines_body(vec![tag.name]),
+        _ => text_body(tag.name),
     };
     Ok(payload(body))
 }
@@ -118,23 +118,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn returns_none_when_no_tags() {
+    fn returns_empty_text_when_no_tags() {
         let (_tmp, repo) = make_repo();
-        let p = build(&repo, Shape::Lines).unwrap();
+        let p = build(&repo, Shape::Text).unwrap();
         match p.body {
-            Body::Lines(d) => assert!(d.lines.is_empty()),
+            Body::Text(d) => assert!(d.value.is_empty()),
             _ => panic!(),
         }
     }
 
     #[test]
-    fn lines_shape_emits_tag_name() {
+    fn text_shape_emits_tag_name() {
         let (_tmp, repo) = make_repo();
         super::super::test_support::commit(&repo, "initial");
         super::super::test_support::tag(&repo, "v0.1.0");
-        let p = build(&repo, Shape::Lines).unwrap();
+        let p = build(&repo, Shape::Text).unwrap();
         match p.body {
-            Body::Lines(d) => assert_eq!(d.lines, vec!["v0.1.0".to_string()]),
+            Body::Text(d) => assert_eq!(d.value, "v0.1.0"),
             _ => panic!(),
         }
     }

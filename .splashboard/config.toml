@@ -8,7 +8,7 @@
 wait_for_fresh = false
 # `height` omitted — runtime auto-sizes the inline viewport to fit every configured row.
 
-# ── Hero band (Lines shape, 4 renderers) ──────────────────────────────
+# ── Hero band (Text / TextBlock shapes, 4 renderers) ─────────────────
 
 [[widget]]
 id = "greeting_simple"

@@ -1,11 +1,11 @@
 //! `github_action_status` — current CI state for a repo, as a single badge plus optional
-//! `Lines` summary. Uses the latest workflow run across every workflow.
+//! `Text` summary. Uses the latest workflow run across every workflow.
 
 use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{BadgeData, Body, LinesData, Payload, Status};
+use crate::payload::{BadgeData, Body, Payload, Status, TextData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -13,7 +13,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Badge, Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Badge, Shape::Text];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -67,7 +67,7 @@ impl Fetcher for GithubActionStatus {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Badge => samples::badge(Status::Ok, "ci passing"),
-            Shape::Lines => samples::lines(&["main · passing"]),
+            Shape::Text => samples::text("main · passing"),
             _ => return None,
         })
     }
@@ -120,11 +120,11 @@ struct WorkflowRun {
 fn render_body(run: &WorkflowRun, shape: Shape) -> Body {
     let (status, label_word) = classify(run);
     match shape {
-        Shape::Lines => Body::Lines(LinesData {
-            lines: vec![format!(
+        Shape::Text => Body::Text(TextData {
+            value: format!(
                 "{} · {label_word}",
                 run.head_branch.as_deref().unwrap_or("?")
-            )],
+            ),
         }),
         _ => Body::Badge(BadgeData {
             status,

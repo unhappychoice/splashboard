@@ -7,7 +7,7 @@ use chrono::DateTime;
 use sha2::{Digest, Sha256};
 
 use crate::fetcher::{FetchContext, FetchError};
-use crate::payload::{Body, LinesData, Payload};
+use crate::payload::{Body, Payload, TextBlockData};
 
 pub fn payload(body: Body) -> Payload {
     Payload {
@@ -18,14 +18,14 @@ pub fn payload(body: Body) -> Payload {
     }
 }
 
-pub fn lines_body(values: Vec<String>) -> Body {
-    Body::Lines(LinesData { lines: values })
+pub fn text_block_body(values: Vec<String>) -> Body {
+    Body::TextBlock(TextBlockData { lines: values })
 }
 
 /// Two-line warning body — mirrors `clock::common::placeholder` so misconfigured widgets look
 /// consistent across fetcher families.
 pub fn placeholder(msg: &str) -> Payload {
-    payload(Body::Lines(LinesData {
+    payload(Body::TextBlock(TextBlockData {
         lines: vec![
             format!("⚠ {msg}"),
             "check [widget.options] or set GH_TOKEN".into(),

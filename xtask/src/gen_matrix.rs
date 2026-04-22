@@ -22,7 +22,8 @@ use splashboard::render::{Registry as RenderRegistry, Renderer, Shape};
 use crate::snapshots;
 
 const ALL_SHAPES: &[Shape] = &[
-    Shape::Lines,
+    Shape::Text,
+    Shape::TextBlock,
     Shape::Entries,
     Shape::Ratio,
     Shape::NumberSeries,

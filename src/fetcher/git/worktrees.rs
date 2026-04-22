@@ -5,12 +5,12 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_block_body};
 
-const SHAPES: &[Shape] = &[Shape::Entries, Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Entries, Shape::TextBlock];
 
 /// Linked worktrees plus the main worktree. `Entries` maps worktree id → `"<branch> @ <path>"`.
-/// `Lines` flattens to one worktree per line.
+/// `TextBlock` flattens to one worktree per line.
 pub struct GitWorktrees;
 
 #[async_trait]
@@ -34,7 +34,7 @@ impl Fetcher for GitWorktrees {
                 ("feat/foo", "/repo-feat"),
                 ("hotfix", "/repo-hotfix"),
             ]),
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "main           /repo",
                 "feat/foo       /repo-feat",
                 "hotfix         /repo-hotfix",
@@ -93,7 +93,7 @@ fn head_branch(repo: &gix::Repository) -> Option<String> {
 
 fn render_body(list: Vec<WorktreeInfo>, shape: Shape) -> Body {
     match shape {
-        Shape::Lines => lines_body(list.into_iter().map(format_line).collect()),
+        Shape::TextBlock => text_block_body(list.into_iter().map(format_line).collect()),
         _ => Body::Entries(EntriesData {
             items: list
                 .into_iter()
@@ -152,12 +152,12 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_formats_each_entry() {
+    fn text_block_shape_formats_each_entry() {
         let (_tmp, repo) = make_repo();
         commit(&repo, "init");
-        let body = render_body(worktrees(&repo).unwrap(), Shape::Lines);
+        let body = render_body(worktrees(&repo).unwrap(), Shape::TextBlock);
         match body {
-            Body::Lines(d) => {
+            Body::TextBlock(d) => {
                 assert_eq!(d.lines.len(), 1);
                 assert!(d.lines[0].starts_with("(main) (main) @ "));
             }

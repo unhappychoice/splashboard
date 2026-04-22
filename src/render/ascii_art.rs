@@ -2,7 +2,7 @@ use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use tui_big_text::{BigText, PixelSize};
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, LinesData};
+use crate::payload::{Body, TextData};
 
 use super::{RenderOptions, Renderer, Shape};
 
@@ -30,8 +30,12 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
 ];
 
-/// ASCII-art text rendering over the `Lines` shape. The `style` option selects the visual
+/// ASCII-art text rendering over the `Text` shape. The `style` option selects the visual
 /// treatment; additional sub-options refine the chosen style.
+///
+/// Accepts `Text` only — big glyphs span multiple terminal rows, so multi-line input would
+/// blow past any reasonable widget height. Fetchers that want big-text output must emit a
+/// single-string `Text` payload; multi-line fetchers should render via `simple` / `list`.
 ///
 /// - `style = "blocks"` (default): half-block glyphs via `tui-big-text`. Sub-option
 ///   `pixel_size` = "full" | "quadrant" | "sextant"; unset picks by area height.
@@ -44,13 +48,13 @@ impl Renderer for AsciiArtRenderer {
         "ascii_art"
     }
     fn accepts(&self) -> &[Shape] {
-        &[Shape::Lines]
+        &[Shape::Text]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
-        if let Body::Lines(d) = body {
+        if let Body::Text(d) = body {
             match opts.style.as_deref() {
                 Some("figlet") => render_figlet(frame, area, d, opts),
                 _ => render_blocks(frame, area, d, opts),
@@ -59,46 +63,40 @@ impl Renderer for AsciiArtRenderer {
     }
 }
 
-fn render_blocks(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
+fn render_blocks(frame: &mut Frame, area: Rect, data: &TextData, opts: &RenderOptions) {
     let pixel_size = opts
         .pixel_size
         .as_deref()
         .and_then(parse_pixel_size)
         .unwrap_or_else(|| pick_pixel_size(area));
-    let natural_width = blocks_width(&data.lines, pixel_size);
+    let natural_width = blocks_width(&data.value, pixel_size);
     let target = align_rect(area, natural_width, opts.align.as_deref());
-    let lines: Vec<_> = data.lines.iter().map(|s| s.clone().into()).collect();
     let big = BigText::builder()
         .pixel_size(pixel_size)
-        .lines(lines)
+        .lines(vec![data.value.clone().into()])
         .build();
     frame.render_widget(big, target);
 }
 
-fn render_figlet(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
-    let rendered = data
-        .lines
-        .iter()
-        .map(|l| figletify(l))
-        .collect::<Vec<_>>()
-        .join("\n");
+fn render_figlet(frame: &mut Frame, area: Rect, data: &TextData, opts: &RenderOptions) {
+    let rendered = figletify(&data.value);
     let p = Paragraph::new(rendered).alignment(parse_alignment(opts.align.as_deref()));
     frame.render_widget(p, area);
 }
 
-/// Maximum natural width (in terminal cells) of a tui-big-text block string at the given
-/// pixel size. Based on the 8x8 base font; `pixels_per_cell` compresses each axis. Only the
-/// three variants we recognise in `parse_pixel_size` are listed — anything else falls back to
-/// a conservative default.
-fn blocks_width(lines: &[String], pixel_size: PixelSize) -> u16 {
-    let max_chars = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
+/// Natural width (in terminal cells) of a tui-big-text block string at the given pixel size.
+/// Based on the 8x8 base font; `pixels_per_cell` compresses each axis. Only the three variants
+/// we recognise in `parse_pixel_size` are listed — anything else falls back to a conservative
+/// default.
+fn blocks_width(text: &str, pixel_size: PixelSize) -> u16 {
+    let chars = text.chars().count() as u16;
     let glyph_cols = match pixel_size {
         PixelSize::Full => 8,
         PixelSize::Quadrant => 4,
         PixelSize::Sextant => 4,
         _ => 4,
     };
-    max_chars.saturating_mul(glyph_cols)
+    chars.saturating_mul(glyph_cols)
 }
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
@@ -157,7 +155,7 @@ fn pick_pixel_size(area: Rect) -> PixelSize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{LinesData, Payload};
+    use crate::payload::{Payload, TextData};
     use crate::render::test_utils::render_to_buffer_with_spec;
     use crate::render::{Registry, RenderSpec};
 
@@ -166,9 +164,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData {
-                lines: vec![text.into()],
-            }),
+            body: Body::Text(TextData { value: text.into() }),
         }
     }
 

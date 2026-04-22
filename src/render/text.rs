@@ -5,7 +5,7 @@ use ratatui::{
 };
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, LinesData};
+use crate::payload::Body;
 
 use super::{RenderOptions, Renderer, Shape};
 
@@ -17,9 +17,9 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     description: "Horizontal alignment of the rendered text within its cell.",
 }];
 
-/// Plain-text renderer: stacks `LinesData.lines` into a ratatui `Paragraph`. The default
-/// renderer for the `Lines` shape, used for greetings, project notes, static blocks. Honours
-/// the `align` option (left / center / right).
+/// Plain-text renderer. Accepts both `Text` (single string) and `TextBlock` (multi-line) and
+/// draws them as a ratatui `Paragraph`. The default renderer for both shapes. Honours the
+/// `align` option (left / center / right).
 pub struct SimpleRenderer;
 
 impl Renderer for SimpleRenderer {
@@ -27,21 +27,20 @@ impl Renderer for SimpleRenderer {
         "simple"
     }
     fn accepts(&self) -> &[Shape] {
-        &[Shape::Lines]
+        &[Shape::Text, Shape::TextBlock]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
-        if let Body::Lines(d) = body {
-            render_lines(frame, area, d, opts);
-        }
+        let content = match body {
+            Body::Text(d) => d.value.clone(),
+            Body::TextBlock(d) => d.lines.join("\n"),
+            _ => return,
+        };
+        let p = Paragraph::new(content).alignment(parse_align(opts.align.as_deref()));
+        frame.render_widget(p, area);
     }
-}
-
-fn render_lines(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
-    let p = Paragraph::new(data.lines.join("\n")).alignment(parse_align(opts.align.as_deref()));
-    frame.render_widget(p, area);
 }
 
 fn parse_align(s: Option<&str>) -> Alignment {
@@ -55,23 +54,41 @@ fn parse_align(s: Option<&str>) -> Alignment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{LinesData, Payload};
+    use crate::payload::{Payload, TextBlockData, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer};
 
-    fn payload(lines: &[&str]) -> Payload {
+    fn text_payload(value: &str) -> Payload {
         Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData {
+            body: Body::Text(TextData {
+                value: value.to_string(),
+            }),
+        }
+    }
+
+    fn block_payload(lines: &[&str]) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::TextBlock(TextBlockData {
                 lines: lines.iter().map(|s| s.to_string()).collect(),
             }),
         }
     }
 
     #[test]
-    fn renders_lines_at_top() {
-        let buf = render_to_buffer(&payload(&["hello world"]), 30, 5);
+    fn renders_text_at_top() {
+        let buf = render_to_buffer(&text_payload("hello world"), 30, 5);
         assert!(line_text(&buf, 0).contains("hello world"));
+    }
+
+    #[test]
+    fn renders_text_block_stacked() {
+        let buf = render_to_buffer(&block_payload(&["first", "second"]), 30, 5);
+        assert!(line_text(&buf, 0).contains("first"));
+        assert!(line_text(&buf, 1).contains("second"));
     }
 }

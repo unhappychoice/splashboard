@@ -5,13 +5,13 @@ use chrono::{DateTime, Datelike, FixedOffset, Timelike};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
-use crate::payload::{Body, LinesData, Payload};
+use crate::payload::{Body, Payload, TextData};
 use crate::render::Shape;
 use crate::samples;
 
 use super::common;
 
-const SHAPES: &[Shape] = &[Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Text];
 
 pub struct ClockDerivedFetcher;
 
@@ -53,7 +53,7 @@ impl RealtimeFetcher for ClockDerivedFetcher {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         match shape {
-            Shape::Lines => Some(samples::lines(&["day 113 of 2026"])),
+            Shape::Text => Some(samples::text("day 113 of 2026")),
             _ => None,
         }
     }
@@ -80,7 +80,7 @@ impl RealtimeFetcher for ClockDerivedFetcher {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData { lines: vec![line] }),
+            body: Body::Text(TextData { value: line }),
         }
     }
 }
@@ -240,7 +240,7 @@ mod tests {
         FetchContext {
             widget_id: "d".into(),
             timeout: Duration::from_secs(1),
-            shape: Some(Shape::Lines),
+            shape: Some(Shape::Text),
             options: Some(toml::from_str(options).unwrap()),
             ..Default::default()
         }
@@ -287,15 +287,15 @@ mod tests {
     #[test]
     fn default_kind_is_time_of_day() {
         let p = ClockDerivedFetcher.compute(&ctx(""));
-        assert!(matches!(p.body, Body::Lines(_)));
+        assert!(matches!(p.body, Body::Text(_)));
     }
 
     #[test]
-    fn moon_phase_kind_emits_nonempty_line() {
+    fn moon_phase_kind_emits_nonempty_text() {
         let p = ClockDerivedFetcher.compute(&ctx("kind = \"moon_phase\""));
         match p.body {
-            Body::Lines(d) => assert!(!d.lines[0].is_empty()),
-            _ => panic!("expected lines"),
+            Body::Text(d) => assert!(!d.value.is_empty()),
+            _ => panic!("expected text"),
         }
     }
 }

@@ -4,15 +4,16 @@
 //! (or the realtime equivalent). Those declarations stay next to the fetcher code so they can't
 //! drift out of sync. This module supplies:
 //!
-//! - small constructors (`lines`, `entries`, `ratio`, …) so the declarations stay one-liners;
+//! - small constructors (`text`, `text_block`, `entries`, `ratio`, …) so the declarations stay one-liners;
 //! - [`canonical_sample`], the shape-level fallback used when a fetcher doesn't override.
 //!
 //! The samples are consumed at docs-generation time by `xtask`, and are reachable at runtime by
 //! any future CLI that wants to preview what a fetcher emits without hitting I/O.
 
 use crate::payload::{
-    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, LinesData,
-    NumberSeriesData, PointSeries, PointSeriesData, RatioData, Status, TimelineData, TimelineEvent,
+    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData,
+    NumberSeriesData, PointSeries, PointSeriesData, RatioData, Status, TextBlockData, TextData,
+    TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 
@@ -21,7 +22,8 @@ use crate::render::Shape;
 /// portably.
 pub fn canonical_sample(shape: Shape) -> Option<Body> {
     Some(match shape {
-        Shape::Lines => lines(&["splashboard", "greetings on cd"]),
+        Shape::Text => text("splashboard"),
+        Shape::TextBlock => text_block(&["splashboard", "greetings on cd"]),
         Shape::Entries => entries(&[("key", "value"), ("foo", "bar"), ("baz", "qux")]),
         Shape::Ratio => ratio(0.67, "used"),
         Shape::NumberSeries => {
@@ -41,8 +43,14 @@ pub fn canonical_sample(shape: Shape) -> Option<Body> {
     })
 }
 
-pub fn lines(ss: &[&str]) -> Body {
-    Body::Lines(LinesData {
+pub fn text(s: &str) -> Body {
+    Body::Text(TextData {
+        value: s.to_string(),
+    })
+}
+
+pub fn text_block(ss: &[&str]) -> Body {
+    Body::TextBlock(TextBlockData {
         lines: ss.iter().map(|s| (*s).to_string()).collect(),
     })
 }

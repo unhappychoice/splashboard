@@ -14,7 +14,7 @@ use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder, resolve_repo};
 use super::items::{IssueItem, render_items};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -65,7 +65,7 @@ impl Fetcher for GithubRepoPrs {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "#54 feat(docs): generate widget catalogue",
                 "#51 feat(fetcher): split clock options",
             ]),
@@ -101,7 +101,7 @@ impl Fetcher for GithubRepoPrs {
         let items: Vec<IssueItem> = rest_get(&path).await?;
         Ok(payload(render_items(
             &items,
-            ctx.shape.unwrap_or(Shape::Lines),
+            ctx.shape.unwrap_or(Shape::TextBlock),
             false,
         )))
     }
