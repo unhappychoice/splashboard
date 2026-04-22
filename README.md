@@ -1,127 +1,164 @@
 # splashboard
 
-A customizable terminal splash screen with plugin-based data sources.
+A customizable terminal splash rendered on shell startup and on `cd`.
 
 > `splashboard` = `splash` + `dashboard` — a splash screen for your shell, rendered as a dashboard.
 
 ## What is this
 
-Every time you open a terminal, you see... a blinking cursor.
-What if instead, you saw a dashboard of the things you actually care about?
+Every time you open a terminal, you see... a blinking cursor. What if you saw a dashboard of the things you actually care about — greetings, git status, CI health, PRs awaiting review, a GitHub contribution heatmap, the moon phase?
 
-`splashboard` renders a customizable TUI splash screen on shell startup — greetings, git status, system info, GitHub notifications, weather, RSS, calendar, whatever you wire up. One line in your `.bashrc` / `.zshrc` / `config.fish` and you're done.
+`splashboard` renders a customizable TUI splash from a TOML config, cached-first so it's instant, refreshed in the background so it stays current. One line in your `.bashrc` / `.zshrc` / `config.fish` and you're done.
 
-## Goals
+## Killer feature: per-directory splashes
 
-- **Zero friction install** — one-line shell rc snippet
-- **Blazing fast startup** — cached-first render, async refresh in background
-- **Plugin ecosystem** — subprocess-based plugins, write them in any language
-- **Beautiful by default** — built on Ratatui, pleasing out of the box
-- **Customizable** — TOML config, themeable, layout control
+`cd` into a repo that ships a `.splashboard/config.toml` and the splash reshapes itself to that project — its CI, its branch, its PRs — without you configuring anything. Walk-up discovery starts from CWD, so it works from anywhere inside the tree. Competitor products (neofetch, fastfetch, starship) don't do this.
 
-## Design sketch
+Three first-class contexts:
 
-- **Language**: Rust
-- **TUI**: [Ratatui](https://ratatui.rs/) + crossterm
-- **Config**: TOML at `~/.config/splashboard/config.toml`
-- **Cache**: `~/.cache/splashboard/` (per-widget, TTL-based)
-- **Plugins**: executables in `~/.config/splashboard/plugins/`, stdin=JSON request, stdout=JSON response
+| context | value axis | config source |
+|---|---|---|
+| self / home | daily delight, ambient info | `$HOME/.splashboard/config.toml` |
+| self / project | operational (CI, branch, PRs) | `./.splashboard/config.toml` (per-dir, walk-up) |
+| other / project | craft + wow for cloners | `./.splashboard/config.toml` shipped with the repo |
 
-### Lazy / cached rendering
-
-Startup MUST NOT block the shell. The pattern:
-
-1. On launch, read cached data and render immediately
-2. Spawn async tasks to refresh data in background
-3. Persist refreshed data for the next invocation
-
-This way even HTTP-backed widgets (GitHub, weather, RSS) feel instant.
-
-## Built-in widgets (planned)
-
-### Sync (fast, local)
-- Clock / date / greeting
-- Git status (branch, dirty, ahead/behind)
-- System info (OS, uptime, CPU/mem)
-- TODO list (from local Markdown)
-
-### Async (HTTP, lazy-cached)
-- GitHub notifications / PRs awaiting review
-- Weather
-- RSS feed
-- Calendar (iCal / Google)
-
-### Plugins (user-defined)
-- Anything you can express as "run an executable, get JSON back"
-- Bash, Python, Go, Node, Ruby, whatever
-
-## Plugin protocol (draft)
-
-Plugins live at `~/.config/splashboard/plugins/<name>` and are executables.
-
-**Input** (stdin, JSON):
-```json
-{
-  "config": { ... per-plugin user config ... },
-  "context": { "tty_width": 120, "tty_height": 40 }
-}
-```
-
-**Output** (stdout, JSON):
-```json
-{
-  "title": "My Plugin",
-  "lines": ["line 1", "line 2"],
-  "color": "cyan",
-  "icon": "📦"
-}
-```
-
-Language-agnostic. Write a plugin in Bash in 5 lines.
-
-## Installation (planned)
+## Install
 
 ```bash
-# Install
 cargo install splashboard
-# or
-brew install unhappychoice/tap/splashboard
 
-# Wire into your shell
+# Wire into your shell — emits a snippet; source or append to your rc.
 splashboard init bash >> ~/.bashrc
-# splashboard init zsh >> ~/.zshrc
-# splashboard init fish >> ~/.config/fish/config.fish
+splashboard init zsh  >> ~/.zshrc
+splashboard init fish >> ~/.config/fish/config.fish
 ```
 
-## Security / threat model
+The init snippet renders on new shells and re-renders when you `cd` into a directory that holds a project-local config.
 
-Per-directory configs (`.splashboard.toml` walked up from `cwd`) mean that `cd`-ing into an adversarial repo could auto-run a splash. To bound what that splash can do, widgets are classified by fetcher capability:
+## Configuring a splash
 
-| class | examples | runs on cd into unknown repo? |
+A **widget** is the composition of a **fetcher** (what data), a **renderer** (how to draw it), and a **layout slot** (where on the grid).
+
+```toml
+# $HOME/.splashboard/config.toml
+
+[[widget]]
+id = "clock"
+fetcher = "clock"
+render = { type = "text_ascii", pixel_size = "quadrant", align = "center" }
+
+[[widget]]
+id = "stars"
+fetcher = "github_repo_stars"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "commits"
+fetcher = "git_commits_activity"
+render = "chart_sparkline"
+
+[[row]]
+height = { length = 4 }
+  [[row.child]]
+  widget = "clock"
+
+[[row]]
+height = { length = 3 }
+  [[row.child]]
+  widget = "stars"
+  [[row.child]]
+  widget = "commits"
+  title = "commits/day"
+  border = "rounded"
+```
+
+Same fetcher can drive multiple renderers — `clock` renders as `text_ascii`, `text_plain`, or `animated_typewriter`, whichever fits the row.
+
+See `.splashboard/config.toml` in this repo for the dogfood showcase that exercises every shipped fetcher family.
+
+## What's built in
+
+### Fetchers
+
+- **static** — literal text blocks (greetings, welcome notes)
+- **read_store** — deserializes `$HOME/.splashboard/store/<id>.<ext>` into any supported shape (the escape hatch for "I want a custom widget")
+- **clock_*** — `clock`, `clock_timezones`, `clock_ratio`, `clock_state`, `clock_derived`, `clock_sunrise`, `clock_countdown`
+- **system_*** — `system`, `system_cpu`, `system_memory`, `system_load`, `system_uptime`, `system_processes`, `disk_usage`
+- **git_*** — `git_status`, `git_recent_commits`, `git_commits_activity`, `git_contributors`, `git_blame_heatmap`, `git_stash_count`, `git_worktrees`, `git_latest_tag`
+- **github_*** — action status/history, PRs (mine / review-requested / repo), issues (assigned / repo / good-first), releases, notifications, stars, contributions heatmap, contributors
+
+### Renderers
+
+Names follow a `family_variant` convention so siblings sort together:
+
+- **text_*** — `text_plain`, `text_ascii`, `animated_typewriter`
+- **list_*** — `list_plain`, `list_timeline`
+- **grid_*** — `grid_table`, `grid_calendar`, `grid_heatmap`
+- **gauge_*** — `gauge_circle`, `gauge_line`
+- **chart_*** — `chart_sparkline`, `chart_line`, `chart_scatter`, `chart_bar`, `chart_pie`
+- **status_*** — `status_badge`
+- **media_*** — `media_image`
+
+### Browse the catalog
+
+```bash
+splashboard catalog                   # overview
+splashboard catalog fetcher           # list fetchers
+splashboard catalog fetcher git_status  # options + compatible renderers
+splashboard catalog renderer grid_heatmap  # options + compatible shapes
+```
+
+Or browse the generated reference at <https://unhappychoice.github.io/splashboard/>.
+
+## How fast rendering works
+
+Startup never blocks the shell. Two fetcher flavors split the work:
+
+- **Cached (async)** — disk cache with TTL; the splash reads from cache and paints immediately, then a detached child refreshes in the background for next time. Right for anything that does I/O.
+- **Realtime (sync, per-frame)** — recomputed on every draw tick, no cache. Right for "right now" values (`clock`, `system_cpu`, `system_uptime`, `clock_countdown`). Contract: < 1ms, infallible, no I/O.
+
+Use `--wait` if you'd rather block for fresh data than paint stale.
+
+## Filesystem layout
+
+All splashboard state lives under **`$HOME/.splashboard/`** (same on Linux, macOS, Windows — no XDG paths):
+
+```
+$HOME/.splashboard/
+├── config.toml        # global config
+├── trust.toml         # trust store (path + sha256 entries)
+├── cache/             # per-widget cache (key.json + key.lock)
+└── store/             # ReadStore files — $HOME/.splashboard/store/<id>.<ext>
+```
+
+Override with `SPLASHBOARD_HOME` (tests, CI, relocatable installs). Per-directory configs stay in the repo as `./.splashboard/config.toml` or `./.splashboard.toml`.
+
+## Trust model
+
+Per-directory configs mean that `cd`-ing into a cloned repo could render a splash before you've read its config. To bound the blast radius, each fetcher is classified:
+
+| class | examples | runs from an untrusted local config? |
 |---|---|---|
-| **Safe** — pure local read | clock, greeting, git status, disk | yes, always |
-| **Network** — HTTP | github, weather, rss, calendar | only after `splashboard trust` |
-| **Exec** — subprocess | plugin, command widget | only after `splashboard trust` |
+| **Safe** — local-only reads or fixed-host authenticated network | clock, git_status, system, github_* (host is hardcoded) | yes, always |
+| **Network** — URL or query is user-provided | anything whose config can steer traffic to an arbitrary host | only after `splashboard trust` |
 
-Until the local config is trusted, Network and Exec widgets render a `🔒 requires trust` placeholder — the layout stays intact so the user can preview what an unlock would enable. Global config (`~/.config/splashboard/config.toml`) and the baked-in default are implicitly trusted; only project-local configs need explicit consent.
-
-```
-splashboard trust          # trust the nearest project-local config (prints capability diff, prompts y/N)
-splashboard revoke         # revert
-splashboard list-trusted   # show all trusted configs
+```bash
+splashboard trust         # trust the nearest .splashboard.toml (prints capability diff, prompts y/N)
+splashboard revoke        # revert
+splashboard list-trusted  # show all trusted configs
 ```
 
-The trust store lives at `~/.local/share/splashboard/trusted.toml` keyed by `{ canonical_path, sha256 }`. Editing a trusted config invalidates trust — cd back into the repo and the gated slots return to placeholders until re-trusted.
+Trust is keyed by `(canonical_path, sha256)` — editing the file revokes trust automatically. Global config (`$HOME/.splashboard/config.toml`) and the baked-in default are implicitly trusted. Escape hatch: `SPLASHBOARD_TRUST_ALL=1` (documented as insecure).
 
-**What trust protects against:** arbitrary code execution from unknown repos, arbitrary URL exfil on `cd`.
+Subprocess plugins and `command = "..."` widgets are [deliberately out of scope](AGENTS.md#rejected-designs-dont-reintroduce) — splashboard is a curated renderer, not a dashboard framework.
 
-**What trust does not protect against:** data the user consciously opts into. A trusted `github` widget sends `GITHUB_TOKEN` to `api.github.com` — that's the whole point. Built-in network fetchers hardcode their hosts so a rubber-stamped trust can't redirect tokens elsewhere; plugins are referenced by name against the user-installed pool (`~/.local/share/splashboard/plugins/`) so a cloned repo can't introduce a new executable; the `command` widget is only accepted from the global config.
+## Opt-out
 
-Escape hatch: `SPLASHBOARD_TRUST_ALL=1` bypasses the check (CI use, documented as insecure).
+The splash skips rendering when any of these is true: `stdout` isn't a terminal, `TERM=dumb`, or one of `CI` / `SPLASHBOARD_SILENT` / `NO_SPLASHBOARD` is set. Also skipped below 40×16.
 
 ## Status
 
-Early design phase. See [Issues](https://github.com/unhappychoice/splashboard/issues) for the roadmap.
+Usable day-to-day. Widget catalog tracked as a living roadmap in [issue #41](https://github.com/unhappychoice/splashboard/issues/41) — new fetchers and renderers land as PRs that tick the checkboxes.
 
 ## License
 
