@@ -936,7 +936,11 @@ mod tests {
     #[test]
     fn partition_by_shape_support_passes_through_unknown_fetcher() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("x", "no_such_fetcher", Some("grid_calendar"))];
+        let widgets = vec![widget_with_render(
+            "x",
+            "no_such_fetcher",
+            Some("grid_calendar"),
+        )];
         let shapes = single_shape("x", Shape::Calendar);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 1);

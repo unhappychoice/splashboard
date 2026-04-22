@@ -358,8 +358,7 @@ mod tests {
     #[test]
     fn full_form_carries_options() {
         let w: Wrapper =
-            toml::from_str(r#"render = { type = "text_ascii", pixel_size = "quadrant" }"#)
-                .unwrap();
+            toml::from_str(r#"render = { type = "text_ascii", pixel_size = "quadrant" }"#).unwrap();
         assert_eq!(w.render.renderer_name(), "text_ascii");
         assert_eq!(w.render.options().pixel_size.as_deref(), Some("quadrant"));
     }
@@ -490,7 +489,17 @@ mod tests {
         // The point of the whole registry: one shape, many renderers. `Text` is consumed by both
         // the plain `text_plain` renderer and the `text_ascii` renderer — users pick via config.
         let r = Registry::with_builtins();
-        assert!(r.get("text_plain").unwrap().accepts().contains(&Shape::Text));
-        assert!(r.get("text_ascii").unwrap().accepts().contains(&Shape::Text));
+        assert!(
+            r.get("text_plain")
+                .unwrap()
+                .accepts()
+                .contains(&Shape::Text)
+        );
+        assert!(
+            r.get("text_ascii")
+                .unwrap()
+                .accepts()
+                .contains(&Shape::Text)
+        );
     }
 }
