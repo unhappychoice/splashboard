@@ -1,0 +1,33 @@
+/* Terminal snapshot block, emitted by `cargo xtask` into fetcher preview pages.
+   Pulls JetBrains Mono because browser-default monospace fonts render Unicode block glyphs
+   (▗▟▜▛ etc.) at inconsistent widths, which breaks the column alignment our ascii_art /
+   heatmap / gauge previews depend on. */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+.splash-snapshot {
+  font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.15;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  font-feature-settings: normal;
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 4;
+  background: var(--sl-color-bg-inline-code);
+  color: var(--sl-color-text);
+  border: 1px solid var(--sl-color-hairline);
+}
+
+/* Each terminal cell is wrapped in a fixed 1ch-wide inline-block so block glyphs (▟▜▛ etc.)
+   can't drift the column alignment even when the chosen font gives them non-uniform advance
+   widths. Narrower glyphs anchor to the left of the cell; wider ones get clipped — which is
+   the terminal's own behaviour anyway. */
+.splash-snapshot .c {
+  display: inline-block;
+  width: 1ch;
+  overflow: hidden;
+  vertical-align: top;
+}

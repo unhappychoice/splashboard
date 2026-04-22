@@ -1,0 +1,21 @@
+{
+  "name": "splashboard-docs",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.37.0",
+    "astro": "^5.5.0",
+    "sharp": "^0.33.5"
+  },
+  "overrides": {
+    "@astrojs/sitemap": "3.7.0"
+  }
+}
