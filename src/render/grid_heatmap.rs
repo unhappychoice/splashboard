@@ -5,7 +5,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::HEATMAP_RAMP, theme::TEXT];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_HEATMAP, theme::TEXT];
 
 /// 2D intensity grid — GitHub-style contribution graph and any other daily/periodic heatmap.
 /// Each cell takes two terminal columns and one row so the grid reads as "dots of equal width"

@@ -334,11 +334,11 @@ fn build_block<'a>(panel: &'a Panel, theme: &Theme) -> Block<'a> {
     let mut b = Block::default()
         .borders(Borders::ALL)
         .border_type(to_border_type(panel.border))
-        .border_style(Style::default().fg(theme.border));
+        .border_style(Style::default().fg(theme.panel_border));
     if let Some(t) = panel.title.as_deref() {
         b = b.title(Span::styled(
             t.to_string(),
-            Style::default().fg(theme.title),
+            Style::default().fg(theme.panel_title),
         ));
     }
     b

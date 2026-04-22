@@ -9,7 +9,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::SERIES];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
 /// Canvas-drawn scatter plot: dots only, no connecting lines. Alternate renderer for
 /// `PointSeries`, paired with the Braille line renderer (`chart_line`) so users get to pick

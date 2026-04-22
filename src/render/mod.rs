@@ -314,7 +314,7 @@ fn render_empty_state(frame: &mut Frame, area: Rect, theme: &Theme) {
         return;
     }
     let dim = Style::default()
-        .fg(theme.dim)
+        .fg(theme.text_dim)
         .add_modifier(Modifier::ITALIC);
     // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
     // Centered both axes via a Fill / Length / Fill vertical layout.

@@ -11,7 +11,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::TODAY, theme::EVENT, theme::TEXT];
+const COLOR_KEYS: &[ColorKey] = &[theme::ACCENT_TODAY, theme::ACCENT_EVENT, theme::TEXT];
 
 /// Month-view calendar for the `Calendar` shape. Highlights `day` (today / focus) and marks
 /// each day in `events`. Silently no-ops on invalid dates — a splash must never panic on bad
@@ -57,13 +57,13 @@ fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &T
         events.add(
             today,
             Style::default()
-                .fg(theme.today)
+                .fg(theme.accent_today)
                 .add_modifier(Modifier::BOLD),
         );
     }
     for day in &data.events {
         if let Ok(date) = Date::from_calendar_date(data.year, month, *day) {
-            events.add(date, Style::default().fg(theme.event));
+            events.add(date, Style::default().fg(theme.accent_event));
         }
     }
     // `default_style` paints the grid of non-event day numbers + header so unmarked days

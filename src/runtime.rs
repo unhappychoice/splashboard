@@ -758,7 +758,7 @@ fn paint_viewport_bg(frame: &mut Frame, area: Rect, theme: &Theme) {
 fn render_clip_hint(frame: &mut Frame, area: Rect, hidden_rows: u16, theme: &Theme) {
     let text = format!("… +{hidden_rows} rows (terminal too short)");
     let style = Style::default()
-        .fg(theme.dim)
+        .fg(theme.text_dim)
         .add_modifier(Modifier::ITALIC);
     let p = Paragraph::new(Line::from(text).style(style)).alignment(Alignment::Right);
     frame.render_widget(p, area);

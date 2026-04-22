@@ -11,7 +11,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::SERIES];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
 pub struct ChartLineRenderer;
 

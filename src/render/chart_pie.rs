@@ -6,7 +6,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::SERIES];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
 /// Pie-chart renderer. Consumes the same `Bars` shape as `chart_bar`, so one fetcher feeds
 /// either — `render = "chart_pie"` vs `render = "chart_bar"` is a config choice. Slice colours
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn more_bars_than_palette_does_not_panic() {
-        let palette_len = Theme::default().series.len();
+        let palette_len = Theme::default().palette_series.len();
         let many: Vec<Bar> = (0..palette_len + 3)
             .map(|i| bar(&format!("b{i}"), (i as u64) + 1))
             .collect();

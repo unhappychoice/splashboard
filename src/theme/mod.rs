@@ -13,18 +13,27 @@
 //!
 //! Motif: **sunrise over deep ocean**. Every token is tuned so the palette reads like one
 //! place rather than a grab-bag of accents. Two heroes anchor it — a warm coral for the
-//! rising sun (titles, errors, hottest heatmap cell) and a cool cyan-teal for sunlit
-//! shallows (events, chart axes, calendar markers). `dim` and `secondary` lean teal so
-//! chrome feels like looking up through water. Series cycle stays on the coral↔ocean axis;
-//! the heatmap ramp climbs pure night → shallow → sunrise → dawn.
+//! rising sun (`panel_title`, errors, hottest heatmap cell) and a cool cyan-teal for
+//! sunlit shallows (`accent_event`, calendar markers). `text_dim` and `text_secondary`
+//! lean teal so chrome feels like looking up through water. The `palette_series` cycle
+//! stays on the coral↔ocean axis; `palette_heatmap` climbs night → shallow → sunrise →
+//! dawn.
 //!
-//! Every chrome token is opinionated — `bg` / `bg_subtle` / `dim` / `border` / `secondary`
-//! / `text` form a six-step teal ladder climbing up from deep water to diffuse daylight,
-//! with `title` / `event` / accents as the warm sun breaking in. The splash owns the
-//! entire surface rather than leaking terminal colours through unpainted cells. Users on
-//! light terminals (or anyone who'd rather keep their terminal palette) can revert any
-//! token with `[theme] <name> = "reset"` — `bg = "reset"`, `text = "reset"`, etc. — which
-//! falls back to `Color::Reset` for that slot only.
+//! Token families follow a strict prefix scheme so TOML stays grep-able and new tokens
+//! slot into an obvious home:
+//!
+//! - `bg` / `bg_subtle` — painted surfaces.
+//! - `text` / `text_dim` / `text_secondary` — body copy and its dimmer variants.
+//! - `panel_border` / `panel_title` — panel chrome.
+//! - `status_ok` / `status_warn` / `status_error` — badge triad.
+//! - `accent_today` / `accent_event` — calendar / scatter markers.
+//! - `palette_series` / `palette_heatmap` — multi-colour palettes.
+//!
+//! Every token is opinionated — the splash owns the entire surface rather than leaking
+//! terminal colours through unpainted cells. Users on light terminals (or anyone who'd
+//! rather keep their terminal palette) can revert any token with `[theme] <name> =
+//! "reset"` — `bg = "reset"`, `text = "reset"`, etc. — which falls back to `Color::Reset`
+//! for that slot only.
 
 use ratatui::style::Color;
 use serde::Deserialize;
@@ -53,15 +62,15 @@ pub const BG_SUBTLE: ColorKey = ColorKey {
 };
 pub const TEXT: ColorKey = ColorKey {
     name: "text",
-    description: "Primary body text colour for plain renderers (text_plain, text_ascii, list_plain, animated_typewriter). The top step of the chrome ladder — brighter than `secondary`, reads as diffuse daylight on the ocean surface. Set `text = \"reset\"` to inherit the terminal's own foreground instead.",
+    description: "Primary body text colour for plain renderers (text_plain, text_ascii, list_plain, animated_typewriter). The top step of the chrome ladder — brighter than `text_secondary`, reads as diffuse daylight on the ocean surface. Set `text = \"reset\"` to inherit the terminal's own foreground instead.",
 };
-pub const BORDER: ColorKey = ColorKey {
-    name: "border",
-    description: "Panel border colour. Defaults to a muted ocean teal-gray that sits between `bg` and `secondary` — visible as structure without competing with the coral title. Set `border = \"reset\"` to inherit the terminal's own foreground instead.",
+pub const PANEL_BORDER: ColorKey = ColorKey {
+    name: "panel_border",
+    description: "Panel border colour. Defaults to a muted ocean teal-gray that sits between `bg` and `text_secondary` — visible as structure without competing with the coral `panel_title`. Set `panel_border = \"reset\"` to inherit the terminal's own foreground instead.",
 };
-pub const TITLE: ColorKey = ColorKey {
-    name: "title",
-    description: "Panel title colour. Defaults to the terminal's default foreground; often set bold.",
+pub const PANEL_TITLE: ColorKey = ColorKey {
+    name: "panel_title",
+    description: "Panel title colour. The coral hero of the Splash palette; set `panel_title = \"reset\"` to inherit the terminal's own foreground.",
 };
 pub const STATUS_OK: ColorKey = ColorKey {
     name: "status_ok",
@@ -75,30 +84,30 @@ pub const STATUS_ERROR: ColorKey = ColorKey {
     name: "status_error",
     description: "Failing / error status — reserved for attention-grabbing failures.",
 };
-pub const DIM: ColorKey = ColorKey {
-    name: "dim",
+pub const TEXT_DIM: ColorKey = ColorKey {
+    name: "text_dim",
     description: "Barely-visible chrome text: timeline date prefixes, empty-state placeholder, clip hint. Replaces the old `Modifier::DIM` usage — set an explicit colour so rendering stays consistent across terminals (some render DIM as invisible, some as a no-op).",
 };
-pub const SECONDARY: ColorKey = ColorKey {
-    name: "secondary",
+pub const TEXT_SECONDARY: ColorKey = ColorKey {
+    name: "text_secondary",
     description: "Slightly-less-dim secondary text, e.g. the detail line under a timeline entry.",
 };
-pub const TODAY: ColorKey = ColorKey {
-    name: "today",
+pub const ACCENT_TODAY: ColorKey = ColorKey {
+    name: "accent_today",
     description: "Calendar \"today\" marker.",
 };
-pub const EVENT: ColorKey = ColorKey {
-    name: "event",
+pub const ACCENT_EVENT: ColorKey = ColorKey {
+    name: "accent_event",
     description: "Calendar event marker and default scatter-plot dot colour.",
 };
 
-// ── Multi-colour palettes ──────────────────────────────────────────────────────────────────
-pub const SERIES: ColorKey = ColorKey {
-    name: "series",
-    description: "Palette cycled per-slice / per-series by chart_pie and chart_line. TOML takes an array.",
+// ── Multi-colour palettes (`palette_*` family) ─────────────────────────────────────────────
+pub const PALETTE_SERIES: ColorKey = ColorKey {
+    name: "palette_series",
+    description: "Palette cycled per-slice / per-series by chart_pie / chart_line / chart_scatter. TOML takes an array of colours.",
 };
-pub const HEATMAP_RAMP: ColorKey = ColorKey {
-    name: "heatmap_ramp",
+pub const PALETTE_HEATMAP: ColorKey = ColorKey {
+    name: "palette_heatmap",
     description: "5-step intensity gradient for grid_heatmap (level 0 → level 4). TOML array.",
 };
 
@@ -108,17 +117,17 @@ pub struct Theme {
     pub bg: Color,
     pub bg_subtle: Color,
     pub text: Color,
-    pub border: Color,
-    pub title: Color,
+    pub panel_border: Color,
+    pub panel_title: Color,
     pub status_ok: Color,
     pub status_warn: Color,
     pub status_error: Color,
-    pub dim: Color,
-    pub secondary: Color,
-    pub today: Color,
-    pub event: Color,
-    pub series: Vec<Color>,
-    pub heatmap_ramp: Vec<Color>,
+    pub text_dim: Color,
+    pub text_secondary: Color,
+    pub accent_today: Color,
+    pub accent_event: Color,
+    pub palette_series: Vec<Color>,
+    pub palette_heatmap: Vec<Color>,
 }
 
 impl Default for Theme {
@@ -131,17 +140,17 @@ impl Default for Theme {
             bg: Color::Rgb(0x0e, 0x17, 0x2a), // deep-ocean navy — twilight
             bg_subtle: Color::Rgb(0x17, 0x24, 0x3b), // lift: horizon about to break
             text: Color::Rgb(0xc5, 0xd2, 0xdc), // diffuse daylight on water
-            border: Color::Rgb(0x4a, 0x6b, 0x75), // ocean teal-gray — panel grid
-            title: Color::Rgb(0xff, 0x8c, 0x7a), // coral — the rising sun
+            panel_border: Color::Rgb(0x4a, 0x6b, 0x75), // ocean teal-gray — panel grid
+            panel_title: Color::Rgb(0xff, 0x8c, 0x7a), // coral — the rising sun
             status_ok: Color::Rgb(0x7d, 0xe0, 0xb5), // mint — first blue-green light
             status_warn: Color::Rgb(0xff, 0xc6, 0x6b), // amber — sunrise warning
             status_error: Color::Rgb(0xff, 0x5e, 0x7a), // coral-red — blood moon
-            dim: Color::Rgb(0x2d, 0x47, 0x57), // teal-dark — deep water
-            secondary: Color::Rgb(0x7e, 0xa0, 0xb5), // teal-steel — sunlit haze
-            today: Color::Rgb(0xff, 0xc6, 0x6b), // amber — today is dawn
-            event: Color::Rgb(0x5e, 0xd8, 0xe0), // cyan-teal — the sea
-            series: default_series(),
-            heatmap_ramp: default_heatmap_ramp(),
+            text_dim: Color::Rgb(0x2d, 0x47, 0x57), // teal-dark — deep water
+            text_secondary: Color::Rgb(0x7e, 0xa0, 0xb5), // teal-steel — sunlit haze
+            accent_today: Color::Rgb(0xff, 0xc6, 0x6b), // amber — today is dawn
+            accent_event: Color::Rgb(0x5e, 0xd8, 0xe0), // cyan-teal — the sea
+            palette_series: default_series(),
+            palette_heatmap: default_heatmap_ramp(),
         }
     }
 }
@@ -149,18 +158,18 @@ impl Default for Theme {
 impl Theme {
     /// nth series colour with wrap-around; empty palette falls back to the default cyan.
     pub fn series_color(&self, i: usize) -> Color {
-        if self.series.is_empty() {
+        if self.palette_series.is_empty() {
             return Color::Cyan;
         }
-        self.series[i % self.series.len()]
+        self.palette_series[i % self.palette_series.len()]
     }
 
     /// Heatmap level in `0..5`, saturating at both ends. Empty ramp falls back to default.
     pub fn heatmap_level(&self, level: usize) -> Color {
-        let ramp = if self.heatmap_ramp.is_empty() {
+        let ramp = if self.palette_heatmap.is_empty() {
             return default_heatmap_ramp()[level.min(4)];
         } else {
-            &self.heatmap_ramp
+            &self.palette_heatmap
         };
         ramp[level.min(ramp.len() - 1)]
     }
@@ -193,11 +202,11 @@ impl Theme {
         if let Some(c) = cfg.text {
             t.text = c;
         }
-        if let Some(c) = cfg.border {
-            t.border = c;
+        if let Some(c) = cfg.panel_border {
+            t.panel_border = c;
         }
-        if let Some(c) = cfg.title {
-            t.title = c;
+        if let Some(c) = cfg.panel_title {
+            t.panel_title = c;
         }
         if let Some(c) = cfg.status_ok {
             t.status_ok = c;
@@ -208,27 +217,27 @@ impl Theme {
         if let Some(c) = cfg.status_error {
             t.status_error = c;
         }
-        if let Some(c) = cfg.dim {
-            t.dim = c;
+        if let Some(c) = cfg.text_dim {
+            t.text_dim = c;
         }
-        if let Some(c) = cfg.secondary {
-            t.secondary = c;
+        if let Some(c) = cfg.text_secondary {
+            t.text_secondary = c;
         }
-        if let Some(c) = cfg.today {
-            t.today = c;
+        if let Some(c) = cfg.accent_today {
+            t.accent_today = c;
         }
-        if let Some(c) = cfg.event {
-            t.event = c;
+        if let Some(c) = cfg.accent_event {
+            t.accent_event = c;
         }
-        if let Some(series) = &cfg.series
+        if let Some(series) = &cfg.palette_series
             && !series.is_empty()
         {
-            t.series = series.clone();
+            t.palette_series = series.clone();
         }
-        if let Some(ramp) = &cfg.heatmap_ramp
+        if let Some(ramp) = &cfg.palette_heatmap
             && !ramp.is_empty()
         {
-            t.heatmap_ramp = ramp.clone();
+            t.palette_heatmap = ramp.clone();
         }
         t
     }
@@ -279,17 +288,17 @@ pub struct ThemeConfig {
     pub bg: Option<Color>,
     pub bg_subtle: Option<Color>,
     pub text: Option<Color>,
-    pub border: Option<Color>,
-    pub title: Option<Color>,
+    pub panel_border: Option<Color>,
+    pub panel_title: Option<Color>,
     pub status_ok: Option<Color>,
     pub status_warn: Option<Color>,
     pub status_error: Option<Color>,
-    pub dim: Option<Color>,
-    pub secondary: Option<Color>,
-    pub today: Option<Color>,
-    pub event: Option<Color>,
-    pub series: Option<Vec<Color>>,
-    pub heatmap_ramp: Option<Vec<Color>>,
+    pub text_dim: Option<Color>,
+    pub text_secondary: Option<Color>,
+    pub accent_today: Option<Color>,
+    pub accent_event: Option<Color>,
+    pub palette_series: Option<Vec<Color>>,
+    pub palette_heatmap: Option<Vec<Color>>,
 }
 
 #[cfg(test)]
@@ -305,24 +314,36 @@ mod tests {
         let t = Theme::default();
         assert_eq!(t.bg, Color::Rgb(0x0e, 0x17, 0x2a), "deep-ocean navy");
         assert_eq!(t.bg_subtle, Color::Rgb(0x17, 0x24, 0x3b));
-        assert_eq!(t.border, Color::Rgb(0x4a, 0x6b, 0x75), "ocean teal-gray");
+        assert_eq!(
+            t.panel_border,
+            Color::Rgb(0x4a, 0x6b, 0x75),
+            "ocean teal-gray"
+        );
         assert_eq!(t.text, Color::Rgb(0xc5, 0xd2, 0xdc), "diffuse daylight");
-        assert_eq!(t.title, Color::Rgb(0xff, 0x8c, 0x7a), "coral — rising sun");
-        assert_eq!(t.event, Color::Rgb(0x5e, 0xd8, 0xe0), "cyan-teal — the sea");
-        assert_eq!(t.dim, Color::Rgb(0x2d, 0x47, 0x57), "teal-dark chrome");
-        assert_eq!(t.secondary, Color::Rgb(0x7e, 0xa0, 0xb5));
+        assert_eq!(
+            t.panel_title,
+            Color::Rgb(0xff, 0x8c, 0x7a),
+            "coral — rising sun"
+        );
+        assert_eq!(
+            t.accent_event,
+            Color::Rgb(0x5e, 0xd8, 0xe0),
+            "cyan-teal — the sea"
+        );
+        assert_eq!(t.text_dim, Color::Rgb(0x2d, 0x47, 0x57), "teal-dark chrome");
+        assert_eq!(t.text_secondary, Color::Rgb(0x7e, 0xa0, 0xb5));
         assert_eq!(t.status_ok, Color::Rgb(0x7d, 0xe0, 0xb5));
         assert_eq!(t.status_warn, Color::Rgb(0xff, 0xc6, 0x6b));
         assert_eq!(t.status_error, Color::Rgb(0xff, 0x5e, 0x7a));
         // Series anchors to the coral/teal pair in slots 0/1.
-        assert_eq!(t.series.len(), 10);
-        assert_eq!(t.series[0], Color::Rgb(0xff, 0x8c, 0x7a));
-        assert_eq!(t.series[1], Color::Rgb(0x5e, 0xd8, 0xe0));
+        assert_eq!(t.palette_series.len(), 10);
+        assert_eq!(t.palette_series[0], Color::Rgb(0xff, 0x8c, 0x7a));
+        assert_eq!(t.palette_series[1], Color::Rgb(0x5e, 0xd8, 0xe0));
         // Ramp: night → shallow → sunrise, no purple middle.
-        assert_eq!(t.heatmap_ramp.len(), 5);
-        assert_eq!(t.heatmap_ramp[0], Color::Rgb(0x0a, 0x14, 0x24));
+        assert_eq!(t.palette_heatmap.len(), 5);
+        assert_eq!(t.palette_heatmap[0], Color::Rgb(0x0a, 0x14, 0x24));
         assert_eq!(
-            t.heatmap_ramp[4],
+            t.palette_heatmap[4],
             Color::Rgb(0xff, 0xc6, 0x6b),
             "amber dawn"
         );
@@ -338,8 +359,8 @@ mod tests {
         assert_ne!(t.bg, Color::Reset);
         assert_ne!(t.bg_subtle, Color::Reset);
         assert_ne!(t.text, Color::Reset);
-        assert_ne!(t.border, Color::Reset);
-        assert_ne!(t.title, Color::Reset);
+        assert_ne!(t.panel_border, Color::Reset);
+        assert_ne!(t.panel_title, Color::Reset);
     }
 
     #[test]
@@ -360,25 +381,25 @@ mod tests {
         let toml = r##"
 status_ok = "cyan"
 status_error = "#ff8800"
-series = ["red", "#00ff00", "blue"]
+palette_series = ["red", "#00ff00", "blue"]
 "##;
         let cfg: ThemeConfig = toml::from_str(toml).unwrap();
         let t = Theme::from_config(&cfg);
         assert_eq!(t.status_ok, Color::Cyan);
         assert_eq!(t.status_error, Color::Rgb(0xff, 0x88, 0x00));
-        assert_eq!(t.series.len(), 3);
+        assert_eq!(t.palette_series.len(), 3);
     }
 
     #[test]
     fn series_color_wraps_around() {
         let t = Theme::default();
-        assert_eq!(t.series_color(0), t.series_color(t.series.len()));
+        assert_eq!(t.series_color(0), t.series_color(t.palette_series.len()));
     }
 
     #[test]
     fn series_color_falls_back_on_empty_palette() {
         let t = Theme {
-            series: vec![],
+            palette_series: vec![],
             ..Theme::default()
         };
         assert_eq!(t.series_color(0), Color::Cyan);
@@ -422,10 +443,10 @@ series = ["red", "#00ff00", "blue"]
         // charts. Keep the built-in and let the user explicitly disable by writing a single-
         // element array if they really want that.
         let cfg = ThemeConfig {
-            series: Some(vec![]),
+            palette_series: Some(vec![]),
             ..Default::default()
         };
         let t = Theme::from_config(&cfg);
-        assert_eq!(t.series.len(), 10);
+        assert_eq!(t.palette_series.len(), 10);
     }
 }

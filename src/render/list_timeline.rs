@@ -16,8 +16,8 @@ const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
     theme::STATUS_WARN,
     theme::STATUS_ERROR,
-    theme::DIM,
-    theme::SECONDARY,
+    theme::TEXT_DIM,
+    theme::TEXT_SECONDARY,
     theme::TEXT,
 ];
 
@@ -70,7 +70,7 @@ fn render_timeline_at(
         .map(|p| p.chars().count())
         .max()
         .unwrap_or(0);
-    let dim = Style::default().fg(theme.dim);
+    let dim = Style::default().fg(theme.text_dim);
 
     let mut lines: Vec<Line> = Vec::with_capacity(data.events.len() * 2);
     let mut content_width: usize = 0;
@@ -86,7 +86,7 @@ fn render_timeline_at(
             content_width = content_width.max(indent.chars().count() + detail.chars().count());
             lines.push(Line::from(vec![
                 Span::styled(indent, dim),
-                Span::styled(detail.clone(), Style::default().fg(theme.secondary)),
+                Span::styled(detail.clone(), Style::default().fg(theme.text_secondary)),
             ]));
         }
     }
