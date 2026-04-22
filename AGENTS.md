@@ -54,7 +54,7 @@ Shapes are the **only** coupling between fetchers and renderers. If you find you
 Produces a `Payload`. Two flavors:
 
 - **`Fetcher` (cached, async)** — disk cache with TTL, daemon refreshes in background, renderer reads from cache. Right for anything that does I/O: git2, HTTP, filesystem scans.
-- **`RealtimeFetcher` (sync, per-frame)** — recomputed on every draw tick, no cache at all. Right for "right now" values: clock, cpu_load, uptime, countdowns, pomodoro. Contract: < 1ms, infallible, no I/O. If you want to put `reqwest` in a `RealtimeFetcher`, it's not realtime — it's cached.
+- **`RealtimeFetcher` (sync, per-frame)** — recomputed on every draw tick, no cache at all. Right for "right now" values: `clock`, `system_cpu`, `system_uptime`, `clock_countdown`, `pomodoro`. Contract: < 1ms, infallible, no I/O. If you want to put `reqwest` in a `RealtimeFetcher`, it's not realtime — it's cached.
 
 Key invariants:
 

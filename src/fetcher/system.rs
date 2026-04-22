@@ -134,7 +134,7 @@ impl Default for CpuLoadFetcher {
 
 impl RealtimeFetcher for CpuLoadFetcher {
     fn name(&self) -> &str {
-        "cpu_load"
+        "system_cpu"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -188,7 +188,7 @@ impl Default for MemoryFetcher {
 
 impl RealtimeFetcher for MemoryFetcher {
     fn name(&self) -> &str {
-        "memory"
+        "system_memory"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -237,7 +237,7 @@ pub struct UptimeFetcher;
 
 impl RealtimeFetcher for UptimeFetcher {
     fn name(&self) -> &str {
-        "uptime"
+        "system_uptime"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -264,7 +264,7 @@ pub struct LoadAverageFetcher;
 
 impl RealtimeFetcher for LoadAverageFetcher {
     fn name(&self) -> &str {
-        "load_average"
+        "system_load"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -324,7 +324,7 @@ impl Default for ProcessTopFetcher {
 
 impl RealtimeFetcher for ProcessTopFetcher {
     fn name(&self) -> &str {
-        "process_top"
+        "system_processes"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -374,7 +374,7 @@ pub struct DiskFetcher;
 #[async_trait]
 impl Fetcher for DiskFetcher {
     fn name(&self) -> &str {
-        "disk"
+        "disk_usage"
     }
     fn safety(&self) -> Safety {
         Safety::Safe

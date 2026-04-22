@@ -63,12 +63,12 @@ render = { type = "badge", align = "left" }
 
 [[widget]]
 id = "disk_gauge"
-fetcher = "disk"
+fetcher = "disk_usage"
 render = "gauge"
 
 [[widget]]
 id = "disk_line"
-fetcher = "disk"
+fetcher = "disk_usage"
 render = "line_gauge"
 
 # ── NumberSeries ────────────────────────────────────────────────────
@@ -187,27 +187,27 @@ render = { type = "simple", align = "center" }
 
 [[widget]]
 id = "cpu"
-fetcher = "cpu_load"
+fetcher = "system_cpu"
 render = "gauge"
 
 [[widget]]
 id = "memory"
-fetcher = "memory"
+fetcher = "system_memory"
 render = "line_gauge"
 
 [[widget]]
 id = "uptime"
-fetcher = "uptime"
+fetcher = "system_uptime"
 render = { type = "simple", align = "center" }
 
 [[widget]]
 id = "load_avg"
-fetcher = "load_average"
+fetcher = "system_load"
 render = { type = "simple", align = "center" }
 
 [[widget]]
 id = "processes"
-fetcher = "process_top"
+fetcher = "system_processes"
 render = "table"
 
 # ── Layout ──────────────────────────────────────────────────────────
@@ -344,12 +344,12 @@ height = { length = 3 }
 
   [[row.child]]
   widget = "cpu"
-  title = "cpu_load"
+  title = "system_cpu"
   border = "rounded"
 
   [[row.child]]
   widget = "memory"
-  title = "memory"
+  title = "system_memory"
   border = "rounded"
 
 [[row]]
@@ -357,12 +357,12 @@ height = { length = 3 }
 
   [[row.child]]
   widget = "uptime"
-  title = "uptime"
+  title = "system_uptime"
   border = "rounded"
 
   [[row.child]]
   widget = "load_avg"
-  title = "load_average"
+  title = "system_load"
   border = "rounded"
 
 [[row]]
@@ -370,7 +370,7 @@ height = { length = 7 }
 
   [[row.child]]
   widget = "processes"
-  title = "process_top"
+  title = "system_processes"
   border = "rounded"
 
 # ── Clock options showcase rows ──────────────────────────────────────

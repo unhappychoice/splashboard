@@ -14,7 +14,7 @@ render = "ascii_art"
 
 [[widget]]
 id = "disk"
-fetcher = "disk"
+fetcher = "disk_usage"
 render = "gauge"
 
 [[widget]]

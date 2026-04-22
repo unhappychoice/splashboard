@@ -354,7 +354,7 @@ struct WidgetBuckets<'a> {
 
 /// Merges fresh daemon-written cache entries into the payload map between frames. Realtime
 /// payloads stay exactly as they were computed once before the loop — the animation window is
-/// short (2s) and recomputing per frame would make expensive fetchers like `process_top`
+/// short (2s) and recomputing per frame would make expensive fetchers like `system_processes`
 /// scale badly. Trust-gate and shape-mismatch placeholders are re-applied defensively so a
 /// daemon-written entry can't leak into a gated slot.
 fn refresh_payloads(
@@ -916,7 +916,7 @@ mod tests {
     #[test]
     fn partition_by_shape_support_keeps_widget_with_compatible_renderer() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("d", "disk", Some("gauge"))];
+        let widgets = vec![widget_with_render("d", "disk_usage", Some("gauge"))];
         let shapes = single_shape("d", Shape::Ratio);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 1);
@@ -926,7 +926,7 @@ mod tests {
     #[test]
     fn partition_by_shape_support_rejects_incompatible_renderer() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("d", "disk", Some("calendar"))];
+        let widgets = vec![widget_with_render("d", "disk_usage", Some("calendar"))];
         let shapes = single_shape("d", Shape::Calendar);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert!(valid.is_empty());
