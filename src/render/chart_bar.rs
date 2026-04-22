@@ -4,11 +4,11 @@ use crate::payload::{BarsData, Body};
 
 use super::{RenderOptions, Renderer, Shape};
 
-pub struct BarChartRenderer;
+pub struct ChartBarRenderer;
 
-impl Renderer for BarChartRenderer {
+impl Renderer for ChartBarRenderer {
     fn name(&self) -> &str {
-        "bar_chart"
+        "chart_bar"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]

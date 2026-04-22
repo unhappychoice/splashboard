@@ -52,7 +52,7 @@ pub fn previews_for(fetcher: &RegisteredFetcher, renderers: &RenderRegistry) -> 
 /// output without overflowing a typical docs column.
 fn renderer_dimensions(renderer: &str) -> (u16, u16) {
     match renderer {
-        "simple" | "animated_typewriter" => (40, 2),
+        "text" | "animated_typewriter" => (40, 2),
         // Half-block glyphs need ~4 cols per char (Quadrant mode); widen the canvas so samples
         // up to ~20 chars render without clipping, and keep a row of headroom below the glyphs.
         "ascii_art" => (80, 5),
@@ -60,11 +60,11 @@ fn renderer_dimensions(renderer: &str) -> (u16, u16) {
         "badge" => (40, 1),
         "table" => (40, 5),
         "gauge" => (40, 3),
-        "line_gauge" => (40, 1),
-        "sparkline" => (40, 3),
-        "chart_line" | "scatter" => (50, 10),
-        "bar_chart" => (40, 8),
-        "pie_chart" => (40, 10),
+        "gauge_line" => (40, 1),
+        "chart_sparkline" => (40, 3),
+        "chart_line" | "chart_scatter" => (50, 10),
+        "chart_bar" => (40, 8),
+        "chart_pie" => (40, 10),
         "image" => (40, 5),
         "calendar" => (28, 10),
         "heatmap" => (40, 6),

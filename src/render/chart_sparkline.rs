@@ -4,11 +4,11 @@ use crate::payload::{Body, NumberSeriesData};
 
 use super::{RenderOptions, Renderer, Shape};
 
-pub struct SparklineRenderer;
+pub struct ChartSparklineRenderer;
 
-impl Renderer for SparklineRenderer {
+impl Renderer for ChartSparklineRenderer {
     fn name(&self) -> &str {
-        "sparkline"
+        "chart_sparkline"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::NumberSeries]

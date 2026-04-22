@@ -331,7 +331,7 @@ mod tests {
         assert!(out.contains("NAME"));
         assert!(out.contains("ACCEPTS"));
         assert!(out.contains("ANIMATES"));
-        assert!(out.contains("simple"));
+        assert!(out.contains("text"));
     }
 
     #[test]

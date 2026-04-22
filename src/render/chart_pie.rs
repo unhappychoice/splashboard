@@ -5,10 +5,10 @@ use crate::payload::{BarsData, Body};
 
 use super::{RenderOptions, Renderer, Shape};
 
-/// Pie-chart renderer. Consumes the same `Bars` shape as `bar_chart`, so one fetcher feeds
-/// either — `render = "pie_chart"` vs `render = "bar_chart"` is a config choice. Slice colours
+/// Pie-chart renderer. Consumes the same `Bars` shape as `chart_bar`, so one fetcher feeds
+/// either — `render = "chart_pie"` vs `render = "chart_bar"` is a config choice. Slice colours
 /// cycle through a fixed palette in input order; labels and percentages come from the widget.
-pub struct PieChartRenderer;
+pub struct ChartPieRenderer;
 
 const PALETTE: &[Color] = &[
     Color::Red,
@@ -23,9 +23,9 @@ const PALETTE: &[Color] = &[
     Color::LightYellow,
 ];
 
-impl Renderer for PieChartRenderer {
+impl Renderer for ChartPieRenderer {
     fn name(&self) -> &str {
-        "pie_chart"
+        "chart_pie"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
@@ -70,7 +70,7 @@ mod tests {
 
     fn render(bars: Vec<Bar>, w: u16, h: u16) -> ratatui::buffer::Buffer {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("pie_chart".into());
+        let spec = RenderSpec::Short("chart_pie".into());
         render_to_buffer_with_spec(&payload(bars), Some(&spec), &registry, w, h)
     }
 
@@ -103,14 +103,14 @@ mod tests {
 
     #[test]
     fn accepts_only_bars_shape() {
-        let r = PieChartRenderer;
+        let r = ChartPieRenderer;
         assert_eq!(r.accepts(), &[Shape::Bars]);
     }
 
     #[test]
-    fn registered_under_pie_chart_name() {
+    fn registered_under_chart_pie_name() {
         let r = Registry::with_builtins();
-        assert!(r.get("pie_chart").is_some(), "pie_chart not registered");
+        assert!(r.get("chart_pie").is_some(), "chart_pie not registered");
     }
 
     #[test]

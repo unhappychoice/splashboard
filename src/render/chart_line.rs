@@ -1,47 +1,45 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Color,
-    widgets::canvas::{Canvas, Points},
+    symbols::Marker,
+    widgets::{Axis, Chart, Dataset, GraphType},
 };
 
 use crate::payload::{Body, PointSeries, PointSeriesData};
 
 use super::{RenderOptions, Renderer, Shape};
 
-/// Canvas-drawn scatter plot: dots only, no connecting lines. Alternate renderer for
-/// `PointSeries`, paired with the Braille line renderer (`chart_line`) so users get to pick
-/// "show me the trend" vs "show me each observation".
-pub struct ScatterRenderer;
+pub struct ChartLineRenderer;
 
-impl Renderer for ScatterRenderer {
+impl Renderer for ChartLineRenderer {
     fn name(&self) -> &str {
-        "scatter"
+        "chart_line"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::PointSeries]
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
         if let Body::PointSeries(d) = body {
-            render_scatter(frame, area, d);
+            render_line_chart(frame, area, d);
         }
     }
 }
 
-fn render_scatter(frame: &mut Frame, area: Rect, data: &PointSeriesData) {
+fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData) {
+    let datasets: Vec<Dataset> = data.series.iter().map(to_dataset).collect();
     let (x_bounds, y_bounds) = bounds(&data.series);
-    let canvas = Canvas::default()
-        .x_bounds(x_bounds)
-        .y_bounds(y_bounds)
-        .paint(|ctx| {
-            for series in &data.series {
-                ctx.draw(&Points {
-                    coords: &series.points,
-                    color: Color::Cyan,
-                });
-            }
-        });
-    frame.render_widget(canvas, area);
+    let chart = Chart::new(datasets)
+        .x_axis(Axis::default().bounds(x_bounds))
+        .y_axis(Axis::default().bounds(y_bounds));
+    frame.render_widget(chart, area);
+}
+
+fn to_dataset(series: &PointSeries) -> Dataset<'_> {
+    Dataset::default()
+        .name(series.name.clone())
+        .marker(Marker::Braille)
+        .graph_type(GraphType::Line)
+        .data(&series.points)
 }
 
 fn bounds(series: &[PointSeries]) -> ([f64; 2], [f64; 2]) {
@@ -68,8 +66,7 @@ fn max(xs: &[f64]) -> f64 {
 mod tests {
     use super::*;
     use crate::payload::{Payload, PointSeries, PointSeriesData};
-    use crate::render::test_utils::render_to_buffer_with_spec;
-    use crate::render::{Registry, RenderSpec};
+    use crate::render::test_utils::render_to_buffer;
 
     fn payload(series: Vec<PointSeries>) -> Payload {
         Payload {
@@ -86,15 +83,11 @@ mod tests {
             name: "temp".into(),
             points: vec![(0.0, 20.0), (1.0, 21.5), (2.0, 19.8)],
         };
-        let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("scatter".into());
-        let _ = render_to_buffer_with_spec(&payload(vec![s]), Some(&spec), &registry, 30, 10);
+        let _ = render_to_buffer(&payload(vec![s]), 30, 10);
     }
 
     #[test]
     fn handles_empty_series() {
-        let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("scatter".into());
-        let _ = render_to_buffer_with_spec(&payload(vec![]), Some(&spec), &registry, 30, 10);
+        let _ = render_to_buffer(&payload(vec![]), 30, 10);
     }
 }

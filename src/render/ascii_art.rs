@@ -35,7 +35,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
 ///
 /// Accepts `Text` only — big glyphs span multiple terminal rows, so multi-line input would
 /// blow past any reasonable widget height. Fetchers that want big-text output must emit a
-/// single-string `Text` payload; multi-line fetchers should render via `simple` / `list`.
+/// single-string `Text` payload; multi-line fetchers should render via `text` / `list`.
 ///
 /// - `style = "blocks"` (default): half-block glyphs via `tui-big-text`. Sub-option
 ///   `pixel_size` = "full" | "quadrant" | "sextant"; unset picks by area height.

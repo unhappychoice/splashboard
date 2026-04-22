@@ -16,7 +16,7 @@ pub struct Payload {
 
 /// Data-shape of a fetched payload. Variants describe the **shape of the data**, not how it's
 /// rendered — the same shape can feed multiple renderers (e.g. `Text` feeds both the plain
-/// `simple` renderer and the big-text `ascii_art` renderer). Config's `render = "…"` picks the
+/// `text` renderer and the big-text `ascii_art` renderer). Config's `render = "…"` picks the
 /// renderer, compat-checked against the shape at dispatch time.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "shape", content = "data", rename_all = "snake_case")]

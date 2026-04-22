@@ -20,11 +20,11 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
 /// Plain-text renderer. Accepts both `Text` (single string) and `TextBlock` (multi-line) and
 /// draws them as a ratatui `Paragraph`. The default renderer for both shapes. Honours the
 /// `align` option (left / center / right).
-pub struct SimpleRenderer;
+pub struct TextRenderer;
 
-impl Renderer for SimpleRenderer {
+impl Renderer for TextRenderer {
     fn name(&self) -> &str {
-        "simple"
+        "text"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Text, Shape::TextBlock]

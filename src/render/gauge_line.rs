@@ -6,11 +6,11 @@ use super::{RenderOptions, Renderer, Shape};
 
 /// Compact progress indicator: a single-line bar, ratio filled. Good for dense dashboards where
 /// the full-height `gauge` block renderer is too tall. Alternate renderer for the `Ratio` shape.
-pub struct LineGaugeRenderer;
+pub struct GaugeLineRenderer;
 
-impl Renderer for LineGaugeRenderer {
+impl Renderer for GaugeLineRenderer {
     fn name(&self) -> &str {
-        "line_gauge"
+        "gauge_line"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
@@ -53,14 +53,14 @@ mod tests {
     #[test]
     fn renders_without_panicking() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("line_gauge".into());
+        let spec = RenderSpec::Short("gauge_line".into());
         let _ = render_to_buffer_with_spec(&payload(0.4), Some(&spec), &registry, 20, 3);
     }
 
     #[test]
     fn clamps_out_of_range() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("line_gauge".into());
+        let spec = RenderSpec::Short("gauge_line".into());
         let _ = render_to_buffer_with_spec(&payload(1.7), Some(&spec), &registry, 20, 3);
         let _ = render_to_buffer_with_spec(&payload(-0.2), Some(&spec), &registry, 20, 3);
     }

@@ -16,17 +16,17 @@ use crate::payload::{Body, Payload};
 mod animated_typewriter;
 mod ascii_art;
 mod badge;
-mod bar_chart;
 mod calendar;
+mod chart_bar;
+mod chart_line;
+mod chart_pie;
+mod chart_scatter;
+mod chart_sparkline;
 mod gauge;
+mod gauge_line;
 mod heatmap;
 mod image;
-mod line_chart;
-mod line_gauge;
 mod list;
-mod pie_chart;
-mod scatter;
-mod sparkline;
 mod table;
 mod text;
 mod timeline;
@@ -35,8 +35,8 @@ mod timeline;
 pub mod test_utils;
 
 /// Data shape a fetcher produces. A shape is consumed by one or more renderers — a `Text`
-/// shape can be rendered by `simple` (plain text), `ascii_art` (big-text via tui-big-text),
-/// and future alternatives (figlet, animated typewriter) without the fetcher needing to know.
+/// shape can be rendered by `text` (plain text), `ascii_art` (big-text via tui-big-text), and
+/// future alternatives (figlet, animated typewriter) without the fetcher needing to know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shape {
     Text,
@@ -94,6 +94,10 @@ impl Shape {
 /// Per-renderer configuration. Each renderer picks out the fields it cares about from this bag;
 /// others are ignored. Kept deliberately flat so config authors can write
 /// `render = { type = "ascii_art", style = "figlet" }` without nesting.
+///
+/// Renderer naming: family members share a prefix (`chart_*`, `gauge_*`, `animated_*`), never
+/// a suffix. Module name always matches the registered name (`chart_bar.rs` registers
+/// `"chart_bar"`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenderOptions {
@@ -105,13 +109,13 @@ pub struct RenderOptions {
     #[serde(default)]
     pub pixel_size: Option<String>,
     /// Horizontal alignment of the rendered content within its cell: "left" (default),
-    /// "center", or "right". Not every renderer honours this — simple text and ascii_art do;
+    /// "center", or "right". Not every renderer honours this — text and ascii_art do;
     /// structural renderers (table, gauge, charts) ignore it.
     #[serde(default)]
     pub align: Option<String>,
 }
 
-/// What the TOML accepts for `render`. Short form `render = "simple"` uses defaults; long form
+/// What the TOML accepts for `render`. Short form `render = "text"` uses defaults; long form
 /// `render = { type = "ascii_art", pixel_size = "quadrant" }` carries options. Absence means
 /// "use the default renderer for this shape".
 #[derive(Debug, Clone, Deserialize)]
@@ -170,19 +174,19 @@ pub struct Registry {
 impl Registry {
     pub fn with_builtins() -> Self {
         let mut r = Self::default();
-        r.register(Arc::new(text::SimpleRenderer));
+        r.register(Arc::new(text::TextRenderer));
         r.register(Arc::new(ascii_art::AsciiArtRenderer));
         r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
         r.register(Arc::new(badge::BadgeRenderer));
         r.register(Arc::new(list::ListRenderer));
         r.register(Arc::new(table::TableRenderer));
         r.register(Arc::new(gauge::GaugeRenderer));
-        r.register(Arc::new(line_gauge::LineGaugeRenderer));
-        r.register(Arc::new(sparkline::SparklineRenderer));
-        r.register(Arc::new(line_chart::LineChartRenderer));
-        r.register(Arc::new(scatter::ScatterRenderer));
-        r.register(Arc::new(bar_chart::BarChartRenderer));
-        r.register(Arc::new(pie_chart::PieChartRenderer));
+        r.register(Arc::new(gauge_line::GaugeLineRenderer));
+        r.register(Arc::new(chart_sparkline::ChartSparklineRenderer));
+        r.register(Arc::new(chart_line::ChartLineRenderer));
+        r.register(Arc::new(chart_scatter::ChartScatterRenderer));
+        r.register(Arc::new(chart_bar::ChartBarRenderer));
+        r.register(Arc::new(chart_pie::ChartPieRenderer));
         r.register(Arc::new(image::ImageRenderer));
         r.register(Arc::new(calendar::CalendarRenderer));
         r.register(Arc::new(heatmap::HeatmapRenderer));
@@ -208,13 +212,13 @@ impl Registry {
 
 pub fn default_renderer_for(shape: Shape) -> &'static str {
     match shape {
-        Shape::Text => "simple",
-        Shape::TextBlock => "simple",
+        Shape::Text => "text",
+        Shape::TextBlock => "text",
         Shape::Entries => "table",
         Shape::Ratio => "gauge",
-        Shape::NumberSeries => "sparkline",
+        Shape::NumberSeries => "chart_sparkline",
         Shape::PointSeries => "chart_line",
-        Shape::Bars => "bar_chart",
+        Shape::Bars => "chart_bar",
         Shape::Image => "image",
         Shape::Calendar => "calendar",
         Shape::Heatmap => "heatmap",
@@ -346,8 +350,8 @@ mod tests {
 
     #[test]
     fn short_form_parses_as_renderer_name() {
-        let w: Wrapper = toml::from_str(r#"render = "simple""#).unwrap();
-        assert_eq!(w.render.renderer_name(), "simple");
+        let w: Wrapper = toml::from_str(r#"render = "text""#).unwrap();
+        assert_eq!(w.render.renderer_name(), "text");
         assert!(w.render.options().pixel_size.is_none());
     }
 
@@ -363,19 +367,19 @@ mod tests {
     fn registry_resolves_all_builtins() {
         let r = Registry::with_builtins();
         for name in [
-            "simple",
+            "text",
             "ascii_art",
             "animated_typewriter",
             "badge",
             "list",
             "table",
             "gauge",
-            "line_gauge",
-            "sparkline",
+            "gauge_line",
+            "chart_sparkline",
             "chart_line",
-            "scatter",
-            "bar_chart",
-            "pie_chart",
+            "chart_scatter",
+            "chart_bar",
+            "chart_pie",
             "image",
             "calendar",
             "heatmap",
@@ -483,9 +487,9 @@ mod tests {
     #[test]
     fn text_shape_has_multiple_renderers() {
         // The point of the whole registry: one shape, many renderers. `Text` is consumed by both
-        // the plain `simple` renderer and the `ascii_art` renderer — users pick via config.
+        // the plain `text` renderer and the `ascii_art` renderer — users pick via config.
         let r = Registry::with_builtins();
-        assert!(r.get("simple").unwrap().accepts().contains(&Shape::Text));
+        assert!(r.get("text").unwrap().accepts().contains(&Shape::Text));
         assert!(r.get("ascii_art").unwrap().accepts().contains(&Shape::Text));
     }
 }

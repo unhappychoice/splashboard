@@ -947,7 +947,7 @@ mod tests {
     fn partition_by_shape_support_accepts_multi_shape_fetchers_renderer_shape() {
         let registry = Registry::with_builtins();
         let widgets = vec![
-            widget_with_render("a", "clock", Some("simple")),
+            widget_with_render("a", "clock", Some("text")),
             widget_with_render("b", "clock", Some("table")),
             widget_with_render("c", "clock", Some("calendar")),
         ];

@@ -1,8 +1,8 @@
 # Dogfood config for the splashboard repo itself. Exercises every shipped fetcher family
 # (static, clock_*, system_*, git_*, github_*, read_store) paired with a renderer that fits
-# the data. Renderers intentionally dropped from this showcase: bar_chart / pie_chart /
-# chart_line / scatter / calendar — they add visual noise without exercising anything the
-# other showcases don't already cover.
+# the data. Renderers intentionally dropped from this showcase: chart_bar / chart_pie /
+# chart_line / chart_scatter / calendar — they add visual noise without exercising anything
+# the other showcases don't already cover.
 
 [general]
 wait_for_fresh = false
@@ -11,9 +11,9 @@ wait_for_fresh = false
 # ── Hero band (Text / TextBlock shapes, 4 renderers) ─────────────────
 
 [[widget]]
-id = "greeting_simple"
+id = "greeting_text"
 fetcher = "static"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
 format = "welcome back"
 
 [[widget]]
@@ -31,7 +31,7 @@ format = "animated_typewriter:\nreveals character by character while --wait tick
 id = "notes"
 fetcher = "static"
 render = { type = "list", align = "center" }
-format = "ratatui::List widget\nalternative to simple\nselectable items, later"
+format = "ratatui::List widget\nalternative to text\nselectable items, later"
 
 # ── GitHub activity ──────────────────────────────────────────────────
 # Every repo-scope fetcher (repo_prs / repo_issues / repo_stars / action_*) auto-detects the
@@ -47,12 +47,12 @@ render = { type = "badge", align = "center" }
 [[widget]]
 id = "gh_action_history"
 fetcher = "github_action_history"
-render = "sparkline"
+render = "chart_sparkline"
 
 [[widget]]
 id = "gh_stars"
 fetcher = "github_repo_stars"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
 
 [[widget]]
 id = "gh_contributions"
@@ -111,14 +111,14 @@ render = "gauge"
 [[widget]]
 id = "disk_line"
 fetcher = "disk_usage"
-render = "line_gauge"
+render = "gauge_line"
 
 # ── Git (local, on-disk) ─────────────────────────────────────────────
 
 [[widget]]
 id = "commits"
 fetcher = "git_commits_activity"
-render = "sparkline"
+render = "chart_sparkline"
 
 [[widget]]
 id = "recent_commits"
@@ -133,7 +133,7 @@ render = "timeline"
 id = "scratch"
 fetcher = "read_store"
 file_format = "text"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
 
 # ── clock_* family showcase ──────────────────────────────────────────
 
@@ -161,14 +161,14 @@ render = { type = "badge", align = "center" }
 [[widget]]
 id = "moon"
 fetcher = "clock_derived"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
   [widget.options]
   kind = "moon_phase"
 
 [[widget]]
 id = "sun"
 fetcher = "clock_sunrise"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
   [widget.options]
   lat = 35.6762
   lon = 139.6503
@@ -177,7 +177,7 @@ render = { type = "simple", align = "center" }
 [[widget]]
 id = "newyear_countdown"
 fetcher = "clock_countdown"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
   [widget.options]
   target = "2027-01-01"
   target_label = "New Year"
@@ -192,17 +192,17 @@ render = "gauge"
 [[widget]]
 id = "memory"
 fetcher = "system_memory"
-render = "line_gauge"
+render = "gauge_line"
 
 [[widget]]
 id = "uptime"
 fetcher = "system_uptime"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
 
 [[widget]]
 id = "load_avg"
 fetcher = "system_load"
-render = { type = "simple", align = "center" }
+render = { type = "text", align = "center" }
 
 [[widget]]
 id = "processes"
@@ -219,7 +219,7 @@ height = { length = 2 }
 flex = "center"
 
   [[row.child]]
-  widget = "greeting_simple"
+  widget = "greeting_text"
   width = { length = 24 }
 
 [[row]]
@@ -344,12 +344,12 @@ height = { length = 3 }
 
   [[row.child]]
   widget = "disk_line"
-  title = "line_gauge"
+  title = "gauge_line"
   border = "rounded"
 
   [[row.child]]
   widget = "commits"
-  title = "sparkline"
+  title = "chart_sparkline"
   border = "rounded"
 
 [[row]]

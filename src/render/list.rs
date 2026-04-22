@@ -25,7 +25,7 @@ fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
     }
 }
 
-/// Renders a multi-line block through ratatui's `List` widget. Behaviourally close to `simple`
+/// Renders a multi-line block through ratatui's `List` widget. Behaviourally close to `text`
 /// today; the distinction matters once we add list-specific options (bullet marker, highlight
 /// selected item, scrollbar). Alternate renderer for the `TextBlock` shape so tests of the 1→N
 /// dispatch stay honest.
