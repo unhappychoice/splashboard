@@ -120,9 +120,22 @@ Overridable via `SPLASHBOARD_HOME` env var (for tests, CI, relocatable installs)
 
 Per-directory configs stay in the repo: `./.splashboard/config.toml` or `./.splashboard.toml` (walk-up discovery starting from CWD).
 
-## Widget / renderer / fetcher catalog: #41
+## Widget / renderer / fetcher catalog
 
-Issue #41 is the living roadmap. All speculative widget/fetcher/renderer ideas are checkboxes there — **no separate issue per candidate**. A PR that ships something ticks the box. Things that DO get their own issue: cross-cutting features (CLI subcommands, theme system).
+Issue #41 is the index. Candidates live as checkboxes on category sub-issues — **no separate issue per candidate**. A PR that ships something ticks the box on the relevant sub-issue and references it. Things that DO get their own issue: cross-cutting features (CLI subcommands, theme system).
+
+Sub-issues:
+
+- **#61** — renderer roadmap (primitives + animation families)
+- **#62** — fetcher roadmap: Local / System (`clock_*`, `system_*`, `disk_*`, `net_*`, `docker_*`, `k8s_*`, `project_*`)
+- **#63** — fetcher roadmap: VCS / Forge (`git_*`, `github_*`, `gitlab_*`, `bitbucket_*`, `gitea_*`, `sourcehut_*`, `azure_devops_*`, `gerrit_*`)
+- **#64** — fetcher roadmap: Coding & Build (`ci_*`, `deploy_*`, `wakatime_*`, `leetcode_*`, `stackoverflow_*`, `oss_*`, package downloads)
+- **#65** — fetcher roadmap: Cloud / Infra / Ops (`aws_*`, `gcp_*`, `cloudflare_*`, `tailscale_*`, uptime, `pagerduty_*`, observability)
+- **#66** — fetcher roadmap: Communication & PM (`slack_*`, `discord_*`, `email_*`, `matrix_*`, `jira_*`, `linear_*`, `todoist_*`, `notion_*`)
+- **#67** — fetcher roadmap: Social & Media (RSS / news, `mastodon_*`, `bluesky_*`, `youtube_*`, `twitch_*`, `spotify_*`, reading / watching, novelty feeds)
+- **#68** — fetcher roadmap: Life & Ambient (`weather_*`, `calendar_*`, `holiday_*`, `travel_*`, `anki_*`, `health_*`, `strava_*`, finance, analytics, IoT, gaming, public-API feeds)
+
+#41 also holds the composition model, prioritization rubric, ReadStore recipes, composition helpers, and rejected designs.
 
 Prioritization rubric (see #41 for the full version):
 1. Renderer primitives unlock many fetchers → highest leverage.
