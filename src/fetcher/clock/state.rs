@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
 use crate::payload::{BadgeData, Body, Payload, Status};
 use crate::render::Shape;
+use crate::samples;
 
 use super::common;
 
@@ -41,6 +42,12 @@ impl RealtimeFetcher for ClockStateFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Badge => Some(samples::badge(Status::Ok, "open")),
+            _ => None,
+        }
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: Options = match common::parse_options(ctx.options.as_ref()) {

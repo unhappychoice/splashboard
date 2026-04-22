@@ -6,12 +6,45 @@ use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
+use crate::options::OptionSchema;
 use crate::payload::{Body, EntriesData, Entry, LinesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::common;
 
 const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "timezone",
+        type_hint: "IANA timezone (e.g. \"Asia/Tokyo\")",
+        required: false,
+        default: Some("system local"),
+        description: "Timezone used when interpreting `target` / `targets`. Omit to follow the system clock.",
+    },
+    OptionSchema {
+        name: "target",
+        type_hint: "RFC3339 datetime or YYYY-MM-DD",
+        required: false,
+        default: None,
+        description: "Single countdown target. Mutually exclusive with `targets`. Date-only values are treated as UTC midnight.",
+    },
+    OptionSchema {
+        name: "target_label",
+        type_hint: "string",
+        required: false,
+        default: None,
+        description: "Optional label prefixed to the single-target line (e.g. \"Ship:\").",
+    },
+    OptionSchema {
+        name: "targets",
+        type_hint: "array of `{ label, target }`",
+        required: false,
+        default: None,
+        description: "Multiple labelled countdowns. Rendered as `Lines` by default or `Entries` when the renderer expects a key/value shape.",
+    },
+];
 
 pub struct ClockCountdownFetcher;
 
@@ -44,6 +77,16 @@ impl RealtimeFetcher for ClockCountdownFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Lines => samples::lines(&["Ship v2: 42d 3h"]),
+            Shape::Entries => samples::entries(&[("Ship v2", "42d 3h"), ("Release", "7d")]),
+            _ => return None,
+        })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: Options = match common::parse_options(ctx.options.as_ref()) {

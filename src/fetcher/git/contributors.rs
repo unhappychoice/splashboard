@@ -6,6 +6,7 @@ use gix::traverse::commit::simple::CommitTimeOrder;
 
 use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, lines_body, open_repo, payload, repo_cache_key};
@@ -36,6 +37,26 @@ impl Fetcher for GitContributors {
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Bars => {
+                samples::bars(&[("alice", 42), ("bob", 28), ("charlie", 17), ("dave", 9)])
+            }
+            Shape::Entries => samples::entries(&[
+                ("alice", "42"),
+                ("bob", "28"),
+                ("charlie", "17"),
+                ("dave", "9"),
+            ]),
+            Shape::Lines => samples::lines(&[
+                "alice     42",
+                "bob       28",
+                "charlie   17",
+                "dave       9",
+            ]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;

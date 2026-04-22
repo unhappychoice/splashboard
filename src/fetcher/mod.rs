@@ -7,8 +7,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, LinesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 pub mod clock;
 pub mod git;
@@ -80,6 +82,20 @@ pub trait Fetcher: Send + Sync {
     fn cache_key(&self, ctx: &FetchContext) -> String {
         default_cache_key(self.name(), ctx)
     }
+    /// Options this fetcher accepts from `[widget.options]`. Default is an empty slice —
+    /// fetchers with no tunables don't need to override. Consumed at docs-generation time by the
+    /// `xtask` crate; parsing at runtime is still serde-driven (the schema and the `Options`
+    /// struct live side-by-side in the same file).
+    fn option_schemas(&self) -> &[OptionSchema] {
+        &[]
+    }
+    /// A representative payload body for the given shape, used to preview what this fetcher
+    /// emits without executing it. Default falls back to [`crate::samples::canonical_sample`];
+    /// fetchers override to surface something closer to real output (`"main +2 ◆3"` for
+    /// `git_status`, `"14:35"` for `clock`). Must be a member of `shapes()`.
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        samples::canonical_sample(shape)
+    }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError>;
 }
 
@@ -93,6 +109,14 @@ pub trait RealtimeFetcher: Send + Sync {
     fn shapes(&self) -> &[Shape];
     fn default_shape(&self) -> Shape {
         self.shapes()[0]
+    }
+    /// See [`Fetcher::option_schemas`]. Default is an empty slice.
+    fn option_schemas(&self) -> &[OptionSchema] {
+        &[]
+    }
+    /// See [`Fetcher::sample_body`]. Default falls through to the shape-level canonical sample.
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        samples::canonical_sample(shape)
     }
     fn compute(&self, ctx: &FetchContext) -> Payload;
 }
@@ -162,6 +186,18 @@ impl RegisteredFetcher {
             Self::Realtime(f) => f.default_shape(),
         }
     }
+    pub fn option_schemas(&self) -> &[OptionSchema] {
+        match self {
+            Self::Cached(f) => f.option_schemas(),
+            Self::Realtime(f) => f.option_schemas(),
+        }
+    }
+    pub fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match self {
+            Self::Cached(f) => f.sample_body(shape),
+            Self::Realtime(f) => f.sample_body(shape),
+        }
+    }
     pub fn as_cached(&self) -> Option<Arc<dyn Fetcher>> {
         match self {
             Self::Cached(f) => Some(f.clone()),
@@ -228,6 +264,13 @@ impl Registry {
 
     pub fn names(&self) -> Vec<&str> {
         self.fetchers.keys().map(String::as_str).collect()
+    }
+
+    /// All registered fetchers, sorted by name. Useful for deterministic docs generation.
+    pub fn sorted(&self) -> Vec<RegisteredFetcher> {
+        let mut entries: Vec<_> = self.fetchers.values().cloned().collect();
+        entries.sort_by(|a, b| a.name().cmp(b.name()));
+        entries
     }
 }
 

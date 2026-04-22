@@ -17,10 +17,29 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, FixedOffset, Timelike};
 use serde::Deserialize;
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, CalendarData, EntriesData, Entry, LinesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::{FetchContext, RealtimeFetcher, Safety};
+
+const CLOCK_OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "timezone",
+        type_hint: "IANA timezone (e.g. \"Asia/Tokyo\")",
+        required: false,
+        default: Some("system local"),
+        description: "Timezone used for the displayed time. Omit to follow the system clock.",
+    },
+    OptionSchema {
+        name: "events",
+        type_hint: "array of integers (1..=31)",
+        required: false,
+        default: None,
+        description: "Days of the current month highlighted in the `Calendar` shape. Ignored by other shapes.",
+    },
+];
 
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
     vec![
@@ -58,6 +77,24 @@ impl RealtimeFetcher for ClockFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         BASE_SHAPES
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        CLOCK_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Lines => samples::lines(&["14:35"]),
+            Shape::Entries => samples::entries(&[
+                ("year", "2026"),
+                ("month", "04"),
+                ("day", "22"),
+                ("hour", "14"),
+                ("minute", "35"),
+                ("second", "12"),
+            ]),
+            Shape::Calendar => samples::calendar(2026, 4, Some(22), &[10, 15, 30]),
+            _ => return None,
+        })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: ClockOptions = match common::parse_options(ctx.options.as_ref()) {

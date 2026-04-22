@@ -11,6 +11,7 @@ use sysinfo::{Disks, ProcessesToUpdate, System};
 
 use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, LinesData, Payload, RatioData};
 use crate::render::Shape;
+use crate::samples;
 
 use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
 
@@ -66,6 +67,27 @@ impl RealtimeFetcher for SystemFetcher {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Entries, Shape::Lines]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Entries => samples::entries(&[
+                ("os", "linux"),
+                ("host", "dev"),
+                ("uptime", "3d 4h"),
+                ("load", "0.42"),
+                ("cpu", "18%"),
+                ("memory", "67%"),
+            ]),
+            Shape::Lines => samples::lines(&[
+                "os: linux",
+                "host: dev",
+                "uptime: 3d 4h",
+                "load: 0.42",
+                "cpu: 18%",
+                "memory: 67%",
+            ]),
+            _ => return None,
+        })
+    }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let mut sys = self.state.lock().expect("system state mutex poisoned");
         sys.refresh_cpu_usage();
@@ -120,6 +142,13 @@ impl RealtimeFetcher for CpuLoadFetcher {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Lines]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Ratio => samples::ratio(0.42, "cpu"),
+            Shape::Lines => samples::lines(&["42%"]),
+            _ => return None,
+        })
+    }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let mut sys = self.state.lock().expect("cpu state mutex poisoned");
         sys.refresh_cpu_usage();
@@ -167,6 +196,18 @@ impl RealtimeFetcher for MemoryFetcher {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Lines, Shape::Entries]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Ratio => samples::ratio(0.67, "memory"),
+            Shape::Lines => samples::lines(&["6.4 GiB / 16 GiB"]),
+            Shape::Entries => samples::entries(&[
+                ("used", "6.4 GiB"),
+                ("total", "16 GiB"),
+                ("free", "9.6 GiB"),
+            ]),
+            _ => return None,
+        })
+    }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let mut sys = self.state.lock().expect("memory state mutex poisoned");
         sys.refresh_memory();
@@ -204,6 +245,12 @@ impl RealtimeFetcher for UptimeFetcher {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Lines]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Lines => Some(samples::lines(&["3d 4h 12m"])),
+            _ => None,
+        }
+    }
     fn compute(&self, _: &FetchContext) -> Payload {
         payload(Body::Lines(LinesData {
             lines: vec![format_uptime(System::uptime())],
@@ -224,6 +271,15 @@ impl RealtimeFetcher for LoadAverageFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Lines, Shape::Entries]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Lines => samples::lines(&["0.42  0.38  0.31"]),
+            Shape::Entries => {
+                samples::entries(&[("1min", "0.42"), ("5min", "0.38"), ("15min", "0.31")])
+            }
+            _ => return None,
+        })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let la = System::load_average();
@@ -276,6 +332,23 @@ impl RealtimeFetcher for ProcessTopFetcher {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Entries, Shape::Lines]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Entries => samples::entries(&[
+                ("node", "12.4%"),
+                ("cargo", "8.1%"),
+                ("firefox", "6.3%"),
+                ("zsh", "2.1%"),
+            ]),
+            Shape::Lines => samples::lines(&[
+                "node       12.4%",
+                "cargo       8.1%",
+                "firefox     6.3%",
+                "zsh         2.1%",
+            ]),
+            _ => return None,
+        })
+    }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let mut sys = self.state.lock().expect("process state mutex poisoned");
         sys.refresh_processes(ProcessesToUpdate::All, true);
@@ -308,6 +381,14 @@ impl Fetcher for DiskFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Lines, Shape::Bars]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Ratio => samples::ratio(0.58, "disk"),
+            Shape::Lines => samples::lines(&["58% of 400 GB"]),
+            Shape::Bars => samples::bars(&[("/", 42), ("/home", 110), ("/data", 200)]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let disks = Disks::new_with_refreshed_list();

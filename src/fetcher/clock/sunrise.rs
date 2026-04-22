@@ -5,12 +5,38 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Timelike, Utc
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
+use crate::options::OptionSchema;
 use crate::payload::{Body, EntriesData, Entry, LinesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::common;
 
 const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "lat",
+        type_hint: "number (degrees, -90..=90)",
+        required: true,
+        default: None,
+        description: "Observer latitude. Required — without it sunrise/sunset can't be computed.",
+    },
+    OptionSchema {
+        name: "lon",
+        type_hint: "number (degrees, -180..=180)",
+        required: true,
+        default: None,
+        description: "Observer longitude. Required.",
+    },
+    OptionSchema {
+        name: "timezone",
+        type_hint: "IANA timezone (e.g. \"Asia/Tokyo\")",
+        required: false,
+        default: Some("system local"),
+        description: "Timezone the rendered clock times are displayed in. Calculation is done in UTC regardless.",
+    },
+];
 
 pub struct ClockSunriseFetcher;
 
@@ -34,6 +60,16 @@ impl RealtimeFetcher for ClockSunriseFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Lines => samples::lines(&["↑ 05:23  ↓ 18:47"]),
+            Shape::Entries => samples::entries(&[("sunrise", "05:23"), ("sunset", "18:47")]),
+            _ => return None,
+        })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: Options = match common::parse_options(ctx.options.as_ref()) {

@@ -4,9 +4,18 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, LinesData};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "align",
+    type_hint: "\"left\" | \"center\" | \"right\"",
+    required: false,
+    default: Some("\"left\""),
+    description: "Horizontal alignment of the rendered text within its cell.",
+}];
 
 /// Plain-text renderer: stacks `LinesData.lines` into a ratatui `Paragraph`. The default
 /// renderer for the `Lines` shape, used for greetings, project notes, static blocks. Honours
@@ -19,6 +28,9 @@ impl Renderer for SimpleRenderer {
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Lines]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {

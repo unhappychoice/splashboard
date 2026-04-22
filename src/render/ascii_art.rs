@@ -1,9 +1,34 @@
 use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use tui_big_text::{BigText, PixelSize};
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, LinesData};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "style",
+        type_hint: "\"blocks\" | \"figlet\"",
+        required: false,
+        default: Some("\"blocks\""),
+        description: "Visual treatment. `blocks` uses half-block glyphs via `tui-big-text`; `figlet` uses the classic FIGlet engine.",
+    },
+    OptionSchema {
+        name: "pixel_size",
+        type_hint: "\"full\" | \"quadrant\" | \"sextant\"",
+        required: false,
+        default: Some("adaptive (picked by area height)"),
+        description: "Glyph density for `style = \"blocks\"`. Ignored when `style = \"figlet\"`.",
+    },
+    OptionSchema {
+        name: "align",
+        type_hint: "\"left\" | \"center\" | \"right\"",
+        required: false,
+        default: Some("\"left\""),
+        description: "Horizontal alignment of the rendered text within its cell.",
+    },
+];
 
 /// ASCII-art text rendering over the `Lines` shape. The `style` option selects the visual
 /// treatment; additional sub-options refine the chosen style.
@@ -20,6 +45,9 @@ impl Renderer for AsciiArtRenderer {
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Lines]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
         if let Body::Lines(d) = body {

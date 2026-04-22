@@ -1,0 +1,11 @@
+# Astro / Node
+node_modules/
+dist/
+.astro/
+.env
+.env.production
+
+# Generated reference pages — regenerated via `cargo xtask`, not checked in.
+src/content/docs/reference/matrix.md
+src/content/docs/reference/fetchers/
+src/content/docs/reference/renderers/

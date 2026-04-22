@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Workspace tooling for splashboard: docs matrix and snapshot generation"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+splashboard = { path = ".." }
+clap = { version = "4", features = ["derive"] }
+ratatui = { version = "0.29", features = ["widget-calendar"] }
+toml = "0.8"
+anyhow = "1"
