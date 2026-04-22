@@ -274,7 +274,7 @@ height = { length = 10 }
 
   [[row.child]]
   widget = "gh_contributions"
-  title = "github_contributions (草)"
+  title = "github_contributions"
   border = "rounded"
 
 [[row]]
