@@ -17,7 +17,6 @@ pub mod git;
 pub mod github;
 pub mod read_store;
 pub mod static_text;
-pub mod stub;
 pub mod system;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,9 +235,6 @@ impl Registry {
             r.register(f);
         }
         for f in github::fetchers() {
-            r.register(f);
-        }
-        for f in stub::stubs() {
             r.register(f);
         }
         r
