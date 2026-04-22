@@ -66,14 +66,12 @@ impl Fetcher for GithubRepoIssues {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&[
-                "#41 meta: widget catalog & roadmap",
-                "#17 theme system",
-            ]),
-            Shape::Entries => samples::entries(&[
-                ("#41", "meta: widget catalog"),
-                ("#17", "theme system"),
-            ]),
+            Shape::Lines => {
+                samples::lines(&["#41 meta: widget catalog & roadmap", "#17 theme system"])
+            }
+            Shape::Entries => {
+                samples::entries(&[("#41", "meta: widget catalog"), ("#17", "theme system")])
+            }
             Shape::Timeline => samples::timeline(&[
                 (1_774_000_000, "#41", Some("meta: widget catalog")),
                 (1_773_500_000, "#17", Some("theme system")),

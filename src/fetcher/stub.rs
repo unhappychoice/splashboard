@@ -6,9 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::payload::{
-    BadgeData, Body, HeatmapData, Payload, PointSeries, PointSeriesData, Status,
-};
+use crate::payload::{BadgeData, Body, HeatmapData, Payload, PointSeries, PointSeriesData, Status};
 use crate::render::Shape;
 use crate::samples;
 

@@ -6,9 +6,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{
-    Body, NumberSeriesData, Payload, Status, TimelineData, TimelineEvent,
-};
+use crate::payload::{Body, NumberSeriesData, Payload, Status, TimelineData, TimelineEvent};
 use crate::render::Shape;
 use crate::samples;
 

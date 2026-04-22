@@ -134,8 +134,7 @@ async fn fetch_user(login: &str) -> Result<Calendar, FetchError> {
         #[serde(rename = "contributionCalendar")]
         contribution_calendar: Calendar,
     }
-    let data: UserWrap =
-        graphql(QUERY_USER, serde_json::json!({ "login": login })).await?;
+    let data: UserWrap = graphql(QUERY_USER, serde_json::json!({ "login": login })).await?;
     let user = data
         .user
         .ok_or_else(|| FetchError::Failed(format!("github: user {login:?} not found")))?;
@@ -190,11 +189,13 @@ fn month_labels(cal: &Calendar) -> Vec<String> {
 }
 
 fn short_month(m: u32) -> String {
-    ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        .get(m as usize)
-        .copied()
-        .unwrap_or("")
-        .to_string()
+    [
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    .get(m as usize)
+    .copied()
+    .unwrap_or("")
+    .to_string()
 }
 
 #[cfg(test)]

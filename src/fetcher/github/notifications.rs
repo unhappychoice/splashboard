@@ -5,9 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{
-    Body, EntriesData, Entry, LinesData, Payload, TimelineData, TimelineEvent,
-};
+use crate::payload::{Body, EntriesData, Entry, LinesData, Payload, TimelineData, TimelineEvent};
 use crate::render::Shape;
 use crate::samples;
 
@@ -74,7 +72,11 @@ impl Fetcher for GithubNotifications {
                 ("ratatui", "mention: rfc: themes"),
             ]),
             Shape::Timeline => samples::timeline(&[
-                (1_774_000_000, "splashboard", Some("review_requested: feat: heatmap")),
+                (
+                    1_774_000_000,
+                    "splashboard",
+                    Some("review_requested: feat: heatmap"),
+                ),
                 (1_773_800_000, "ratatui", Some("mention: rfc: themes")),
             ]),
             _ => return None,
@@ -140,14 +142,21 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
         _ => Body::Lines(LinesData {
             lines: items
                 .iter()
-                .map(|n| format!("{} {}: {}", n.repository.full_name, n.reason, n.subject.title))
+                .map(|n| {
+                    format!(
+                        "{} {}: {}",
+                        n.repository.full_name, n.reason, n.subject.title
+                    )
+                })
                 .collect(),
         }),
     }
 }
 
 fn short_repo(full: &str) -> String {
-    full.split_once('/').map(|(_, r)| r.to_string()).unwrap_or_else(|| full.to_string())
+    full.split_once('/')
+        .map(|(_, r)| r.to_string())
+        .unwrap_or_else(|| full.to_string())
 }
 
 #[cfg(test)]

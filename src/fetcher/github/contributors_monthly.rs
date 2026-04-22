@@ -79,11 +79,9 @@ impl Fetcher for GithubContributorsMonthly {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Bars => samples::bars(&[("alice", 42), ("bob", 27), ("charlie", 11)]),
-            Shape::Entries => samples::entries(&[
-                ("alice", "42"),
-                ("bob", "27"),
-                ("charlie", "11"),
-            ]),
+            Shape::Entries => {
+                samples::entries(&[("alice", "42"), ("bob", "27"), ("charlie", "11")])
+            }
             _ => return None,
         })
     }
@@ -104,7 +102,10 @@ impl Fetcher for GithubContributorsMonthly {
             )),
             StatsOutcome::Ready(stats) => {
                 let rows = top_contributors(&stats, days, limit);
-                Ok(payload(render_body(&rows, ctx.shape.unwrap_or(Shape::Bars))))
+                Ok(payload(render_body(
+                    &rows,
+                    ctx.shape.unwrap_or(Shape::Bars),
+                )))
             }
         }
     }

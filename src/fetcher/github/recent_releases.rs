@@ -5,9 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{
-    Body, EntriesData, Entry, LinesData, Payload, TimelineData, TimelineEvent,
-};
+use crate::payload::{Body, EntriesData, Entry, LinesData, Payload, TimelineData, TimelineEvent};
 use crate::render::Shape;
 use crate::samples;
 
@@ -89,7 +87,10 @@ impl Fetcher for GithubRecentReleases {
             Err(e) => return Ok(placeholder(&e.to_string())),
         };
         let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 20);
-        let path = format!("/repos/{}/{}/releases?per_page={limit}", slug.owner, slug.name);
+        let path = format!(
+            "/repos/{}/{}/releases?per_page={limit}",
+            slug.owner, slug.name
+        );
         let items: Vec<Release> = rest_get(&path).await?;
         Ok(payload(render_body(
             &items,
@@ -114,7 +115,15 @@ fn render_body(items: &[Release], shape: Shape) -> Body {
                 .iter()
                 .map(|r| Entry {
                     key: r.tag_name.clone(),
-                    value: Some(r.published_at.clone().unwrap_or_default().split('T').next().unwrap_or("").into()),
+                    value: Some(
+                        r.published_at
+                            .clone()
+                            .unwrap_or_default()
+                            .split('T')
+                            .next()
+                            .unwrap_or("")
+                            .into(),
+                    ),
                     status: None,
                 })
                 .collect(),
