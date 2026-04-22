@@ -13,11 +13,11 @@ use super::{RenderOptions, Renderer, Shape};
 /// Month-view calendar for the `Calendar` shape. Highlights `day` (today / focus) and marks
 /// each day in `events`. Silently no-ops on invalid dates — a splash must never panic on bad
 /// data flowing in from a plugin.
-pub struct CalendarRenderer;
+pub struct GridCalendarRenderer;
 
-impl Renderer for CalendarRenderer {
+impl Renderer for GridCalendarRenderer {
     fn name(&self) -> &str {
-        "calendar"
+        "grid_calendar"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Calendar]
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn renders_a_month() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("calendar".into());
+        let spec = RenderSpec::Short("grid_calendar".into());
         let _ =
             render_to_buffer_with_spec(&payload(2026, 4, Some(21)), Some(&spec), &registry, 24, 9);
     }
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn invalid_month_does_not_panic() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("calendar".into());
+        let spec = RenderSpec::Short("grid_calendar".into());
         let _ = render_to_buffer_with_spec(&payload(2026, 13, None), Some(&spec), &registry, 24, 9);
     }
 
@@ -124,7 +124,7 @@ mod tests {
             }),
         };
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("calendar".into());
+        let spec = RenderSpec::Short("grid_calendar".into());
         let _ = render_to_buffer_with_spec(&p, Some(&spec), &registry, 24, 9);
     }
 }

@@ -9,11 +9,11 @@ use crate::payload::{Body, ImageData};
 
 use super::{RenderOptions, Renderer, Shape};
 
-pub struct ImageRenderer;
+pub struct MediaImageRenderer;
 
-impl Renderer for ImageRenderer {
+impl Renderer for MediaImageRenderer {
     fn name(&self) -> &str {
-        "image"
+        "media_image"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Image]

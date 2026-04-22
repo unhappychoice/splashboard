@@ -33,8 +33,8 @@ pub struct General {
 pub struct WidgetConfig {
     pub id: String,
     pub fetcher: String,
-    /// Renderer selection. `render = "simple"` (short form) or
-    /// `render = { type = "ascii_art", pixel_size = "quadrant" }` (full form with options).
+    /// Renderer selection. `render = "text_plain"` (short form) or
+    /// `render = { type = "text_ascii", pixel_size = "quadrant" }` (full form with options).
     /// Absent = pick the default renderer for the fetcher's shape.
     #[serde(default)]
     pub render: Option<RenderSpec>,
@@ -284,7 +284,7 @@ mod tests {
 [[widget]]
 id = "x"
 fetcher = "static"
-render = "text"
+render = "text_plain"
 
 [[row]]
 height = { length = 3 }
@@ -303,7 +303,7 @@ widget = "x"
 [[widget]]
 id = "x"
 fetcher = "f"
-render = "text"
+render = "text_plain"
 
 [[row]]
 height = { fill = 2 }
@@ -338,7 +338,7 @@ width = { max = 30 }
 [[widget]]
 id = "x"
 fetcher = "f"
-render = "text"
+render = "text_plain"
 
 [[row]]
 border = "{name}"
@@ -425,12 +425,12 @@ widget = "x"
 [[widget]]
 id = "a"
 fetcher = "static"
-render = "simple"
+render = "text_plain"
 
 [[widget]]
 id = "b"
 fetcher = "static"
-render = "simple"
+render = "text_plain"
 
 [[row]]
 height = { length = 3 }

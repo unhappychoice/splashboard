@@ -13,14 +13,14 @@ use super::{RenderOptions, Renderer, Shape};
 /// Traffic-light / badge renderer: a single coloured dot (● green / yellow / red) driven by
 /// `BadgeData.status`, followed by `BadgeData.label`. One indicator per widget — CI, deploy,
 /// SLO, oncall. Rows of badges are a composition concern, handled by the nested layout
-/// (`combined_status_row`), not by stuffing multiple statuses into one payload.
-pub struct BadgeRenderer;
+/// (`status_row`), not by stuffing multiple statuses into one payload.
+pub struct StatusBadgeRenderer;
 
 const DOT: &str = "●";
 
-impl Renderer for BadgeRenderer {
+impl Renderer for StatusBadgeRenderer {
     fn name(&self) -> &str {
-        "badge"
+        "status_badge"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Badge]
@@ -79,7 +79,7 @@ mod tests {
 
     fn render(status: Status, label: &str, w: u16, h: u16) -> ratatui::buffer::Buffer {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("badge".into());
+        let spec = RenderSpec::Short("status_badge".into());
         render_to_buffer_with_spec(&payload(status, label), Some(&spec), &registry, w, h)
     }
 

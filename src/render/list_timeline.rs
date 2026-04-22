@@ -14,13 +14,13 @@ use super::{RenderOptions, Renderer, Shape};
 /// Time-stamped event list. Each row shows a compact relative prefix (`"3h"`, `"2d"`, `"Apr 5"`)
 /// computed at draw time against the current clock — cached payloads never freeze a stale
 /// "ago" string. Optional `detail` hangs under the title; `status` colours the title.
-pub struct TimelineRenderer;
+pub struct ListTimelineRenderer;
 
 const SEPARATOR: &str = " │ ";
 
-impl Renderer for TimelineRenderer {
+impl Renderer for ListTimelineRenderer {
     fn name(&self) -> &str {
-        "timeline"
+        "list_timeline"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Timeline]
@@ -370,7 +370,7 @@ mod tests {
             }),
         };
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("timeline".into());
+        let spec = RenderSpec::Short("list_timeline".into());
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 1);
         assert!(line_text(&buf, 0).contains("x"));
     }

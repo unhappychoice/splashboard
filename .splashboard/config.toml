@@ -1,8 +1,8 @@
 # Dogfood config for the splashboard repo itself. Exercises every shipped fetcher family
 # (static, clock_*, system_*, git_*, github_*, read_store) paired with a renderer that fits
-# the data. Renderers intentionally dropped from this showcase: bar_chart / pie_chart /
-# chart_line / scatter / calendar — they add visual noise without exercising anything the
-# other showcases don't already cover.
+# the data. Renderers intentionally dropped from this showcase: chart_bar / chart_pie /
+# chart_line / chart_scatter / calendar — they add visual noise without exercising anything
+# the other showcases don't already cover.
 
 [general]
 wait_for_fresh = false
@@ -11,15 +11,15 @@ wait_for_fresh = false
 # ── Hero band (Text / TextBlock shapes, 4 renderers) ─────────────────
 
 [[widget]]
-id = "greeting_simple"
+id = "greeting_text"
 fetcher = "static"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
 format = "welcome back"
 
 [[widget]]
 id = "clock"
 fetcher = "clock"
-render = { type = "ascii_art", pixel_size = "quadrant", align = "center" }
+render = { type = "text_ascii", pixel_size = "quadrant", align = "center" }
 
 [[widget]]
 id = "typewriter"
@@ -30,8 +30,8 @@ format = "animated_typewriter:\nreveals character by character while --wait tick
 [[widget]]
 id = "notes"
 fetcher = "static"
-render = { type = "list", align = "center" }
-format = "ratatui::List widget\nalternative to simple\nselectable items, later"
+render = { type = "list_plain", align = "center" }
+format = "ratatui::List widget\nalternative to text_plain\nselectable items, later"
 
 # ── GitHub activity ──────────────────────────────────────────────────
 # Every repo-scope fetcher (repo_prs / repo_issues / repo_stars / action_*) auto-detects the
@@ -42,57 +42,57 @@ format = "ratatui::List widget\nalternative to simple\nselectable items, later"
 [[widget]]
 id = "gh_action_status"
 fetcher = "github_action_status"
-render = { type = "badge", align = "center" }
+render = { type = "status_badge", align = "center" }
 
 [[widget]]
 id = "gh_action_history"
 fetcher = "github_action_history"
-render = "sparkline"
+render = "chart_sparkline"
 
 [[widget]]
 id = "gh_stars"
 fetcher = "github_repo_stars"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "gh_contributions"
 fetcher = "github_contributions"
-render = { type = "heatmap", align = "center" }
+render = { type = "grid_heatmap", align = "center" }
 
 [[widget]]
 id = "gh_my_prs"
 fetcher = "github_my_prs"
-render = "list"
+render = "list_plain"
 
 [[widget]]
 id = "gh_review_requests"
 fetcher = "github_review_requests"
-render = "list"
+render = "list_plain"
 
 [[widget]]
 id = "gh_repo_prs"
 fetcher = "github_repo_prs"
-render = "list"
+render = "list_plain"
 
 [[widget]]
 id = "gh_repo_issues"
 fetcher = "github_repo_issues"
-render = "list"
+render = "list_plain"
 
 [[widget]]
 id = "gh_notifications"
 fetcher = "github_notifications"
-render = "timeline"
+render = "list_timeline"
 
 [[widget]]
 id = "gh_releases"
 fetcher = "github_recent_releases"
-render = "timeline"
+render = "list_timeline"
 
 [[widget]]
 id = "gh_contributors"
 fetcher = "github_contributors_monthly"
-render = "table"
+render = "grid_table"
   [widget.options]
   limit = 5
 
@@ -101,29 +101,29 @@ render = "table"
 [[widget]]
 id = "system"
 fetcher = "system"
-render = "table"
+render = "grid_table"
 
 [[widget]]
 id = "disk_gauge"
 fetcher = "disk_usage"
-render = "gauge"
+render = "gauge_circle"
 
 [[widget]]
 id = "disk_line"
 fetcher = "disk_usage"
-render = "line_gauge"
+render = "gauge_line"
 
 # ── Git (local, on-disk) ─────────────────────────────────────────────
 
 [[widget]]
 id = "commits"
 fetcher = "git_commits_activity"
-render = "sparkline"
+render = "chart_sparkline"
 
 [[widget]]
 id = "recent_commits"
 fetcher = "git_recent_commits"
-render = "timeline"
+render = "list_timeline"
 
 # ── ReadStore demo ──────────────────────────────────────────────────
 # Renders whatever the user writes to $HOME/.splashboard/store/scratch.txt.
@@ -133,42 +133,42 @@ render = "timeline"
 id = "scratch"
 fetcher = "read_store"
 file_format = "text"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
 
 # ── clock_* family showcase ──────────────────────────────────────────
 
 [[widget]]
 id = "world_clock"
 fetcher = "clock_timezones"
-render = "table"
+render = "grid_table"
   [widget.options]
   timezones = ["Asia/Tokyo", "Europe/London", "America/New_York"]
 
 [[widget]]
 id = "year_progress"
 fetcher = "clock_ratio"
-render = "gauge"
+render = "gauge_circle"
   [widget.options]
   period = "year"
 
 [[widget]]
 id = "business_hours"
 fetcher = "clock_state"
-render = { type = "badge", align = "center" }
+render = { type = "status_badge", align = "center" }
   [widget.options]
   kind = "business_hours"
 
 [[widget]]
 id = "moon"
 fetcher = "clock_derived"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
   [widget.options]
   kind = "moon_phase"
 
 [[widget]]
 id = "sun"
 fetcher = "clock_sunrise"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
   [widget.options]
   lat = 35.6762
   lon = 139.6503
@@ -177,7 +177,7 @@ render = { type = "simple", align = "center" }
 [[widget]]
 id = "newyear_countdown"
 fetcher = "clock_countdown"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
   [widget.options]
   target = "2027-01-01"
   target_label = "New Year"
@@ -187,27 +187,27 @@ render = { type = "simple", align = "center" }
 [[widget]]
 id = "cpu"
 fetcher = "system_cpu"
-render = "gauge"
+render = "gauge_circle"
 
 [[widget]]
 id = "memory"
 fetcher = "system_memory"
-render = "line_gauge"
+render = "gauge_line"
 
 [[widget]]
 id = "uptime"
 fetcher = "system_uptime"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "load_avg"
 fetcher = "system_load"
-render = { type = "simple", align = "center" }
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "processes"
 fetcher = "system_processes"
-render = "table"
+render = "grid_table"
 
 # ── Layout ──────────────────────────────────────────────────────────
 # Hero band: single-child rows with flex=center so the widget sits in the middle of the row
@@ -219,7 +219,7 @@ height = { length = 2 }
 flex = "center"
 
   [[row.child]]
-  widget = "greeting_simple"
+  widget = "greeting_text"
   width = { length = 24 }
 
 [[row]]
@@ -339,17 +339,17 @@ height = { length = 3 }
 
   [[row.child]]
   widget = "disk_gauge"
-  title = "gauge"
+  title = "gauge_circle"
   border = "rounded"
 
   [[row.child]]
   widget = "disk_line"
-  title = "line_gauge"
+  title = "gauge_line"
   border = "rounded"
 
   [[row.child]]
   widget = "commits"
-  title = "sparkline"
+  title = "chart_sparkline"
   border = "rounded"
 
 [[row]]
@@ -357,12 +357,12 @@ height = { length = 6 }
 
   [[row.child]]
   widget = "system"
-  title = "table"
+  title = "grid_table"
   border = "rounded"
 
   [[row.child]]
   widget = "recent_commits"
-  title = "timeline"
+  title = "list_timeline"
   border = "rounded"
 
 # ── system_* showcase rows ───────────────────────────────────────────

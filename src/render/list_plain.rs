@@ -25,15 +25,15 @@ fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
     }
 }
 
-/// Renders a multi-line block through ratatui's `List` widget. Behaviourally close to `simple`
+/// Renders a multi-line block through ratatui's `List` widget. Behaviourally close to `text_plain`
 /// today; the distinction matters once we add list-specific options (bullet marker, highlight
 /// selected item, scrollbar). Alternate renderer for the `TextBlock` shape so tests of the 1→N
 /// dispatch stay honest.
-pub struct ListRenderer;
+pub struct ListPlainRenderer;
 
-impl Renderer for ListRenderer {
+impl Renderer for ListPlainRenderer {
     fn name(&self) -> &str {
-        "list"
+        "list_plain"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::TextBlock]
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn renders_each_line() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("list".into());
+        let spec = RenderSpec::Short("list_plain".into());
         let buf =
             render_to_buffer_with_spec(&payload(&["alpha", "beta"]), Some(&spec), &registry, 20, 4);
         assert!(line_text(&buf, 0).contains("alpha"));

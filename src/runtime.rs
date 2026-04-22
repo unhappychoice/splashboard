@@ -882,7 +882,7 @@ mod tests {
     fn derive_shape_prefers_renderer_accepted_shape_over_fetcher_default() {
         let registry = Registry::with_builtins();
         let render_registry = render::Registry::with_builtins();
-        let w = widget_with_render("t", "clock", Some("calendar"));
+        let w = widget_with_render("t", "clock", Some("grid_calendar"));
         assert_eq!(
             derive_shape(&w, &registry, &render_registry),
             Some(Shape::Calendar)
@@ -914,7 +914,7 @@ mod tests {
     #[test]
     fn partition_by_shape_support_keeps_widget_with_compatible_renderer() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("d", "disk_usage", Some("gauge"))];
+        let widgets = vec![widget_with_render("d", "disk_usage", Some("gauge_circle"))];
         let shapes = single_shape("d", Shape::Ratio);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 1);
@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn partition_by_shape_support_rejects_incompatible_renderer() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("d", "disk_usage", Some("calendar"))];
+        let widgets = vec![widget_with_render("d", "disk_usage", Some("grid_calendar"))];
         let shapes = single_shape("d", Shape::Calendar);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert!(valid.is_empty());
@@ -936,7 +936,11 @@ mod tests {
     #[test]
     fn partition_by_shape_support_passes_through_unknown_fetcher() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("x", "no_such_fetcher", Some("calendar"))];
+        let widgets = vec![widget_with_render(
+            "x",
+            "no_such_fetcher",
+            Some("grid_calendar"),
+        )];
         let shapes = single_shape("x", Shape::Calendar);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 1);
@@ -947,9 +951,9 @@ mod tests {
     fn partition_by_shape_support_accepts_multi_shape_fetchers_renderer_shape() {
         let registry = Registry::with_builtins();
         let widgets = vec![
-            widget_with_render("a", "clock", Some("simple")),
-            widget_with_render("b", "clock", Some("table")),
-            widget_with_render("c", "clock", Some("calendar")),
+            widget_with_render("a", "clock", Some("text_plain")),
+            widget_with_render("b", "clock", Some("grid_table")),
+            widget_with_render("c", "clock", Some("grid_calendar")),
         ];
         let mut shapes = HashMap::new();
         shapes.insert("a".into(), Shape::Text);
