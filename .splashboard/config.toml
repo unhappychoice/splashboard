@@ -1,527 +1,243 @@
-# Dogfood config for the splashboard repo itself. Exercises every shipped fetcher family
-# (static, clock_*, system_*, git_*, github_*, read_store) paired with a renderer that fits
-# the data. Renderers intentionally dropped from this showcase: chart_bar / chart_pie /
-# chart_line / chart_scatter / calendar — they add visual noise without exercising anything
-# the other showcases don't already cover.
+# Dogfood config — rendered in project_github_activity style (#77). When someone cd's
+# into this repo, they see the polished preset we ship. Hero / subtitle / section
+# dividers / body. No panel borders: breathing rows + static dividers give structure.
+#
+# Placeholders for #79 / #81 features not yet landed:
+#   - hero uses `static "splashboard"` (→ `project_name` fetcher post-#81)
+#   - subtitle is hand-written (→ `project` Entries fetcher post-#81)
+#   - hero uses `text_ascii` blocks quadrant (→ figlet banner font post-#79)
 
 [general]
 wait_for_fresh = false
-# `height` omitted — runtime auto-sizes the inline viewport to fit every configured row.
-# Outer breathing room: 2 cols on each side (horizontal is roughly half-width per cell) and
-# 1 row top/bottom so the splash doesn't hug the terminal edge. Viewport bg still paints
-# the padded ring so the padding takes the theme colour, not the terminal default.
 padding = { x = 2, y = 1 }
 
-# ── Theme ────────────────────────────────────────────────────────────
-# No `preset` → the built-in "Splash" signature default (coral/teal accents on deep-ocean
-# navy). Swap to `tokyo_night` / `nord` / `dracula` / `gruvbox_dark` / `catppuccin_mocha`
-# to try a preset; any sibling keys override individual tokens on top. Users on light
-# terminals can set `bg = "reset"` / `bg_subtle = "reset"` to disable the paint.
-
-# ── Hero band (Text / TextBlock shapes, 4 renderers) ─────────────────
+# ── Hero ─────────────────────────────────────────────────────────────
 
 [[widget]]
-id = "greeting_text"
+id = "hero"
 fetcher = "static"
-render = { type = "text_plain", align = "center" }
-format = "welcome back"
-
-[[widget]]
-id = "clock"
-fetcher = "clock"
-render = { type = "text_ascii", pixel_size = "quadrant", align = "center" }
-
-[[widget]]
-id = "typewriter"
-fetcher = "static"
-render = { type = "animated_typewriter", align = "center" }
-format = "animated_typewriter:\nreveals character by character while --wait ticks"
-
-[[widget]]
-id = "notes"
-fetcher = "static"
-render = { type = "list_plain", align = "center" }
-format = "ratatui::List widget\nalternative to text_plain\nselectable items, later"
-
-[[widget]]
-id = "postfx_demo"
-fetcher = "static"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "dissolve", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
 format = "splashboard"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 2500, pixel_size = "quadrant", align = "center" }
 
 [[widget]]
-id = "postfx_fade"
+id = "subtitle"
 fetcher = "static"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
-format = "fade"
+format = "unhappychoice/splashboard · terminal splash renderer · MIT"
+render = { type = "animated_postfx", inner = "text_plain", effect = "sweep_in_down", duration_ms = 1500, align = "center" }
+
+# ── Section dividers ────────────────────────────────────────────────
 
 [[widget]]
-id = "postfx_coalesce"
+id = "div_commits"
 fetcher = "static"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
-format = "coalesce"
-
-[[widget]]
-id = "postfx_sweep"
-fetcher = "static"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in_down", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
-format = "sweep"
-
-[[widget]]
-id = "postfx_slide"
-fetcher = "static"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "slide_in_down", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
-format = "slide"
-
-[[widget]]
-id = "postfx_hsl"
-fetcher = "static"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "hsl_shift", duration_ms = 1500, pixel_size = "quadrant", align = "center" }
-format = "hsl"
-
-# ── GitHub activity ──────────────────────────────────────────────────
-# Every repo-scope fetcher (repo_prs / repo_issues / repo_stars / action_*) auto-detects the
-# owner/name slug from the cwd's git remote. User-scope (my_prs / review_requests /
-# notifications / contributions) is tied to whoever's GH_TOKEN is loaded. Missing token →
-# the fetchers render the shared placeholder payload rather than crashing the splash.
-
-[[widget]]
-id = "gh_action_status"
-fetcher = "github_action_status"
-render = { type = "status_badge", align = "center" }
-
-[[widget]]
-id = "gh_action_history"
-fetcher = "github_action_history"
-render = "chart_sparkline"
-
-[[widget]]
-id = "gh_stars"
-fetcher = "github_repo_stars"
+format = "───  recent commits  ─────────────────────────────────────────────"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
-id = "gh_contributions"
-fetcher = "github_contributions"
-render = { type = "grid_heatmap", align = "center" }
+id = "div_ci"
+fetcher = "static"
+format = "───  CI  ─────────────────────────────────────────────────────────"
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
-id = "gh_my_prs"
-fetcher = "github_my_prs"
-render = "list_plain"
+id = "div_activity"
+fetcher = "static"
+format = "───  activity · last 52 weeks  ───────────────────────────────────"
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
-id = "gh_review_requests"
-fetcher = "github_review_requests"
-render = "list_plain"
+id = "div_open"
+fetcher = "static"
+format = "───  open  ───────────────────────────────────────────────────────"
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
-id = "gh_repo_prs"
-fetcher = "github_repo_prs"
-render = "list_plain"
+id = "div_released"
+fetcher = "static"
+format = "───  released  ───────────────────────────────────────────────────"
+render = { type = "text_plain", align = "center" }
 
-[[widget]]
-id = "gh_repo_issues"
-fetcher = "github_repo_issues"
-render = "list_plain"
-
-[[widget]]
-id = "gh_notifications"
-fetcher = "github_notifications"
-render = "list_timeline"
-
-[[widget]]
-id = "gh_releases"
-fetcher = "github_recent_releases"
-render = "list_timeline"
-
-[[widget]]
-id = "gh_contributors"
-fetcher = "github_contributors_monthly"
-render = "grid_table"
-  [widget.options]
-  limit = 5
-
-# ── System ───────────────────────────────────────────────────────────
-
-[[widget]]
-id = "system"
-fetcher = "system"
-render = "grid_table"
-
-[[widget]]
-id = "disk_gauge"
-fetcher = "disk_usage"
-render = "gauge_circle"
-
-[[widget]]
-id = "disk_line"
-fetcher = "disk_usage"
-render = "gauge_line"
-
-# ── Git (local, on-disk) ─────────────────────────────────────────────
-
-[[widget]]
-id = "commits"
-fetcher = "git_commits_activity"
-render = "chart_sparkline"
+# ── Body widgets ────────────────────────────────────────────────────
 
 [[widget]]
 id = "recent_commits"
 fetcher = "git_recent_commits"
+format = "10"
+render = { type = "list_timeline", align = "center" }
+
+[[widget]]
+id = "ci_status"
+fetcher = "github_action_status"
+render = { type = "status_badge", align = "center" }
+
+[[widget]]
+id = "commits_sparkline"
+fetcher = "git_commits_activity"
+render = "chart_sparkline"
+
+[[widget]]
+id = "ci_history"
+fetcher = "github_action_history"
+render = "chart_sparkline"
+
+[[widget]]
+id = "lbl_commits"
+fetcher = "static"
+format = "commits"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "lbl_ci_runs"
+fetcher = "static"
+format = "CI runs"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "repo_prs"
+fetcher = "github_repo_prs"
+render = "list_plain"
+
+[[widget]]
+id = "repo_issues"
+fetcher = "github_repo_issues"
+render = "list_plain"
+
+[[widget]]
+id = "releases"
+fetcher = "github_recent_releases"
 render = "list_timeline"
 
-# ── ReadStore demo ──────────────────────────────────────────────────
-# Renders whatever the user writes to $HOME/.splashboard/store/scratch.txt.
-# One line per row. Missing file → the "nothing here yet" placeholder.
-
-[[widget]]
-id = "scratch"
-fetcher = "read_store"
-file_format = "text"
-render = { type = "text_plain", align = "center" }
-
-# ── clock_* family showcase ──────────────────────────────────────────
-
-[[widget]]
-id = "world_clock"
-fetcher = "clock_timezones"
-render = "grid_table"
-  [widget.options]
-  timezones = ["Asia/Tokyo", "Europe/London", "America/New_York"]
-
-[[widget]]
-id = "year_progress"
-fetcher = "clock_ratio"
-render = "gauge_circle"
-  [widget.options]
-  period = "year"
-
-[[widget]]
-id = "business_hours"
-fetcher = "clock_state"
-render = { type = "status_badge", align = "center" }
-  [widget.options]
-  kind = "business_hours"
-
-[[widget]]
-id = "moon"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "center" }
-  [widget.options]
-  kind = "moon_phase"
-
-[[widget]]
-id = "sun"
-fetcher = "clock_sunrise"
-render = { type = "text_plain", align = "center" }
-  [widget.options]
-  lat = 35.6762
-  lon = 139.6503
-  timezone = "Asia/Tokyo"
-
-[[widget]]
-id = "newyear_countdown"
-fetcher = "clock_countdown"
-render = { type = "text_plain", align = "center" }
-  [widget.options]
-  target = "2027-01-01"
-  target_label = "New Year"
-
-# ── system_* fetchers (sysinfo-backed, cross-platform) ───────────────
-
-[[widget]]
-id = "cpu"
-fetcher = "system_cpu"
-render = "gauge_circle"
-
-[[widget]]
-id = "memory"
-fetcher = "system_memory"
-render = "gauge_line"
-
-[[widget]]
-id = "uptime"
-fetcher = "system_uptime"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "load_avg"
-fetcher = "system_load"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "processes"
-fetcher = "system_processes"
-render = "grid_table"
-
 # ── Layout ──────────────────────────────────────────────────────────
-# Hero band: single-child rows with flex=center so the widget sits in the middle of the row
-# even though it's narrower than the terminal. 2-column rows below keep the default Legacy
-# flex so children split the row proportionally.
+# Width 方針 (固定 length):
+#   - hero / subtitle / divider / single body: length = 70
+#   - narrow badge (ci_status):                length = 30
+#   - 2-col 行 (sparkline / PR+issue):          length = 35 × 2 = 70 中央
+# divider の dash 数も 70 char に合わせて調整済。すべて `flex = "center"` で横中央揃え。
+# `bg = "subtle"` は row 全幅に敷かれるので、child を narrow にしてもヘッダ帯は端まで
+# 塗られる。percentage ではなく length なのは divider のハードコード dash 数と揃える
+# ため(#79 の `border = "top"` が入れば length も不要になる)。
 
 [[row]]
-height = { length = 2 }
-flex = "center"
+height = { length = 1 }
 bg = "subtle"
-
-  [[row.child]]
-  widget = "greeting_text"
-  width = { length = 24 }
-
-[[row]]
-height = { length = 4 }
-flex = "center"
-bg = "subtle"
-
-  [[row.child]]
-  widget = "clock"
-  width = { length = 22 }
-
-[[row]]
-height = { length = 4 }
-flex = "center"
-
-  [[row.child]]
-  widget = "typewriter"
-  width = { length = 64 }
-
-[[row]]
-height = { length = 4 }
-flex = "center"
-
-  [[row.child]]
-  widget = "notes"
-  width = { length = 44 }
-
-[[row]]
-height = { length = 4 }
-flex = "center"
-
-  [[row.child]]
-  widget = "postfx_demo"
-  width = { length = 64 }
-
-[[row]]
-height = { length = 4 }
-flex = "center"
-
-  [[row.child]]
-  widget = "postfx_fade"
-  width = { length = 20 }
-
-  [[row.child]]
-  widget = "postfx_coalesce"
-  width = { length = 28 }
-
-  [[row.child]]
-  widget = "postfx_sweep"
-  width = { length = 22 }
-
-[[row]]
-height = { length = 4 }
-flex = "center"
-
-  [[row.child]]
-  widget = "postfx_slide"
-  width = { length = 22 }
-
-  [[row.child]]
-  widget = "postfx_hsl"
-  width = { length = 18 }
-
-# ── GitHub band ──────────────────────────────────────────────────────
-
-[[row]]
-height = { length = 2 }
-flex = "center"
-
-  [[row.child]]
-  widget = "gh_action_status"
-  width = { length = 36 }
-
-[[row]]
-height = { length = 3 }
-
-  [[row.child]]
-  widget = "gh_action_history"
-  title = "github_action_history"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "gh_stars"
-  title = "github_repo_stars"
-  border = "rounded"
-
-[[row]]
-height = { length = 10 }
-
-  [[row.child]]
-  widget = "gh_contributions"
-  title = "github_contributions"
-  border = "rounded"
-
-[[row]]
-height = { length = 8 }
-
-  [[row.child]]
-  widget = "gh_my_prs"
-  title = "github_my_prs"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "gh_review_requests"
-  title = "github_review_requests"
-  border = "rounded"
-
-[[row]]
-height = { length = 8 }
-
-  [[row.child]]
-  widget = "gh_repo_prs"
-  title = "github_repo_prs"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "gh_repo_issues"
-  title = "github_repo_issues"
-  border = "rounded"
-
-[[row]]
-height = { length = 8 }
-
-  [[row.child]]
-  widget = "gh_notifications"
-  title = "github_notifications"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "gh_releases"
-  title = "github_recent_releases"
-  border = "rounded"
-
-[[row]]
-height = { length = 7 }
-
-  [[row.child]]
-  widget = "gh_contributors"
-  title = "github_contributors_monthly"
-  border = "rounded"
-
-# ── ReadStore ────────────────────────────────────────────────────────
-
-[[row]]
-height = { length = 5 }
-
-  [[row.child]]
-  widget = "scratch"
-
-# ── Ratio / NumberSeries / Entries / Timeline ────────────────────────
-
-[[row]]
-height = { length = 3 }
-
-  [[row.child]]
-  widget = "disk_gauge"
-  title = "gauge_circle"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "disk_line"
-  title = "gauge_line"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "commits"
-  title = "chart_sparkline"
-  border = "rounded"
 
 [[row]]
 height = { length = 6 }
-
+bg = "subtle"
+flex = "center"
   [[row.child]]
-  widget = "system"
-  title = "grid_table"
-  border = "rounded"
+  widget = "hero"
+  width = { length = 70 }
 
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "subtitle"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "div_commits"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 8 }
+flex = "center"
   [[row.child]]
   widget = "recent_commits"
-  title = "list_timeline"
-  border = "rounded"
+  width = { length = 70 }
 
-# ── system_* showcase rows ───────────────────────────────────────────
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "div_ci"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 2 }
+flex = "center"
+  [[row.child]]
+  widget = "ci_status"
+  width = { length = 30 }
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "div_activity"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "lbl_commits"
+  width = { length = 35 }
+  [[row.child]]
+  widget = "lbl_ci_runs"
+  width = { length = 35 }
 
 [[row]]
 height = { length = 3 }
-
+flex = "center"
   [[row.child]]
-  widget = "cpu"
-  title = "system_cpu"
-  border = "rounded"
-
+  widget = "commits_sparkline"
+  width = { length = 35 }
   [[row.child]]
-  widget = "memory"
-  title = "system_memory"
-  border = "rounded"
+  widget = "ci_history"
+  width = { length = 35 }
 
 [[row]]
-height = { length = 3 }
-
-  [[row.child]]
-  widget = "uptime"
-  title = "system_uptime"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "load_avg"
-  title = "system_load"
-  border = "rounded"
+height = { length = 1 }
 
 [[row]]
-height = { length = 7 }
-
+height = { length = 1 }
+flex = "center"
   [[row.child]]
-  widget = "processes"
-  title = "system_processes"
-  border = "rounded"
-
-# ── clock_* showcase rows ────────────────────────────────────────────
+  widget = "div_open"
+  width = { length = 70 }
 
 [[row]]
-height = { length = 5 }
-
+height = { length = 8 }
+flex = "center"
   [[row.child]]
-  widget = "world_clock"
-  title = "clock_timezones"
-  border = "rounded"
-
+  widget = "repo_prs"
+  width = { length = 35 }
   [[row.child]]
-  widget = "year_progress"
-  title = "clock_ratio"
-  border = "rounded"
+  widget = "repo_issues"
+  width = { length = 35 }
 
 [[row]]
-height = { length = 3 }
-
-  [[row.child]]
-  widget = "business_hours"
-  title = "clock_state"
-  border = "rounded"
-
-  [[row.child]]
-  widget = "moon"
-  title = "clock_derived"
-  border = "rounded"
+height = { length = 1 }
 
 [[row]]
-height = { length = 3 }
-
+height = { length = 1 }
+flex = "center"
   [[row.child]]
-  widget = "sun"
-  title = "clock_sunrise"
-  border = "rounded"
+  widget = "div_released"
+  width = { length = 70 }
 
+[[row]]
+height = { length = 6 }
+flex = "center"
   [[row.child]]
-  widget = "newyear_countdown"
-  title = "clock_countdown"
-  border = "rounded"
+  widget = "releases"
+  width = { length = 70 }
