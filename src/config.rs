@@ -269,12 +269,13 @@ mod tests {
     }
 
     #[test]
-    fn default_baked_has_expected_widgets() {
+    fn default_baked_is_empty() {
+        // Baked-in default ships no widgets — a fresh install renders nothing until the user
+        // drops a real config in place. Previous demo-content defaults pulled in stub fetchers
+        // that have since been removed.
         let c = Config::default_baked();
-        let ids: Vec<&str> = c.widgets.iter().map(|w| w.id.as_str()).collect();
-        assert!(ids.contains(&"greeting"));
-        assert!(ids.contains(&"clock"));
-        assert!(ids.contains(&"prs"));
+        assert!(c.widgets.is_empty());
+        assert!(c.rows.is_empty());
     }
 
     #[test]
@@ -359,7 +360,9 @@ widget = "x"
     fn missing_file_falls_back_to_default() {
         let path = Path::new("/does/not/exist.toml");
         let c = Config::load_or_default(path).unwrap();
-        assert!(!c.widgets.is_empty());
+        // Baked-in default is empty; what matters is that the call resolves `Ok` rather than
+        // bubbling the missing-file error.
+        assert!(c.widgets.is_empty());
     }
 
     #[test]
@@ -418,7 +421,25 @@ widget = "x"
 
     #[test]
     fn to_layout_builds_nested_rows_of_cols() {
-        let c = Config::default_baked();
+        let toml = r#"
+[[widget]]
+id = "a"
+fetcher = "static"
+render = "simple"
+
+[[widget]]
+id = "b"
+fetcher = "static"
+render = "simple"
+
+[[row]]
+height = { length = 3 }
+[[row.child]]
+widget = "a"
+[[row.child]]
+widget = "b"
+"#;
+        let c = Config::parse(toml).unwrap();
         let layout = c.to_layout();
         match layout {
             Layout::Stack { children, .. } => {
