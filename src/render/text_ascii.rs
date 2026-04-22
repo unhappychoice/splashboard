@@ -35,17 +35,17 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
 ///
 /// Accepts `Text` only — big glyphs span multiple terminal rows, so multi-line input would
 /// blow past any reasonable widget height. Fetchers that want big-text output must emit a
-/// single-string `Text` payload; multi-line fetchers should render via `text` / `list`.
+/// single-string `Text` payload; multi-line fetchers should render via `text_plain` / `list_plain`.
 ///
 /// - `style = "blocks"` (default): half-block glyphs via `tui-big-text`. Sub-option
 ///   `pixel_size` = "full" | "quadrant" | "sextant"; unset picks by area height.
 /// - `style = "figlet"`: classic FIGlet ASCII art via `figlet-rs`. No sub-options yet
 ///   (custom fonts land when we make a config decision on font bundling).
-pub struct AsciiArtRenderer;
+pub struct TextAsciiRenderer;
 
-impl Renderer for AsciiArtRenderer {
+impl Renderer for TextAsciiRenderer {
     fn name(&self) -> &str {
-        "ascii_art"
+        "text_ascii"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Text]
@@ -171,19 +171,19 @@ mod tests {
     #[test]
     fn default_style_uses_blocks() {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("ascii_art".into());
+        let spec = RenderSpec::Short("text_ascii".into());
         let _ = render_to_buffer_with_spec(&payload("12:34"), Some(&spec), &registry, 40, 10);
     }
 
     #[test]
     fn figlet_style_routes_through_figlet_rs() {
-        // `type = "ascii_art", style = "figlet"` should produce ASCII-art output without
+        // `type = "text_ascii", style = "figlet"` should produce ASCII-art output without
         // panicking — we don't assert specific glyphs since figlet fonts are ornate.
         #[derive(serde::Deserialize)]
         struct W {
             render: RenderSpec,
         }
-        let w: W = toml::from_str(r#"render = { type = "ascii_art", style = "figlet" }"#).unwrap();
+        let w: W = toml::from_str(r#"render = { type = "text_ascii", style = "figlet" }"#).unwrap();
         let registry = Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload("hi"), Some(&w.render), &registry, 60, 10);
     }

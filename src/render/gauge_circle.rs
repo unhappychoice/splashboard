@@ -4,11 +4,11 @@ use crate::payload::{Body, RatioData};
 
 use super::{RenderOptions, Renderer, Shape};
 
-pub struct GaugeRenderer;
+pub struct GaugeCircleRenderer;
 
-impl Renderer for GaugeRenderer {
+impl Renderer for GaugeCircleRenderer {
     fn name(&self) -> &str {
-        "gauge"
+        "gauge_circle"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]

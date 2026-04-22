@@ -271,7 +271,7 @@ mod tests {
         assert!(out.contains("Fetchers ("));
         assert!(out.contains("Renderers ("));
         assert!(out.contains("clock"));
-        assert!(out.contains("ascii_art"));
+        assert!(out.contains("text_ascii"));
     }
 
     #[test]
@@ -298,8 +298,8 @@ mod tests {
     fn renderer_detail_renders_builtin() {
         let fetchers = FetcherRegistry::with_builtins();
         let renderers = RenderRegistry::with_builtins();
-        let out = renderer_detail("ascii_art", &renderers, &fetchers).unwrap();
-        assert!(out.contains("Renderer `ascii_art`"));
+        let out = renderer_detail("text_ascii", &renderers, &fetchers).unwrap();
+        assert!(out.contains("Renderer `text_ascii`"));
         assert!(out.contains("Accepts:"));
         assert!(out.contains("Animates:"));
         assert!(out.contains("Compatible fetchers"));
@@ -331,7 +331,7 @@ mod tests {
         assert!(out.contains("NAME"));
         assert!(out.contains("ACCEPTS"));
         assert!(out.contains("ANIMATES"));
-        assert!(out.contains("text"));
+        assert!(out.contains("text_plain"));
     }
 
     #[test]

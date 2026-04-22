@@ -5,7 +5,7 @@ use crate::payload::{Body, RatioData};
 use super::{RenderOptions, Renderer, Shape};
 
 /// Compact progress indicator: a single-line bar, ratio filled. Good for dense dashboards where
-/// the full-height `gauge` block renderer is too tall. Alternate renderer for the `Ratio` shape.
+/// the full-height `gauge_circle` block renderer is too tall. Alternate renderer for the `Ratio` shape.
 pub struct GaugeLineRenderer;
 
 impl Renderer for GaugeLineRenderer {

@@ -9,7 +9,7 @@ use super::{RenderOptions, Renderer, Shape};
 /// despite the 1:2 character aspect ratio. Buckets each cell's value into one of 5 intensity
 /// levels; level 0 is dim background, level 4 is full-saturation theme color. Thresholds come
 /// from the payload when provided, otherwise fall back to an auto-quartile split of the data.
-pub struct HeatmapRenderer;
+pub struct GridHeatmapRenderer;
 
 const LEVELS: usize = 5;
 /// Each cell takes 2 terminal columns so it reads as square-ish despite the 1:2 character
@@ -31,9 +31,9 @@ const PALETTE: [Color; LEVELS] = [
     Color::Rgb(0x21, 0x6E, 0x39),
 ];
 
-impl Renderer for HeatmapRenderer {
+impl Renderer for GridHeatmapRenderer {
     fn name(&self) -> &str {
-        "heatmap"
+        "grid_heatmap"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Heatmap]
@@ -269,7 +269,7 @@ mod tests {
 
     fn render(cells: Vec<Vec<u32>>, w: u16, h: u16) -> ratatui::buffer::Buffer {
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("heatmap".into());
+        let spec = RenderSpec::Short("grid_heatmap".into());
         render_to_buffer_with_spec(&payload(cells), Some(&spec), &registry, w, h)
     }
 
@@ -366,7 +366,7 @@ mod tests {
             }),
         };
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("heatmap".into());
+        let spec = RenderSpec::Short("grid_heatmap".into());
         // 10 cells × 2 cols = 20 width; 7 day rows + 1 label row = 8 height.
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 8);
         let top: String = (0..20)
@@ -394,7 +394,7 @@ mod tests {
             }),
         };
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("heatmap".into());
+        let spec = RenderSpec::Short("grid_heatmap".into());
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 7);
         // The top row should be cells, not a label — first char is the filled glyph.
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), CELL_GLYPH);
@@ -417,7 +417,7 @@ mod tests {
         };
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Full {
-            type_name: "heatmap".into(),
+            type_name: "grid_heatmap".into(),
             options: RenderOptions {
                 align: Some("center".into()),
                 ..Default::default()
@@ -448,7 +448,7 @@ mod tests {
             }),
         };
         let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("heatmap".into());
+        let spec = RenderSpec::Short("grid_heatmap".into());
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 1);
         // Default align (none) = left: first glyph at column 0.
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), CELL_GLYPH);

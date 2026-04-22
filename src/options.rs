@@ -6,7 +6,7 @@
 #[derive(Debug, Clone, Copy)]
 pub struct OptionSchema {
     /// TOML key. For fetchers: under `[widget.options]`. For renderers: under the `render`
-    /// inline table (e.g., `render = { type = "ascii_art", style = "figlet" }`).
+    /// inline table (e.g., `render = { type = "text_ascii", style = "figlet" }`).
     pub name: &'static str,
     /// Short human-readable type hint for docs. Prefer concrete enums like
     /// `"\"day\" | \"year\" | \"month\""` over a generic `"string"` when the option is an enum.

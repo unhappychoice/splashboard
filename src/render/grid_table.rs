@@ -12,11 +12,11 @@ use super::{RenderOptions, Renderer, Shape};
 /// Key/value table renderer over the `Entries` shape. Internally a ratatui `Table` with two
 /// columns (key, value) — the name reflects the widget, not the data, so future alternative
 /// renderers for the same shape (card layout, inline chips) don't have to fight over "list".
-pub struct TableRenderer;
+pub struct GridTableRenderer;
 
-impl Renderer for TableRenderer {
+impl Renderer for GridTableRenderer {
     fn name(&self) -> &str {
-        "table"
+        "grid_table"
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Entries]
