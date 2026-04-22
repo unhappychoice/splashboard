@@ -383,6 +383,7 @@ fn fetch_context(w: &WidgetConfig, shape: Option<Shape>, deadline: Duration) -> 
         timeout: deadline,
         file_format: w.file_format.clone(),
         shape,
+        options: w.options.clone(),
     }
 }
 
