@@ -1,0 +1,3 @@
+# Baked-in home dashboard fallback. Rendered when the CWD isn't a git repo root and no per-dir
+# dashboard is in scope, and `$HOME/.splashboard/home.dashboard.toml` is absent. Intentionally
+# empty — a fresh install renders nothing until the user drops real widgets in.

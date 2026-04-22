@@ -1,17 +1,15 @@
-# Dogfood config — rendered in project_github_activity style (#77). When someone cd's
+# Dogfood dashboard — rendered in project_github_activity style (#77). When someone cd's
 # into this repo, they see the polished preset we ship. Hero / subtitle / section
 # dividers / body. No panel borders: breathing rows + static dividers give structure.
+#
+# Dashboard files hold only widgets + rows. User preferences ([general], [theme]) live in
+# `$HOME/.splashboard/settings.toml` — padding, viewport height, theme preset, etc. belong
+# there so they apply to every dashboard the same user sees.
 #
 # Placeholders for #79 / #81 features not yet landed:
 #   - hero uses `static "splashboard"` (→ `project_name` fetcher post-#81)
 #   - subtitle is hand-written (→ `project` Entries fetcher post-#81)
 #   - hero uses `text_ascii` blocks quadrant (→ figlet banner font post-#79)
-
-[general]
-wait_for_fresh = false
-padding = { x = 2, y = 1 }
-
-# ── Hero ─────────────────────────────────────────────────────────────
 
 [[widget]]
 id = "hero"

@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 /// All splashboard state lives under a single dotted directory in the user's home:
-/// `$HOME/.splashboard/`. Keeps config, trust store, cache, and ReadStore data in one
-/// place — same pattern as per-directory `.splashboard/` configs. Overridable via the
+/// `$HOME/.splashboard/`. Keeps settings, dashboards, trust store, cache, and ReadStore data
+/// in one place — same pattern as per-directory `.splashboard/` configs. Overridable via the
 /// `SPLASHBOARD_HOME` env var for tests, CI, or power users who want to relocate.
 ///
 /// Rationale over the platform-specific `dirs` crate: for a CLI tool, `~/Library/...` on
@@ -18,8 +18,20 @@ pub fn splashboard_home() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".splashboard"))
 }
 
-pub fn config_path() -> Option<PathBuf> {
-    splashboard_home().map(|d| d.join("config.toml"))
+/// User preferences (`[general]` + `[theme]`). Always lives in HOME — per-dir overrides are
+/// out of scope for 0.x.
+pub fn settings_path() -> Option<PathBuf> {
+    splashboard_home().map(|d| d.join("settings.toml"))
+}
+
+/// Default dashboard when no per-dir dashboard applies and the CWD isn't a project root.
+pub fn home_dashboard_path() -> Option<PathBuf> {
+    splashboard_home().map(|d| d.join("home.dashboard.toml"))
+}
+
+/// Default project dashboard used when the CWD is a git repo root without a per-dir dashboard.
+pub fn project_dashboard_path() -> Option<PathBuf> {
+    splashboard_home().map(|d| d.join("project.dashboard.toml"))
 }
 
 pub fn trust_store_path() -> Option<PathBuf> {
@@ -61,7 +73,15 @@ mod tests {
             std::env::set_var("SPLASHBOARD_HOME", &path);
         }
         assert_eq!(splashboard_home(), Some(path.clone()));
-        assert_eq!(config_path(), Some(path.join("config.toml")));
+        assert_eq!(settings_path(), Some(path.join("settings.toml")));
+        assert_eq!(
+            home_dashboard_path(),
+            Some(path.join("home.dashboard.toml"))
+        );
+        assert_eq!(
+            project_dashboard_path(),
+            Some(path.join("project.dashboard.toml"))
+        );
         assert_eq!(trust_store_path(), Some(path.join("trust.toml")));
         assert_eq!(cache_dir(), Some(path.join("cache")));
         assert_eq!(read_store_dir(), Some(path.join("store")));

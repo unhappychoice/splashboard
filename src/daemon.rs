@@ -1,36 +1,65 @@
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use clap::ValueEnum;
 use tokio::process::{Child, Command};
 
-use crate::config::Config;
+use crate::config::{Config, DashboardConfig, DashboardSource, SettingsConfig};
+use crate::paths;
 use crate::runtime;
 
-/// Entry point for the `fetch-only` subcommand. Run by the detached child process: resolves the
-/// config, drives the fetchers, writes the cache, and exits. The parent splashboard invocation
-/// either detaches from this child and exits, or (in `--wait` mode) blocks on it with a deadline.
-pub async fn run_fetch_only(config_path: Option<&Path>) -> io::Result<()> {
-    // Read config bytes once; compute hash + parse from that buffer so the trust check can't be
-    // TOCTOU'd between parse and hash.
-    let (config, ident) = match config_path {
-        Some(p) => {
-            let (c, h) = crate::trust::load_config_and_hash(p)?;
-            (c, Some((p, h)))
+/// Which dashboard the parent resolved. Passed to the daemon subprocess so it loads the same
+/// source without having to re-resolve from scratch (avoids drift if CWD changed between
+/// parent spawn and daemon start).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DashboardKind {
+    Local,
+    Home,
+    Project,
+}
+
+impl DashboardSource {
+    pub fn kind(&self) -> DashboardKind {
+        match self {
+            Self::Local(_) => DashboardKind::Local,
+            Self::Home => DashboardKind::Home,
+            Self::Project => DashboardKind::Project,
         }
-        None => (Config::default_baked(), None),
-    };
-    let ident_ref = ident.as_ref().map(|(p, h)| (*p, h.as_str()));
+    }
+
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Local(p) => Some(p),
+            _ => None,
+        }
+    }
+}
+
+/// Entry point for the `fetch-only` subcommand. Run by the detached child process: resolves the
+/// dashboard, drives the fetchers, writes the cache, and exits. The parent splashboard invocation
+/// either detaches from this child and exits, or (in `--wait` mode) blocks on it with a deadline.
+pub async fn run_fetch_only(kind: DashboardKind, path: Option<&Path>) -> io::Result<()> {
+    let (dashboard, ident) = load_dashboard(kind, path)?;
+    let settings = load_settings_or_default();
+    let config = Config::from_parts(settings, dashboard);
+    let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
     runtime::fetch_and_persist(&config, ident_ref).await;
     Ok(())
 }
 
-pub fn spawn_fetch_daemon(config_path: Option<&Path>) -> io::Result<Child> {
+pub fn spawn_fetch_daemon(source: &DashboardSource) -> io::Result<Child> {
     let exe = std::env::current_exe()?;
     let mut cmd = Command::new(exe);
-    cmd.arg("fetch-only");
-    if let Some(p) = config_path {
-        cmd.arg("--config").arg(p);
+    cmd.arg("fetch-only")
+        .arg("--kind")
+        .arg(match source.kind() {
+            DashboardKind::Local => "local",
+            DashboardKind::Home => "home",
+            DashboardKind::Project => "project",
+        });
+    if let Some(p) = source.path() {
+        cmd.arg("--path").arg(p);
     }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -38,6 +67,43 @@ pub fn spawn_fetch_daemon(config_path: Option<&Path>) -> io::Result<Child> {
         .kill_on_drop(false);
     detach(cmd.as_std_mut());
     cmd.spawn()
+}
+
+fn load_dashboard(
+    kind: DashboardKind,
+    path: Option<&Path>,
+) -> io::Result<(DashboardConfig, Option<(PathBuf, String)>)> {
+    match kind {
+        DashboardKind::Local => {
+            let p =
+                path.ok_or_else(|| io::Error::other("fetch-only --kind local requires --path"))?;
+            let (d, h) = crate::trust::load_dashboard_and_hash(p)?;
+            Ok((d, Some((p.to_path_buf(), h))))
+        }
+        DashboardKind::Home => Ok((load_home_dashboard_or_baked(), None)),
+        DashboardKind::Project => Ok((load_project_dashboard_or_baked(), None)),
+    }
+}
+
+fn load_home_dashboard_or_baked() -> DashboardConfig {
+    paths::home_dashboard_path()
+        .and_then(|p| std::fs::read_to_string(&p).ok())
+        .and_then(|s| DashboardConfig::parse(&s).ok())
+        .unwrap_or_else(DashboardConfig::default_home)
+}
+
+fn load_project_dashboard_or_baked() -> DashboardConfig {
+    paths::project_dashboard_path()
+        .and_then(|p| std::fs::read_to_string(&p).ok())
+        .and_then(|s| DashboardConfig::parse(&s).ok())
+        .unwrap_or_else(DashboardConfig::default_project)
+}
+
+fn load_settings_or_default() -> SettingsConfig {
+    paths::settings_path()
+        .and_then(|p| std::fs::read_to_string(&p).ok())
+        .and_then(|s| SettingsConfig::parse(&s).ok())
+        .unwrap_or_else(SettingsConfig::default_baked)
 }
 
 #[cfg(unix)]
@@ -63,17 +129,31 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn run_fetch_only_with_missing_path_uses_baked_default() {
-        // Passing None must fall back to the built-in config rather than erroring.
-        run_fetch_only(None).await.unwrap();
+    async fn run_fetch_only_home_uses_baked_default() {
+        // No file under SPLASHBOARD_HOME: falls back to the empty baked home dashboard. Runs
+        // to completion rather than erroring — the daemon has no stdio to report over. The
+        // temp-dir rebase doesn't mutate `SPLASHBOARD_HOME` (that would need the env lock and
+        // would drag us into holding-mutex-across-await warnings); we rely on the empty-HOME
+        // branch producing the baked default either way.
+        run_fetch_only(DashboardKind::Home, None).await.unwrap();
     }
 
     #[tokio::test]
-    async fn run_fetch_only_bubbles_parse_errors() {
+    async fn run_fetch_only_local_bubbles_parse_errors() {
         let dir = tempfile::tempdir().unwrap();
         let bad = dir.path().join("bad.toml");
         std::fs::write(&bad, "this is [not valid toml").unwrap();
-        let err = run_fetch_only(Some(&bad)).await.unwrap_err();
+        let err = run_fetch_only(DashboardKind::Local, Some(&bad))
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+    }
+
+    #[tokio::test]
+    async fn run_fetch_only_local_without_path_errors() {
+        let err = run_fetch_only(DashboardKind::Local, None)
+            .await
+            .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::Other);
     }
 

@@ -1,3 +1,0 @@
-# Baked-in fallback. Used only when no `$HOME/.splashboard/config.toml` and no walk-up
-# `./.splashboard/config.toml` exists. Intentionally empty — a fresh install renders nothing
-# until the user drops a real config in place.

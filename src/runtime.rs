@@ -133,6 +133,7 @@ const DEFAULT_VIEWPORT_LINES: u16 = 16;
 
 pub async fn run(
     config: &Config,
+    source: &crate::config::DashboardSource,
     config_ident: Option<(&Path, &str)>,
     wait: bool,
 ) -> io::Result<()> {
@@ -234,13 +235,13 @@ pub async fn run(
             requested_height,
             viewport_lines,
         )?;
-        let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
+        let _ = daemon::spawn_fetch_daemon(source);
         finalize_splash(&mut terminal);
         return Ok(());
     }
 
     let window = loop_window.unwrap();
-    match daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p)) {
+    match daemon::spawn_fetch_daemon(source) {
         Ok(mut child) => {
             // Multi-frame loop: ticks the frame every FRAME_TICK so animated renderers can
             // animate; picks up daemon-written cache entries as they land; stops when the

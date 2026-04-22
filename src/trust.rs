@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::cache::tmp_path_for;
-use crate::config::{Config, WidgetConfig, default_global_path};
+use crate::config::{DashboardConfig, WidgetConfig};
 use crate::fetcher::{Registry, Safety};
 use crate::payload::{Body, Payload, TextBlockData};
 
@@ -62,30 +62,19 @@ impl TrustStore {
         Ok(())
     }
 
-    /// Caller is expected to have already read the config bytes and hashed them (via
-    /// [`load_config_and_hash`]). Re-hashing here would open a TOCTOU window: a trusted file
+    /// Caller is expected to have already read the dashboard bytes and hashed them (via
+    /// [`load_dashboard_and_hash`]). Re-hashing here would open a TOCTOU window: a trusted file
     /// could be swapped for an attacker-crafted one between the caller's load and our hash.
+    ///
+    /// `ident = None` signals a HOME-backed source (settings, `home.dashboard.toml`, or
+    /// `project.dashboard.toml`) — always implicitly trusted because the user owns HOME.
     pub fn decide(&self, ident: Option<(&Path, &str)>) -> TrustDecision {
-        self.decide_with_global(ident, default_global_path().as_deref())
-    }
-
-    fn decide_with_global(
-        &self,
-        ident: Option<(&Path, &str)>,
-        global: Option<&Path>,
-    ) -> TrustDecision {
         if trust_all_override() {
             return TrustDecision::ImplicitlyTrusted;
         }
         let Some((path, hash)) = ident else {
             return TrustDecision::ImplicitlyTrusted;
         };
-        // Literal equality only. A symlink that resolves to the global config is NOT the global
-        // config — the attacker controls the cwd it runs in, which subverts the whole point of
-        // trusting global configs.
-        if global == Some(path) {
-            return TrustDecision::ImplicitlyTrusted;
-        }
         let canon = canonicalize_or(path);
         for entry in &self.entries {
             if canonicalize_or(&entry.path) == canon && entry.sha256 == hash {
@@ -121,15 +110,16 @@ impl TrustStore {
     }
 }
 
-/// Reads the config bytes once and returns both the parsed `Config` and its sha256. All
-/// trust-sensitive callers MUST use this instead of `Config::load_or_default` + `hash_file` —
-/// two separate reads would let an attacker swap the file between the load and the hash.
-pub fn load_config_and_hash(path: &Path) -> io::Result<(Config, String)> {
+/// Reads the dashboard bytes once and returns both the parsed `DashboardConfig` and its
+/// sha256. All trust-sensitive callers MUST use this instead of `DashboardConfig::parse` +
+/// `hash_file` — two separate reads would let an attacker swap the file between the load and
+/// the hash.
+pub fn load_dashboard_and_hash(path: &Path) -> io::Result<(DashboardConfig, String)> {
     let bytes = std::fs::read(path)?;
     let hash = hash_bytes(&bytes);
     let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
-    let config = Config::parse(text).map_err(io::Error::other)?;
-    Ok((config, hash))
+    let dashboard = DashboardConfig::parse(text).map_err(io::Error::other)?;
+    Ok((dashboard, hash))
 }
 
 pub fn hash_file(path: &Path) -> io::Result<String> {
@@ -280,11 +270,11 @@ mod tests {
     }
 
     #[test]
-    fn load_config_and_hash_returns_matching_hash() {
+    fn load_dashboard_and_hash_returns_matching_hash() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(".splashboard.toml");
         std::fs::write(&p, "").unwrap();
-        let (_cfg, hash) = load_config_and_hash(&p).unwrap();
+        let (_cfg, hash) = load_dashboard_and_hash(&p).unwrap();
         assert_eq!(hash, hash_file(&p).unwrap());
     }
 
@@ -340,33 +330,13 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
-    fn symlink_to_global_is_not_implicitly_trusted() {
-        use std::os::unix::fs::symlink;
-        let dir = tempfile::tempdir().unwrap();
-        let fake_global = dir.path().join("global.toml");
-        std::fs::write(&fake_global, "content").unwrap();
-        let local = dir.path().join(".splashboard.toml");
-        symlink(&fake_global, &local).unwrap();
-        // Sanity: the symlink canonicalizes to the global path.
-        assert_eq!(canonicalize_or(&local), canonicalize_or(&fake_global));
-        // But decide must NOT treat the symlink as the global config.
+    fn home_backed_source_is_implicitly_trusted_via_none_ident() {
+        // HOME-backed sources (settings.toml, home.dashboard.toml, project.dashboard.toml) are
+        // implicitly trusted by the caller passing `ident = None`. A local dashboard with the
+        // same on-disk bytes is NOT auto-trusted — the gate is caller-driven, not path-driven.
         let store = TrustStore::default();
-        let hash = hash_file(&local).unwrap();
-        let decision = store.decide_with_global(Some((&local, &hash)), Some(&fake_global));
-        assert_eq!(decision, TrustDecision::Untrusted);
-    }
-
-    #[test]
-    fn literal_global_path_is_implicitly_trusted() {
-        let dir = tempfile::tempdir().unwrap();
-        let global = dir.path().join("global.toml");
-        std::fs::write(&global, "x").unwrap();
-        let hash = hash_file(&global).unwrap();
-        let store = TrustStore::default();
-        let decision = store.decide_with_global(Some((&global, &hash)), Some(&global));
-        assert_eq!(decision, TrustDecision::ImplicitlyTrusted);
+        assert_eq!(store.decide(None), TrustDecision::ImplicitlyTrusted);
     }
 
     #[test]

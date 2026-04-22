@@ -4,12 +4,16 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 
 use splashboard::catalog;
-use splashboard::config::{self, Config, WidgetConfig};
+use splashboard::config::{
+    self, Config, DashboardConfig, DashboardSource, SettingsConfig, WidgetConfig,
+};
+use splashboard::daemon::{self, DashboardKind};
 use splashboard::fetcher::{Registry, Safety};
+use splashboard::paths;
 use splashboard::render::Registry as RenderRegistry;
+use splashboard::runtime;
 use splashboard::shell::{self, Shell};
-use splashboard::trust::{TrustStore, load_config_and_hash};
-use splashboard::{daemon, runtime};
+use splashboard::trust::{TrustStore, load_dashboard_and_hash};
 
 const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
 const MIN_WIDTH: u16 = 40;
@@ -18,9 +22,9 @@ const MIN_HEIGHT: u16 = 16;
 #[derive(Parser)]
 #[command(version, about = "A customizable terminal splash screen")]
 struct Cli {
-    /// Render only if the current directory directly holds a config file; otherwise exit
-    /// silently. Intended for cd-hook invocations so the splash shows exactly once per project
-    /// entry instead of on every subdirectory navigation.
+    /// Render only if the current directory directly resolves to a dashboard (per-dir file or
+    /// git repo root); otherwise exit silently. Intended for cd-hook invocations so the splash
+    /// shows exactly once per project entry instead of on every subdirectory navigation.
     #[arg(long)]
     on_cd: bool,
 
@@ -40,20 +44,20 @@ enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
-    /// Grant this project-local config permission to run Network and Exec widgets. Safe widgets
+    /// Grant this project-local dashboard permission to run Network widgets. Safe widgets
     /// always run regardless; this is the consent step for anything that talks to the outside
     /// world. Defaults to the nearest `.splashboard.toml` walking up from the current directory.
     Trust {
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
     },
-    /// Remove trust for a project-local config. Network and Exec widgets in it will render the
+    /// Remove trust for a project-local dashboard. Network widgets in it will render the
     /// "🔒 requires trust" placeholder until re-trusted.
     Revoke {
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
     },
-    /// Print the currently trusted local configs.
+    /// Print the currently trusted local dashboards.
     ListTrusted,
     /// Browse the built-in fetcher and renderer catalog — the same info the docs site exposes,
     /// rendered for the terminal. Run without a target for an overview; use
@@ -66,8 +70,10 @@ enum Command {
     /// splashboard invocation; not intended to be run directly.
     #[command(hide = true)]
     FetchOnly {
+        #[arg(long, value_enum)]
+        kind: DashboardKind,
         #[arg(long)]
-        config: Option<PathBuf>,
+        path: Option<PathBuf>,
     },
 }
 
@@ -89,7 +95,9 @@ async fn main() -> io::Result<()> {
             print!("{}", shell::init_snippet(shell));
             Ok(())
         }
-        Some(Command::FetchOnly { config }) => daemon::run_fetch_only(config.as_deref()).await,
+        Some(Command::FetchOnly { kind, path }) => {
+            daemon::run_fetch_only(kind, path.as_deref()).await
+        }
         Some(Command::Trust { path }) => run_trust(path),
         Some(Command::Revoke { path }) => run_revoke(path),
         Some(Command::ListTrusted) => run_list_trusted(),
@@ -111,20 +119,22 @@ async fn render_splash(wait: bool) -> io::Result<()> {
     if !should_render() {
         return Ok(());
     }
-    let (config, ident) = load_full_config()?;
+    let source = config::resolve_dashboard_source();
+    let (config, ident) = load_full_config(&source)?;
     let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
-    runtime::run(&config, ident_ref, wait).await
+    runtime::run(&config, &source, ident_ref, wait).await
 }
 
 async fn render_for_cd(wait: bool) -> io::Result<()> {
     if !should_render() {
         return Ok(());
     }
-    let Some(path) = config::resolve_cwd_only_path() else {
+    let Some(source) = config::resolve_on_cd_dashboard_source() else {
         return Ok(());
     };
-    let (config, hash) = load_config_and_hash(&path).map_err(io::Error::other)?;
-    runtime::run(&config, Some((&path, &hash)), wait).await
+    let (config, ident) = load_full_config(&source)?;
+    let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
+    runtime::run(&config, &source, ident_ref, wait).await
 }
 
 fn should_render() -> bool {
@@ -151,33 +161,68 @@ fn is_large_enough(width: u16, height: u16) -> bool {
     width >= MIN_WIDTH && height >= MIN_HEIGHT
 }
 
-/// Returns the resolved config plus an optional `(path, hash)` pair. Missing file / baked
-/// default produces `None` — trust gating treats that as implicitly trusted. When a file is
-/// present, reading and hashing happen in a single [`load_config_and_hash`] call so the trust
-/// check can't be TOCTOU'd between parse and hash.
-fn load_full_config() -> io::Result<(Config, Option<(PathBuf, String)>)> {
-    match config::resolve_config_path() {
-        Some(p) => {
-            let (config, hash) = load_config_and_hash(&p).map_err(io::Error::other)?;
-            Ok((config, Some((p, hash))))
+/// Loads settings + the resolved dashboard and composes them into a `Config`. The optional
+/// `(path, hash)` identifies a local dashboard for trust gating; HOME-backed sources return
+/// `None` so they're treated as implicitly trusted.
+fn load_full_config(source: &DashboardSource) -> io::Result<(Config, Option<(PathBuf, String)>)> {
+    let settings = load_settings()?;
+    let (dashboard, ident) = match source {
+        DashboardSource::Local(p) => {
+            let (d, h) = load_dashboard_and_hash(p).map_err(io::Error::other)?;
+            (d, Some((p.clone(), h)))
         }
-        None => Ok((Config::default_baked(), None)),
+        DashboardSource::Home => (load_home_dashboard_or_baked()?, None),
+        DashboardSource::Project => (load_project_dashboard_or_baked()?, None),
+    };
+    Ok((Config::from_parts(settings, dashboard), ident))
+}
+
+fn load_settings() -> io::Result<SettingsConfig> {
+    match paths::settings_path() {
+        Some(p) => SettingsConfig::load_or_default(&p).map_err(io::Error::other),
+        None => Ok(SettingsConfig::default_baked()),
+    }
+}
+
+fn load_home_dashboard_or_baked() -> io::Result<DashboardConfig> {
+    load_dashboard_file_or(paths::home_dashboard_path(), DashboardConfig::default_home)
+}
+
+fn load_project_dashboard_or_baked() -> io::Result<DashboardConfig> {
+    load_dashboard_file_or(
+        paths::project_dashboard_path(),
+        DashboardConfig::default_project,
+    )
+}
+
+fn load_dashboard_file_or(
+    path: Option<PathBuf>,
+    baked: impl FnOnce() -> DashboardConfig,
+) -> io::Result<DashboardConfig> {
+    let Some(path) = path else {
+        return Ok(baked());
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(s) => DashboardConfig::parse(&s)
+            .map_err(|e| io::Error::other(format!("{}: {e}", path.display()))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(baked()),
+        Err(e) => Err(e),
     }
 }
 
 fn run_trust(path: Option<PathBuf>) -> io::Result<()> {
     let Some(target) = resolve_trust_target(path) else {
         eprintln!(
-            "no project-local config found (run from inside a directory with .splashboard.toml)"
+            "no project-local dashboard found (run from inside a directory with .splashboard.toml)"
         );
         return Ok(());
     };
     // Read the bytes once so the hash we show the user matches the hash we store — and so an
     // attacker can't swap the file between "here's what it asks for" and "ok I trust it".
-    let (config, hash) = load_config_and_hash(&target).map_err(io::Error::other)?;
+    let (dashboard, hash) = load_dashboard_and_hash(&target).map_err(io::Error::other)?;
     let registry = Registry::with_builtins();
-    print_trust_summary(&target, &hash, &config.widgets, &registry)?;
-    if !prompt_yes_no("Trust this config?")? {
+    print_trust_summary(&target, &hash, &dashboard.widgets, &registry)?;
+    if !prompt_yes_no("Trust this dashboard?")? {
         println!("not trusted");
         return Ok(());
     }
@@ -189,7 +234,7 @@ fn run_trust(path: Option<PathBuf>) -> io::Result<()> {
 
 fn run_revoke(path: Option<PathBuf>) -> io::Result<()> {
     let Some(target) = resolve_trust_target(path) else {
-        eprintln!("no project-local config found");
+        eprintln!("no project-local dashboard found");
         return Ok(());
     };
     let mut store = TrustStore::load();
@@ -241,7 +286,7 @@ fn run_catalog(target: Option<CatalogTarget>) -> io::Result<()> {
 }
 
 fn resolve_trust_target(override_path: Option<PathBuf>) -> Option<PathBuf> {
-    override_path.or_else(config::resolve_local_config_path)
+    override_path.or_else(config::resolve_local_dashboard_path)
 }
 
 fn print_trust_summary(
@@ -253,7 +298,7 @@ fn print_trust_summary(
     // Paths and widget ids/fetchers flow into the terminal unmodified; sanitize control chars so
     // a malicious config can't spoof the prompt with ANSI escape sequences.
     println!(
-        "Config: {}",
+        "Dashboard: {}",
         sanitize_for_display(&path.display().to_string())
     );
     println!("sha256: {hash}");
@@ -270,7 +315,7 @@ fn print_trust_summary(
             Safety::Exec => "exec",
         };
         if declared == 0 {
-            println!("This config requests:");
+            println!("This dashboard requests:");
         }
         println!(
             "  - {label:<7}: {} ({})",
