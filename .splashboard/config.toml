@@ -17,38 +17,44 @@ padding = { x = 2, y = 1 }
 id = "hero"
 fetcher = "static"
 format = "splashboard"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "hsl_shift", duration_ms = 1800, pixel_size = "quadrant", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 2500, pixel_size = "quadrant", align = "center" }
 
 [[widget]]
 id = "subtitle"
 fetcher = "static"
 format = "unhappychoice/splashboard · terminal splash renderer · MIT"
-render = { type = "text_plain", align = "center" }
+render = { type = "animated_postfx", inner = "text_plain", effect = "sweep_in_down", duration_ms = 1500, align = "center" }
 
 # ── Section dividers ────────────────────────────────────────────────
 
 [[widget]]
 id = "div_commits"
 fetcher = "static"
-format = "───  recent commits  ─────────────────────────────────"
+format = "───  recent commits  ─────────────────────────────────────────────"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "div_ci"
 fetcher = "static"
-format = "───  CI  ─────────────────────────────────────────────"
+format = "───  CI  ─────────────────────────────────────────────────────────"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "div_activity"
+fetcher = "static"
+format = "───  activity · last 52 weeks  ───────────────────────────────────"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "div_open"
 fetcher = "static"
-format = "───  open  ───────────────────────────────────────────"
+format = "───  open  ───────────────────────────────────────────────────────"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "div_released"
 fetcher = "static"
-format = "───  released  ───────────────────────────────────────"
+format = "───  released  ───────────────────────────────────────────────────"
 render = { type = "text_plain", align = "center" }
 
 # ── Body widgets ────────────────────────────────────────────────────
@@ -63,6 +69,28 @@ render = { type = "list_timeline", align = "center" }
 id = "ci_status"
 fetcher = "github_action_status"
 render = { type = "status_badge", align = "center" }
+
+[[widget]]
+id = "commits_sparkline"
+fetcher = "git_commits_activity"
+render = "chart_sparkline"
+
+[[widget]]
+id = "ci_history"
+fetcher = "github_action_history"
+render = "chart_sparkline"
+
+[[widget]]
+id = "lbl_commits"
+fetcher = "static"
+format = "commits"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "lbl_ci_runs"
+fetcher = "static"
+format = "CI runs"
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "repo_prs"
@@ -80,7 +108,14 @@ fetcher = "github_recent_releases"
 render = "list_timeline"
 
 # ── Layout ──────────────────────────────────────────────────────────
-# hero → subtitle → (divider → body) × 5。各セクション後に空行で breathing。
+# Width 方針 (固定 length):
+#   - hero / subtitle / divider / single body: length = 70
+#   - narrow badge (ci_status):                length = 30
+#   - 2-col 行 (sparkline / PR+issue):          length = 35 × 2 = 70 中央
+# divider の dash 数も 70 char に合わせて調整済。すべて `flex = "center"` で横中央揃え。
+# `bg = "subtle"` は row 全幅に敷かれるので、child を narrow にしてもヘッダ帯は端まで
+# 塗られる。percentage ではなく length なのは divider のハードコード dash 数と揃える
+# ため(#79 の `border = "top"` が入れば length も不要になる)。
 
 [[row]]
 height = { length = 1 }
@@ -89,14 +124,18 @@ bg = "subtle"
 [[row]]
 height = { length = 6 }
 bg = "subtle"
+flex = "center"
   [[row.child]]
   widget = "hero"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
 bg = "subtle"
+flex = "center"
   [[row.child]]
   widget = "subtitle"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
@@ -107,51 +146,98 @@ height = { length = 1 }
 
 [[row]]
 height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "div_commits"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 8 }
+flex = "center"
   [[row.child]]
   widget = "recent_commits"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
 
 [[row]]
 height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "div_ci"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 2 }
+flex = "center"
   [[row.child]]
   widget = "ci_status"
+  width = { length = 30 }
 
 [[row]]
 height = { length = 1 }
 
 [[row]]
 height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "div_activity"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "lbl_commits"
+  width = { length = 35 }
+  [[row.child]]
+  widget = "lbl_ci_runs"
+  width = { length = 35 }
+
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "commits_sparkline"
+  width = { length = 35 }
+  [[row.child]]
+  widget = "ci_history"
+  width = { length = 35 }
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "div_open"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 8 }
+flex = "center"
   [[row.child]]
   widget = "repo_prs"
+  width = { length = 35 }
   [[row.child]]
   widget = "repo_issues"
+  width = { length = 35 }
 
 [[row]]
 height = { length = 1 }
 
 [[row]]
 height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "div_released"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 6 }
+flex = "center"
   [[row.child]]
   widget = "releases"
+  width = { length = 70 }
