@@ -11,7 +11,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::TODAY, theme::EVENT];
+const COLOR_KEYS: &[ColorKey] = &[theme::TODAY, theme::EVENT, theme::TEXT];
 
 /// Month-view calendar for the `Calendar` shape. Highlights `day` (today / focus) and marks
 /// each day in `events`. Silently no-ops on invalid dates — a splash must never panic on bad
@@ -66,7 +66,12 @@ fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &T
             events.add(date, Style::default().fg(theme.event));
         }
     }
-    frame.render_widget(Monthly::new(anchor, events), area);
+    // `default_style` paints the grid of non-event day numbers + header so unmarked days
+    // match the Splash text colour instead of leaking the terminal fg against the navy bg.
+    frame.render_widget(
+        Monthly::new(anchor, events).default_style(Style::default().fg(theme.text)),
+        area,
+    );
 }
 
 fn month_from_u8(m: u8) -> Option<Month> {

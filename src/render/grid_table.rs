@@ -10,7 +10,12 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::STATUS_OK, theme::STATUS_WARN, theme::STATUS_ERROR];
+const COLOR_KEYS: &[ColorKey] = &[
+    theme::STATUS_OK,
+    theme::STATUS_WARN,
+    theme::STATUS_ERROR,
+    theme::TEXT,
+];
 
 /// Key/value table renderer over the `Entries` shape. Internally a ratatui `Table` with two
 /// columns (key, value) — the name reflects the widget, not the data, so future alternative
@@ -44,7 +49,13 @@ impl Renderer for GridTableRenderer {
 fn render_entries(frame: &mut Frame, area: Rect, data: &EntriesData, theme: &Theme) {
     let rows = data.items.iter().map(|e| to_row(e, theme));
     let widths = [Constraint::Percentage(40), Constraint::Percentage(60)];
-    frame.render_widget(Table::new(rows, widths), area);
+    // Base row style = theme.text. Per-row status colours set via `.style` on the row
+    // itself, which patches on top of the table-level base — so untagged rows pick up the
+    // chrome colour instead of leaking the terminal fg.
+    frame.render_widget(
+        Table::new(rows, widths).style(Style::default().fg(theme.text)),
+        area,
+    );
 }
 
 fn to_row<'a>(item: &'a Entry, theme: &Theme) -> Row<'a> {

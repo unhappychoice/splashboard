@@ -18,6 +18,7 @@ const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_ERROR,
     theme::DIM,
     theme::SECONDARY,
+    theme::TEXT,
 ];
 
 /// Time-stamped event list. Each row shows a compact relative prefix (`"3h"`, `"2d"`, `"Apr 5"`)
@@ -91,7 +92,12 @@ fn render_timeline_at(
     }
 
     let target = align_rect(area, content_width as u16, opts.align.as_deref());
-    frame.render_widget(Paragraph::new(lines), target);
+    // Base `theme.text` so event titles without status, and any padding chars around
+    // styled spans, inherit the chrome colour instead of the terminal fg.
+    frame.render_widget(
+        Paragraph::new(lines).style(Style::default().fg(theme.text)),
+        target,
+    );
 }
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {

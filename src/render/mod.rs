@@ -271,7 +271,7 @@ pub fn render_payload(
         ),
     };
     let Some(renderer) = registry.get(&name) else {
-        render_error(frame, area, &format!("unknown renderer: {name}"));
+        render_error(frame, area, &format!("unknown renderer: {name}"), theme);
         return;
     };
     if !renderer.accepts().contains(&shape) {
@@ -279,6 +279,7 @@ pub fn render_payload(
             frame,
             area,
             &format!("renderer {name} cannot display {shape:?}"),
+            theme,
         );
         return;
     }
@@ -351,8 +352,13 @@ pub fn any_widget_animates(widgets: &[crate::config::WidgetConfig], registry: &R
     })
 }
 
-fn render_error(frame: &mut Frame, area: Rect, msg: &str) {
-    frame.render_widget(Paragraph::new(msg), area);
+fn render_error(frame: &mut Frame, area: Rect, msg: &str, theme: &Theme) {
+    // Misconfiguration should pop, not blend — route through the status-error token so the
+    // coral-red reads as "fix this" against the theme surface.
+    frame.render_widget(
+        Paragraph::new(msg).style(Style::default().fg(theme.status_error)),
+        area,
+    );
 }
 
 #[cfg(test)]

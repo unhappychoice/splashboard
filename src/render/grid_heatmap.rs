@@ -5,7 +5,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::HEATMAP_RAMP];
+const COLOR_KEYS: &[ColorKey] = &[theme::HEATMAP_RAMP, theme::TEXT];
 
 /// 2D intensity grid — GitHub-style contribution graph and any other daily/periodic heatmap.
 /// Each cell takes two terminal columns and one row so the grid reads as "dots of equal width"
@@ -92,6 +92,7 @@ fn render_heatmap(
             data,
             visible_cols,
             col_offset,
+            theme,
         );
     }
     paint_cells(
@@ -169,6 +170,7 @@ fn paint_col_labels(
     data: &HeatmapData,
     visible_cols: usize,
     col_offset: usize,
+    theme: &Theme,
 ) {
     // Labels live on the top row of `area` (which includes the label row; `grid_area` starts
     // one row below). Write each non-empty label at its column's x-origin, extending as far
@@ -191,6 +193,7 @@ fn paint_col_labels(
         for (i, ch) in label.chars().take(max_chars).enumerate() {
             if let Some(cell) = buf.cell_mut((x0 + i as u16, area.y)) {
                 cell.set_symbol(&ch.to_string());
+                cell.set_fg(theme.text);
             }
         }
         next_label_start = c;

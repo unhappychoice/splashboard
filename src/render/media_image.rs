@@ -2,13 +2,15 @@ use std::io::IsTerminal;
 use std::sync::OnceLock;
 
 use image::DynamicImage;
-use ratatui::{Frame, layout::Rect, widgets::Paragraph};
+use ratatui::{Frame, layout::Rect, style::Style, widgets::Paragraph};
 use ratatui_image::{StatefulImage, picker::Picker};
 
 use crate::payload::{Body, ImageData};
-use crate::theme::Theme;
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 pub struct MediaImageRenderer;
 
@@ -19,24 +21,30 @@ impl Renderer for MediaImageRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Image]
     }
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
     fn render(
         &self,
         frame: &mut Frame,
         area: Rect,
         body: &Body,
         _opts: &RenderOptions,
-        _theme: &Theme,
+        theme: &Theme,
     ) {
         if let Body::Image(d) = body {
-            render_image_payload(frame, area, d);
+            render_image_payload(frame, area, d, theme);
         }
     }
 }
 
-fn render_image_payload(frame: &mut Frame, area: Rect, data: &ImageData) {
+fn render_image_payload(frame: &mut Frame, area: Rect, data: &ImageData, theme: &Theme) {
     match render_image(frame, area, &data.path) {
         Ok(()) => {}
-        Err(msg) => frame.render_widget(Paragraph::new(msg), area),
+        Err(msg) => frame.render_widget(
+            Paragraph::new(msg).style(Style::default().fg(theme.text)),
+            area,
+        ),
     }
 }
 

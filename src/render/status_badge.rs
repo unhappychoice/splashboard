@@ -11,7 +11,12 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::STATUS_OK, theme::STATUS_WARN, theme::STATUS_ERROR];
+const COLOR_KEYS: &[ColorKey] = &[
+    theme::STATUS_OK,
+    theme::STATUS_WARN,
+    theme::STATUS_ERROR,
+    theme::TEXT,
+];
 
 /// Traffic-light / badge renderer: a single coloured dot (● green / yellow / red) driven by
 /// `BadgeData.status`, followed by `BadgeData.label`. One indicator per widget — CI, deploy,
@@ -52,10 +57,11 @@ fn render_badge(
     opts: &RenderOptions,
     theme: &Theme,
 ) {
+    let label = Style::default().fg(theme.text);
     let line = Line::from(vec![
         Span::styled(DOT, Style::default().fg(status_color(data.status, theme))),
-        Span::raw(" "),
-        Span::raw(data.label.clone()),
+        Span::styled(" ", label),
+        Span::styled(data.label.clone(), label),
     ]);
     let p = Paragraph::new(line).alignment(parse_align(opts.align.as_deref()));
     frame.render_widget(p, area);
