@@ -4,7 +4,7 @@ use ratatui::{
     widgets::{List, ListItem},
 };
 
-use crate::payload::{Body, LinesData};
+use crate::payload::{Body, TextBlockData};
 
 use super::{RenderOptions, Renderer, Shape};
 
@@ -25,10 +25,10 @@ fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
     }
 }
 
-/// Renders lines through ratatui's `List` widget. Behaviourally close to `simple` today; the
-/// distinction matters once we add list-specific options (bullet marker, highlight selected
-/// item, scrollbar). Alternate renderer for the `Lines` shape so tests of the 1→N dispatch
-/// stay honest.
+/// Renders a multi-line block through ratatui's `List` widget. Behaviourally close to `simple`
+/// today; the distinction matters once we add list-specific options (bullet marker, highlight
+/// selected item, scrollbar). Alternate renderer for the `TextBlock` shape so tests of the 1→N
+/// dispatch stay honest.
 pub struct ListRenderer;
 
 impl Renderer for ListRenderer {
@@ -36,16 +36,16 @@ impl Renderer for ListRenderer {
         "list"
     }
     fn accepts(&self) -> &[Shape] {
-        &[Shape::Lines]
+        &[Shape::TextBlock]
     }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
-        if let Body::Lines(d) = body {
+        if let Body::TextBlock(d) = body {
             render_list(frame, area, d, opts);
         }
     }
 }
 
-fn render_list(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOptions) {
+fn render_list(frame: &mut Frame, area: Rect, data: &TextBlockData, opts: &RenderOptions) {
     let max = data
         .lines
         .iter()
@@ -64,7 +64,7 @@ fn render_list(frame: &mut Frame, area: Rect, data: &LinesData, opts: &RenderOpt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{LinesData, Payload};
+    use crate::payload::{Payload, TextBlockData};
     use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
 
@@ -73,7 +73,7 @@ mod tests {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData {
+            body: Body::TextBlock(TextBlockData {
                 lines: lines.iter().map(|s| s.to_string()).collect(),
             }),
         }

@@ -34,12 +34,13 @@ mod timeline;
 #[cfg(test)]
 pub mod test_utils;
 
-/// Data shape a fetcher produces. A shape is consumed by one or more renderers — a `Lines`
+/// Data shape a fetcher produces. A shape is consumed by one or more renderers — a `Text`
 /// shape can be rendered by `simple` (plain text), `ascii_art` (big-text via tui-big-text),
 /// and future alternatives (figlet, animated typewriter) without the fetcher needing to know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shape {
-    Lines,
+    Text,
+    TextBlock,
     Entries,
     Ratio,
     NumberSeries,
@@ -54,7 +55,8 @@ pub enum Shape {
 
 pub fn shape_of(body: &Body) -> Shape {
     match body {
-        Body::Lines(_) => Shape::Lines,
+        Body::Text(_) => Shape::Text,
+        Body::TextBlock(_) => Shape::TextBlock,
         Body::Entries(_) => Shape::Entries,
         Body::Ratio(_) => Shape::Ratio,
         Body::NumberSeries(_) => Shape::NumberSeries,
@@ -73,7 +75,8 @@ impl Shape {
     /// lengths stay reasonable.
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Lines => "lines",
+            Self::Text => "text",
+            Self::TextBlock => "text_block",
             Self::Entries => "entries",
             Self::Ratio => "ratio",
             Self::NumberSeries => "number_series",
@@ -205,7 +208,8 @@ impl Registry {
 
 pub fn default_renderer_for(shape: Shape) -> &'static str {
     match shape {
-        Shape::Lines => "simple",
+        Shape::Text => "simple",
+        Shape::TextBlock => "simple",
         Shape::Entries => "table",
         Shape::Ratio => "gauge",
         Shape::NumberSeries => "sparkline",
@@ -271,7 +275,8 @@ pub fn render_payload(
 /// - Everything else checks its natural collection.
 pub fn is_empty_body(body: &Body) -> bool {
     match body {
-        Body::Lines(d) => d.lines.is_empty() || d.lines.iter().all(|l| l.is_empty()),
+        Body::Text(d) => d.value.is_empty(),
+        Body::TextBlock(d) => d.lines.is_empty() || d.lines.iter().all(|l| l.is_empty()),
         Body::Entries(d) => d.items.is_empty(),
         Body::NumberSeries(d) => d.values.is_empty(),
         Body::PointSeries(d) => d.series.iter().all(|s| s.points.is_empty()),
@@ -383,7 +388,8 @@ mod tests {
     #[test]
     fn default_renderer_covers_every_shape() {
         for s in [
-            Shape::Lines,
+            Shape::Text,
+            Shape::TextBlock,
             Shape::Entries,
             Shape::Ratio,
             Shape::NumberSeries,
@@ -408,12 +414,17 @@ mod tests {
     #[test]
     fn is_empty_body_matches_expectations() {
         use crate::payload::{
-            BarsData, EntriesData, HeatmapData, ImageData, LinesData, NumberSeriesData,
-            PointSeriesData, RatioData,
+            BarsData, EntriesData, HeatmapData, ImageData, NumberSeriesData, PointSeriesData,
+            RatioData, TextBlockData, TextData,
         };
         // Empty cases.
-        assert!(is_empty_body(&Body::Lines(LinesData { lines: vec![] })));
-        assert!(is_empty_body(&Body::Lines(LinesData {
+        assert!(is_empty_body(&Body::Text(TextData {
+            value: String::new(),
+        })));
+        assert!(is_empty_body(&Body::TextBlock(TextBlockData {
+            lines: vec![],
+        })));
+        assert!(is_empty_body(&Body::TextBlock(TextBlockData {
             lines: vec![String::new()],
         })));
         assert!(is_empty_body(&Body::Entries(EntriesData { items: vec![] })));
@@ -434,7 +445,10 @@ mod tests {
             col_labels: None,
         })));
         // Non-empty and "structurally always present" cases.
-        assert!(!is_empty_body(&Body::Lines(LinesData {
+        assert!(!is_empty_body(&Body::Text(TextData {
+            value: "x".into(),
+        })));
+        assert!(!is_empty_body(&Body::TextBlock(TextBlockData {
             lines: vec!["x".into()],
         })));
         assert!(!is_empty_body(&Body::Ratio(RatioData {
@@ -469,16 +483,16 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_has_multiple_renderers() {
-        // The point of the whole registry: one shape, many renderers. Lines is consumed by both
+    fn text_shape_has_multiple_renderers() {
+        // The point of the whole registry: one shape, many renderers. `Text` is consumed by both
         // the plain `simple` renderer and the `ascii_art` renderer — users pick via config.
         let r = Registry::with_builtins();
-        assert!(r.get("simple").unwrap().accepts().contains(&Shape::Lines));
+        assert!(r.get("simple").unwrap().accepts().contains(&Shape::Text));
         assert!(
             r.get("ascii_art")
                 .unwrap()
                 .accepts()
-                .contains(&Shape::Lines)
+                .contains(&Shape::Text)
         );
     }
 }

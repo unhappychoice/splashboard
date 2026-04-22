@@ -14,7 +14,7 @@ use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder};
 use super::items::{SearchResult, render_items};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -74,7 +74,7 @@ impl Fetcher for GithubGoodFirstIssues {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "ratatui/ratatui#999 improve docs for Paragraph",
                 "tokio-rs/console#123 add quickstart section",
             ]),
@@ -119,7 +119,7 @@ impl Fetcher for GithubGoodFirstIssues {
         let res: SearchResult = rest_get(&path).await?;
         Ok(payload(render_items(
             &res.items,
-            ctx.shape.unwrap_or(Shape::Lines),
+            ctx.shape.unwrap_or(Shape::TextBlock),
             include_repo,
         )))
     }

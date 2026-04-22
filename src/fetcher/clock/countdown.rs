@@ -1,19 +1,19 @@
-//! `clock_countdown` — remaining time to `target` (single, Lines) or `targets = [...]` (multi,
-//! Lines / Entries). Past targets render as `"passed"` so the widget keeps rendering through the
-//! event boundary.
+//! `clock_countdown` — remaining time to `target` (single, Text) or `targets = [...]` (multi,
+//! TextBlock / Entries). Past targets render as `"passed"` so the widget keeps rendering through
+//! the event boundary.
 
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, LinesData, Payload};
+use crate::payload::{Body, EntriesData, Entry, Payload, TextBlockData, TextData};
 use crate::render::Shape;
 use crate::samples;
 
 use super::common;
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::Text, Shape::TextBlock, Shape::Entries];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -42,7 +42,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         type_hint: "array of `{ label, target }`",
         required: false,
         default: None,
-        description: "Multiple labelled countdowns. Rendered as `Lines` by default or `Entries` when the renderer expects a key/value shape.",
+        description: "Multiple labelled countdowns. Rendered as `TextBlock` by default or `Entries` when the renderer expects a key/value shape.",
     },
 ];
 
@@ -83,7 +83,8 @@ impl RealtimeFetcher for ClockCountdownFetcher {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["Ship v2: 42d 3h"]),
+            Shape::Text => samples::text("Ship v2: 42d 3h"),
+            Shape::TextBlock => samples::text_block(&["Ship v2: 42d 3h", "Release: 7d"]),
             Shape::Entries => samples::entries(&[("Ship v2", "42d 3h"), ("Release", "7d")]),
             _ => return None,
         })
@@ -94,7 +95,7 @@ impl RealtimeFetcher for ClockCountdownFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let now = common::now_in(opts.timezone.as_deref());
-        let shape = ctx.shape.unwrap_or(Shape::Lines);
+        let shape = ctx.shape.unwrap_or(Shape::Text);
         let body = match (&opts.targets, &opts.target, shape) {
             (Some(list), _, Shape::Entries) => Body::Entries(EntriesData {
                 items: list
@@ -106,17 +107,17 @@ impl RealtimeFetcher for ClockCountdownFetcher {
                     })
                     .collect(),
             }),
-            (Some(list), _, _) => Body::Lines(LinesData {
+            (Some(list), _, _) => Body::TextBlock(TextBlockData {
                 lines: list
                     .iter()
                     .map(|t| format!("{}: {}", t.label, format_remaining(&now, &t.target)))
                     .collect(),
             }),
-            (None, Some(target), _) => Body::Lines(LinesData {
-                lines: vec![format_single(&now, target, opts.target_label.as_deref())],
+            (None, Some(target), _) => Body::Text(TextData {
+                value: format_single(&now, target, opts.target_label.as_deref()),
             }),
-            (None, None, _) => Body::Lines(LinesData {
-                lines: vec!["no target configured".into()],
+            (None, None, _) => Body::Text(TextData {
+                value: "no target configured".into(),
             }),
         };
         Payload {
@@ -189,11 +190,11 @@ mod tests {
     }
 
     #[test]
-    fn single_target_emits_one_line() {
-        let p = ClockCountdownFetcher.compute(&ctx(Some(Shape::Lines), "target = \"2099-12-31\""));
+    fn single_target_emits_text() {
+        let p = ClockCountdownFetcher.compute(&ctx(Some(Shape::Text), "target = \"2099-12-31\""));
         match p.body {
-            Body::Lines(d) => assert_eq!(d.lines.len(), 1),
-            _ => panic!("expected lines"),
+            Body::Text(d) => assert!(!d.value.is_empty()),
+            _ => panic!("expected text"),
         }
     }
 
@@ -211,10 +212,10 @@ mod tests {
 
     #[test]
     fn past_target_renders_passed() {
-        let p = ClockCountdownFetcher.compute(&ctx(Some(Shape::Lines), "target = \"2000-01-01\""));
+        let p = ClockCountdownFetcher.compute(&ctx(Some(Shape::Text), "target = \"2000-01-01\""));
         match p.body {
-            Body::Lines(d) => assert!(d.lines[0].contains("passed")),
-            _ => panic!("expected lines"),
+            Body::Text(d) => assert!(d.value.contains("passed")),
+            _ => panic!("expected text"),
         }
     }
 

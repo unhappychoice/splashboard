@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarsData, Body, CalendarData, EntriesData, HeatmapData, ImageData, LinesData,
-    NumberSeriesData, Payload, PointSeriesData, RatioData,
+    Bar, BarsData, Body, CalendarData, EntriesData, HeatmapData, ImageData, NumberSeriesData,
+    Payload, PointSeriesData, RatioData, TextBlockData, TextData,
 };
 use crate::render::Shape;
 
@@ -14,7 +14,8 @@ use super::{FetchContext, FetchError, Fetcher, Safety};
 /// the escape hatch for user-defined widgets, so it supports the non-dynamic shapes exhaustively;
 /// config picks which variant a specific file maps to.
 const READ_STORE_SHAPES: &[Shape] = &[
-    Shape::Lines,
+    Shape::Text,
+    Shape::TextBlock,
     Shape::Entries,
     Shape::Ratio,
     Shape::NumberSeries,
@@ -63,9 +64,9 @@ impl Fetcher for ReadStoreFetcher {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         // Runtime always derives a shape (renderer's single accepted shape, or our
-        // `default_shape`); `None` falls back defensively to Lines so direct callers still
+        // `default_shape`); `None` falls back defensively to TextBlock so direct callers still
         // behave.
-        let shape = ctx.shape.unwrap_or(Shape::Lines);
+        let shape = ctx.shape.unwrap_or(Shape::TextBlock);
         let file_format = ctx
             .file_format
             .as_deref()
@@ -82,11 +83,11 @@ impl Fetcher for ReadStoreFetcher {
     }
 }
 
-/// `text` is the natural default for `lines`; everything else needs structure. Saves users
+/// `text` is the natural default for text shapes; everything else needs structure. Saves users
 /// from writing `file_format = "text"` for every simple notes widget.
 fn default_format_for_shape(shape: Shape) -> &'static str {
     match shape {
-        Shape::Lines => "text",
+        Shape::Text | Shape::TextBlock => "text",
         _ => "json",
     }
 }
@@ -132,7 +133,10 @@ fn load_body(path: &std::path::Path, file_format: &str, shape: Shape) -> Result<
 
 fn parse_body(text: &str, file_format: &str, shape: Shape) -> Result<Body, FetchError> {
     match (file_format, shape) {
-        ("text", Shape::Lines) => Ok(Body::Lines(LinesData {
+        ("text", Shape::Text) => Ok(Body::Text(TextData {
+            value: text.to_string(),
+        })),
+        ("text", Shape::TextBlock) => Ok(Body::TextBlock(TextBlockData {
             lines: text.lines().map(str::to_string).collect(),
         })),
         ("text", _) => Err(FetchError::Failed(format!(
@@ -159,7 +163,8 @@ fn from_json(text: &str, shape: Shape) -> Result<Body, FetchError> {
         };
     }
     match shape {
-        Shape::Lines => parse_as!(LinesData, Lines),
+        Shape::Text => parse_as!(TextData, Text),
+        Shape::TextBlock => parse_as!(TextBlockData, TextBlock),
         Shape::Entries => parse_as!(EntriesData, Entries),
         Shape::Ratio => parse_as!(RatioData, Ratio),
         Shape::NumberSeries => parse_as!(NumberSeriesData, NumberSeries),
@@ -184,7 +189,8 @@ fn from_toml(text: &str, shape: Shape) -> Result<Body, FetchError> {
         };
     }
     match shape {
-        Shape::Lines => parse_as!(LinesData, Lines),
+        Shape::Text => parse_as!(TextData, Text),
+        Shape::TextBlock => parse_as!(TextBlockData, TextBlock),
         Shape::Entries => parse_as!(EntriesData, Entries),
         Shape::Ratio => parse_as!(RatioData, Ratio),
         Shape::NumberSeries => parse_as!(NumberSeriesData, NumberSeries),
@@ -204,6 +210,9 @@ fn from_toml(text: &str, shape: Shape) -> Result<Body, FetchError> {
 /// stays quiet rather than breaking — matches the "optional" flavor of ReadStore widgets.
 fn empty_body(shape: Shape) -> Body {
     match shape {
+        Shape::Text => Body::Text(TextData {
+            value: String::new(),
+        }),
         Shape::Entries => Body::Entries(EntriesData { items: Vec::new() }),
         Shape::Ratio => Body::Ratio(RatioData {
             value: 0.0,
@@ -229,7 +238,7 @@ fn empty_body(shape: Shape) -> Body {
             row_labels: None,
             col_labels: None,
         }),
-        _ => Body::Lines(LinesData { lines: Vec::new() }),
+        _ => Body::TextBlock(TextBlockData { lines: Vec::new() }),
     }
 }
 
@@ -298,19 +307,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn text_shape_lines_splits_on_newline() {
+    async fn text_block_splits_on_newline() {
         let tmp = tempfile::tempdir().unwrap();
         let store = tmp.path().join("store");
         std::fs::create_dir_all(&store).unwrap();
         std::fs::write(store.join("notes.txt"), "one\ntwo\nthree").unwrap();
         let _guard = ScopedHome::new(tmp.path());
         let p = ReadStoreFetcher
-            .fetch(&ctx("notes", Shape::Lines, "text"))
+            .fetch(&ctx("notes", Shape::TextBlock, "text"))
             .await
             .unwrap();
         match p.body {
-            Body::Lines(d) => assert_eq!(d.lines, vec!["one", "two", "three"]),
-            other => panic!("expected lines body, got {other:?}"),
+            Body::TextBlock(d) => assert_eq!(d.lines, vec!["one", "two", "three"]),
+            other => panic!("expected text_block body, got {other:?}"),
         }
     }
 
@@ -329,9 +338,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_shape_falls_back_to_lines() {
-        // Runtime always supplies a shape now, but defensively treat `None` as Lines so a stray
-        // caller doesn't get an error and the cache_key stays stable.
+    async fn missing_shape_falls_back_to_text_block() {
+        // Runtime always supplies a shape now, but defensively treat `None` as TextBlock so a
+        // stray caller doesn't get an error and the cache_key stays stable.
         let tmp = tempfile::tempdir().unwrap();
         let store = tmp.path().join("store");
         std::fs::create_dir_all(&store).unwrap();
@@ -345,8 +354,8 @@ mod tests {
         };
         let p = ReadStoreFetcher.fetch(&c).await.unwrap();
         match p.body {
-            Body::Lines(d) => assert_eq!(d.lines, vec!["hello"]),
-            other => panic!("expected lines body, got {other:?}"),
+            Body::TextBlock(d) => assert_eq!(d.lines, vec!["hello"]),
+            other => panic!("expected text_block body, got {other:?}"),
         }
     }
 
@@ -368,7 +377,7 @@ mod tests {
     #[test]
     fn cache_key_differs_across_shapes() {
         let a = ReadStoreFetcher.cache_key(&ctx("habit", Shape::Heatmap, "json"));
-        let b = ReadStoreFetcher.cache_key(&ctx("habit", Shape::Lines, "json"));
+        let b = ReadStoreFetcher.cache_key(&ctx("habit", Shape::TextBlock, "json"));
         assert_ne!(a, b);
     }
 }

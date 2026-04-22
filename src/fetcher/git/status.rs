@@ -5,12 +5,12 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Entries, Shape::Lines, Shape::Badge];
+const SHAPES: &[Shape] = &[Shape::Entries, Shape::Text, Shape::Badge];
 
 /// Working tree snapshot: branch, dirty flag, ahead/behind vs upstream. Multi-shape so a user can
-/// pick a key/value panel (`Entries`, default), a one-liner (`Lines`), or a clean/dirty traffic
+/// pick a key/value panel (`Entries`, default), a one-liner (`Text`), or a clean/dirty traffic
 /// light (`Badge`). Detached HEAD shows the short commit hash in place of the branch.
 pub struct GitStatus;
 
@@ -39,7 +39,7 @@ impl Fetcher for GitStatus {
                 ("modified", "3"),
                 ("untracked", "1"),
             ]),
-            Shape::Lines => samples::lines(&["main  +2 −0  ◆3 ?1"]),
+            Shape::Text => samples::text("main  +2 −0  ◆3 ?1"),
             Shape::Badge => samples::badge(PayloadStatus::Ok, "clean"),
             _ => return None,
         })
@@ -136,7 +136,7 @@ fn render_body(info: &StatusInfo, shape: Shape) -> Body {
                 format!("{} · clean", short_branch(info))
             },
         }),
-        Shape::Lines => lines_body(vec![format_line(info)]),
+        Shape::Text => text_body(format_line(info)),
         _ => Body::Entries(EntriesData {
             items: build_entries(info),
         }),
@@ -259,15 +259,14 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_summarises_branch_and_state() {
+    fn text_shape_summarises_branch_and_state() {
         let (_tmp, repo) = make_repo();
         commit(&repo, "initial");
-        let body = call(&repo, Shape::Lines);
+        let body = call(&repo, Shape::Text);
         match body {
-            Body::Lines(d) => {
-                assert_eq!(d.lines.len(), 1);
-                assert!(d.lines[0].contains("main"));
-                assert!(d.lines[0].contains("clean"));
+            Body::Text(d) => {
+                assert!(d.value.contains("main"));
+                assert!(d.value.contains("clean"));
             }
             _ => panic!(),
         }

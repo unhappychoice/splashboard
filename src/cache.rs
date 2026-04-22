@@ -180,16 +180,14 @@ fn io_err<E: std::fmt::Display>(e: E) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Body, LinesData};
+    use crate::payload::{Body, TextData};
 
     fn sample() -> Payload {
         Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::Lines(LinesData {
-                lines: vec!["hi".into()],
-            }),
+            body: Body::Text(TextData { value: "hi".into() }),
         }
     }
 

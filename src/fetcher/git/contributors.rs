@@ -9,15 +9,15 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Bars, Shape::Entries, Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Bars, Shape::Entries, Shape::Text];
 const DEFAULT_DAYS: u64 = 30;
 const MAX_ENTRIES: usize = 10;
 
 /// Commit authors over the last N days (default 30, configurable via `format = "N"`). Ranked
 /// by commit count, truncated to the top 10 so a busy repo doesn't blow up the widget. `Bars`
-/// is the default (visual ranking); `Entries` emits `name: count` rows; `Lines` collapses to
+/// is the default (visual ranking); `Entries` emits `name: count` rows; `Text` collapses to
 /// `"alice (23), bob (11)"` style.
 pub struct GitContributors;
 
@@ -49,12 +49,7 @@ impl Fetcher for GitContributors {
                 ("charlie", "17"),
                 ("dave", "9"),
             ]),
-            Shape::Lines => samples::lines(&[
-                "alice     42",
-                "bob       28",
-                "charlie   17",
-                "dave       9",
-            ]),
+            Shape::Text => samples::text("alice (42), bob (28), charlie (17), dave (9)"),
             _ => return None,
         })
     }
@@ -119,16 +114,16 @@ fn render_body(ranked: Vec<(String, u64)>, shape: Shape) -> Body {
                 })
                 .collect(),
         }),
-        Shape::Lines => {
+        Shape::Text => {
             if ranked.is_empty() {
-                lines_body(Vec::new())
+                text_body("")
             } else {
                 let line = ranked
                     .into_iter()
                     .map(|(name, count)| format!("{name} ({count})"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                lines_body(vec![line])
+                text_body(line)
             }
         }
         _ => Body::Bars(BarsData {
@@ -179,19 +174,19 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_empty_when_empty() {
-        let body = render_body(Vec::new(), Shape::Lines);
+    fn text_shape_empty_when_empty() {
+        let body = render_body(Vec::new(), Shape::Text);
         match body {
-            Body::Lines(d) => assert!(d.lines.is_empty()),
+            Body::Text(d) => assert!(d.value.is_empty()),
             _ => panic!(),
         }
     }
 
     #[test]
-    fn lines_shape_joins_with_counts() {
-        let body = render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Lines);
+    fn text_shape_joins_with_counts() {
+        let body = render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Text);
         match body {
-            Body::Lines(d) => assert_eq!(d.lines, vec!["alice (3), bob (1)".to_string()]),
+            Body::Text(d) => assert_eq!(d.value, "alice (3), bob (1)"),
             _ => panic!(),
         }
     }

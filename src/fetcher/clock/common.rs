@@ -7,7 +7,7 @@ use std::fmt::Write;
 
 use chrono::{DateTime, FixedOffset, Local, NaiveDate, Utc};
 
-use crate::payload::{Body, LinesData, Payload};
+use crate::payload::{Body, Payload, TextBlockData};
 
 pub const DEFAULT_FORMAT: &str = "%H:%M";
 
@@ -47,7 +47,7 @@ pub fn placeholder(msg: &str) -> Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::Lines(LinesData {
+        body: Body::TextBlock(TextBlockData {
             lines: vec![
                 format!("⚠ {msg}"),
                 "check [widget.options] in config".into(),

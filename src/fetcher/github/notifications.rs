@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, LinesData, Payload, TimelineData, TimelineEvent};
+use crate::payload::{Body, EntriesData, Entry, Payload, TextBlockData, TimelineData, TimelineEvent};
 use crate::render::Shape;
 use crate::samples;
 
@@ -13,7 +13,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{cache_key, parse_options, parse_timestamp, payload, placeholder};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -63,7 +63,7 @@ impl Fetcher for GithubNotifications {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "splashboard review_requested: feat: heatmap",
                 "ratatui mention: rfc: themes",
             ]),
@@ -93,7 +93,7 @@ impl Fetcher for GithubNotifications {
         let items: Vec<Notification> = rest_get(&path).await?;
         Ok(payload(render_body(
             &items,
-            ctx.shape.unwrap_or(Shape::Lines),
+            ctx.shape.unwrap_or(Shape::TextBlock),
         )))
     }
 }
@@ -139,7 +139,7 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
-        _ => Body::Lines(LinesData {
+        _ => Body::TextBlock(TextBlockData {
             lines: items
                 .iter()
                 .map(|n| {
@@ -183,10 +183,10 @@ mod tests {
     }
 
     #[test]
-    fn lines_body_composes_repo_reason_title() {
-        let body = render_body(&[sample()], Shape::Lines);
-        let Body::Lines(l) = body else {
-            panic!("expected lines");
+    fn text_block_body_composes_repo_reason_title() {
+        let body = render_body(&[sample()], Shape::TextBlock);
+        let Body::TextBlock(l) = body else {
+            panic!("expected text_block");
         };
         assert!(l.lines[0].contains("unhappychoice/splashboard"));
         assert!(l.lines[0].contains("review_requested"));

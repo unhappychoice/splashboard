@@ -15,15 +15,18 @@ pub struct Payload {
 }
 
 /// Data-shape of a fetched payload. Variants describe the **shape of the data**, not how it's
-/// rendered — the same shape can feed multiple renderers (e.g. `Lines` feeds both the plain
+/// rendered — the same shape can feed multiple renderers (e.g. `Text` feeds both the plain
 /// `simple` renderer and the big-text `ascii_art` renderer). Config's `render = "…"` picks the
 /// renderer, compat-checked against the shape at dispatch time.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "shape", content = "data", rename_all = "snake_case")]
 pub enum Body {
-    /// Zero or more lines of text. Used by anything that emits short strings (clock, greeting,
-    /// branch name) or multi-line blocks (welcome notes, todo items).
-    Lines(LinesData),
+    /// A single string. Used by anything that emits one logical row: clock time, greeting,
+    /// branch name, countdown label.
+    Text(TextData),
+    /// Zero or more lines of text. Used by anything intrinsically multi-line: recent commits,
+    /// worktrees, welcome notes, todo items.
+    TextBlock(TextBlockData),
     /// Key/value rows. Used by system info, env dumps, anything label:value shaped.
     Entries(EntriesData),
     /// A single 0..=1 value with an optional display label. Gauges, progress bars, donuts.
@@ -61,7 +64,12 @@ pub enum Status {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct LinesData {
+pub struct TextData {
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TextBlockData {
     pub lines: Vec<String>,
 }
 
@@ -190,33 +198,51 @@ mod tests {
     }
 
     #[test]
-    fn lines_round_trips() {
+    fn text_round_trips() {
         let p = Payload {
             icon: None,
             status: None,
             format: Some("{branch}".into()),
-            body: Body::Lines(LinesData {
-                lines: vec!["main".into()],
+            body: Body::Text(TextData {
+                value: "main".into(),
             }),
         };
         assert_eq!(p, round_trip(&p));
     }
 
     #[test]
-    fn lines_parses_from_spec_example() {
-        let json = r#"{"shape":"lines","data":{"lines":["main"]}}"#;
+    fn text_parses_from_spec_example() {
+        let json = r#"{"shape":"text","data":{"value":"main"}}"#;
         let p: Payload = serde_json::from_str(json).unwrap();
-        assert!(matches!(p.body, Body::Lines(_)));
+        assert!(matches!(p.body, Body::Text(_)));
     }
 
     #[test]
-    fn lines_serializes_with_expected_shape_tag() {
-        let p = bare(Body::Lines(LinesData {
-            lines: vec!["main".into()],
+    fn text_serializes_with_expected_shape_tag() {
+        let p = bare(Body::Text(TextData {
+            value: "main".into(),
         }));
         let v: serde_json::Value = serde_json::to_value(&p).unwrap();
-        assert_eq!(v["shape"], "lines");
-        assert_eq!(v["data"]["lines"][0], "main");
+        assert_eq!(v["shape"], "text");
+        assert_eq!(v["data"]["value"], "main");
+    }
+
+    #[test]
+    fn text_block_round_trips() {
+        let p = bare(Body::TextBlock(TextBlockData {
+            lines: vec!["feat: a".into(), "fix: b".into()],
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn text_block_serializes_with_expected_shape_tag() {
+        let p = bare(Body::TextBlock(TextBlockData {
+            lines: vec!["a".into()],
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "text_block");
+        assert_eq!(v["data"]["lines"][0], "a");
     }
 
     #[test]
@@ -284,12 +310,9 @@ mod tests {
     }
 
     #[test]
-    fn single_line_via_lines_variant() {
-        // Replaces the old Bignum round-trip: short strings are now just a Lines body with one
-        // element, shared with multi-line content. Which renderer consumes it (big-text vs plain)
-        // is a config decision, not a Body shape decision.
-        let p = bare(Body::Lines(LinesData {
-            lines: vec!["12:34".into()],
+    fn single_line_via_text_variant() {
+        let p = bare(Body::Text(TextData {
+            value: "12:34".into(),
         }));
         assert_eq!(p, round_trip(&p));
     }
@@ -364,7 +387,7 @@ mod tests {
 
     #[test]
     fn optional_fields_absent_in_serialization() {
-        let p = bare(Body::Lines(LinesData { lines: vec![] }));
+        let p = bare(Body::TextBlock(TextBlockData { lines: vec![] }));
         let json = serde_json::to_string(&p).unwrap();
         assert!(!json.contains("icon"));
         assert!(!json.contains("status"));

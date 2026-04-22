@@ -6,13 +6,13 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_block_body};
 
-const SHAPES: &[Shape] = &[Shape::Timeline, Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Timeline, Shape::TextBlock];
 const DEFAULT_LIMIT: usize = 10;
 
 /// Newest commits on HEAD, walked via gix rev-walk. The `format` field is parsed as a commit
-/// count (`"5"`, `"20"`) — absent or unparseable falls back to 10. `Lines` renders
+/// count (`"5"`, `"20"`) — absent or unparseable falls back to 10. `TextBlock` renders
 /// `<short> <summary>` one per line so users who want a flat list instead of the timeline
 /// renderer's relative-ago labels can still wire it up.
 pub struct GitRecentCommits;
@@ -41,7 +41,7 @@ impl Fetcher for GitRecentCommits {
                 (1_699_990_000, "fix(fetcher): tz fallback", Some("d4e5f6a")),
                 (1_699_900_000, "chore: bump ratatui", Some("e7f8a9b")),
             ]),
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "a1b2c3d feat(render): add heatmap",
                 "d4e5f6a fix(fetcher): tz fallback",
                 "e7f8a9b chore: bump ratatui",
@@ -107,7 +107,7 @@ fn parse_limit(format: Option<&str>) -> usize {
 
 fn render_body(commits: Vec<CommitInfo>, shape: Shape) -> Body {
     match shape {
-        Shape::Lines => lines_body(
+        Shape::TextBlock => text_block_body(
             commits
                 .into_iter()
                 .map(|c| format!("{} {}", c.short_hash, c.summary))
@@ -176,12 +176,12 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_prefixes_short_hash() {
+    fn text_block_shape_prefixes_short_hash() {
         let (_tmp, repo) = make_repo();
         commit(&repo, "hello");
-        let body = render_body(recent_commits(&repo, 10).unwrap(), Shape::Lines);
+        let body = render_body(recent_commits(&repo, 10).unwrap(), Shape::TextBlock);
         match body {
-            Body::Lines(d) => {
+            Body::TextBlock(d) => {
                 assert_eq!(d.lines.len(), 1);
                 assert!(d.lines[0].ends_with(" hello"));
             }

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, LinesData, Payload};
+use crate::payload::{Body, EntriesData, Entry, Payload, TextData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -13,7 +13,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::Text, Shape::Entries];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "repo",
@@ -52,7 +52,7 @@ impl Fetcher for GithubRepoStars {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["★ 142"]),
+            Shape::Text => samples::text("★ 142"),
             Shape::Entries => samples::entries(&[
                 ("stars", "142"),
                 ("forks", "9"),
@@ -73,7 +73,7 @@ impl Fetcher for GithubRepoStars {
         };
         let path = format!("/repos/{}/{}", slug.owner, slug.name);
         let repo: RepoInfo = rest_get(&path).await?;
-        let body = match ctx.shape.unwrap_or(Shape::Lines) {
+        let body = match ctx.shape.unwrap_or(Shape::Text) {
             Shape::Entries => Body::Entries(EntriesData {
                 items: vec![
                     entry("stars", &repo.stargazers_count.to_string()),
@@ -82,8 +82,8 @@ impl Fetcher for GithubRepoStars {
                     entry("open_issues", &repo.open_issues_count.to_string()),
                 ],
             }),
-            _ => Body::Lines(LinesData {
-                lines: vec![format!("★ {}", repo.stargazers_count)],
+            _ => Body::Text(TextData {
+                value: format!("★ {}", repo.stargazers_count),
             }),
         };
         Ok(payload(body))

@@ -1,6 +1,7 @@
 //! Git / VCS fetchers backed by `gix`. All read-only (Safety::Safe) against the repo rooted at
-//! the process CWD (walk-up via `gix::discover`). Each fetcher is multi-shape: they all accept
-//! `Lines` as a universal fallback plus one or two structural shapes that carry the real data.
+//! the process CWD (walk-up via `gix::discover`). Each fetcher is multi-shape: they accept one
+//! text variant (`Text` for single-string summaries, `TextBlock` for multi-row output) plus one
+//! or two structural shapes that carry the real data.
 //!
 //! Cache keys mix the discovered repo root so running splashboard in two different projects
 //! doesn't pollute each other's `git_status` cache entries.
@@ -10,7 +11,7 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 
-use crate::payload::{Body, LinesData, Payload};
+use crate::payload::{Body, Payload, TextBlockData, TextData};
 
 use super::{FetchContext, FetchError, Fetcher};
 
@@ -53,8 +54,14 @@ pub(crate) fn payload(body: Body) -> Payload {
     }
 }
 
-pub(crate) fn lines_body(values: Vec<String>) -> Body {
-    Body::Lines(LinesData { lines: values })
+pub(crate) fn text_body(value: impl Into<String>) -> Body {
+    Body::Text(TextData {
+        value: value.into(),
+    })
+}
+
+pub(crate) fn text_block_body(values: Vec<String>) -> Body {
+    Body::TextBlock(TextBlockData { lines: values })
 }
 
 pub(crate) fn fail<E: std::fmt::Display>(e: E) -> FetchError {

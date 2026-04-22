@@ -13,16 +13,16 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::{fail, lines_body, open_repo, payload, repo_cache_key};
+use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Heatmap, Shape::Lines];
+const SHAPES: &[Shape] = &[Shape::Heatmap, Shape::Text];
 const WEEKS: usize = 52;
 const TOP_FILES: usize = 7;
 const MAX_COMMITS: usize = 500;
 
 /// Per-file churn over the last 52 weeks. Rows are the top 7 most-touched files (truncated path),
 /// columns are weeks (rightmost = this week), cell = commits in that week touching that file.
-/// `Lines` emits a top-N summary `"src/main.rs (42), src/lib.rs (31), …"`.
+/// `Text` emits a top-N summary `"src/main.rs (42), src/lib.rs (31), …"`.
 pub struct GitBlameHeatmap;
 
 #[async_trait]
@@ -45,11 +45,7 @@ impl Fetcher for GitBlameHeatmap {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Heatmap => samples::heatmap_grid(5, 10),
-            Shape::Lines => samples::lines(&[
-                "src/main.rs        18",
-                "src/render/mod.rs  12",
-                "src/fetcher/mod.rs  9",
-            ]),
+            Shape::Text => samples::text("src/main.rs (18), src/render/mod.rs (12), src/fetcher/mod.rs (9)"),
             _ => return None,
         })
     }
@@ -195,9 +191,9 @@ fn week_col(date: NaiveDate, start: NaiveDate) -> Option<usize> {
 
 fn render_body(churn: Churn, shape: Shape) -> Body {
     match shape {
-        Shape::Lines => {
+        Shape::Text => {
             if churn.files.is_empty() {
-                lines_body(Vec::new())
+                text_body("")
             } else {
                 let line = churn
                     .files
@@ -206,7 +202,7 @@ fn render_body(churn: Churn, shape: Shape) -> Body {
                     .map(|(f, c)| format!("{} ({c})", short_path(f)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                lines_body(vec![line])
+                text_body(line)
             }
         }
         _ => Body::Heatmap(HeatmapData {
@@ -258,20 +254,19 @@ mod tests {
     }
 
     #[test]
-    fn lines_shape_summarises_with_counts() {
+    fn text_shape_summarises_with_counts() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "dir/deep/name.rs", "x");
         let body = render_body(
             churn(&repo, Local::now().date_naive()).unwrap(),
-            Shape::Lines,
+            Shape::Text,
         );
         match body {
-            Body::Lines(d) => {
-                assert_eq!(d.lines.len(), 1);
+            Body::Text(d) => {
                 assert!(
-                    d.lines[0].starts_with("name.rs ("),
-                    "unexpected line: {:?}",
-                    d.lines[0]
+                    d.value.starts_with("name.rs ("),
+                    "unexpected text: {:?}",
+                    d.value
                 );
             }
             _ => panic!(),

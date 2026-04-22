@@ -18,7 +18,7 @@ use chrono::{DateTime, Datelike, FixedOffset, Timelike};
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, CalendarData, EntriesData, Entry, LinesData, Payload};
+use crate::payload::{Body, CalendarData, EntriesData, Entry, Payload, TextData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -53,7 +53,7 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
     ]
 }
 
-const BASE_SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Calendar];
+const BASE_SHAPES: &[Shape] = &[Shape::Text, Shape::Entries, Shape::Calendar];
 
 /// Base clock — renders "now" as a formatted string, key/value breakdown, or month calendar.
 /// Options: `timezone` (IANA name) and `events` (days-of-month highlighted in Calendar shape).
@@ -83,7 +83,7 @@ impl RealtimeFetcher for ClockFetcher {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["14:35"]),
+            Shape::Text => samples::text("14:35"),
             Shape::Entries => samples::entries(&[
                 ("year", "2026"),
                 ("month", "04"),
@@ -102,7 +102,7 @@ impl RealtimeFetcher for ClockFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let now = common::now_in(opts.timezone.as_deref());
-        let shape = ctx.shape.unwrap_or(Shape::Lines);
+        let shape = ctx.shape.unwrap_or(Shape::Text);
         let body = match shape {
             Shape::Entries => Body::Entries(EntriesData {
                 items: entries(&now),
@@ -113,11 +113,11 @@ impl RealtimeFetcher for ClockFetcher {
                 day: Some(now.day() as u8),
                 events: opts.events.unwrap_or_default(),
             }),
-            _ => Body::Lines(LinesData {
-                lines: vec![common::safe_format(
+            _ => Body::Text(TextData {
+                value: common::safe_format(
                     &now,
                     ctx.format.as_deref().unwrap_or(common::DEFAULT_FORMAT),
-                )],
+                ),
             }),
         };
         Payload {
@@ -165,14 +165,11 @@ mod tests {
     }
 
     #[test]
-    fn default_shape_is_lines_with_colon() {
+    fn default_shape_is_text_with_colon() {
         let p = ClockFetcher.compute(&ctx(None, None));
         match p.body {
-            Body::Lines(d) => {
-                assert_eq!(d.lines.len(), 1);
-                assert!(d.lines[0].contains(':'));
-            }
-            _ => panic!("expected lines"),
+            Body::Text(d) => assert!(d.value.contains(':')),
+            _ => panic!("expected text"),
         }
     }
 
@@ -196,10 +193,10 @@ mod tests {
 
     #[test]
     fn unknown_option_is_rejected_to_placeholder() {
-        let p = ClockFetcher.compute(&ctx(Some(Shape::Lines), Some("bogus = 1")));
+        let p = ClockFetcher.compute(&ctx(Some(Shape::Text), Some("bogus = 1")));
         match p.body {
-            Body::Lines(d) => assert!(d.lines[0].starts_with("⚠")),
-            _ => panic!("expected placeholder lines"),
+            Body::TextBlock(d) => assert!(d.lines[0].starts_with("⚠")),
+            _ => panic!("expected placeholder block"),
         }
     }
 

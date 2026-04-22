@@ -1,18 +1,18 @@
 //! `clock_sunrise` — sunrise & sunset for a lat/lon, via a NOAA-style approximation (±1 min).
-//! Emits `Lines` (`"↑ 05:23  ↓ 18:47"`) or `Entries` (split rows).
+//! Emits `Text` (`"↑ 05:23  ↓ 18:47"`) or `Entries` (split rows).
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Timelike, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, LinesData, Payload};
+use crate::payload::{Body, EntriesData, Entry, Payload, TextData};
 use crate::render::Shape;
 use crate::samples;
 
 use super::common;
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::Text, Shape::Entries];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -66,7 +66,7 @@ impl RealtimeFetcher for ClockSunriseFetcher {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&["↑ 05:23  ↓ 18:47"]),
+            Shape::Text => samples::text("↑ 05:23  ↓ 18:47"),
             Shape::Entries => samples::entries(&[("sunrise", "05:23"), ("sunset", "18:47")]),
             _ => return None,
         })
@@ -76,7 +76,7 @@ impl RealtimeFetcher for ClockSunriseFetcher {
             Ok(o) => o,
             Err(msg) => return common::placeholder(&msg),
         };
-        let shape = ctx.shape.unwrap_or(Shape::Lines);
+        let shape = ctx.shape.unwrap_or(Shape::Text);
         let body = match compute_events(&opts) {
             Ok((up, down)) => match shape {
                 Shape::Entries => Body::Entries(EntriesData {
@@ -85,15 +85,11 @@ impl RealtimeFetcher for ClockSunriseFetcher {
                         entry("sunset", &format_clock(&down)),
                     ],
                 }),
-                _ => Body::Lines(LinesData {
-                    lines: vec![format!(
-                        "↑ {}  ↓ {}",
-                        format_clock(&up),
-                        format_clock(&down)
-                    )],
+                _ => Body::Text(TextData {
+                    value: format!("↑ {}  ↓ {}", format_clock(&up), format_clock(&down)),
                 }),
             },
-            Err(msg) => Body::Lines(LinesData { lines: vec![msg] }),
+            Err(msg) => Body::Text(TextData { value: msg }),
         };
         Payload {
             icon: None,
@@ -202,28 +198,28 @@ mod tests {
     }
 
     #[test]
-    fn missing_latlon_renders_error_line() {
-        let p = ClockSunriseFetcher.compute(&ctx(Some(Shape::Lines), ""));
+    fn missing_latlon_renders_error_text() {
+        let p = ClockSunriseFetcher.compute(&ctx(Some(Shape::Text), ""));
         match p.body {
-            Body::Lines(d) => assert!(d.lines[0].contains("required")),
-            _ => panic!("expected lines"),
+            Body::Text(d) => assert!(d.value.contains("required")),
+            _ => panic!("expected text"),
         }
     }
 
     #[test]
     fn tokyo_returns_plausible_times() {
         let p = ClockSunriseFetcher.compute(&ctx(
-            Some(Shape::Lines),
+            Some(Shape::Text),
             r#"lat = 35.6762
 lon = 139.6503
 timezone = "Asia/Tokyo""#,
         ));
         match p.body {
-            Body::Lines(d) => {
-                assert!(d.lines[0].contains("↑"));
-                assert!(d.lines[0].contains("↓"));
+            Body::Text(d) => {
+                assert!(d.value.contains("↑"));
+                assert!(d.value.contains("↓"));
             }
-            _ => panic!("expected lines"),
+            _ => panic!("expected text"),
         }
     }
 

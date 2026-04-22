@@ -15,7 +15,7 @@ use super::client::rest_get;
 use super::common::{cache_key, parse_options, payload, placeholder};
 use super::items::{SearchResult, render_items};
 
-const SHAPES: &[Shape] = &[Shape::Lines, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
@@ -54,7 +54,7 @@ impl Fetcher for GithubMyPrs {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::Lines => samples::lines(&[
+            Shape::TextBlock => samples::text_block(&[
                 "unhappychoice/splashboard#54 feat(docs): generate widget catalogue",
                 "unhappychoice/splashboard#51 feat(fetcher): split clock options",
             ]),
@@ -89,7 +89,7 @@ impl Fetcher for GithubMyPrs {
         let res: SearchResult = rest_get(&path).await?;
         Ok(payload(render_items(
             &res.items,
-            ctx.shape.unwrap_or(Shape::Lines),
+            ctx.shape.unwrap_or(Shape::TextBlock),
             true,
         )))
     }
