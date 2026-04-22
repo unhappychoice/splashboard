@@ -122,7 +122,7 @@ pub trait RealtimeFetcher: Send + Sync {
 }
 
 /// Fetcher can't emit the shape the renderer expects. Surfaced as a placeholder so the splash
-/// keeps rendering even when the config pairs, say, `fetcher = "disk"` with `render = "calendar"`.
+/// keeps rendering even when the config pairs, say, `fetcher = "disk_usage"` with `render = "calendar"`.
 #[derive(Debug, Clone)]
 pub struct ShapeMismatch {
     pub fetcher: String,
