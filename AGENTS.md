@@ -40,6 +40,8 @@ The **data-shape contract** between fetchers and renderers. Each `Body` variant 
 - `Image` — path to PNG/JPEG
 - `Calendar` — year + month + optional highlighted day + event days
 - `Heatmap` — 2D intensity grid with optional thresholds and edge labels
+- `Badge` — short status pill (label + tone), consumed by the `status_badge` renderer
+- `Timeline` — chronological entries (commits, releases, notifications)
 
 Adding a new shape means:
 1. A new `Body` variant + its `*Data` struct in `payload.rs` (serde-serializable).
@@ -75,20 +77,20 @@ Key invariants:
 
 Consumes a `Payload` + `RenderOptions` and draws into a ratatui `Frame`. Each renderer declares:
 
-- `name()` — used in config (`render = "heatmap"` or `render = { type = "heatmap", align = "center" }`)
+- `name()` — used in config (`render = "grid_heatmap"` or `render = { type = "grid_heatmap", align = "center" }`). Names follow a `family_variant` convention (`text_plain`, `text_ascii`, `gauge_circle`, `gauge_line`, `chart_sparkline`, `grid_table`, `list_timeline`, …) so siblings sort together in the catalog.
 - `accepts()` — list of `Shape` it can render. A renderer can accept multiple shapes if it makes sense (rare).
 - `animates()` — `true` if it produces different output on repeated calls within a single draw cycle. Affects whether the runtime extends the 2-second animation window to let the motion play.
 - `render(frame, area, body, opts)` — do the drawing.
 
 Key invariants:
 
-- **One shape can feed multiple renderers**. `Text` → `simple`, `ascii_art`, `animated_typewriter`. That flexibility is the point; resist "one shape, one renderer".
+- **One shape can feed multiple renderers**. `Text` → `text_plain`, `text_ascii`, `animated_typewriter`. That flexibility is the point; resist "one shape, one renderer".
 
 - **Empty-state handling is centralized**. `render::render_payload` short-circuits any body that `is_empty_body()` considers empty to the shared "nothing here yet" placeholder. Don't bake empty handling into individual renderers.
 
 - **Unknown renderer or shape/renderer mismatch** renders an in-band error string, never panics. Users must be able to see what's misconfigured without crashing the splash.
 
-- **Alignment**. `RenderOptions.align` (`left` / `center` / `right`) is honored by renderers where it makes sense (text, ascii_art, heatmap). Structural renderers (table, gauge, charts) ignore it.
+- **Alignment**. `RenderOptions.align` (`left` / `center` / `right`) is honored by renderers where it makes sense (`text_plain`, `text_ascii`, `grid_heatmap`). Structural renderers (`grid_table`, `gauge_*`, `chart_*`) ignore it.
 
 ## Trust model (`src/trust.rs`)
 
