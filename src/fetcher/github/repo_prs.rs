@@ -1,6 +1,5 @@
 //! `github_repo_prs` — open pull requests for a specific repo. Repo comes from the `repo`
-//! option or (fallback) the git remote of the current directory. `Network` because config can
-//! point at any repo.
+//! option or (fallback) the git remote of the current directory.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -52,7 +51,7 @@ impl Fetcher for GithubRepoPrs {
         "github_repo_prs"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

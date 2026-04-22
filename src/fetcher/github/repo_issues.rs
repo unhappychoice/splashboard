@@ -1,6 +1,5 @@
 //! `github_repo_issues` — open issues for a specific repo. `/repos/{o}/{r}/issues` returns PRs
 //! too; we filter them out client-side (the `pull_request` marker is the canonical signal).
-//! `Network` because config can point at any repo.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -52,7 +51,7 @@ impl Fetcher for GithubRepoIssues {
         "github_repo_issues"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

@@ -1,6 +1,6 @@
 //! `github_action_history` — recent workflow runs mapped either to a pass/fail number series
 //! (`NumberSeries`, 1 = success / 0 = anything else — oldest first, feeds `sparkline`) or a
-//! timeline of the most recent N runs. `Network`.
+//! timeline of the most recent N runs.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -62,7 +62,7 @@ impl Fetcher for GithubActionHistory {
         "github_action_history"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

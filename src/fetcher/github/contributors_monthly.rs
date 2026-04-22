@@ -1,6 +1,6 @@
 //! `github_contributors_monthly` — who's shipping this month, ranked by commit count. Uses the
 //! stats endpoint, which returns 202 while GitHub computes the aggregate; we surface a
-//! transient placeholder rather than blocking. `Network`.
+//! transient placeholder rather than blocking.
 
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -61,7 +61,7 @@ impl Fetcher for GithubContributorsMonthly {
         "github_contributors_monthly"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

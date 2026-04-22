@@ -1,5 +1,5 @@
 //! `github_repo_stars` — stargazer count (plus forks / watchers / open issues as `Entries`).
-//! Uses `/repos/{o}/{r}`. `Network` because config can point at any repo.
+//! Uses `/repos/{o}/{r}`.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -38,7 +38,7 @@ impl Fetcher for GithubRepoStars {
         "github_repo_stars"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

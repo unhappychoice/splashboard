@@ -1,5 +1,5 @@
 //! `github_action_status` — current CI state for a repo, as a single badge plus optional
-//! `Lines` summary. Uses the latest workflow run across every workflow. `Network`.
+//! `Lines` summary. Uses the latest workflow run across every workflow.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -49,7 +49,7 @@ impl Fetcher for GithubActionStatus {
         "github_action_status"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

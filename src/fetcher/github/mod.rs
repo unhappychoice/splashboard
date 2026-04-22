@@ -1,7 +1,8 @@
-//! GitHub fetchers. The family is split into user-scope (`Safe`, fixed query — authenticated
-//! user's own PRs / review requests / notifications / contribution calendar) and repo-scope
-//! (`Network`, config-controllable target). Every fetcher hits `api.github.com` — no host is
-//! ever config-driven.
+//! GitHub fetchers. All classify as `Safety::Safe` because every request targets
+//! `api.github.com` — the host is never config-driven, so the auth token can't be redirected
+//! to an attacker-controlled origin. Config-provided `repo` / `login` only change which
+//! resource within github.com is queried, and the response only ever renders on the user's
+//! own screen with data their own token was already authorised for.
 //!
 //! Auth: `GH_TOKEN` (preferred) or `GITHUB_TOKEN` env var. Missing auth surfaces as a
 //! placeholder payload, not a panic.

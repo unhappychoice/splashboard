@@ -1,6 +1,5 @@
 //! `github_good_first_issues` — open issues labelled `good-first-issue`. Scoped to a single
-//! repo when `repo` is set, otherwise a global search. `Safety` is `Network` because the `repo`
-//! option can point the query at any repo.
+//! repo when `repo` is set, otherwise a global search.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -61,7 +60,7 @@ impl Fetcher for GithubGoodFirstIssues {
         "github_good_first_issues"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES

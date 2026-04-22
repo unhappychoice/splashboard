@@ -1,5 +1,4 @@
-//! `github_recent_releases` — latest releases for a repo. `Network` because config can point
-//! at any repo.
+//! `github_recent_releases` — latest releases for a repo.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -52,7 +51,7 @@ impl Fetcher for GithubRecentReleases {
         "github_recent_releases"
     }
     fn safety(&self) -> Safety {
-        Safety::Network
+        Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
