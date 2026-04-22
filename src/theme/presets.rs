@@ -24,20 +24,18 @@ use ratatui::style::Color;
 
 use super::Theme;
 
-/// Names of every built-in preset, in the order they appear below. Used for
-/// `[theme] preset = "..."` lookups and the "unknown preset" error message.
-/// `"splash"` is the signature default, reachable either by omitting `[theme]
-/// preset = "..."` entirely or by spelling it out. `"default"` is a generic
-/// alias for the same thing — kept so configs using preset-switching harnesses
-/// don't have to special-case the built-in.
+/// Names of every built-in preset, alphabetical. Used for `[theme] preset = "..."`
+/// lookups and the "unknown preset" error message. `"default"` resolves to
+/// [`Theme::default`] (the Splash signature palette) so preset-switching tools don't
+/// have to special-case the built-in; the same palette is also reachable by omitting
+/// `[theme] preset = "..."` entirely.
 pub const KNOWN: &[&str] = &[
-    "splash",
+    "catppuccin_mocha",
     "default",
-    "tokyo_night",
-    "nord",
     "dracula",
     "gruvbox_dark",
-    "catppuccin_mocha",
+    "nord",
+    "tokyo_night",
 ];
 
 /// Resolve a preset by name. Returns `None` for unknown names — the caller ([`super::Theme::
@@ -45,91 +43,48 @@ pub const KNOWN: &[&str] = &[
 /// default theme.
 pub fn by_name(name: &str) -> Option<Theme> {
     match name {
-        "splash" | "default" => Some(splash()),
-        "tokyo_night" => Some(tokyo_night()),
-        "nord" => Some(nord()),
+        "catppuccin_mocha" => Some(catppuccin_mocha()),
+        "default" => Some(Theme::default()),
         "dracula" => Some(dracula()),
         "gruvbox_dark" => Some(gruvbox_dark()),
-        "catppuccin_mocha" => Some(catppuccin_mocha()),
+        "nord" => Some(nord()),
+        "tokyo_night" => Some(tokyo_night()),
         _ => None,
     }
 }
 
-/// The "Splash" signature palette — coral + cyan-teal on deep-ocean navy. Identical to
-/// [`Theme::default`], but exposed as a named function for symmetry with the other
-/// presets and so it appears in the preset catalog.
-pub fn splash() -> Theme {
-    Theme::default()
-}
-
-pub fn tokyo_night() -> Theme {
+pub fn catppuccin_mocha() -> Theme {
     Theme {
-        bg: hex(0x1a, 0x1b, 0x26),
-        bg_subtle: hex(0x24, 0x28, 0x3b),
-        text: hex(0xc0, 0xca, 0xf5),
-        panel_border: hex(0x41, 0x48, 0x68),
-        panel_title: hex(0x7a, 0xa2, 0xf7),
-        status_ok: hex(0x9e, 0xce, 0x6a),
-        status_warn: hex(0xe0, 0xaf, 0x68),
-        status_error: hex(0xf7, 0x76, 0x8e),
-        text_dim: hex(0x56, 0x5f, 0x89),
-        text_secondary: hex(0x9a, 0xa5, 0xce),
-        accent_today: hex(0xe0, 0xaf, 0x68),
-        accent_event: hex(0x7d, 0xcf, 0xff),
+        bg: hex(0x1e, 0x1e, 0x2e),
+        bg_subtle: hex(0x31, 0x32, 0x44),
+        text: hex(0xcd, 0xd6, 0xf4),
+        panel_border: hex(0x45, 0x47, 0x5a),
+        panel_title: hex(0x89, 0xb4, 0xfa),
+        status_ok: hex(0xa6, 0xe3, 0xa1),
+        status_warn: hex(0xf9, 0xe2, 0xaf),
+        status_error: hex(0xf3, 0x8b, 0xa8),
+        text_dim: hex(0x58, 0x5b, 0x70),
+        text_secondary: hex(0xa6, 0xad, 0xc8),
+        accent_today: hex(0xf9, 0xe2, 0xaf),
+        accent_event: hex(0x94, 0xe2, 0xd5),
         palette_series: vec![
-            hex(0xf7, 0x76, 0x8e),
-            hex(0x7a, 0xa2, 0xf7),
-            hex(0x9e, 0xce, 0x6a),
-            hex(0xe0, 0xaf, 0x68),
-            hex(0xbb, 0x9a, 0xf7),
-            hex(0x7d, 0xcf, 0xff),
-            hex(0xff, 0x9e, 0x64),
-            hex(0x2a, 0xc3, 0xde),
-            hex(0x73, 0xda, 0xca),
-            hex(0xc0, 0xca, 0xf5),
+            hex(0xf3, 0x8b, 0xa8),
+            hex(0x89, 0xb4, 0xfa),
+            hex(0xa6, 0xe3, 0xa1),
+            hex(0xf9, 0xe2, 0xaf),
+            hex(0xcb, 0xa6, 0xf7),
+            hex(0x94, 0xe2, 0xd5),
+            hex(0xfa, 0xb3, 0x87),
+            hex(0x74, 0xc7, 0xec),
+            hex(0xf5, 0xc2, 0xe7),
+            hex(0xcd, 0xd6, 0xf4),
         ],
         palette_heatmap: vec![
-            hex(0x1f, 0x23, 0x35),
-            hex(0x3d, 0x5a, 0x3d),
-            hex(0x55, 0x7a, 0x4a),
-            hex(0x7a, 0xa6, 0x54),
-            hex(0x9e, 0xce, 0x6a),
-        ],
-    }
-}
-
-pub fn nord() -> Theme {
-    Theme {
-        bg: hex(0x2e, 0x34, 0x40),
-        bg_subtle: hex(0x3b, 0x42, 0x52),
-        text: hex(0xd8, 0xde, 0xe9),
-        panel_border: hex(0x4c, 0x56, 0x6a),
-        panel_title: hex(0x88, 0xc0, 0xd0),
-        status_ok: hex(0xa3, 0xbe, 0x8c),
-        status_warn: hex(0xeb, 0xcb, 0x8b),
-        status_error: hex(0xbf, 0x61, 0x6a),
-        text_dim: hex(0x43, 0x4c, 0x5e),
-        text_secondary: hex(0xe5, 0xe9, 0xf0),
-        accent_today: hex(0xeb, 0xcb, 0x8b),
-        accent_event: hex(0x8f, 0xbc, 0xbb),
-        palette_series: vec![
-            hex(0x88, 0xc0, 0xd0),
-            hex(0xa3, 0xbe, 0x8c),
-            hex(0xeb, 0xcb, 0x8b),
-            hex(0xbf, 0x61, 0x6a),
-            hex(0xb4, 0x8e, 0xad),
-            hex(0x8f, 0xbc, 0xbb),
-            hex(0xd0, 0x87, 0x70),
-            hex(0x81, 0xa1, 0xc1),
-            hex(0x5e, 0x81, 0xac),
-            hex(0xe5, 0xe9, 0xf0),
-        ],
-        palette_heatmap: vec![
-            hex(0x3b, 0x42, 0x52),
-            hex(0x4c, 0x56, 0x6a),
-            hex(0x5e, 0x81, 0xac),
-            hex(0x81, 0xa1, 0xc1),
-            hex(0xa3, 0xbe, 0x8c),
+            hex(0x1e, 0x1e, 0x2e),
+            hex(0x40, 0x6a, 0x3d),
+            hex(0x60, 0x92, 0x4e),
+            hex(0x80, 0xba, 0x60),
+            hex(0xa6, 0xe3, 0xa1),
         ],
     }
 }
@@ -206,38 +161,74 @@ pub fn gruvbox_dark() -> Theme {
     }
 }
 
-pub fn catppuccin_mocha() -> Theme {
+pub fn nord() -> Theme {
     Theme {
-        bg: hex(0x1e, 0x1e, 0x2e),
-        bg_subtle: hex(0x31, 0x32, 0x44),
-        text: hex(0xcd, 0xd6, 0xf4),
-        panel_border: hex(0x45, 0x47, 0x5a),
-        panel_title: hex(0x89, 0xb4, 0xfa),
-        status_ok: hex(0xa6, 0xe3, 0xa1),
-        status_warn: hex(0xf9, 0xe2, 0xaf),
-        status_error: hex(0xf3, 0x8b, 0xa8),
-        text_dim: hex(0x58, 0x5b, 0x70),
-        text_secondary: hex(0xa6, 0xad, 0xc8),
-        accent_today: hex(0xf9, 0xe2, 0xaf),
-        accent_event: hex(0x94, 0xe2, 0xd5),
+        bg: hex(0x2e, 0x34, 0x40),
+        bg_subtle: hex(0x3b, 0x42, 0x52),
+        text: hex(0xd8, 0xde, 0xe9),
+        panel_border: hex(0x4c, 0x56, 0x6a),
+        panel_title: hex(0x88, 0xc0, 0xd0),
+        status_ok: hex(0xa3, 0xbe, 0x8c),
+        status_warn: hex(0xeb, 0xcb, 0x8b),
+        status_error: hex(0xbf, 0x61, 0x6a),
+        text_dim: hex(0x43, 0x4c, 0x5e),
+        text_secondary: hex(0xe5, 0xe9, 0xf0),
+        accent_today: hex(0xeb, 0xcb, 0x8b),
+        accent_event: hex(0x8f, 0xbc, 0xbb),
         palette_series: vec![
-            hex(0xf3, 0x8b, 0xa8),
-            hex(0x89, 0xb4, 0xfa),
-            hex(0xa6, 0xe3, 0xa1),
-            hex(0xf9, 0xe2, 0xaf),
-            hex(0xcb, 0xa6, 0xf7),
-            hex(0x94, 0xe2, 0xd5),
-            hex(0xfa, 0xb3, 0x87),
-            hex(0x74, 0xc7, 0xec),
-            hex(0xf5, 0xc2, 0xe7),
-            hex(0xcd, 0xd6, 0xf4),
+            hex(0x88, 0xc0, 0xd0),
+            hex(0xa3, 0xbe, 0x8c),
+            hex(0xeb, 0xcb, 0x8b),
+            hex(0xbf, 0x61, 0x6a),
+            hex(0xb4, 0x8e, 0xad),
+            hex(0x8f, 0xbc, 0xbb),
+            hex(0xd0, 0x87, 0x70),
+            hex(0x81, 0xa1, 0xc1),
+            hex(0x5e, 0x81, 0xac),
+            hex(0xe5, 0xe9, 0xf0),
         ],
         palette_heatmap: vec![
-            hex(0x1e, 0x1e, 0x2e),
-            hex(0x40, 0x6a, 0x3d),
-            hex(0x60, 0x92, 0x4e),
-            hex(0x80, 0xba, 0x60),
-            hex(0xa6, 0xe3, 0xa1),
+            hex(0x3b, 0x42, 0x52),
+            hex(0x4c, 0x56, 0x6a),
+            hex(0x5e, 0x81, 0xac),
+            hex(0x81, 0xa1, 0xc1),
+            hex(0xa3, 0xbe, 0x8c),
+        ],
+    }
+}
+
+pub fn tokyo_night() -> Theme {
+    Theme {
+        bg: hex(0x1a, 0x1b, 0x26),
+        bg_subtle: hex(0x24, 0x28, 0x3b),
+        text: hex(0xc0, 0xca, 0xf5),
+        panel_border: hex(0x41, 0x48, 0x68),
+        panel_title: hex(0x7a, 0xa2, 0xf7),
+        status_ok: hex(0x9e, 0xce, 0x6a),
+        status_warn: hex(0xe0, 0xaf, 0x68),
+        status_error: hex(0xf7, 0x76, 0x8e),
+        text_dim: hex(0x56, 0x5f, 0x89),
+        text_secondary: hex(0x9a, 0xa5, 0xce),
+        accent_today: hex(0xe0, 0xaf, 0x68),
+        accent_event: hex(0x7d, 0xcf, 0xff),
+        palette_series: vec![
+            hex(0xf7, 0x76, 0x8e),
+            hex(0x7a, 0xa2, 0xf7),
+            hex(0x9e, 0xce, 0x6a),
+            hex(0xe0, 0xaf, 0x68),
+            hex(0xbb, 0x9a, 0xf7),
+            hex(0x7d, 0xcf, 0xff),
+            hex(0xff, 0x9e, 0x64),
+            hex(0x2a, 0xc3, 0xde),
+            hex(0x73, 0xda, 0xca),
+            hex(0xc0, 0xca, 0xf5),
+        ],
+        palette_heatmap: vec![
+            hex(0x1f, 0x23, 0x35),
+            hex(0x3d, 0x5a, 0x3d),
+            hex(0x55, 0x7a, 0x4a),
+            hex(0x7a, 0xa6, 0x54),
+            hex(0x9e, 0xce, 0x6a),
         ],
     }
 }
@@ -269,16 +260,14 @@ mod tests {
     }
 
     #[test]
-    fn splash_and_default_both_resolve_to_the_same_theme() {
-        // Alias check: users should get identical palettes whether they write the
-        // signature name or the generic keyword, so preset-switching UIs don't have
-        // to branch on which spelling is current.
-        let splash = by_name("splash").unwrap();
-        let default = by_name("default").unwrap();
+    fn default_resolves_to_the_signature_palette() {
+        // The `"default"` preset keyword must match the implicit default (no `[theme]
+        // preset = "..."` line) so preset-switching UIs can cycle through every
+        // option in `KNOWN` without special-casing the built-in.
+        let explicit = by_name("default").unwrap();
         let implicit = Theme::default();
-        assert_eq!(splash.bg, default.bg);
-        assert_eq!(splash.bg, implicit.bg);
-        assert_eq!(splash.panel_title, implicit.panel_title);
+        assert_eq!(explicit.bg, implicit.bg);
+        assert_eq!(explicit.panel_title, implicit.panel_title);
     }
 
     #[test]
