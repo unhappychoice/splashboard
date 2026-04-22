@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+use splashboard::catalog;
 use splashboard::config::{self, Config, WidgetConfig};
 use splashboard::fetcher::{Registry, Safety};
+use splashboard::render::Registry as RenderRegistry;
 use splashboard::shell::{self, Shell};
 use splashboard::trust::{TrustStore, load_config_and_hash};
 use splashboard::{daemon, runtime};
@@ -53,6 +55,13 @@ enum Command {
     },
     /// Print the currently trusted local configs.
     ListTrusted,
+    /// Browse the built-in fetcher and renderer catalog — the same info the docs site exposes,
+    /// rendered for the terminal. Run without a target for an overview; use
+    /// `catalog fetcher [NAME]` or `catalog renderer [NAME]` to narrow.
+    Catalog {
+        #[command(subcommand)]
+        target: Option<CatalogTarget>,
+    },
     /// Internal: run fetchers and update the cache. Spawned as a detached child by the main
     /// splashboard invocation; not intended to be run directly.
     #[command(hide = true)]
@@ -60,6 +69,16 @@ enum Command {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum CatalogTarget {
+    /// List all fetchers, or show details for one when NAME is given.
+    #[command(alias = "fetchers")]
+    Fetcher { name: Option<String> },
+    /// List all renderers, or show details for one when NAME is given.
+    #[command(alias = "renderers")]
+    Renderer { name: Option<String> },
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -74,6 +93,7 @@ async fn main() -> io::Result<()> {
         Some(Command::Trust { path }) => run_trust(path),
         Some(Command::Revoke { path }) => run_revoke(path),
         Some(Command::ListTrusted) => run_list_trusted(),
+        Some(Command::Catalog { target }) => run_catalog(target),
         None => {
             // Swallow render errors at the shell-facing boundary so a broken splash never breaks
             // the user's prompt. Internal paths (FetchOnly above) still propagate errors.
@@ -192,6 +212,32 @@ fn run_list_trusted() -> io::Result<()> {
         );
     }
     Ok(())
+}
+
+fn run_catalog(target: Option<CatalogTarget>) -> io::Result<()> {
+    let fetchers = Registry::with_builtins();
+    let renderers = RenderRegistry::with_builtins();
+    let output = match target {
+        None => Ok(catalog::overview(&fetchers, &renderers)),
+        Some(CatalogTarget::Fetcher { name: None }) => Ok(catalog::fetcher_list(&fetchers)),
+        Some(CatalogTarget::Fetcher { name: Some(n) }) => {
+            catalog::fetcher_detail(&n, &fetchers, &renderers)
+        }
+        Some(CatalogTarget::Renderer { name: None }) => Ok(catalog::renderer_list(&renderers)),
+        Some(CatalogTarget::Renderer { name: Some(n) }) => {
+            catalog::renderer_detail(&n, &renderers, &fetchers)
+        }
+    };
+    match output {
+        Ok(s) => {
+            print!("{s}");
+            Ok(())
+        }
+        Err(msg) => {
+            eprintln!("{msg}");
+            std::process::exit(2);
+        }
+    }
 }
 
 fn resolve_trust_target(override_path: Option<PathBuf>) -> Option<PathBuf> {
