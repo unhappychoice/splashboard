@@ -135,15 +135,10 @@ fn remote_slug(repo: &gix::Repository) -> Option<RepoSlug> {
 /// Anything that isn't github.com returns `None` — splashboard's github fetchers target the
 /// github.com API and silently accepting a gitlab remote would be misleading.
 pub fn slug_from_url(url: &str) -> Option<RepoSlug> {
-    let rest = if let Some(tail) = url.strip_prefix("git@github.com:") {
-        tail
-    } else if let Some(tail) = url.strip_prefix("https://github.com/") {
-        tail
-    } else if let Some(tail) = url.strip_prefix("ssh://git@github.com/") {
-        tail
-    } else {
-        return None;
-    };
+    let rest = url
+        .strip_prefix("git@github.com:")
+        .or_else(|| url.strip_prefix("https://github.com/"))
+        .or_else(|| url.strip_prefix("ssh://git@github.com/"))?;
     let rest = rest.strip_suffix(".git").unwrap_or(rest);
     RepoSlug::parse(rest)
 }

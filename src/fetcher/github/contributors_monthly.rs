@@ -180,7 +180,7 @@ fn top_contributors(stats: &[Contributor], days: i64, limit: usize) -> Vec<(Stri
             (commits > 0).then_some((login, commits))
         })
         .collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.1));
     rows.truncate(limit);
     rows
 }
