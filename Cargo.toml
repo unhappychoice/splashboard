@@ -29,6 +29,7 @@ async-trait = "0.1"
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 sysinfo = "0.38.4"
+gix = { version = "0.81", default-features = false, features = ["revision", "status", "blob-diff", "max-performance-safe", "comfort", "sha1"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -19,7 +19,7 @@ render = "gauge"
 
 [[widget]]
 id = "commits"
-fetcher = "git_commits"
+fetcher = "git_commits_activity"
 render = "sparkline"
 
 [[widget]]
