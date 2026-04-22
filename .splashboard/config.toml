@@ -75,7 +75,7 @@ render = "line_gauge"
 
 [[widget]]
 id = "commits"
-fetcher = "git_commits"
+fetcher = "git_commits_activity"
 render = "sparkline"
 
 # ── PointSeries: 2 renderers ────────────────────────────────────────

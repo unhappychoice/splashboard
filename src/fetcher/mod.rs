@@ -11,6 +11,7 @@ use crate::payload::{Body, LinesData, Payload};
 use crate::render::Shape;
 
 pub mod clock;
+pub mod git;
 pub mod read_store;
 pub mod static_text;
 pub mod stub;
@@ -187,6 +188,9 @@ impl Registry {
             r.register_realtime(f);
         }
         for f in system::cached_fetchers() {
+            r.register(f);
+        }
+        for f in git::fetchers() {
             r.register(f);
         }
         for f in stub::stubs() {
