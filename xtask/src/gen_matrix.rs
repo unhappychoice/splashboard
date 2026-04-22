@@ -18,6 +18,7 @@ use anyhow::{Context, Result};
 use splashboard::fetcher::{RegisteredFetcher, Registry as FetcherRegistry, Safety};
 use splashboard::options::OptionSchema;
 use splashboard::render::{Registry as RenderRegistry, Renderer, Shape};
+use splashboard::theme::ColorKey;
 
 use crate::snapshots;
 
@@ -200,8 +201,29 @@ fn renderer_page(r: &Arc<dyn Renderer>, fetchers: &FetcherRegistry) -> String {
         "Options",
         option_fallback_renderer(),
     );
+    render_color_keys_section(&mut out, r.color_keys());
     render_compatible_fetchers(&mut out, r.accepts(), fetchers);
     out
+}
+
+fn render_color_keys_section(out: &mut String, keys: &[ColorKey]) {
+    out.push_str("## Theme tokens\n\n");
+    if keys.is_empty() {
+        out.push_str("_This renderer does not read any `[theme]` tokens._\n\n");
+        return;
+    }
+    out.push_str("Overridable via the `[theme]` section of `config.toml`.\n\n");
+    out.push_str("| Key | Description |\n");
+    out.push_str("| --- | --- |\n");
+    for k in keys {
+        let _ = writeln!(
+            out,
+            "| `{name}` | {desc} |",
+            name = k.name,
+            desc = escape_pipe(k.description),
+        );
+    }
+    out.push('\n');
 }
 
 /// Starlight uses `title` from frontmatter; authoring an H1 in the body would duplicate.
