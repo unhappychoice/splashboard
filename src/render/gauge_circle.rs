@@ -1,6 +1,7 @@
 use ratatui::{Frame, layout::Rect, widgets::Gauge};
 
 use crate::payload::{Body, RatioData};
+use crate::theme::Theme;
 
 use super::{RenderOptions, Renderer, Shape};
 
@@ -13,7 +14,14 @@ impl Renderer for GaugeCircleRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        _theme: &Theme,
+    ) {
         if let Body::Ratio(d) = body {
             render_gauge(frame, area, d);
         }

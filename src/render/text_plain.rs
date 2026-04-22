@@ -1,13 +1,17 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
+    style::Style,
     widgets::Paragraph,
 };
 
 use crate::options::OptionSchema;
 use crate::payload::Body;
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "align",
@@ -32,13 +36,25 @@ impl Renderer for TextPlainRenderer {
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         let content = match body {
             Body::Text(d) => d.value.clone(),
             Body::TextBlock(d) => d.lines.join("\n"),
             _ => return,
         };
-        let p = Paragraph::new(content).alignment(parse_align(opts.align.as_deref()));
+        let p = Paragraph::new(content)
+            .style(Style::default().fg(theme.text))
+            .alignment(parse_align(opts.align.as_deref()));
         frame.render_widget(p, area);
     }
 }

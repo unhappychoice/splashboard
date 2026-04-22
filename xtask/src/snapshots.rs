@@ -12,6 +12,7 @@ use ratatui::layout::Rect;
 use splashboard::fetcher::RegisteredFetcher;
 use splashboard::payload::{Body, Payload};
 use splashboard::render::{Registry as RenderRegistry, RenderSpec, Shape, render_payload};
+use splashboard::theme::Theme;
 
 use crate::html_snapshot::buffer_to_html;
 
@@ -92,10 +93,11 @@ fn render_html(
         format: None,
         body: body.clone(),
     };
+    let theme = Theme::default();
     terminal
         .draw(|frame| {
             let area = Rect::new(0, 0, width, height);
-            render_payload(frame, area, &payload, spec, registry);
+            render_payload(frame, area, &payload, spec, registry, &theme);
         })
         .expect("draw");
     buffer_to_html(terminal.backend().buffer())

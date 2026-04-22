@@ -1,6 +1,7 @@
 use ratatui::{Frame, layout::Rect, widgets::BarChart};
 
 use crate::payload::{BarsData, Body};
+use crate::theme::Theme;
 
 use super::{RenderOptions, Renderer, Shape};
 
@@ -13,7 +14,14 @@ impl Renderer for ChartBarRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        _theme: &Theme,
+    ) {
         if let Body::Bars(d) = body {
             render_bars(frame, area, d);
         }

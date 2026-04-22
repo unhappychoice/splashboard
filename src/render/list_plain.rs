@@ -1,12 +1,16 @@
 use ratatui::{
     Frame,
     layout::Rect,
+    style::Style,
     widgets::{List, ListItem},
 };
 
 use crate::payload::{Body, TextBlockData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
     if content_width == 0 || content_width >= area.width {
@@ -38,14 +42,30 @@ impl Renderer for ListPlainRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::TextBlock]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::TextBlock(d) = body {
-            render_list(frame, area, d, opts);
+            render_list(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_list(frame: &mut Frame, area: Rect, data: &TextBlockData, opts: &RenderOptions) {
+fn render_list(
+    frame: &mut Frame,
+    area: Rect,
+    data: &TextBlockData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let max = data
         .lines
         .iter()
@@ -58,7 +78,10 @@ fn render_list(frame: &mut Frame, area: Rect, data: &TextBlockData, opts: &Rende
         .iter()
         .map(|l| ListItem::new(l.clone()))
         .collect();
-    frame.render_widget(List::new(items), target);
+    frame.render_widget(
+        List::new(items).style(Style::default().fg(theme.text)),
+        target,
+    );
 }
 
 #[cfg(test)]

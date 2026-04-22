@@ -4,12 +4,16 @@ use std::time::Instant;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
+    style::Style,
     widgets::Paragraph,
 };
 
 use crate::payload::{Body, TextData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 const DEFAULT_CHARS_PER_SECOND: f64 = 40.0;
 
@@ -33,18 +37,36 @@ impl Renderer for AnimatedTypewriterRenderer {
     fn animates(&self) -> bool {
         true
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Text(d) = body {
-            render_typewriter(frame, area, d, opts);
+            render_typewriter(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_typewriter(frame: &mut Frame, area: Rect, data: &TextData, opts: &RenderOptions) {
+fn render_typewriter(
+    frame: &mut Frame,
+    area: Rect,
+    data: &TextData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let total = data.value.chars().count();
     let budget = chars_revealed(total);
     let revealed: String = data.value.chars().take(budget).collect();
-    let p = Paragraph::new(revealed).alignment(parse_align(opts.align.as_deref()));
+    let p = Paragraph::new(revealed)
+        .style(Style::default().fg(theme.text))
+        .alignment(parse_align(opts.align.as_deref()));
     frame.render_widget(p, area);
 }
 

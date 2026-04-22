@@ -6,6 +6,7 @@ use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use ratatui_image::{StatefulImage, picker::Picker};
 
 use crate::payload::{Body, ImageData};
+use crate::theme::Theme;
 
 use super::{RenderOptions, Renderer, Shape};
 
@@ -18,7 +19,14 @@ impl Renderer for MediaImageRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Image]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        _theme: &Theme,
+    ) {
         if let Body::Image(d) = body {
             render_image_payload(frame, area, d);
         }

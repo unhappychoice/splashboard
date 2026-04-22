@@ -4,7 +4,7 @@ use std::sync::Arc;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::Line,
     widgets::Paragraph,
 };
@@ -12,6 +12,7 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
+use crate::theme::{ColorKey, Theme};
 
 mod animated_typewriter;
 mod chart_bar;
@@ -163,7 +164,21 @@ pub trait Renderer: Send + Sync {
     fn option_schemas(&self) -> &[OptionSchema] {
         &[]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions);
+    /// Semantic colour tokens this renderer reads from the shared [`Theme`]. Declared here so
+    /// the xtask docs generator can list, per renderer, exactly which `[theme]` keys affect it.
+    /// Default is an empty slice — renderers that only draw structural glyphs don't consume
+    /// colour.
+    fn color_keys(&self) -> &[ColorKey] {
+        &[]
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        opts: &RenderOptions,
+        theme: &Theme,
+    );
 }
 
 #[derive(Default, Clone)]
@@ -241,9 +256,10 @@ pub fn render_payload(
     payload: &Payload,
     spec: Option<&RenderSpec>,
     registry: &Registry,
+    theme: &Theme,
 ) {
     if is_empty_body(&payload.body) {
-        render_empty_state(frame, area);
+        render_empty_state(frame, area, theme);
         return;
     }
     let shape = shape_of(&payload.body);
@@ -266,7 +282,7 @@ pub fn render_payload(
         );
         return;
     }
-    renderer.render(frame, area, &payload.body, &options);
+    renderer.render(frame, area, &payload.body, &options, theme);
 }
 
 /// `true` when the body has no meaningful data to render. Callers (most usefully
@@ -292,13 +308,13 @@ pub fn is_empty_body(body: &Body) -> bool {
     }
 }
 
-fn render_empty_state(frame: &mut Frame, area: Rect) {
+fn render_empty_state(frame: &mut Frame, area: Rect, theme: &Theme) {
     if area.width == 0 || area.height == 0 {
         return;
     }
     let dim = Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::ITALIC | Modifier::DIM);
+        .fg(theme.dim)
+        .add_modifier(Modifier::ITALIC);
     // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
     // Centered both axes via a Fill / Length / Fill vertical layout.
     let lines: Vec<Line> = if area.height >= 2 {

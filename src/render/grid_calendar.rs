@@ -1,14 +1,17 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::calendar::{CalendarEventStore, Monthly},
 };
 use time::{Date, Month};
 
 use crate::payload::{Body, CalendarData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::TODAY, theme::EVENT];
 
 /// Month-view calendar for the `Calendar` shape. Highlights `day` (today / focus) and marks
 /// each day in `events`. Silently no-ops on invalid dates — a splash must never panic on bad
@@ -22,14 +25,24 @@ impl Renderer for GridCalendarRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::Calendar]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::Calendar(d) = body {
-            render_calendar(frame, area, d);
+            render_calendar(frame, area, d, theme);
         }
     }
 }
 
-fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData) {
+fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &Theme) {
     let Some(month) = month_from_u8(data.month) else {
         return;
     };
@@ -44,13 +57,13 @@ fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData) {
         events.add(
             today,
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.today)
                 .add_modifier(Modifier::BOLD),
         );
     }
     for day in &data.events {
         if let Ok(date) = Date::from_calendar_date(data.year, month, *day) {
-            events.add(date, Style::default().fg(Color::Cyan));
+            events.add(date, Style::default().fg(theme.event));
         }
     }
     frame.render_widget(Monthly::new(anchor, events), area);

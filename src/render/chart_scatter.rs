@@ -1,13 +1,15 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Color,
     widgets::canvas::{Canvas, Points},
 };
 
 use crate::payload::{Body, PointSeries, PointSeriesData};
+use crate::theme::{self, ColorKey, Theme};
 
 use super::{RenderOptions, Renderer, Shape};
+
+const COLOR_KEYS: &[ColorKey] = &[theme::SERIES];
 
 /// Canvas-drawn scatter plot: dots only, no connecting lines. Alternate renderer for
 /// `PointSeries`, paired with the Braille line renderer (`chart_line`) so users get to pick
@@ -21,23 +23,33 @@ impl Renderer for ChartScatterRenderer {
     fn accepts(&self) -> &[Shape] {
         &[Shape::PointSeries]
     }
-    fn render(&self, frame: &mut Frame, area: Rect, body: &Body, _opts: &RenderOptions) {
+    fn color_keys(&self) -> &[ColorKey] {
+        COLOR_KEYS
+    }
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        body: &Body,
+        _opts: &RenderOptions,
+        theme: &Theme,
+    ) {
         if let Body::PointSeries(d) = body {
-            render_scatter(frame, area, d);
+            render_scatter(frame, area, d, theme);
         }
     }
 }
 
-fn render_scatter(frame: &mut Frame, area: Rect, data: &PointSeriesData) {
+fn render_scatter(frame: &mut Frame, area: Rect, data: &PointSeriesData, theme: &Theme) {
     let (x_bounds, y_bounds) = bounds(&data.series);
     let canvas = Canvas::default()
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .paint(|ctx| {
-            for series in &data.series {
+            for (i, series) in data.series.iter().enumerate() {
                 ctx.draw(&Points {
                     coords: &series.points,
-                    color: Color::Cyan,
+                    color: theme.series_color(i),
                 });
             }
         });
