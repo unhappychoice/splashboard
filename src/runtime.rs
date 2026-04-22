@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use ratatui::{
     Frame, Terminal, TerminalOptions, Viewport,
-    backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Rect},
+    backend::{Backend, CrosstermBackend, TestBackend},
+    buffer::Buffer,
+    layout::{Alignment, Position, Rect},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::Paragraph,
@@ -219,13 +220,14 @@ pub async fn run(
 
     // Cache-first one-shot: no looping needed, paint what we have and exit.
     if loop_window.is_none() {
-        draw_final(
+        finalize_draw(
             &mut terminal,
             &layout,
             &payloads,
             &specs,
             &render_registry,
-            hidden_rows,
+            requested_height,
+            viewport_lines,
         )?;
         let _ = daemon::spawn_fetch_daemon(config_ident.map(|(p, _)| p));
         finalize_splash(&mut terminal);
@@ -272,13 +274,14 @@ pub async fn run(
                 }
             }
             refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
-            draw_final(
+            finalize_draw(
                 &mut terminal,
                 &layout,
                 &payloads,
                 &specs,
                 &render_registry,
-                hidden_rows,
+                requested_height,
+                viewport_lines,
             )?;
         }
         Err(_) => {
@@ -299,13 +302,14 @@ pub async fn run(
             }
             // Realtime values in the fallback path are still fresh at this point — the compute
             // above was microseconds ago. No refresh needed before the single final draw.
-            draw_final(
+            finalize_draw(
                 &mut terminal,
                 &layout,
                 &payloads,
                 &specs,
                 &render_registry,
-                hidden_rows,
+                requested_height,
+                viewport_lines,
             )?;
         }
     }
@@ -532,6 +536,117 @@ fn draw_final<B: Backend>(
     Ok(())
 }
 
+/// End-of-run draw: when the configured height doesn't fit the terminal, flush the top rows
+/// into scrollback via [`Terminal::insert_before`] and repaint the viewport with the bottom
+/// slice — no clip hint. This way the animation plays in the clamped viewport, then scrolls up
+/// at exit so the full splash is visible (bottom on screen, rest scrollable). When the layout
+/// fits, falls through to the regular [`draw_final`].
+fn finalize_draw<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+    requested_height: u16,
+    viewport_lines: u16,
+) -> io::Result<()> {
+    let scrollback_rows = requested_height.saturating_sub(viewport_lines);
+    if scrollback_rows == 0 {
+        return draw_final(terminal, root, payloads, specs, registry, 0);
+    }
+    flush_full_to_scrollback(
+        terminal,
+        root,
+        payloads,
+        specs,
+        registry,
+        requested_height,
+        viewport_lines,
+    )
+}
+
+fn flush_full_to_scrollback<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+    requested_height: u16,
+    viewport_lines: u16,
+) -> io::Result<()> {
+    let width = terminal.size()?.width;
+    let full_buf =
+        render_full_into_buffer(width, requested_height, root, payloads, specs, registry)?;
+    let scrollback_rows = requested_height - viewport_lines;
+    terminal.insert_before(scrollback_rows, |buf| {
+        copy_rows(&full_buf, 0..scrollback_rows, buf);
+    })?;
+    let mut captured: Option<Rect> = None;
+    terminal.draw(|frame| {
+        let area = frame.area();
+        captured = Some(area);
+        copy_rows(
+            &full_buf,
+            scrollback_rows..requested_height,
+            frame.buffer_mut(),
+        );
+    })?;
+    if let Some(area) = captured
+        && area.height > 0
+    {
+        terminal.set_cursor_position(Position {
+            x: area.x,
+            y: area.y + area.height - 1,
+        })?;
+    }
+    Ok(())
+}
+
+/// Renders the layout into an off-screen buffer at full configured height. Uses `TestBackend`
+/// only because it's ratatui's one publicly exposed in-memory `Backend` — the name is
+/// historical, nothing about it is test-only.
+fn render_full_into_buffer(
+    width: u16,
+    height: u16,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+) -> io::Result<Buffer> {
+    let backend = TestBackend::new(width, height);
+    let mut inner = Terminal::new(backend)?;
+    inner.draw(|frame| {
+        let area = frame.area();
+        layout::draw(frame, area, root, payloads, specs, registry);
+    })?;
+    Ok(inner.backend().buffer().clone())
+}
+
+/// Copies a vertical slice from `src` (rows `src_y_range`, taken relative to `src.area.top()`)
+/// into `dst`, laid out from `dst.area.top()` onward. Widths are clamped to the narrower of the
+/// two buffers. Each destination row uses the same column origin as `dst.area.left()` so it
+/// works for both an `insert_before` buffer (origin `(viewport_x, 0)`) and a frame buffer
+/// (origin `(viewport_x, viewport_y)`).
+fn copy_rows(src: &Buffer, src_y_range: std::ops::Range<u16>, dst: &mut Buffer) {
+    let src_area = src.area;
+    let dst_area = dst.area;
+    let copy_width = src_area.width.min(dst_area.width);
+    for (i, offset) in src_y_range.enumerate() {
+        let src_y = src_area.top() + offset;
+        let dst_y = dst_area.top() + i as u16;
+        if dst_y >= dst_area.bottom() {
+            break;
+        }
+        for x in 0..copy_width {
+            let src_pos = Position::new(src_area.left() + x, src_y);
+            let dst_pos = Position::new(dst_area.left() + x, dst_y);
+            if let (Some(src_cell), Some(dst_cell)) = (src.cell(src_pos), dst.cell_mut(dst_pos)) {
+                *dst_cell = src_cell.clone();
+            }
+        }
+    }
+}
+
 /// Renders the layout into the given area, sacrificing the bottom row for a `… +N rows` hint
 /// when the configured height doesn't fit and the viewport had to be clamped to the terminal.
 fn draw_frame(
@@ -587,7 +702,7 @@ fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
 mod tests {
     use super::*;
     use crate::layout::Layout as LayoutTree;
-    use crate::payload::{Body, TextData};
+    use crate::payload::{Body, TextBlockData, TextData};
     use ratatui::{Terminal, backend::TestBackend};
 
     fn text_payload(line: &str) -> Payload {
@@ -596,6 +711,17 @@ mod tests {
             status: None,
             format: None,
             body: Body::Text(TextData { value: line.into() }),
+        }
+    }
+
+    fn text_block_payload(lines: &[&str]) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::TextBlock(TextBlockData {
+                lines: lines.iter().map(|s| (*s).to_string()).collect(),
+            }),
         }
     }
 
@@ -661,6 +787,95 @@ mod tests {
         let row = row_text(&terminal.backend().buffer().clone(), 0);
         assert!(row.contains("…"), "marker missing: {row:?}");
         assert!(row.contains("+42"), "count missing: {row:?}");
+    }
+
+    #[test]
+    fn copy_rows_copies_vertical_slice() {
+        let mut src = Buffer::empty(Rect::new(0, 0, 4, 4));
+        src.set_string(0, 0, "AAAA", Style::default());
+        src.set_string(0, 1, "BBBB", Style::default());
+        src.set_string(0, 2, "CCCC", Style::default());
+        src.set_string(0, 3, "DDDD", Style::default());
+        let mut dst = Buffer::empty(Rect::new(0, 0, 4, 2));
+        copy_rows(&src, 1..3, &mut dst);
+        assert_eq!(row_text(&dst, 0), "BBBB");
+        assert_eq!(row_text(&dst, 1), "CCCC");
+    }
+
+    #[test]
+    fn copy_rows_honours_destination_origin() {
+        let mut src = Buffer::empty(Rect::new(0, 0, 3, 1));
+        src.set_string(0, 0, "XYZ", Style::default());
+        // Destination offset at (2, 5) to mimic an inline-viewport-style buffer.
+        let mut dst = Buffer::empty(Rect::new(2, 5, 3, 1));
+        copy_rows(&src, 0..1, &mut dst);
+        assert_eq!(dst.cell((2, 5)).unwrap().symbol(), "X");
+        assert_eq!(dst.cell((4, 5)).unwrap().symbol(), "Z");
+    }
+
+    #[test]
+    fn render_full_into_buffer_paints_full_height() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert(
+            "x".into(),
+            text_block_payload(&["r0", "r1", "r2", "r3", "r4", "r5"]),
+        );
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let buf = render_full_into_buffer(20, 6, &root, &payloads, &specs, &registry).unwrap();
+        assert!(row_text(&buf, 0).starts_with("r0"));
+        assert!(row_text(&buf, 5).starts_with("r5"));
+    }
+
+    #[test]
+    fn finalize_draw_flushes_top_rows_and_reveals_bottom() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert(
+            "x".into(),
+            text_block_payload(&["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"]),
+        );
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        // 10-row terminal, 4-row inline viewport, 8-row requested layout: 4 rows are pushed to
+        // scrollback (rows r0..r3), bottom 4 rows (r4..r7) land in the viewport. No clip hint.
+        let backend = TestBackend::new(20, 10);
+        let mut terminal = make_terminal(backend, 4).unwrap();
+        finalize_draw(&mut terminal, &root, &payloads, &specs, &registry, 8, 4).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let rows: Vec<String> = (0..buf.area.height)
+            .map(|y| row_text(&buf, y).trim_end().to_string())
+            .collect();
+        let combined = rows.join("\n");
+        assert!(
+            rows.iter().any(|r| r.contains("r7")),
+            "bottom row r7 missing: {rows:?}"
+        );
+        assert!(
+            rows.iter().any(|r| r.contains("r0")),
+            "scrollback row r0 missing: {rows:?}"
+        );
+        assert!(
+            !combined.contains("…"),
+            "clip hint should be suppressed after flush: {combined:?}"
+        );
+    }
+
+    #[test]
+    fn finalize_draw_without_clipping_falls_through_to_draw_final() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("fits"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(20, 10);
+        let mut terminal = make_terminal(backend, 3).unwrap();
+        finalize_draw(&mut terminal, &root, &payloads, &specs, &registry, 3, 3).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let joined: String = (0..buf.area.height).map(|y| row_text(&buf, y)).collect();
+        assert!(joined.contains("fits"));
+        assert!(!joined.contains("…"));
     }
 
     fn widget(id: &str, fetcher: &str) -> WidgetConfig {
