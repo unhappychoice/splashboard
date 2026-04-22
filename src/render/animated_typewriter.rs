@@ -11,7 +11,7 @@ use ratatui::{
 use crate::payload::{Body, TextData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -47,6 +47,7 @@ impl Renderer for AnimatedTypewriterRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Text(d) = body {
             render_typewriter(frame, area, d, opts, theme);

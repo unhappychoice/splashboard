@@ -8,7 +8,7 @@ use ratatui::{
 use crate::payload::{Body, TextBlockData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -52,6 +52,7 @@ impl Renderer for ListPlainRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::TextBlock(d) = body {
             render_list(frame, area, d, opts, theme);

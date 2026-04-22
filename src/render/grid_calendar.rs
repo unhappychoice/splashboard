@@ -9,7 +9,7 @@ use time::{Date, Month};
 use crate::payload::{Body, CalendarData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::ACCENT_TODAY, theme::ACCENT_EVENT, theme::TEXT];
 
@@ -35,6 +35,7 @@ impl Renderer for GridCalendarRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Calendar(d) = body {
             render_calendar(frame, area, d, theme);

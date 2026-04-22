@@ -9,7 +9,7 @@ use crate::options::OptionSchema;
 use crate::payload::Body;
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -46,6 +46,7 @@ impl Renderer for TextPlainRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         let content = match body {
             Body::Text(d) => d.value.clone(),

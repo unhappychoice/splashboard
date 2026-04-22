@@ -8,7 +8,7 @@ use ratatui_image::{StatefulImage, picker::Picker};
 use crate::payload::{Body, ImageData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -31,6 +31,7 @@ impl Renderer for MediaImageRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Image(d) = body {
             render_image_payload(frame, area, d, theme);

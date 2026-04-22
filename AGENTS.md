@@ -163,7 +163,7 @@ Prioritization rubric (see #41 for the full version):
 
 ### Testing
 
-- `cargo test` must be green before a PR is opened. `cargo clippy --all-targets -- -D warnings` too.
+- `cargo test` must be green before a PR is opened. `cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` too — CI runs all three.
 - Tests that mutate process env (`SPLASHBOARD_HOME` is the notable one) must take `paths::TEST_ENV_LOCK` to serialize with other tests.
 - Rendering tests use `src/render/test_utils.rs` — `render_to_buffer*()` helpers return a `Buffer` you can scan for expected cells/symbols.
 

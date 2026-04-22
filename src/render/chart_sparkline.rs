@@ -3,7 +3,7 @@ use ratatui::{Frame, layout::Rect, widgets::Sparkline};
 use crate::payload::{Body, NumberSeriesData};
 use crate::theme::Theme;
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 pub struct ChartSparklineRenderer;
 
@@ -21,6 +21,7 @@ impl Renderer for ChartSparklineRenderer {
         body: &Body,
         _opts: &RenderOptions,
         _theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::NumberSeries(d) = body {
             render_sparkline(frame, area, d);

@@ -3,7 +3,7 @@ use ratatui::{Frame, layout::Rect, style::Style, widgets::BarChart};
 use crate::payload::{BarsData, Body};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -26,6 +26,7 @@ impl Renderer for ChartBarRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Bars(d) = body {
             render_bars(frame, area, d, theme);

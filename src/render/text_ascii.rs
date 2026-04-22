@@ -5,7 +5,7 @@ use crate::options::OptionSchema;
 use crate::payload::{Body, TextData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -66,6 +66,7 @@ impl Renderer for TextAsciiRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Text(d) = body {
             match opts.style.as_deref() {

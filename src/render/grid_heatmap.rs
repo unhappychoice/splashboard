@@ -3,7 +3,7 @@ use ratatui::{Frame, buffer::Buffer, layout::Rect};
 use crate::payload::{Body, HeatmapData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_HEATMAP, theme::TEXT];
 
@@ -39,6 +39,7 @@ impl Renderer for GridHeatmapRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Heatmap(d) = body {
             render_heatmap(frame, area, d, opts, theme);

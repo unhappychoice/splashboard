@@ -9,7 +9,7 @@ use ratatui::{
 use crate::payload::{Body, PointSeries, PointSeriesData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
@@ -32,6 +32,7 @@ impl Renderer for ChartLineRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::PointSeries(d) = body {
             render_line_chart(frame, area, d, theme);

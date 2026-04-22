@@ -43,6 +43,42 @@ fetcher = "static"
 render = { type = "list_plain", align = "center" }
 format = "ratatui::List widget\nalternative to text_plain\nselectable items, later"
 
+[[widget]]
+id = "postfx_demo"
+fetcher = "static"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "dissolve", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
+format = "splashboard"
+
+[[widget]]
+id = "postfx_fade"
+fetcher = "static"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
+format = "fade"
+
+[[widget]]
+id = "postfx_coalesce"
+fetcher = "static"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
+format = "coalesce"
+
+[[widget]]
+id = "postfx_sweep"
+fetcher = "static"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in_down", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
+format = "sweep"
+
+[[widget]]
+id = "postfx_slide"
+fetcher = "static"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "slide_in_down", duration_ms = 1200, pixel_size = "quadrant", align = "center" }
+format = "slide"
+
+[[widget]]
+id = "postfx_hsl"
+fetcher = "static"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "hsl_shift", duration_ms = 1500, pixel_size = "quadrant", align = "center" }
+format = "hsl"
+
 # ── GitHub activity ──────────────────────────────────────────────────
 # Every repo-scope fetcher (repo_prs / repo_issues / repo_stars / action_*) auto-detects the
 # owner/name slug from the cwd's git remote. User-scope (my_prs / review_requests /
@@ -257,6 +293,42 @@ flex = "center"
   [[row.child]]
   widget = "notes"
   width = { length = 44 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
+
+  [[row.child]]
+  widget = "postfx_demo"
+  width = { length = 64 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
+
+  [[row.child]]
+  widget = "postfx_fade"
+  width = { length = 20 }
+
+  [[row.child]]
+  widget = "postfx_coalesce"
+  width = { length = 28 }
+
+  [[row.child]]
+  widget = "postfx_sweep"
+  width = { length = 22 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
+
+  [[row.child]]
+  widget = "postfx_slide"
+  width = { length = 22 }
+
+  [[row.child]]
+  widget = "postfx_hsl"
+  width = { length = 18 }
 
 # ── GitHub band ──────────────────────────────────────────────────────
 

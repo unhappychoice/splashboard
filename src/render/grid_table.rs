@@ -8,7 +8,7 @@ use ratatui::{
 use crate::payload::{Body, EntriesData, Entry};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
@@ -39,6 +39,7 @@ impl Renderer for GridTableRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Entries(d) = body {
             render_entries(frame, area, d, theme);

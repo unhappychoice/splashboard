@@ -4,7 +4,7 @@ use tui_piechart::{PieChart, PieSlice};
 use crate::payload::{BarsData, Body};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
@@ -31,6 +31,7 @@ impl Renderer for ChartPieRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Bars(d) = body {
             render_pie(frame, area, d, theme);

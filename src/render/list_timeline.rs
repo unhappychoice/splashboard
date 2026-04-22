@@ -10,7 +10,7 @@ use ratatui::{
 use crate::payload::{Body, Status, TimelineData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
@@ -45,6 +45,7 @@ impl Renderer for ListTimelineRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Timeline(d) = body {
             render_timeline_at(frame, area, d, opts, Utc::now().timestamp(), theme);
