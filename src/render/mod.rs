@@ -14,6 +14,7 @@ use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 use crate::theme::{ColorKey, Theme};
 
+mod animated_postfx;
 mod animated_typewriter;
 mod chart_bar;
 mod chart_line;
@@ -114,6 +115,20 @@ pub struct RenderOptions {
     /// structural renderers (grid_table, gauge_*, chart_*) ignore it.
     #[serde(default)]
     pub align: Option<String>,
+    /// animated_postfx: name of the inner renderer whose output the effect is applied over.
+    /// None falls back to the shape's default renderer.
+    #[serde(default)]
+    pub inner: Option<String>,
+    /// animated_postfx: effect to apply. Names map to tachyonfx effects (`fade_in`, `fade_out`,
+    /// `dissolve`, `coalesce`, `sweep_in`, `slide_in`, `hsl_shift`, `glitch`). None defaults to
+    /// `fade_in`. Unknown names fall back to `fade_in` rather than failing the widget.
+    #[serde(default)]
+    pub effect: Option<String>,
+    /// animated_postfx: effect duration in milliseconds. None defaults to 800 — short enough
+    /// that the effect completes well within the 2s ANIMATION_WINDOW, leaving the final frame
+    /// static for the remainder.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
 }
 
 /// What the TOML accepts for `render`. Short form `render = "text_plain"` uses defaults; long
@@ -178,6 +193,7 @@ pub trait Renderer: Send + Sync {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        registry: &Registry,
     );
 }
 
@@ -192,6 +208,7 @@ impl Registry {
         r.register(Arc::new(text_plain::TextPlainRenderer));
         r.register(Arc::new(text_ascii::TextAsciiRenderer));
         r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
+        r.register(Arc::new(animated_postfx::AnimatedPostfxRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
@@ -283,7 +300,7 @@ pub fn render_payload(
         );
         return;
     }
-    renderer.render(frame, area, &payload.body, &options, theme);
+    renderer.render(frame, area, &payload.body, &options, theme, registry);
 }
 
 /// `true` when the body has no meaningful data to render. Callers (most usefully
@@ -386,12 +403,26 @@ mod tests {
     }
 
     #[test]
+    fn full_form_carries_postfx_options() {
+        let w: Wrapper = toml::from_str(
+            r#"render = { type = "animated_postfx", inner = "text_ascii", effect = "dissolve", duration_ms = 1200 }"#,
+        )
+        .unwrap();
+        let opts = w.render.options();
+        assert_eq!(w.render.renderer_name(), "animated_postfx");
+        assert_eq!(opts.inner.as_deref(), Some("text_ascii"));
+        assert_eq!(opts.effect.as_deref(), Some("dissolve"));
+        assert_eq!(opts.duration_ms, Some(1200));
+    }
+
+    #[test]
     fn registry_resolves_all_builtins() {
         let r = Registry::with_builtins();
         for name in [
             "text_plain",
             "text_ascii",
             "animated_typewriter",
+            "animated_postfx",
             "status_badge",
             "list_plain",
             "list_timeline",

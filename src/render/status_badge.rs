@@ -9,7 +9,7 @@ use ratatui::{
 use crate::payload::{BadgeData, Body, Status};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
@@ -43,6 +43,7 @@ impl Renderer for StatusBadgeRenderer {
         body: &Body,
         opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Badge(d) = body {
             render_badge(frame, area, d, opts, theme);

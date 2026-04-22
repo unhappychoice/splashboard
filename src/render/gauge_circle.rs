@@ -3,7 +3,7 @@ use ratatui::{Frame, layout::Rect, style::Style, text::Span, widgets::Gauge};
 use crate::payload::{Body, RatioData};
 use crate::theme::{self, ColorKey, Theme};
 
-use super::{RenderOptions, Renderer, Shape};
+use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
@@ -26,6 +26,7 @@ impl Renderer for GaugeCircleRenderer {
         body: &Body,
         _opts: &RenderOptions,
         theme: &Theme,
+        _registry: &Registry,
     ) {
         if let Body::Ratio(d) = body {
             render_gauge(frame, area, d, theme);
