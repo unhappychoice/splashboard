@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Alignment, Position, Rect},
     style::{Color, Modifier, Style},
     text::Line,
-    widgets::Paragraph,
+    widgets::{Block, Paragraph},
 };
 use tokio::task::JoinSet;
 
@@ -21,6 +21,7 @@ use crate::fetcher::{self, FetchContext, Registry, ShapeMismatch};
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
 use crate::render::{self, RenderSpec, Shape};
+use crate::theme::Theme;
 use crate::trust::{self, TrustStore};
 
 /// Split trust-passed widgets into cached (disk-backed, fetched async via daemon) and realtime
@@ -140,6 +141,8 @@ pub async fn run(
     let registry = Registry::with_builtins();
     let render_registry = render::Registry::with_builtins();
     let specs = render_specs(&config.widgets);
+    let theme = Theme::from_config(&config.theme);
+    let padding = config.general.padding.map(|p| p.xy()).unwrap_or((0, 0));
 
     // Split widgets into what we can fetch vs what we must gate behind trust. Gated slots render
     // a canned "🔒 requires trust" placeholder so the layout stays intact and the user can see
@@ -226,6 +229,8 @@ pub async fn run(
             &payloads,
             &specs,
             &render_registry,
+            &theme,
+            padding,
             requested_height,
             viewport_lines,
         )?;
@@ -254,6 +259,8 @@ pub async fn run(
                     &payloads,
                     &specs,
                     &render_registry,
+                    &theme,
+                    padding,
                     hidden_rows,
                 )?;
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -280,6 +287,8 @@ pub async fn run(
                 &payloads,
                 &specs,
                 &render_registry,
+                &theme,
+                padding,
                 requested_height,
                 viewport_lines,
             )?;
@@ -308,6 +317,8 @@ pub async fn run(
                 &payloads,
                 &specs,
                 &render_registry,
+                &theme,
+                padding,
                 requested_height,
                 viewport_lines,
             )?;
@@ -484,12 +495,15 @@ fn make_terminal<B: Backend>(backend: B, viewport_lines: u16) -> io::Result<Term
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    theme: &Theme,
+    padding: (u16, u16),
     hidden_rows: u16,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
@@ -500,6 +514,8 @@ fn draw<B: Backend>(
             payloads,
             specs,
             registry,
+            theme,
+            padding,
             hidden_rows,
         )
     })?;
@@ -511,19 +527,32 @@ fn draw<B: Backend>(
 /// the backend rather than `Frame::set_cursor_position` — the latter re-shows the cursor and
 /// we want it to stay hidden (matches ratatui's default for every intermediate draw). The
 /// caller is responsible for re-showing the cursor just before returning to the shell.
+#[allow(clippy::too_many_arguments)]
 fn draw_final<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    theme: &Theme,
+    padding: (u16, u16),
     hidden_rows: u16,
 ) -> io::Result<()> {
     let mut captured: Option<Rect> = None;
     terminal.draw(|frame| {
         let area = frame.area();
         captured = Some(area);
-        draw_frame(frame, area, root, payloads, specs, registry, hidden_rows);
+        draw_frame(
+            frame,
+            area,
+            root,
+            payloads,
+            specs,
+            registry,
+            theme,
+            padding,
+            hidden_rows,
+        );
     })?;
     if let Some(area) = captured
         && area.height > 0
@@ -541,18 +570,21 @@ fn draw_final<B: Backend>(
 /// slice — no clip hint. This way the animation plays in the clamped viewport, then scrolls up
 /// at exit so the full splash is visible (bottom on screen, rest scrollable). When the layout
 /// fits, falls through to the regular [`draw_final`].
+#[allow(clippy::too_many_arguments)]
 fn finalize_draw<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    theme: &Theme,
+    padding: (u16, u16),
     requested_height: u16,
     viewport_lines: u16,
 ) -> io::Result<()> {
     let scrollback_rows = requested_height.saturating_sub(viewport_lines);
     if scrollback_rows == 0 {
-        return draw_final(terminal, root, payloads, specs, registry, 0);
+        return draw_final(terminal, root, payloads, specs, registry, theme, padding, 0);
     }
     flush_full_to_scrollback(
         terminal,
@@ -560,23 +592,36 @@ fn finalize_draw<B: Backend>(
         payloads,
         specs,
         registry,
+        theme,
+        padding,
         requested_height,
         viewport_lines,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn flush_full_to_scrollback<B: Backend>(
     terminal: &mut Terminal<B>,
     root: &Layout,
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    theme: &Theme,
+    padding: (u16, u16),
     requested_height: u16,
     viewport_lines: u16,
 ) -> io::Result<()> {
     let width = terminal.size()?.width;
-    let full_buf =
-        render_full_into_buffer(width, requested_height, root, payloads, specs, registry)?;
+    let full_buf = render_full_into_buffer(
+        width,
+        requested_height,
+        root,
+        payloads,
+        specs,
+        registry,
+        theme,
+        padding,
+    )?;
     let scrollback_rows = requested_height - viewport_lines;
     terminal.insert_before(scrollback_rows, |buf| {
         copy_rows(&full_buf, 0..scrollback_rows, buf);
@@ -605,6 +650,7 @@ fn flush_full_to_scrollback<B: Backend>(
 /// Renders the layout into an off-screen buffer at full configured height. Uses `TestBackend`
 /// only because it's ratatui's one publicly exposed in-memory `Backend` — the name is
 /// historical, nothing about it is test-only.
+#[allow(clippy::too_many_arguments)]
 fn render_full_into_buffer(
     width: u16,
     height: u16,
@@ -612,12 +658,16 @@ fn render_full_into_buffer(
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    theme: &Theme,
+    padding: (u16, u16),
 ) -> io::Result<Buffer> {
     let backend = TestBackend::new(width, height);
     let mut inner = Terminal::new(backend)?;
     inner.draw(|frame| {
         let area = frame.area();
-        layout::draw(frame, area, root, payloads, specs, registry);
+        paint_viewport_bg(frame, area, theme);
+        let content = shrink(area, padding);
+        layout::draw(frame, content, root, payloads, specs, registry, theme);
     })?;
     Ok(inner.backend().buffer().clone())
 }
@@ -649,6 +699,7 @@ fn copy_rows(src: &Buffer, src_y_range: std::ops::Range<u16>, dst: &mut Buffer) 
 
 /// Renders the layout into the given area, sacrificing the bottom row for a `… +N rows` hint
 /// when the configured height doesn't fit and the viewport had to be clamped to the terminal.
+#[allow(clippy::too_many_arguments)]
 fn draw_frame(
     frame: &mut Frame,
     area: Rect,
@@ -656,30 +707,59 @@ fn draw_frame(
     payloads: &HashMap<WidgetId, Payload>,
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
+    theme: &Theme,
+    padding: (u16, u16),
     hidden_rows: u16,
 ) {
-    if hidden_rows > 0 && area.height > 1 {
+    // Paint the full area first so the padded band takes the theme bg too — otherwise the
+    // terminal bg would show through the padding ring and fight the theme surface.
+    paint_viewport_bg(frame, area, theme);
+    let content = shrink(area, padding);
+    if hidden_rows > 0 && content.height > 1 {
         let layout_area = Rect {
-            height: area.height - 1,
-            ..area
+            height: content.height - 1,
+            ..content
         };
         let hint_area = Rect {
-            y: area.y + area.height - 1,
+            y: content.y + content.height - 1,
             height: 1,
-            ..area
+            ..content
         };
-        layout::draw(frame, layout_area, root, payloads, specs, registry);
-        render_clip_hint(frame, hint_area, hidden_rows);
+        layout::draw(frame, layout_area, root, payloads, specs, registry, theme);
+        render_clip_hint(frame, hint_area, hidden_rows, theme);
     } else {
-        layout::draw(frame, area, root, payloads, specs, registry);
+        layout::draw(frame, content, root, payloads, specs, registry, theme);
     }
 }
 
-fn render_clip_hint(frame: &mut Frame, area: Rect, hidden_rows: u16) {
+/// Shrinks `area` by `padding` on each axis, clamping so padding larger than the half-extent
+/// doesn't produce a negative-sized rect.
+fn shrink(area: Rect, (x, y): (u16, u16)) -> Rect {
+    let dx = x.min(area.width / 2);
+    let dy = y.min(area.height / 2);
+    Rect {
+        x: area.x + dx,
+        y: area.y + dy,
+        width: area.width.saturating_sub(dx.saturating_mul(2)),
+        height: area.height.saturating_sub(dy.saturating_mul(2)),
+    }
+}
+
+/// Paints `theme.bg` across the whole splash area before any widget draws, so themes that
+/// ship a bg (Tokyo Night, Dracula, etc.) get a solid painted surface instead of inheriting
+/// the terminal's own background. `Color::Reset` is a no-op — cells stay terminal-default.
+fn paint_viewport_bg(frame: &mut Frame, area: Rect, theme: &Theme) {
+    if theme.bg == Color::Reset {
+        return;
+    }
+    frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
+}
+
+fn render_clip_hint(frame: &mut Frame, area: Rect, hidden_rows: u16, theme: &Theme) {
     let text = format!("… +{hidden_rows} rows (terminal too short)");
     let style = Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::DIM | Modifier::ITALIC);
+        .fg(theme.dim)
+        .add_modifier(Modifier::ITALIC);
     let p = Paragraph::new(Line::from(text).style(style)).alignment(Alignment::Right);
     frame.render_widget(p, area);
 }
@@ -726,10 +806,7 @@ mod tests {
     }
 
     fn single_widget_tree(id: &str) -> LayoutTree {
-        LayoutTree::Widget {
-            id: id.into(),
-            panel: None,
-        }
+        LayoutTree::widget(id)
     }
 
     fn row_text(buf: &ratatui::buffer::Buffer, y: u16) -> String {
@@ -747,8 +824,21 @@ mod tests {
         let registry = render::Registry::with_builtins();
         let backend = TestBackend::new(50, 4);
         let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
         terminal
-            .draw(|f| draw_frame(f, f.area(), &root, &payloads, &specs, &registry, 7))
+            .draw(|f| {
+                draw_frame(
+                    f,
+                    f.area(),
+                    &root,
+                    &payloads,
+                    &specs,
+                    &registry,
+                    &theme,
+                    (0, 0),
+                    7,
+                )
+            })
             .unwrap();
         let buf = terminal.backend().buffer().clone();
         let bottom = row_text(&buf, 3);
@@ -768,8 +858,21 @@ mod tests {
         let registry = render::Registry::with_builtins();
         let backend = TestBackend::new(50, 3);
         let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
         terminal
-            .draw(|f| draw_frame(f, f.area(), &root, &payloads, &specs, &registry, 0))
+            .draw(|f| {
+                draw_frame(
+                    f,
+                    f.area(),
+                    &root,
+                    &payloads,
+                    &specs,
+                    &registry,
+                    &theme,
+                    (0, 0),
+                    0,
+                )
+            })
             .unwrap();
         let buf = terminal.backend().buffer().clone();
         let joined: String = (0..3).map(|y| row_text(&buf, y)).collect();
@@ -781,8 +884,9 @@ mod tests {
     fn clip_hint_includes_marker_and_count() {
         let backend = TestBackend::new(60, 1);
         let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
         terminal
-            .draw(|f| render_clip_hint(f, f.area(), 42))
+            .draw(|f| render_clip_hint(f, f.area(), 42, &theme))
             .unwrap();
         let row = row_text(&terminal.backend().buffer().clone(), 0);
         assert!(row.contains("…"), "marker missing: {row:?}");
@@ -823,7 +927,10 @@ mod tests {
         );
         let specs = HashMap::new();
         let registry = render::Registry::with_builtins();
-        let buf = render_full_into_buffer(20, 6, &root, &payloads, &specs, &registry).unwrap();
+        let theme = Theme::default();
+        let buf =
+            render_full_into_buffer(20, 6, &root, &payloads, &specs, &registry, &theme, (0, 0))
+                .unwrap();
         assert!(row_text(&buf, 0).starts_with("r0"));
         assert!(row_text(&buf, 5).starts_with("r5"));
     }
@@ -842,7 +949,19 @@ mod tests {
         // scrollback (rows r0..r3), bottom 4 rows (r4..r7) land in the viewport. No clip hint.
         let backend = TestBackend::new(20, 10);
         let mut terminal = make_terminal(backend, 4).unwrap();
-        finalize_draw(&mut terminal, &root, &payloads, &specs, &registry, 8, 4).unwrap();
+        let theme = Theme::default();
+        finalize_draw(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            (0, 0),
+            8,
+            4,
+        )
+        .unwrap();
         let buf = terminal.backend().buffer().clone();
         let rows: Vec<String> = (0..buf.area.height)
             .map(|y| row_text(&buf, y).trim_end().to_string())
@@ -871,7 +990,19 @@ mod tests {
         let registry = render::Registry::with_builtins();
         let backend = TestBackend::new(20, 10);
         let mut terminal = make_terminal(backend, 3).unwrap();
-        finalize_draw(&mut terminal, &root, &payloads, &specs, &registry, 3, 3).unwrap();
+        let theme = Theme::default();
+        finalize_draw(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            (0, 0),
+            3,
+            3,
+        )
+        .unwrap();
         let buf = terminal.backend().buffer().clone();
         let joined: String = (0..buf.area.height).map(|y| row_text(&buf, y)).collect();
         assert!(joined.contains("fits"));
