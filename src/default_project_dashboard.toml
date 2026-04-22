@@ -1,0 +1,4 @@
+# Baked-in project dashboard fallback. Rendered when the CWD is a git repo root with no per-dir
+# dashboard and no `$HOME/.splashboard/project.dashboard.toml`. Intentionally empty — keeps
+# splashboard silent on repos the user hasn't configured. Users drop widgets here (or via
+# `splashboard install --template`) to make "cd into a project" show a project-flavoured splash.

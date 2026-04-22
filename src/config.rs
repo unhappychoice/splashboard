@@ -8,16 +8,38 @@ use crate::layout::{BgLevel, BorderStyle, Child, Flex, Layout};
 use crate::render::RenderSpec;
 use crate::theme::ThemeConfig;
 
-const DEFAULT_CONFIG: &str = include_str!("default_config.toml");
+const DEFAULT_SETTINGS: &str = include_str!("default_settings.toml");
+const DEFAULT_HOME_DASHBOARD: &str = include_str!("default_home_dashboard.toml");
+const DEFAULT_PROJECT_DASHBOARD: &str = include_str!("default_project_dashboard.toml");
 
-#[derive(Debug, Clone, Deserialize, Default)]
+/// Combined view the runtime consumes: user preferences composed with the active dashboard.
+#[derive(Debug, Clone, Default)]
 pub struct Config {
+    pub general: General,
+    pub theme: ThemeConfig,
+    pub widgets: Vec<WidgetConfig>,
+    pub rows: Vec<RowConfig>,
+}
+
+/// User preferences: `[general]` + `[theme]`. Loaded from `$HOME/.splashboard/settings.toml`.
+/// Shared across every dashboard the same user sees; per-dir overrides are 0.x out of scope.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SettingsConfig {
     #[serde(default)]
     pub general: General,
     /// Semantic colour overrides. Omitted keys use the built-in defaults; see
     /// [`crate::theme`] for the list of tokens.
     #[serde(default)]
     pub theme: ThemeConfig,
+}
+
+/// Widgets + rows. Loaded from one of:
+///
+/// - a per-dir `./.splashboard/dashboard.toml` or `./.splashboard.toml`
+/// - `$HOME/.splashboard/project.dashboard.toml` (CWD == git repo root, no per-dir override)
+/// - `$HOME/.splashboard/home.dashboard.toml` (everything else)
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DashboardConfig {
     #[serde(default, rename = "widget")]
     pub widgets: Vec<WidgetConfig>,
     #[serde(default, rename = "row")]
@@ -165,20 +187,13 @@ pub enum BorderSpec {
 }
 
 impl Config {
-    pub fn default_baked() -> Self {
-        toml::from_str(DEFAULT_CONFIG).expect("built-in default config must parse")
-    }
-
-    pub fn load_or_default(path: &Path) -> Result<Self, String> {
-        match std::fs::read_to_string(path) {
-            Ok(s) => Self::parse(&s).map_err(|e| format!("{}: {e}", path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default_baked()),
-            Err(e) => Err(format!("{}: {e}", path.display())),
+    pub fn from_parts(settings: SettingsConfig, dashboard: DashboardConfig) -> Self {
+        Self {
+            general: settings.general,
+            theme: settings.theme,
+            widgets: dashboard.widgets,
+            rows: dashboard.rows,
         }
-    }
-
-    pub fn parse(toml_str: &str) -> Result<Self, String> {
-        toml::from_str(toml_str).map_err(|e| e.to_string())
     }
 
     pub fn to_layout(&self) -> Layout {
@@ -205,40 +220,126 @@ impl Config {
     }
 }
 
-fn row_height_estimate(size: Option<SizeSpec>) -> u16 {
-    match size {
-        Some(SizeSpec::Length(n)) | Some(SizeSpec::Min(n)) | Some(SizeSpec::Max(n)) => n,
-        Some(SizeSpec::Fill(_)) => 3,
-        Some(SizeSpec::Percentage(_)) => 0,
-        None => 3,
+impl SettingsConfig {
+    pub fn default_baked() -> Self {
+        toml::from_str(DEFAULT_SETTINGS).expect("built-in default settings must parse")
+    }
+
+    pub fn parse(toml_str: &str) -> Result<Self, String> {
+        toml::from_str(toml_str).map_err(|e| e.to_string())
+    }
+
+    /// Loads the user's settings file, or the baked default if it's missing. Errors bubble up
+    /// for parse failures so users see what's broken instead of silently getting defaults.
+    pub fn load_or_default(path: &Path) -> Result<Self, String> {
+        match std::fs::read_to_string(path) {
+            Ok(s) => Self::parse(&s).map_err(|e| format!("{}: {e}", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default_baked()),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
     }
 }
 
-pub const LOCAL_CONFIG_CANDIDATES: &[&str] = &[".splashboard/config.toml", ".splashboard.toml"];
+impl DashboardConfig {
+    pub fn default_home() -> Self {
+        toml::from_str(DEFAULT_HOME_DASHBOARD).expect("built-in home dashboard must parse")
+    }
 
-pub fn resolve_config_path() -> Option<PathBuf> {
+    pub fn default_project() -> Self {
+        toml::from_str(DEFAULT_PROJECT_DASHBOARD).expect("built-in project dashboard must parse")
+    }
+
+    pub fn parse(toml_str: &str) -> Result<Self, String> {
+        toml::from_str(toml_str).map_err(|e| e.to_string())
+    }
+}
+
+/// Where the active dashboard came from. Drives trust gating (local files need explicit trust;
+/// the HOME-backed defaults are implicitly trusted) and which baked fallback applies when the
+/// file is missing.
+#[derive(Debug, Clone)]
+pub enum DashboardSource {
+    /// Per-dir dashboard discovered in the CWD (`./.splashboard/dashboard.toml` or
+    /// `./.splashboard.toml`). Trust-gated.
+    Local(PathBuf),
+    /// `$HOME/.splashboard/project.dashboard.toml` — used when CWD is a git repo root and no
+    /// per-dir dashboard overrides. Baked-in default applies when the file is absent.
+    Project,
+    /// `$HOME/.splashboard/home.dashboard.toml` — the ambient fallback. Baked-in default
+    /// applies when the file is absent.
+    Home,
+}
+
+pub const LOCAL_DASHBOARD_CANDIDATES: &[&str] =
+    &[".splashboard/dashboard.toml", ".splashboard.toml"];
+
+/// Dashboard resolution for a shell-startup render. Returns `Home` as a final fallback so the
+/// splash always has something to show.
+pub fn resolve_dashboard_source() -> DashboardSource {
+    let cwd = std::env::current_dir().ok();
+    match cwd.as_deref() {
+        Some(c) => resolve_from(c, /* on_cd = */ false).unwrap_or(DashboardSource::Home),
+        None => DashboardSource::Home,
+    }
+}
+
+/// Dashboard resolution for an `--on-cd` render. Returns `None` in the fallback case so the
+/// shell hook exits silently instead of repainting the home splash on every `cd`.
+pub fn resolve_on_cd_dashboard_source() -> Option<DashboardSource> {
     let cwd = std::env::current_dir().ok()?;
-    find_local(&cwd).or_else(default_global_path)
+    resolve_from(&cwd, /* on_cd = */ true)
 }
 
-pub fn resolve_cwd_only_path() -> Option<PathBuf> {
+/// Nearest project-local dashboard file, for the trust subcommands. Walks up ancestors so
+/// running `splashboard trust` from a subdirectory picks the same dashboard the startup
+/// resolver would use at the repo root.
+pub fn resolve_local_dashboard_path() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
-    find_local_at(&cwd)
+    find_local_walking_up(&cwd)
 }
 
-/// Walks up from the current directory looking for a project-local config. Used by the trust
-/// commands so `splashboard trust` / `revoke` target the nearest `.splashboard.toml` the same
-/// way `splashboard` itself would pick one up.
-pub fn resolve_local_config_path() -> Option<PathBuf> {
-    let cwd = std::env::current_dir().ok()?;
-    find_local(&cwd)
+fn resolve_from(cwd: &Path, on_cd: bool) -> Option<DashboardSource> {
+    if is_home_dir(cwd) {
+        // Dotfiles-in-git case: CWD == $HOME still means "home context", not "project".
+        return if on_cd {
+            None
+        } else {
+            Some(DashboardSource::Home)
+        };
+    }
+    if let Some(path) = find_local_at(cwd) {
+        return Some(DashboardSource::Local(path));
+    }
+    if is_git_repo_root(cwd) {
+        return Some(DashboardSource::Project);
+    }
+    if on_cd {
+        None
+    } else {
+        Some(DashboardSource::Home)
+    }
 }
 
-pub fn default_global_path() -> Option<PathBuf> {
-    crate::paths::config_path()
+fn is_home_dir(path: &Path) -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    canonicalize_or(path) == canonicalize_or(&home)
 }
 
-fn find_local(start: &Path) -> Option<PathBuf> {
+fn canonicalize_or(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn is_git_repo_root(cwd: &Path) -> bool {
+    // "CWD == repo root" using direct `.git` presence. `gix::discover` walks upward, so using
+    // it here would misclassify subdirectories as project roots and re-render the project
+    // dashboard on every sub-cd. Checking for `.git` right here keeps the rule crisp.
+    let dot_git = cwd.join(".git");
+    dot_git.is_dir() || dot_git.is_file()
+}
+
+fn find_local_walking_up(start: &Path) -> Option<PathBuf> {
     let mut current = Some(start);
     while let Some(dir) = current {
         if let Some(path) = find_local_at(dir) {
@@ -250,10 +351,19 @@ fn find_local(start: &Path) -> Option<PathBuf> {
 }
 
 fn find_local_at(dir: &Path) -> Option<PathBuf> {
-    LOCAL_CONFIG_CANDIDATES
+    LOCAL_DASHBOARD_CANDIDATES
         .iter()
         .map(|name| dir.join(name))
         .find(|p| p.is_file())
+}
+
+fn row_height_estimate(size: Option<SizeSpec>) -> u16 {
+    match size {
+        Some(SizeSpec::Length(n)) | Some(SizeSpec::Min(n)) | Some(SizeSpec::Max(n)) => n,
+        Some(SizeSpec::Fill(_)) => 3,
+        Some(SizeSpec::Percentage(_)) => 0,
+        None => 3,
+    }
 }
 
 fn to_row_child(row: &RowConfig) -> Child {
@@ -333,22 +443,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_baked_config_parses() {
-        let _ = Config::default_baked();
+    fn default_baked_settings_parses() {
+        let _ = SettingsConfig::default_baked();
     }
 
     #[test]
-    fn default_baked_is_empty() {
-        // Baked-in default ships no widgets — a fresh install renders nothing until the user
-        // drops a real config in place. Previous demo-content defaults pulled in stub fetchers
-        // that have since been removed.
-        let c = Config::default_baked();
-        assert!(c.widgets.is_empty());
-        assert!(c.rows.is_empty());
+    fn default_home_dashboard_parses() {
+        let _ = DashboardConfig::default_home();
     }
 
     #[test]
-    fn minimal_config_parses() {
+    fn default_project_dashboard_parses() {
+        let _ = DashboardConfig::default_project();
+    }
+
+    #[test]
+    fn minimal_dashboard_parses() {
         let toml = r#"
 [[widget]]
 id = "x"
@@ -360,10 +470,10 @@ height = { length = 3 }
 [[row.child]]
 widget = "x"
 "#;
-        let c = Config::parse(toml).unwrap();
-        assert_eq!(c.widgets.len(), 1);
-        assert_eq!(c.rows.len(), 1);
-        assert_eq!(c.rows[0].children.len(), 1);
+        let d = DashboardConfig::parse(toml).unwrap();
+        assert_eq!(d.widgets.len(), 1);
+        assert_eq!(d.rows.len(), 1);
+        assert_eq!(d.rows[0].children.len(), 1);
     }
 
     #[test]
@@ -386,15 +496,15 @@ height = { min = 6 }
 widget = "x"
 width = { max = 30 }
 "#;
-        let c = Config::parse(toml).unwrap();
-        assert!(matches!(c.rows[0].height, Some(SizeSpec::Fill(2))));
+        let d = DashboardConfig::parse(toml).unwrap();
+        assert!(matches!(d.rows[0].height, Some(SizeSpec::Fill(2))));
         assert!(matches!(
-            c.rows[0].children[0].width,
+            d.rows[0].children[0].width,
             Some(SizeSpec::Percentage(50))
         ));
-        assert!(matches!(c.rows[1].height, Some(SizeSpec::Min(6))));
+        assert!(matches!(d.rows[1].height, Some(SizeSpec::Min(6))));
         assert!(matches!(
-            c.rows[1].children[0].width,
+            d.rows[1].children[0].width,
             Some(SizeSpec::Max(30))
         ));
     }
@@ -415,7 +525,7 @@ border = "{name}"
 widget = "x"
 "#
             );
-            Config::parse(&toml).unwrap();
+            DashboardConfig::parse(&toml).unwrap();
         }
     }
 
@@ -434,24 +544,62 @@ height = { length = 2 }
 widget = "x"
 bg = "default"
 "#;
-        let c = Config::parse(toml).unwrap();
-        assert_eq!(c.rows[0].bg, Some(BgSpec::Subtle));
-        assert_eq!(c.rows[0].children[0].bg, Some(BgSpec::Default));
+        let d = DashboardConfig::parse(toml).unwrap();
+        assert_eq!(d.rows[0].bg, Some(BgSpec::Subtle));
+        assert_eq!(d.rows[0].children[0].bg, Some(BgSpec::Default));
     }
 
     #[test]
-    fn invalid_toml_returns_error() {
-        let r = Config::parse("this is not [valid toml");
+    fn invalid_dashboard_toml_returns_error() {
+        let r = DashboardConfig::parse("this is not [valid toml");
         assert!(r.is_err());
     }
 
     #[test]
-    fn missing_file_falls_back_to_default() {
+    fn missing_settings_file_falls_back_to_default() {
         let path = Path::new("/does/not/exist.toml");
-        let c = Config::load_or_default(path).unwrap();
-        // Baked-in default is empty; what matters is that the call resolves `Ok` rather than
-        // bubbling the missing-file error.
-        assert!(c.widgets.is_empty());
+        let s = SettingsConfig::load_or_default(path).unwrap();
+        assert!(s.general.height.is_none());
+    }
+
+    #[test]
+    fn settings_parses_general_and_theme() {
+        let toml = r#"
+[general]
+wait_for_fresh = true
+height = 24
+
+[theme]
+preset = "nord"
+"#;
+        let s = SettingsConfig::parse(toml).unwrap();
+        assert!(s.general.wait_for_fresh);
+        assert_eq!(s.general.height, Some(24));
+        assert_eq!(s.theme.preset.as_deref(), Some("nord"));
+    }
+
+    #[test]
+    fn dashboard_ignores_stray_settings_sections() {
+        // Dashboard files may end up with leftover `[general]` / `[theme]` blocks after a
+        // manual migration. Silently ignore them so the dashboard still parses.
+        let toml = r#"
+[general]
+wait_for_fresh = true
+
+[theme]
+preset = "nord"
+
+[[widget]]
+id = "x"
+fetcher = "static"
+
+[[row]]
+[[row.child]]
+widget = "x"
+"#;
+        let d = DashboardConfig::parse(toml).unwrap();
+        assert_eq!(d.widgets.len(), 1);
+        assert_eq!(d.rows.len(), 1);
     }
 
     #[test]
@@ -459,7 +607,7 @@ bg = "default"
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join(".splashboard.toml");
         std::fs::write(&file, "").unwrap();
-        assert_eq!(find_local(dir.path()).unwrap(), file);
+        assert_eq!(find_local_at(dir.path()).unwrap(), file);
     }
 
     #[test]
@@ -467,19 +615,19 @@ bg = "default"
         let dir = tempfile::tempdir().unwrap();
         let subdir = dir.path().join(".splashboard");
         std::fs::create_dir(&subdir).unwrap();
-        let file = subdir.join("config.toml");
+        let file = subdir.join("dashboard.toml");
         std::fs::write(&file, "").unwrap();
-        assert_eq!(find_local(dir.path()).unwrap(), file);
+        assert_eq!(find_local_at(dir.path()).unwrap(), file);
     }
 
     #[test]
     fn find_local_prefers_directory_form_when_both_exist() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join(".splashboard")).unwrap();
-        let dir_file = dir.path().join(".splashboard/config.toml");
+        let dir_file = dir.path().join(".splashboard/dashboard.toml");
         std::fs::write(&dir_file, "").unwrap();
         std::fs::write(dir.path().join(".splashboard.toml"), "").unwrap();
-        assert_eq!(find_local(dir.path()).unwrap(), dir_file);
+        assert_eq!(find_local_at(dir.path()).unwrap(), dir_file);
     }
 
     #[test]
@@ -489,13 +637,13 @@ bg = "default"
         std::fs::write(&file, "").unwrap();
         let nested = root.path().join("a").join("b").join("c");
         std::fs::create_dir_all(&nested).unwrap();
-        assert_eq!(find_local(&nested).unwrap(), file);
+        assert_eq!(find_local_walking_up(&nested).unwrap(), file);
     }
 
     #[test]
-    fn find_local_returns_none_when_absent() {
+    fn find_local_walking_up_returns_none_when_absent() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(find_local(dir.path()).is_none());
+        assert!(find_local_walking_up(dir.path()).is_none());
     }
 
     #[test]
@@ -505,7 +653,56 @@ bg = "default"
         let nested = root.path().join("sub");
         std::fs::create_dir(&nested).unwrap();
         assert!(find_local_at(&nested).is_none());
-        assert!(find_local(&nested).is_some());
+        assert!(find_local_walking_up(&nested).is_some());
+    }
+
+    #[test]
+    fn resolve_prefers_local_over_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        std::fs::write(dir.path().join(".splashboard.toml"), "").unwrap();
+        let src = resolve_from(dir.path(), false).unwrap();
+        assert!(matches!(src, DashboardSource::Local(_)));
+    }
+
+    #[test]
+    fn resolve_picks_project_when_cwd_is_repo_root() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        let src = resolve_from(dir.path(), false).unwrap();
+        assert!(matches!(src, DashboardSource::Project));
+    }
+
+    #[test]
+    fn resolve_falls_back_to_home_outside_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = resolve_from(dir.path(), false).unwrap();
+        assert!(matches!(src, DashboardSource::Home));
+    }
+
+    #[test]
+    fn on_cd_silent_in_plain_subdir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(resolve_from(dir.path(), true).is_none());
+    }
+
+    #[test]
+    fn on_cd_fires_at_repo_root() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        let src = resolve_from(dir.path(), true).unwrap();
+        assert!(matches!(src, DashboardSource::Project));
+    }
+
+    #[test]
+    fn on_cd_silent_in_repo_subdir() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join(".git")).unwrap();
+        let sub = root.path().join("src");
+        std::fs::create_dir(&sub).unwrap();
+        // Sub-directory: even though an ancestor is a git root, `resolve_from` must not walk
+        // up — that's what keeps cd into src/ from re-triggering the project splash.
+        assert!(resolve_from(&sub, true).is_none());
     }
 
     #[test]
@@ -528,8 +725,9 @@ widget = "a"
 [[row.child]]
 widget = "b"
 "#;
-        let c = Config::parse(toml).unwrap();
-        let layout = c.to_layout();
+        let d = DashboardConfig::parse(toml).unwrap();
+        let config = Config::from_parts(SettingsConfig::default(), d);
+        let layout = config.to_layout();
         match layout {
             Layout::Stack { children, .. } => {
                 assert!(!children.is_empty());

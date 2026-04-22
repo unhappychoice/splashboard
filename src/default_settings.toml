@@ -1,0 +1,3 @@
+# Baked-in settings fallback. Loaded when `$HOME/.splashboard/settings.toml` is absent.
+# Intentionally empty — a fresh install picks up the built-in theme defaults and default
+# viewport sizing. Users drop their own `[general]` / `[theme]` in to override.
