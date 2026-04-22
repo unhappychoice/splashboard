@@ -29,7 +29,10 @@ impl Fetcher for GitWorktrees {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
         let list = worktrees(&repo)?;
-        Ok(payload(render_body(list, ctx.shape.unwrap_or(Shape::Entries))))
+        Ok(payload(render_body(
+            list,
+            ctx.shape.unwrap_or(Shape::Entries),
+        )))
     }
 }
 

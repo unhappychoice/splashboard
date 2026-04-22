@@ -29,7 +29,10 @@ impl Fetcher for GitStashCount {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
         let count = stash_count(&repo)?;
-        Ok(payload(render_body(count, ctx.shape.unwrap_or(Shape::Lines))))
+        Ok(payload(render_body(
+            count,
+            ctx.shape.unwrap_or(Shape::Lines),
+        )))
     }
 }
 

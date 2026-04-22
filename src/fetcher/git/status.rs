@@ -33,7 +33,10 @@ impl Fetcher for GitStatus {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
         let info = read_status(&repo)?;
-        Ok(payload(render_body(&info, ctx.shape.unwrap_or(Shape::Entries))))
+        Ok(payload(render_body(
+            &info,
+            ctx.shape.unwrap_or(Shape::Entries),
+        )))
     }
 }
 
@@ -130,7 +133,11 @@ fn build_entries(info: &StatusInfo) -> Vec<Entry> {
     let mut items = vec![
         entry(
             "branch",
-            if info.detached { &info.head_short } else { &info.branch },
+            if info.detached {
+                &info.head_short
+            } else {
+                &info.branch
+            },
             None,
         ),
         entry(
@@ -199,8 +206,10 @@ mod tests {
             Body::Entries(d) => d.items,
             _ => panic!(),
         };
-        let map: std::collections::HashMap<_, _> =
-            items.iter().map(|e| (e.key.as_str(), e.value.as_deref().unwrap())).collect();
+        let map: std::collections::HashMap<_, _> = items
+            .iter()
+            .map(|e| (e.key.as_str(), e.value.as_deref().unwrap()))
+            .collect();
         assert_eq!(map.get("branch"), Some(&"main"));
         assert_eq!(map.get("state"), Some(&"clean"));
     }

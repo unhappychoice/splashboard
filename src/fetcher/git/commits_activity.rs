@@ -117,11 +117,13 @@ fn month_labels(start: NaiveDate) -> Vec<String> {
 }
 
 fn short_month(m: u32) -> String {
-    ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        .get(m as usize)
-        .copied()
-        .unwrap_or("")
-        .to_string()
+    [
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    .get(m as usize)
+    .copied()
+    .unwrap_or("")
+    .to_string()
 }
 
 fn render_body(grid: Vec<Vec<u32>>, today: NaiveDate, shape: Shape) -> Body {
@@ -134,9 +136,7 @@ fn render_body(grid: Vec<Vec<u32>>, today: NaiveDate, shape: Shape) -> Body {
             if total == 0 {
                 lines_body(Vec::new())
             } else {
-                lines_body(vec![format!(
-                    "{total} commits in the last {WEEKS} weeks"
-                )])
+                lines_body(vec![format!("{total} commits in the last {WEEKS} weeks")])
             }
         }
         _ => Body::Heatmap(HeatmapData {

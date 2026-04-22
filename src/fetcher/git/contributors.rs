@@ -41,7 +41,10 @@ impl Fetcher for GitContributors {
         let repo = open_repo()?;
         let days = parse_days(ctx.format.as_deref());
         let ranked = contributors(&repo, days)?;
-        Ok(payload(render_body(ranked, ctx.shape.unwrap_or(Shape::Bars))))
+        Ok(payload(render_body(
+            ranked,
+            ctx.shape.unwrap_or(Shape::Bars),
+        )))
     }
 }
 
@@ -64,7 +67,9 @@ fn contributors(repo: &gix::Repository, days: u64) -> Result<Vec<(String, u64)>,
         let Ok(commit) = repo.find_commit(info.id) else {
             continue;
         };
-        let Ok(author) = commit.author() else { continue };
+        let Ok(author) = commit.author() else {
+            continue;
+        };
         let name = author.name.to_string();
         *counts.entry(name).or_insert(0) += 1;
     }
@@ -136,10 +141,7 @@ mod tests {
         commit_as(&repo, "a2", "alice", "a@example.com");
         commit_as(&repo, "a3", "alice", "a@example.com");
         let ranked = contributors(&repo, 30).unwrap();
-        assert_eq!(
-            ranked,
-            vec![("alice".into(), 3u64), ("bob".into(), 1u64)]
-        );
+        assert_eq!(ranked, vec![("alice".into(), 3u64), ("bob".into(), 1u64)]);
     }
 
     #[test]

@@ -37,7 +37,10 @@ impl Fetcher for GitRecentCommits {
         let repo = open_repo()?;
         let limit = parse_limit(ctx.format.as_deref());
         let commits = recent_commits(&repo, limit)?;
-        Ok(payload(render_body(commits, ctx.shape.unwrap_or(Shape::Timeline))))
+        Ok(payload(render_body(
+            commits,
+            ctx.shape.unwrap_or(Shape::Timeline),
+        )))
     }
 }
 
@@ -51,10 +54,7 @@ fn recent_commits(repo: &gix::Repository, limit: usize) -> Result<Vec<CommitInfo
     let Ok(head_id) = repo.head_id() else {
         return Ok(Vec::new());
     };
-    let walker = repo
-        .rev_walk([head_id.detach()])
-        .all()
-        .map_err(fail)?;
+    let walker = repo.rev_walk([head_id.detach()]).all().map_err(fail)?;
     let mut out = Vec::with_capacity(limit);
     for info in walker.take(limit) {
         let Ok(info) = info else { continue };

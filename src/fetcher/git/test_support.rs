@@ -70,10 +70,7 @@ pub fn stash(repo: &gix::Repository) {
     let file = path.join("README.md");
     let prev = std::fs::read_to_string(&file).unwrap_or_default();
     std::fs::write(&file, format!("{prev}wip\n")).unwrap();
-    run(
-        path,
-        &["stash", "push", "--include-untracked", "-m", "wip"],
-    );
+    run(path, &["stash", "push", "--include-untracked", "-m", "wip"]);
 }
 
 pub fn dirty_write(repo: &gix::Repository, file_rel: &str, contents: &str) {

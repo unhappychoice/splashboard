@@ -45,7 +45,10 @@ impl Fetcher for GitBlameHeatmap {
         let repo = open_repo()?;
         let today = Local::now().date_naive();
         let churn = churn(&repo, today)?;
-        Ok(payload(render_body(churn, ctx.shape.unwrap_or(Shape::Heatmap))))
+        Ok(payload(render_body(
+            churn,
+            ctx.shape.unwrap_or(Shape::Heatmap),
+        )))
     }
 }
 
@@ -124,11 +127,7 @@ fn churn(repo: &gix::Repository, today: NaiveDate) -> Result<Churn, FetchError> 
     let totals: Vec<u32> = ranked.iter().map(|(_, c)| *c).collect();
     let grid: Vec<Vec<u32>> = files
         .iter()
-        .map(|f| {
-            per_file_week
-                .remove(f)
-                .unwrap_or_else(|| vec![0u32; WEEKS])
-        })
+        .map(|f| per_file_week.remove(f).unwrap_or_else(|| vec![0u32; WEEKS]))
         .collect();
     Ok(Churn {
         files,
@@ -250,7 +249,10 @@ mod tests {
     fn lines_shape_summarises_with_counts() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "dir/deep/name.rs", "x");
-        let body = render_body(churn(&repo, Local::now().date_naive()).unwrap(), Shape::Lines);
+        let body = render_body(
+            churn(&repo, Local::now().date_naive()).unwrap(),
+            Shape::Lines,
+        );
         match body {
             Body::Lines(d) => {
                 assert_eq!(d.lines.len(), 1);
