@@ -5,7 +5,10 @@ use crate::theme::Theme;
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
-const ZERO_BASELINE: &str = "▁";
+/// Baseline glyph painted at each 0-value column. Deliberately distinct from ratatui's
+/// smallest bar glyph (`▁`), which is what a tiny non-zero value would land on — we want
+/// "no activity" to read differently from "1 out of max=74".
+const ZERO_BASELINE: &str = "·";
 
 pub struct ChartSparklineRenderer;
 
@@ -40,7 +43,7 @@ fn render_sparkline(frame: &mut Frame, area: Rect, data: &NumberSeriesData, them
 
 /// ratatui `Sparkline` renders a 0-value column as empty space, which makes a sparse series
 /// ("nothing happened for 50 days") visually indistinguishable from "no data / padding".
-/// Paint the minimum block glyph on the bottom row at each 0-value column after the sparkline
+/// Paint [`ZERO_BASELINE`] on the bottom row at each 0-value column after the sparkline
 /// draws, so every point in the visible window registers as a tick.
 fn draw_zero_baseline(frame: &mut Frame, area: Rect, visible: &[u64], theme: &Theme) {
     if area.height == 0 {
@@ -110,8 +113,9 @@ mod tests {
     }
 
     /// ratatui renders value=0 as empty, so a sparse series ("no activity for a week") reads
-    /// as "no data". We post-draw `▁` on the bottom row at each zero-column so every visible
-    /// datum leaves a mark.
+    /// as "no data". We post-draw `·` on the bottom row at each zero-column so every visible
+    /// datum leaves a mark — and a *different* mark than ratatui's smallest bar glyph (`▁`),
+    /// which is what a value of "1 out of max=74" lands on.
     #[test]
     fn zero_values_draw_baseline_tick() {
         let values = vec![0u64, 5, 0, 0, 8, 0];
@@ -123,7 +127,7 @@ mod tests {
             if v == 0 {
                 assert_eq!(
                     buf.cell((x as u16, 2)).unwrap().symbol(),
-                    "▁",
+                    "·",
                     "zero column {x} should carry baseline, got row: {bottom_row:?}"
                 );
             }
