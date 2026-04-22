@@ -10,6 +10,7 @@ use crate::payload::{
     BadgeData, Bar, BarsData, Body, HeatmapData, Payload, PointSeries, PointSeriesData, Status,
 };
 use crate::render::Shape;
+use crate::samples;
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
@@ -36,6 +37,12 @@ impl Fetcher for GithubPrsStub {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Bars]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Bars => Some(samples::bars(&[("alice", 5), ("bob", 3), ("charlie", 2)])),
+            _ => None,
+        }
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::Bars(BarsData {
@@ -69,6 +76,12 @@ impl Fetcher for TrendStub {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::PointSeries]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::PointSeries => Some(samples::sine_points()),
+            _ => None,
+        }
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::PointSeries(PointSeriesData {
@@ -104,6 +117,12 @@ impl Fetcher for ContributionsStub {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Heatmap]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Heatmap => Some(samples::heatmap_grid(7, 20)),
+            _ => None,
+        }
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(payload(Body::Heatmap(HeatmapData {
@@ -194,6 +213,12 @@ impl Fetcher for CiStatusStub {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Badge]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Badge => Some(samples::badge(Status::Ok, "build passing")),
+            _ => None,
+        }
+    }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(badge(Status::Ok, "build passing"))
     }
@@ -212,6 +237,12 @@ impl Fetcher for DeployStatusStub {
     fn shapes(&self) -> &[Shape] {
         &[Shape::Badge]
     }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Badge => Some(samples::badge(Status::Warn, "deploy degraded")),
+            _ => None,
+        }
+    }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(badge(Status::Warn, "deploy degraded"))
     }
@@ -229,6 +260,12 @@ impl Fetcher for OncallStatusStub {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Badge]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Badge => Some(samples::badge(Status::Error, "oncall paging")),
+            _ => None,
+        }
     }
     async fn fetch(&self, _: &FetchContext) -> Result<Payload, FetchError> {
         Ok(badge(Status::Error, "oncall paging"))

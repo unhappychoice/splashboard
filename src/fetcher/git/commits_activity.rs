@@ -5,6 +5,7 @@ use gix::traverse::commit::simple::CommitTimeOrder;
 
 use crate::payload::{Body, HeatmapData, NumberSeriesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, lines_body, open_repo, payload, repo_cache_key};
@@ -35,6 +36,16 @@ impl Fetcher for GitCommitsActivity {
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Heatmap => samples::heatmap_grid(7, 14),
+            Shape::NumberSeries => samples::number_series(&[
+                2, 5, 3, 8, 4, 9, 6, 11, 7, 3, 4, 6, 2, 5, 8, 10, 7, 4, 9, 6,
+            ]),
+            Shape::Lines => samples::lines(&["42 commits this month"]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;

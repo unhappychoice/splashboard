@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::payload::{Body, EntriesData, Entry, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, lines_body, open_repo, payload, repo_cache_key};
@@ -25,6 +26,13 @@ impl Fetcher for GitStashCount {
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Lines => samples::lines(&["3 stashes"]),
+            Shape::Entries => samples::entries(&[("stashes", "3")]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;

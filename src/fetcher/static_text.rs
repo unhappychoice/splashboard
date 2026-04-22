@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::payload::{Body, LinesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
@@ -21,6 +22,12 @@ impl Fetcher for StaticText {
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Lines]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Lines => Some(samples::lines(&["Hello, splashboard!"])),
+            _ => None,
+        }
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let source = ctx.format.as_deref().unwrap_or("");

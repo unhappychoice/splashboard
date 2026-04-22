@@ -10,6 +10,7 @@ use gix::traverse::commit::simple::CommitTimeOrder;
 
 use crate::payload::{Body, HeatmapData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, lines_body, open_repo, payload, repo_cache_key};
@@ -40,6 +41,17 @@ impl Fetcher for GitBlameHeatmap {
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Heatmap => samples::heatmap_grid(5, 10),
+            Shape::Lines => samples::lines(&[
+                "src/main.rs        18",
+                "src/render/mod.rs  12",
+                "src/fetcher/mod.rs  9",
+            ]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;

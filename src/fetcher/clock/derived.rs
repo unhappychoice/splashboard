@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
 use crate::payload::{Body, LinesData, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::common;
 
@@ -49,6 +50,12 @@ impl RealtimeFetcher for ClockDerivedFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Lines => Some(samples::lines(&["day 113 of 2026"])),
+            _ => None,
+        }
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: Options = match common::parse_options(ctx.options.as_ref()) {

@@ -5,13 +5,32 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Timelike};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
+use crate::options::OptionSchema;
 use crate::payload::{Body, Payload, RatioData};
 use crate::render::Shape;
+use crate::samples;
 
 use super::common;
 
 const SHAPES: &[Shape] = &[Shape::Ratio];
 const SECS_PER_DAY: f64 = 86_400.0;
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "timezone",
+        type_hint: "IANA timezone (e.g. \"Asia/Tokyo\")",
+        required: false,
+        default: Some("system local"),
+        description: "Timezone the ratio is computed in. Omit to follow the system clock.",
+    },
+    OptionSchema {
+        name: "period",
+        type_hint: "\"day\" | \"year\" | \"month\" | \"week\" | \"quarter\" | \"hour\"",
+        required: false,
+        default: Some("\"day\""),
+        description: "Named period whose elapsed fraction becomes the ratio.",
+    },
+];
 
 pub struct ClockRatioFetcher;
 
@@ -45,6 +64,15 @@ impl RealtimeFetcher for ClockRatioFetcher {
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Ratio => Some(samples::ratio(0.45, "day")),
+            _ => None,
+        }
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: Options = match common::parse_options(ctx.options.as_ref()) {

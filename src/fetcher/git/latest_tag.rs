@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::payload::{Body, EntriesData, Entry, Payload};
 use crate::render::Shape;
+use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, lines_body, open_repo, payload, repo_cache_key};
@@ -29,6 +30,17 @@ impl Fetcher for GitLatestTag {
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Lines => samples::lines(&["v1.2.3"]),
+            Shape::Entries => samples::entries(&[
+                ("tag", "v1.2.3"),
+                ("short", "a1b2c3d"),
+                ("date", "2026-04-14"),
+            ]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;

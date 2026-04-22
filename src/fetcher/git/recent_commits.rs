@@ -3,6 +3,7 @@ use gix::prelude::ObjectIdExt;
 
 use crate::payload::{Body, Payload, TimelineData, TimelineEvent};
 use crate::render::Shape;
+use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, lines_body, open_repo, payload, repo_cache_key};
@@ -32,6 +33,21 @@ impl Fetcher for GitRecentCommits {
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
         repo_cache_key(self.name(), ctx)
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Timeline => samples::timeline(&[
+                (1_700_000_000, "feat(render): add heatmap", Some("a1b2c3d")),
+                (1_699_990_000, "fix(fetcher): tz fallback", Some("d4e5f6a")),
+                (1_699_900_000, "chore: bump ratatui", Some("e7f8a9b")),
+            ]),
+            Shape::Lines => samples::lines(&[
+                "a1b2c3d feat(render): add heatmap",
+                "d4e5f6a fix(fetcher): tz fallback",
+                "e7f8a9b chore: bump ratatui",
+            ]),
+            _ => return None,
+        })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;

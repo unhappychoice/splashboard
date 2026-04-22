@@ -1,3 +1,7 @@
+[workspace]
+members = ["."]
+resolver = "2"
+
 [package]
 name = "splashboard"
 version = "0.1.0"

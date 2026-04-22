@@ -10,6 +10,7 @@ use ratatui::{
 };
 use serde::Deserialize;
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 
 mod animated_typewriter;
@@ -149,6 +150,12 @@ pub trait Renderer: Send + Sync {
     fn animates(&self) -> bool {
         false
     }
+    /// Options this renderer reads from the `render` inline table (e.g., `style`, `pixel_size`,
+    /// `align`). Default is an empty slice — most renderers only read the shared fields on
+    /// [`RenderOptions`]. Consumed at docs-generation time by the `xtask` crate.
+    fn option_schemas(&self) -> &[OptionSchema] {
+        &[]
+    }
     fn render(&self, frame: &mut Frame, area: Rect, body: &Body, opts: &RenderOptions);
 }
 
@@ -186,6 +193,13 @@ impl Registry {
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Renderer>> {
         self.renderers.get(name).cloned()
+    }
+
+    /// All registered renderers, sorted by name. Useful for deterministic docs generation.
+    pub fn sorted(&self) -> Vec<Arc<dyn Renderer>> {
+        let mut entries: Vec<_> = self.renderers.values().cloned().collect();
+        entries.sort_by(|a, b| a.name().cmp(b.name()));
+        entries
     }
 }
 

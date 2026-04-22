@@ -3,22 +3,11 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
-use crate::config::{Config, WidgetConfig};
-use crate::fetcher::{Registry, Safety};
-use crate::shell::Shell;
-use crate::trust::{TrustStore, load_config_and_hash};
-
-mod cache;
-mod config;
-mod daemon;
-mod fetcher;
-mod layout;
-mod paths;
-mod payload;
-mod render;
-mod runtime;
-mod shell;
-mod trust;
+use splashboard::config::{self, Config, WidgetConfig};
+use splashboard::fetcher::{Registry, Safety};
+use splashboard::shell::{self, Shell};
+use splashboard::trust::{TrustStore, load_config_and_hash};
+use splashboard::{daemon, runtime};
 
 const OPT_OUT_ENV_VARS: &[&str] = &["CI", "SPLASHBOARD_SILENT", "NO_SPLASHBOARD"];
 const MIN_WIDTH: u16 = 40;
