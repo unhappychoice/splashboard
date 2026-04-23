@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 use crate::payload::Payload;
-use crate::render::{Registry, RenderSpec, render_payload};
+use crate::render::{Registry, RenderSpec, Shape, loading::render_loading, render_payload};
 use crate::theme::Theme;
 
 pub type WidgetId = String;
@@ -280,6 +280,7 @@ pub fn draw(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &Registry,
     theme: &Theme,
+    loading: &HashMap<WidgetId, Shape>,
 ) {
     match layout {
         Layout::Stack {
@@ -292,13 +293,18 @@ pub fn draw(
             paint_bg(frame, area, *bg, theme);
             let inner = draw_panel(frame, area, panel, theme);
             draw_stack(
-                frame, inner, *direction, *flex, children, widgets, specs, registry, theme,
+                frame, inner, *direction, *flex, children, widgets, specs, registry, theme, loading,
             );
         }
         Layout::Widget { id, panel, bg } => {
             paint_bg(frame, area, *bg, theme);
             let inner = draw_panel(frame, area, panel, theme);
-            if let Some(payload) = widgets.get(id) {
+            // Loading placeholder takes precedence over `widgets.get(id)` so widgets whose
+            // cache entries haven't landed yet show a spinner instead of leaving a blank slot.
+            // The daemon swaps the loading state off for that id once the real payload arrives.
+            if let Some(&shape) = loading.get(id) {
+                render_loading(frame, inner, shape, theme);
+            } else if let Some(payload) = widgets.get(id) {
                 render_payload(frame, inner, payload, specs.get(id), registry, theme);
             }
         }
@@ -374,6 +380,7 @@ fn draw_stack(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &Registry,
     theme: &Theme,
+    loading: &HashMap<WidgetId, Shape>,
 ) {
     let constraints: Vec<Constraint> = children.iter().map(|c| to_constraint(c.size)).collect();
     let rects = RatLayout::default()
@@ -382,7 +389,16 @@ fn draw_stack(
         .flex(to_ratatui_flex(flex))
         .split(area);
     for (child, rect) in children.iter().zip(rects.iter()) {
-        draw(frame, *rect, &child.layout, widgets, specs, registry, theme);
+        draw(
+            frame,
+            *rect,
+            &child.layout,
+            widgets,
+            specs,
+            registry,
+            theme,
+            loading,
+        );
     }
 }
 
@@ -574,5 +590,34 @@ mod tests {
         let row1 = line_text(&buf, 0);
         assert!(row1.contains("left"));
         assert!(row1.contains("right"));
+    }
+
+    #[test]
+    fn loading_widget_draws_spinner_instead_of_payload() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let l = Layout::widget("pending");
+        // Payload exists but we also flag the widget as loading — loading takes precedence so
+        // the spinner wins over any stale payload body sitting in the map.
+        let w = widgets(&[("pending", text_widget(&["stale data"]))]);
+        let specs = HashMap::new();
+        let registry = Registry::with_builtins();
+        let theme = Theme::default();
+        let mut loading: HashMap<WidgetId, Shape> = HashMap::new();
+        loading.insert("pending".into(), Shape::Entries);
+        let backend = TestBackend::new(30, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| draw(f, f.area(), &l, &w, &specs, &registry, &theme, &loading))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let dump: String = (0..buf.area().height).map(|y| line_text(&buf, y)).collect();
+        assert!(
+            dump.contains("loading"),
+            "expected loading spinner label, got:\n{dump}"
+        );
+        assert!(
+            !dump.contains("stale data"),
+            "loading should suppress payload content, got:\n{dump}"
+        );
     }
 }

@@ -50,10 +50,22 @@ pub fn render_to_buffer_with_layout_and_specs(
 ) -> Buffer {
     let registry = Registry::with_builtins();
     let theme = Theme::default();
+    let loading = HashMap::new();
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| layout::draw(f, f.area(), root, widgets, specs, &registry, &theme))
+        .draw(|f| {
+            layout::draw(
+                f,
+                f.area(),
+                root,
+                widgets,
+                specs,
+                &registry,
+                &theme,
+                &loading,
+            )
+        })
         .unwrap();
     terminal.backend().buffer().clone()
 }
