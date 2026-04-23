@@ -1,0 +1,61 @@
+/* Starlight theme overrides that pin the docs chrome to splashboard's Splash default
+   palette — same values as `Theme::default()` in src/theme/mod.rs. Before this file
+   loaded the site shipped Starlight's generic purple-on-dark-gray scheme while the
+   embedded landing preview was a deep-ocean navy with coral accents, so the preview
+   read as a foreign screenshot pasted into someone else's docs. Painting the whole
+   site on the same palette makes the chrome feel like an extension of the splash.
+
+   Dark mode only — the Splash palette is dark-by-design. Light-mode visitors still
+   land on the dark theme, which matches how splashboard itself behaves in the
+   terminal. */
+
+/* Match every `data-theme` Starlight might set so the overrides apply regardless of
+   the user's stored preference — the toggle itself is hidden below. */
+:root,
+:root[data-theme='dark'],
+:root[data-theme='light'] {
+  /* Grayscale: Splash chrome ladder. Goes from near-white down to deep-ocean navy so
+     Starlight's default derivations (gray-2 for body text, gray-6 for nav bg, etc.)
+     land on the Splash tokens they're closest to conceptually. */
+  --sl-color-white: #eef3f7;
+  --sl-color-gray-1: #d5e0e8;
+  --sl-color-gray-2: #c5d2dc; /* text */
+  --sl-color-gray-3: #7ea0b5; /* text_secondary */
+  --sl-color-gray-4: #4a6b75; /* panel_border */
+  --sl-color-gray-5: #2d4757; /* text_dim */
+  --sl-color-gray-6: #17243b; /* bg_subtle */
+  --sl-color-black: #0e172a; /* bg */
+
+  /* Accent: coral (Splash `panel_title`) with a deeper and lighter sibling for hover
+     states / heading tints / in-content links. */
+  --sl-color-accent-low: #3b1612;
+  --sl-color-accent: #ff8c7a;
+  --sl-color-accent-high: #ffc3b7;
+
+  /* Backgrounds: main content on `bg`, header / sidebar on `bg_subtle` so the nav
+     chrome lifts off the content band — mirrors what Splash does with its own
+     header bands (`[[row]] bg = "subtle"`). */
+  --sl-color-bg: var(--sl-color-black);
+  --sl-color-bg-nav: var(--sl-color-gray-6);
+  --sl-color-bg-sidebar: var(--sl-color-black);
+  --sl-color-bg-inline-code: var(--sl-color-gray-6);
+
+  /* Text: primary body on `text`, chrome / dim text on the dimmer rungs. Accent text
+     (e.g. active sidebar entry, in-page links) gets the coral so it stands out. */
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: var(--sl-color-accent);
+  --sl-color-text-invert: var(--sl-color-black);
+
+  /* Borders / rules. `panel_border` (gray-4) for the strong rule, a lighter shade for
+     the subtle one. */
+  --sl-color-hairline-shade: var(--sl-color-gray-5);
+  --sl-color-hairline: var(--sl-color-gray-6);
+  --sl-color-hairline-light: var(--sl-color-gray-5);
+}
+
+/* Splash is dark-by-design; a light-mode visitor would end up with ruthlessly bright
+   chrome around the dark preview blocks, reading as broken. Hide the toggle so the
+   site stays on the one theme it was drawn for. */
+starlight-theme-select {
+  display: none;
+}

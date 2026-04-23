@@ -16,7 +16,7 @@ export default defineConfig({
     starlight({
       title: 'splashboard',
       description: 'Customizable terminal splash — fetcher × renderer reference.',
-      customCss: ['./src/styles/snapshot.css'],
+      customCss: ['./src/styles/theme.css', './src/styles/snapshot.css'],
       plugins: [starlightLlmsTxt()],
       // OG / Twitter preview card. Starlight already emits og:title / og:description /
       // twitter:card, but not the image; add it site-wide so every page shares the same
