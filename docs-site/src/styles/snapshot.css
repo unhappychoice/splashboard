@@ -16,9 +16,16 @@
   overflow-x: auto;
   white-space: pre;
   tab-size: 4;
-  background: var(--sl-color-bg-inline-code);
-  color: var(--sl-color-text);
-  border: 1px solid var(--sl-color-hairline);
+  /* Match the Splash default theme so previews read as "this is what the splash
+     looks like", not "this is what splashboard renders inside Starlight's code
+     block". `bg` / `text` / `panel_border` mirror `Theme::default()` in
+     src/theme/mod.rs — keep them in sync if the default palette ever changes.
+     Intentionally not using `prefers-color-scheme`: the Splash palette is
+     dark-by-design, so a light-mode site visitor should still see the preview
+     on the intended background. */
+  background: #0e172a;
+  color: #c5d2dc;
+  border: 1px solid #4a6b75;
 }
 
 /* Each terminal cell is wrapped in a fixed 1ch-wide inline-block so block glyphs (▟▜▛ etc.)
