@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build && node scripts/copy-markdown.mjs",
+    "build": "node scripts/build-og.mjs && astro build && node scripts/copy-markdown.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

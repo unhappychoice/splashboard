@@ -18,6 +18,25 @@ export default defineConfig({
       description: 'Customizable terminal splash — fetcher × renderer reference.',
       customCss: ['./src/styles/snapshot.css'],
       plugins: [starlightLlmsTxt()],
+      // OG / Twitter preview card. Starlight already emits og:title / og:description /
+      // twitter:card, but not the image; add it site-wide so every page shares the same
+      // card. Absolute URLs required for social platforms.
+      head: [
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image',
+            content: 'https://unhappychoice.github.io/splashboard/og.png',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            name: 'twitter:image',
+            content: 'https://unhappychoice.github.io/splashboard/og.png',
+          },
+        },
+      ],
       social: [
         {
           icon: 'github',
