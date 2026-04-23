@@ -42,7 +42,7 @@ fn split_by_fetcher_kind(
 /// determines the shape. Widgets without an explicit renderer fall back to the fetcher's
 /// [`fetcher::Fetcher::default_shape`]. Unknown fetcher / renderer names drop out here — we skip
 /// them and let the downstream dispatch / render paths surface the mismatch as placeholders.
-fn derive_shapes(
+pub(crate) fn derive_shapes(
     widgets: &[WidgetConfig],
     fetchers: &Registry,
     renderers: &render::Registry,

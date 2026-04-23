@@ -1,0 +1,121 @@
+# home_github — "my github" preset. Avatar on the left + handle as a figlet hero on
+# the right, contribution heatmap full-width, attention lane (open PRs / review queue)
+# in two columns, recent activity as a timeline at the bottom.
+#
+# Edit `format` on the `hero` widget to your handle (the figlet banner) and set
+# `[widget.options].user` on `avatar` if git config doesn't resolve a GitHub identity.
+# Requires `gh auth login` (or `GITHUB_TOKEN`) for the `github_*` fetchers.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "avatar"
+fetcher = "github_avatar"
+render = { type = "media_image", fit = "contain", max_width = 14, max_height = 7, align = "left" }
+
+[[widget]]
+id = "hero"
+fetcher = "static"
+format = "github"
+render = { type = "text_ascii", style = "figlet", font = "small", color = "panel_title", align = "left" }
+
+[[widget]]
+id = "subtitle"
+fetcher = "static"
+format = "github profile"
+render = { type = "text_plain", align = "left" }
+
+[[widget]]
+id = "contributions"
+fetcher = "github_contributions"
+render = { type = "grid_heatmap", align = "center" }
+
+[[widget]]
+id = "my_prs"
+fetcher = "github_my_prs"
+render = { type = "list_plain", bullet = "•", max_items = 4 }
+
+[[widget]]
+id = "review_queue"
+fetcher = "github_review_requests"
+render = { type = "list_plain", bullet = "•", max_items = 4 }
+
+[[widget]]
+id = "recent"
+fetcher = "github_notifications"
+render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 5 }
+
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = ""
+render = "text_plain"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Header band: avatar + name/subtitle stacked next to it. Avatar takes a fixed 16-col
+# block; the right-hand column uses Fill to soak up the rest.
+[[row]]
+height = { length = 7 }
+  [[row.child]]
+  widget = "avatar"
+  width = { length = 16 }
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 16 }
+  [[row.child]]
+  widget = "subtitle"
+
+[[row]]
+height = { length = 1 }
+
+# Contributions heatmap: 7-day rows × 52 weeks wants to sit on its own. Title the row
+# with a top border so the section reads as the main feature of the splash.
+[[row]]
+height = { length = 9 }
+border = "top"
+title = "contributions · last year"
+  [[row.child]]
+  widget = "contributions"
+
+[[row]]
+height = { length = 1 }
+
+# Attention lane: PRs | review queue, two list_plain columns.
+[[row]]
+height = { length = 5 }
+flex = "center"
+  [[row.child]]
+  widget = "my_prs"
+  width = { length = 36 }
+  border = "top"
+  title = "my PRs"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "review_queue"
+  width = { length = 36 }
+  border = "top"
+  title = "review queue"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 6 }
+border = "top"
+title = "recent"
+  [[row.child]]
+  widget = "recent"
+
+[[row]]
+height = { length = 1 }

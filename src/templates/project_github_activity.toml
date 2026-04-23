@@ -1,0 +1,169 @@
+# project_github_activity — per-repo preset. Hero is the repo name as a figlet banner
+# (fetched dynamically via `project_name` → git remote origin), subtitle shows the repo
+# slug / description / license, body mixes git locally (branch + commit activity) with
+# GitHub (open PRs / releases) for a "what's the state of this project right now?" view.
+#
+# Drop this file in as `./.splashboard/dashboard.toml` at a repo root. Nothing here is
+# repo-specific — every widget discovers the repo at fetch time, so the same template
+# produces a tailored dashboard for whichever project the user cd's into.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "hero"
+fetcher = "project_name"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "banner", color = "panel_title", align = "center" }
+
+[[widget]]
+id = "subtitle"
+fetcher = "project"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "repo_stats"
+fetcher = "github_repo_stars"
+render = { type = "grid_table", layout = "inline", align = "center" }
+
+[[widget]]
+id = "branch"
+fetcher = "git_status"
+render = { type = "grid_table", layout = "inline", align = "center" }
+
+[[widget]]
+id = "commits_activity"
+fetcher = "git_commits_activity"
+render = { type = "chart_sparkline", label = "commits" }
+
+[[widget]]
+id = "ci_history"
+fetcher = "github_action_history"
+render = { type = "chart_sparkline", label = "CI" }
+
+[[widget]]
+id = "ci_status"
+fetcher = "github_action_status"
+render = "status_badge"
+
+[[widget]]
+id = "repo_prs"
+fetcher = "github_repo_prs"
+render = { type = "list_plain", bullet = "•", max_items = 4 }
+
+[[widget]]
+id = "review_queue"
+fetcher = "github_review_requests"
+render = { type = "list_plain", bullet = "•", max_items = 4 }
+
+[[widget]]
+id = "releases"
+fetcher = "github_recent_releases"
+render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 3 }
+
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = ""
+render = "text_plain"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 8 }
+bg = "subtle"
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 3 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "subtitle"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "repo_stats"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 1 }
+
+# Branch: compact one-line git status on its own band.
+[[row]]
+height = { length = 1 }
+border = "top"
+title = "branch"
+  [[row.child]]
+  widget = "branch"
+
+[[row]]
+height = { length = 1 }
+
+# Activity: commits sparkline | CI sparkline + status badge.
+[[row]]
+height = { length = 2 }
+border = "top"
+title = "activity · last 30 days"
+flex = "center"
+  [[row.child]]
+  widget = "commits_activity"
+  width = { length = 34 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "ci_history"
+  width = { length = 28 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 1 }
+  [[row.child]]
+  widget = "ci_status"
+  width = { length = 7 }
+
+[[row]]
+height = { length = 1 }
+
+# Open work: PRs | review queue.
+[[row]]
+height = { length = 5 }
+flex = "center"
+  [[row.child]]
+  widget = "repo_prs"
+  width = { length = 36 }
+  border = "top"
+  title = "open PRs"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "review_queue"
+  width = { length = 36 }
+  border = "top"
+  title = "review queue"
+
+[[row]]
+height = { length = 1 }
+
+# Releases timeline.
+[[row]]
+height = { length = 4 }
+border = "top"
+title = "released"
+  [[row.child]]
+  widget = "releases"
+
+[[row]]
+height = { length = 1 }

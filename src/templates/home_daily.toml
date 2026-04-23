@@ -1,0 +1,171 @@
+# home_daily — ambient clock preset. Large time as the hero, today's date underneath,
+# outside band (weather / sunrise / moon) on the left, period ratios on the right.
+# No postfx: the value axis is "what time / day / season is it", so the splash sits
+# still instead of drawing attention with motion.
+#
+# Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "label"
+fetcher = "static"
+format = "today"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "hero"
+fetcher = "clock"
+format = "%H:%M"
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", align = "center" }
+
+[[widget]]
+id = "date"
+fetcher = "clock"
+format = "%e %B %Y  ·  %A"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "weather"
+fetcher = "weather"
+render = { type = "grid_table", layout = "inline" }
+  [widget.options]
+  latitude = 35.68
+  longitude = 139.76
+  units = "metric"
+
+[[widget]]
+id = "sunrise"
+fetcher = "clock_sunrise"
+render = { type = "grid_table", layout = "inline" }
+  [widget.options]
+  lat = 35.68
+  lon = 139.76
+
+[[widget]]
+id = "moon"
+fetcher = "clock_derived"
+render = "text_plain"
+  [widget.options]
+  kind = "moon_phase"
+
+[[widget]]
+id = "year_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "year", value_format = "percent" }
+  [widget.options]
+  period = "year"
+
+[[widget]]
+id = "month_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "month", value_format = "percent" }
+  [widget.options]
+  period = "month"
+
+[[widget]]
+id = "week_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "week", value_format = "percent" }
+  [widget.options]
+  period = "week"
+
+[[widget]]
+id = "day_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "day", value_format = "percent" }
+  [widget.options]
+  period = "day"
+
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = ""
+render = "text_plain"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "label"
+
+# Hero: quadrant-density block glyphs take ~4 rows at this font size; add a bit of
+# breathing room so descenders don't hug the date line underneath.
+[[row]]
+height = { length = 5 }
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "date"
+
+[[row]]
+height = { length = 1 }
+
+# Outside (left, inline weather/sunrise/moon) | Time ratios (right, 4 gauges).
+# Four 1-row rails keep the left and right columns aligned without needing
+# nested row stacks (the config grammar is one row of columns, not nested rows).
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "weather"
+  width = { length = 36 }
+  border = "top"
+  title = "outside"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "year_ratio"
+  width = { length = 36 }
+  border = "top"
+  title = "time"
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "sunrise"
+  width = { length = 36 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "month_ratio"
+  width = { length = 36 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "moon"
+  width = { length = 36 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "week_ratio"
+  width = { length = 36 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 36 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "day_ratio"
+  width = { length = 36 }
+
+[[row]]
+height = { length = 1 }

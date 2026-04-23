@@ -1,0 +1,119 @@
+# home_splash — "hello terminal" preset. Terminal name rendered as a giant figlet banner
+# with a sweep-in postfx as the hero, attribution underneath, and a single ambient row
+# (date + weather + moon) plus a year-progress gauge sitting quietly at the bottom.
+#
+# Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "hero"
+fetcher = "system"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "banner", color = "panel_title", align = "center" }
+  [widget.options]
+  kind = "terminal"
+
+[[widget]]
+id = "attribution"
+fetcher = "system"
+render = { type = "text_plain", align = "center" }
+  [widget.options]
+  kind = "os_version"
+
+[[widget]]
+id = "date_bar"
+fetcher = "clock"
+format = "%e %B %Y  ·  %A  ·  %H:%M"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "weather"
+fetcher = "weather"
+render = { type = "grid_table", layout = "inline", align = "center" }
+  [widget.options]
+  latitude = 35.68
+  longitude = 139.76
+  units = "metric"
+
+[[widget]]
+id = "sunrise"
+fetcher = "clock_sunrise"
+render = { type = "grid_table", layout = "inline", align = "center" }
+  [widget.options]
+  lat = 35.68
+  lon = 139.76
+
+[[widget]]
+id = "moon"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "center" }
+  [widget.options]
+  kind = "moon_phase"
+
+[[widget]]
+id = "year_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "year", value_format = "percent" }
+  [widget.options]
+  period = "year"
+
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = ""
+render = "text_plain"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Hero: figlet `banner` is 8 rows tall; give it the full band width and let the
+# inner `align = "center"` in the render options keep it centred.
+[[row]]
+height = { length = 8 }
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "attribution"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+border = "top"
+title = "today"
+  [[row.child]]
+  widget = "date_bar"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "weather"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "sunrise"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "moon"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "year_ratio"
+  width = { length = 60 }
+
+[[row]]
+height = { length = 1 }
