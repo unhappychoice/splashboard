@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::layout::{BgLevel, BorderStyle, Child, Flex, Layout};
+use crate::layout::{BgLevel, BorderStyle, Child, Flex, Layout, TitleAlign};
 use crate::render::RenderSpec;
 use crate::theme::ThemeConfig;
 
@@ -116,6 +116,8 @@ pub struct RowConfig {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
+    pub title_align: Option<TitleAlignSpec>,
+    #[serde(default)]
     pub border: Option<BorderSpec>,
     /// How children are placed along this row's horizontal axis when they don't fill the row.
     /// `center` is the obvious use case: a narrower widget parked in the middle of its row.
@@ -158,10 +160,22 @@ pub struct ChildConfig {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
+    pub title_align: Option<TitleAlignSpec>,
+    #[serde(default)]
     pub border: Option<BorderSpec>,
     /// Per-child background; see [`RowConfig::bg`].
     #[serde(default)]
     pub bg: Option<BgSpec>,
+}
+
+/// Title alignment on a `border = "top"` (or any bordered) panel. `left` matches ratatui's
+/// default; `center` gives `──  title  ──` style section dividers.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TitleAlignSpec {
+    Left,
+    Center,
+    Right,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -375,7 +389,7 @@ fn to_row_child(row: &RowConfig) -> Child {
     if let Some(f) = row.flex {
         inner = inner.flexed(to_flex(f));
     }
-    let decorated = apply_panel(inner, row.title.as_deref(), row.border);
+    let decorated = apply_panel(inner, row.title.as_deref(), row.border, row.title_align);
     let decorated = apply_bg(decorated, row.bg);
     make_child(row.height, decorated)
 }
@@ -393,7 +407,7 @@ fn to_flex(f: FlexSpec) -> Flex {
 
 fn to_col_child(c: &ChildConfig) -> Child {
     let leaf = Layout::widget(c.widget.clone());
-    let decorated = apply_panel(leaf, c.title.as_deref(), c.border);
+    let decorated = apply_panel(leaf, c.title.as_deref(), c.border, c.title_align);
     let decorated = apply_bg(decorated, c.bg);
     make_child(c.width, decorated)
 }
@@ -416,7 +430,12 @@ fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
     }
 }
 
-fn apply_panel(layout: Layout, title: Option<&str>, border: Option<BorderSpec>) -> Layout {
+fn apply_panel(
+    layout: Layout,
+    title: Option<&str>,
+    border: Option<BorderSpec>,
+    title_align: Option<TitleAlignSpec>,
+) -> Layout {
     // Chrome is opt-in: no border, no panel — even if a title was set. A bare title has no
     // border to render on, so dropping it cleanly is better than pretending. Users who want
     // the framed-with-label look set `border = "rounded"` (or plain/thick/double) explicitly
@@ -426,10 +445,18 @@ fn apply_panel(layout: Layout, title: Option<&str>, border: Option<BorderSpec>) 
         return layout;
     };
     let l = match title {
-        Some(t) => layout.titled(t),
+        Some(t) => layout.titled(t).title_aligned(to_title_align(title_align)),
         None => layout,
     };
     l.bordered(style)
+}
+
+fn to_title_align(spec: Option<TitleAlignSpec>) -> TitleAlign {
+    match spec {
+        Some(TitleAlignSpec::Center) => TitleAlign::Center,
+        Some(TitleAlignSpec::Right) => TitleAlign::Right,
+        Some(TitleAlignSpec::Left) | None => TitleAlign::Left,
+    }
 }
 
 fn to_border_style(b: BorderSpec) -> Option<BorderStyle> {

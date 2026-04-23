@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use ratatui::{Terminal, backend::TestBackend};
 
 use splashboard::config::{Config, DashboardConfig, SettingsConfig, WidgetConfig};
-use splashboard::fetcher::{RegisteredFetcher, Registry as FetcherRegistry};
+use splashboard::fetcher::{FetchContext, RegisteredFetcher, Registry as FetcherRegistry};
 use splashboard::layout::{self, WidgetId};
 use splashboard::payload::{Body, ImageData, Payload, TextBlockData, TextData};
 use splashboard::render::{Registry as RenderRegistry, RenderSpec, Shape};
@@ -120,14 +120,26 @@ fn render_template(template: &Template, width: u16, height: u16) {
     println!("{bar}");
 }
 
-/// Pick a stand-in payload for the preview. Specialises `static` so templates that use it
-/// as a fixed-text slot render their configured `format` (empty spacers stay empty, label
-/// widgets show their actual label) instead of the generic "Hello, splashboard!" sample.
-/// Everything else falls through to the fetcher's own `sample_body`.
+/// Pick a stand-in payload for the preview. Realtime fetchers (clock / system / clock_*)
+/// run `compute()` directly so the widget's configured `format` / `options` — the pieces
+/// `sample_body` can't see — actually affect the output. Static widgets synthesise their
+/// format. Everything else falls back to `sample_body` (async fetchers can't run inline
+/// without a tokio runtime; their samples are close enough for a layout preview).
 fn preview_payload(w: &WidgetConfig, fetcher: &RegisteredFetcher, shape: Shape) -> Payload {
-    let body = if w.fetcher == "static" {
-        static_body(w.format.as_deref().unwrap_or(""), shape)
-    } else {
+    if w.fetcher == "static" {
+        return wrap(static_body(w.format.as_deref().unwrap_or(""), shape));
+    }
+    if let Some(rt) = fetcher.as_realtime() {
+        let ctx = FetchContext {
+            widget_id: w.id.clone(),
+            format: w.format.clone(),
+            shape: Some(shape),
+            options: w.options.clone(),
+            ..Default::default()
+        };
+        return rt.compute(&ctx);
+    }
+    wrap(
         fetcher
             .sample_body(shape)
             .or_else(|| samples::canonical_sample(shape))
@@ -135,8 +147,11 @@ fn preview_payload(w: &WidgetConfig, fetcher: &RegisteredFetcher, shape: Shape) 
                 Body::Image(ImageData {
                     path: "/tmp/splashboard-preview-nonexistent.png".into(),
                 })
-            })
-    };
+            }),
+    )
+}
+
+fn wrap(body: Body) -> Payload {
     Payload {
         icon: None,
         status: None,

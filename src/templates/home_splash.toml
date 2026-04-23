@@ -1,8 +1,7 @@
-# home_splash — "hello terminal" preset. Terminal name rendered as a giant figlet banner
-# with a sweep-in postfx as the hero, OS version underneath as attribution, and a single
-# ambient band (date + weather + sunrise + moon) plus a year-progress gauge sitting
-# quietly at the bottom. All body rows share a 70-col content band (centered) so the
-# section divider, ambient lines, and gauge line up at the same left/right edges.
+# home_splash — "hello terminal" preset. Terminal name rendered as a big block-font
+# hero with a sweep-in postfx, a `terminal · powered by …` attribution underneath, then
+# two stacked sections: a today divider with date/weather/moon and a quiet year-progress
+# gauge. All body rows share a 70-col content band.
 #
 # Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
 
@@ -11,14 +10,22 @@
 [[widget]]
 id = "hero"
 fetcher = "system"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "banner", color = "panel_title", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", duration_ms = 1200, style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
   [widget.options]
   kind = "terminal"
 
+# Attribution is a 2-widget row: fixed prefix + dynamic OS version. Keeping it a pair
+# of widgets means the prefix stays editable without baking the OS name into TOML.
 [[widget]]
-id = "attribution"
+id = "attribution_prefix"
+fetcher = "static"
+format = "terminal · powered by "
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
+id = "attribution_os"
 fetcher = "system"
-render = { type = "text_plain", align = "center" }
+render = { type = "text_plain", align = "left" }
   [widget.options]
   kind = "os_version"
 
@@ -53,9 +60,16 @@ render = { type = "text_plain", align = "center" }
   kind = "moon_phase"
 
 [[widget]]
+id = "season"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "center" }
+  [widget.options]
+  kind = "season"
+
+[[widget]]
 id = "year_ratio"
 fetcher = "clock_ratio"
-render = { type = "gauge_line", label = "year", value_format = "percent" }
+render = { type = "gauge_line", label = "year ", value_format = "percent" }
   [widget.options]
   period = "year"
 
@@ -64,24 +78,30 @@ render = { type = "gauge_line", label = "year", value_format = "percent" }
 [[row]]
 height = { length = 1 }
 
-# Hero gets the full row width — figlet `banner` is 8 rows tall and wide; the inner
-# `align = "center"` on the render options recenters it against the full area.
+# Hero: block-style glyphs (quadrant density) via tui-big-text, with a sweep-in postfx.
 [[row]]
-height = { length = 8 }
+height = { length = 5 }
   [[row.child]]
   widget = "hero"
 
 [[row]]
 height = { length = 1 }
+
+# Attribution: `terminal · powered by ` + system os_version, right+left justified at
+# the seam so they read as one line rather than two centred fragments.
+[[row]]
+height = { length = 1 }
+flex = "center"
   [[row.child]]
-  widget = "attribution"
+  widget = "attribution_prefix"
+  width = { length = 23 }
+  [[row.child]]
+  widget = "attribution_os"
+  width = { length = 20 }
 
 [[row]]
 height = { length = 1 }
 
-# Section divider over the ambient band. Height 2 = 1 border rule + 1 content row.
-# Everything below shares the same 70-col centred column so border title, ambient
-# lines, and the year gauge line up cleanly at the edges.
 [[row]]
 height = { length = 2 }
 flex = "center"
@@ -89,7 +109,8 @@ flex = "center"
   widget = "date_bar"
   width = { length = 70 }
   border = "top"
-  title = "today"
+  title = "  today  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
@@ -114,13 +135,23 @@ flex = "center"
 
 [[row]]
 height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "season"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
+
+[[row]]
+height = { length = 2 }
 flex = "center"
   [[row.child]]
   widget = "year_ratio"
   width = { length = 70 }
+  border = "top"
+  title = "  year  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }

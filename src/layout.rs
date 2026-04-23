@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction as RatDir, Flex as RatFlex, Layout as RatLayout, Rect},
+    layout::{
+        Alignment, Constraint, Direction as RatDir, Flex as RatFlex, Layout as RatLayout, Rect,
+    },
     style::{Color, Style},
     text::Span,
     widgets::{Block, BorderType, Borders},
@@ -86,6 +88,17 @@ pub enum Size {
 pub struct Panel {
     pub title: Option<String>,
     pub border: BorderStyle,
+    pub title_align: TitleAlign,
+}
+
+/// Where the panel's title sits along its top rule. Only meaningful when the panel has a
+/// `title` and a visible border (any `BorderStyle` except `None`'s absence-of-panel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TitleAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -160,6 +173,10 @@ impl Layout {
         self.with_panel(|p| p.title(title))
     }
 
+    pub fn title_aligned(self, align: TitleAlign) -> Self {
+        self.with_panel(|p| p.title_align(align))
+    }
+
     #[allow(dead_code)]
     pub fn bordered(self, border: BorderStyle) -> Self {
         self.with_panel(|p| p.border(border))
@@ -228,6 +245,11 @@ impl Panel {
 
     pub fn border(mut self, border: BorderStyle) -> Self {
         self.border = border;
+        self
+    }
+
+    pub fn title_align(mut self, align: TitleAlign) -> Self {
+        self.title_align = align;
         self
     }
 }
@@ -345,12 +367,22 @@ fn build_block<'a>(panel: &'a Panel, theme: &Theme) -> Block<'a> {
         .border_type(to_border_type(panel.border))
         .border_style(Style::default().fg(theme.panel_border));
     if let Some(t) = panel.title.as_deref() {
-        b = b.title(Span::styled(
-            t.to_string(),
-            Style::default().fg(theme.panel_title),
-        ));
+        b = b
+            .title(Span::styled(
+                t.to_string(),
+                Style::default().fg(theme.panel_title),
+            ))
+            .title_alignment(to_alignment(panel.title_align));
     }
     b
+}
+
+fn to_alignment(align: TitleAlign) -> Alignment {
+    match align {
+        TitleAlign::Left => Alignment::Left,
+        TitleAlign::Center => Alignment::Center,
+        TitleAlign::Right => Alignment::Right,
+    }
 }
 
 fn to_border_type(style: BorderStyle) -> BorderType {

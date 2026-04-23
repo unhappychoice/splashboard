@@ -13,7 +13,7 @@
 [[widget]]
 id = "hero"
 fetcher = "project_name"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "banner", color = "panel_title", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
 
 # Subtitle: `project` emits TextBlock (slug / description / license on their own rows).
 # `text_plain` renders via ratatui's `Paragraph` which centers each line individually,
@@ -73,11 +73,10 @@ render = "text_plain"
 height = { length = 1 }
 bg = "subtle"
 
-# Hero gets the full band width — figlet `banner` at 8 rows tall / ~8 cells per glyph
-# overflows a 70-cell box, so let it breathe across the whole subtle band. The inner
-# `align = "center"` in the render options keeps it centered.
+# Hero gets the full band width — `blocks` at quadrant density renders ~4 rows tall,
+# with the inner `align = "center"` in the render options recentring the glyphs.
 [[row]]
-height = { length = 8 }
+height = { length = 5 }
 bg = "subtle"
   [[row.child]]
   widget = "hero"
@@ -115,7 +114,8 @@ flex = "center"
   widget = "languages"
   width = { length = 34 }
   border = "top"
-  title = "languages"
+  title = "  languages  "
+  title_align = "center"
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
@@ -123,7 +123,8 @@ flex = "center"
   widget = "releases"
   width = { length = 34 }
   border = "top"
-  title = "released"
+  title = "  released  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
@@ -136,7 +137,8 @@ flex = "center"
   widget = "repo_prs"
   width = { length = 34 }
   border = "top"
-  title = "PRs"
+  title = "  PRs  "
+  title_align = "center"
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
@@ -144,7 +146,8 @@ flex = "center"
   widget = "repo_issues"
   width = { length = 34 }
   border = "top"
-  title = "issues"
+  title = "  issues  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
@@ -159,7 +162,8 @@ flex = "center"
   widget = "commits_heatmap"
   width = { length = 34 }
   border = "top"
-  title = "commits"
+  title = "  commits  "
+  title_align = "center"
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
@@ -167,4 +171,5 @@ flex = "center"
   widget = "top_contributors"
   width = { length = 34 }
   border = "top"
-  title = "top contributors"
+  title = "  top contributors  "
+  title_align = "center"

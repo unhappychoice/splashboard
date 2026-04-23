@@ -1,24 +1,17 @@
-# home_daily — ambient clock preset. Large time as the hero, today's date underneath,
-# outside band (weather / sunrise / moon) on the left, period ratios on the right.
-# No postfx: the value axis is "what time / day / season is it", so the splash sits
-# still instead of drawing attention with motion. The 4-rail outside/time section
-# shares the same 70-col content band the rest of the 0.x presets use.
+# home_daily — "what day is it" preset. Large day-of-week + day-of-month block-font hero
+# with the full date underneath, then two stacked sections: outside (weather / sunrise /
+# moon) and time (year / month / week / day elapsed fractions). Both sections share the
+# 70-col content band the rest of the 0.x presets use.
 #
 # Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
 
 # ── Widgets ────────────────────────────────────────────────────────
 
 [[widget]]
-id = "label"
-fetcher = "static"
-format = "today"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
 id = "hero"
 fetcher = "clock"
-format = "%H:%M"
-render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", align = "center" }
+format = "%a %e"
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
 
 [[widget]]
 id = "date"
@@ -26,10 +19,11 @@ fetcher = "clock"
 format = "%e %B %Y  ·  %A"
 render = { type = "text_plain", align = "center" }
 
+# Weather in rows mode (3 key/value lines) so it stacks under the "outside" divider.
 [[widget]]
 id = "weather"
 fetcher = "weather"
-render = { type = "grid_table", layout = "inline" }
+render = { type = "grid_table", layout = "rows" }
   [widget.options]
   latitude = 35.68
   longitude = 139.76
@@ -50,10 +44,12 @@ render = "text_plain"
   [widget.options]
   kind = "moon_phase"
 
+# Gauge labels are right-padded to 5 characters so the bars line up vertically across
+# year / month / week / day rows.
 [[widget]]
 id = "year_ratio"
 fetcher = "clock_ratio"
-render = { type = "gauge_line", label = "year", value_format = "percent" }
+render = { type = "gauge_line", label = "year ", value_format = "percent" }
   [widget.options]
   period = "year"
 
@@ -67,35 +63,24 @@ render = { type = "gauge_line", label = "month", value_format = "percent" }
 [[widget]]
 id = "week_ratio"
 fetcher = "clock_ratio"
-render = { type = "gauge_line", label = "week", value_format = "percent" }
+render = { type = "gauge_line", label = "week ", value_format = "percent" }
   [widget.options]
   period = "week"
 
 [[widget]]
 id = "day_ratio"
 fetcher = "clock_ratio"
-render = { type = "gauge_line", label = "day", value_format = "percent" }
+render = { type = "gauge_line", label = "day  ", value_format = "percent" }
   [widget.options]
   period = "day"
-
-[[widget]]
-id = "gap"
-fetcher = "static"
-format = " "
-render = "text_plain"
 
 # ── Layout ─────────────────────────────────────────────────────────
 
 [[row]]
 height = { length = 1 }
 
-[[row]]
-height = { length = 1 }
-  [[row.child]]
-  widget = "label"
-
-# Hero: quadrant-density block glyphs take ~4 rows at this font size; add a bit of
-# breathing room so descenders don't hug the date line underneath.
+# Hero: quadrant-density block glyphs take ~4 rows at this font size. "Thu 23" ≈ 24
+# cells wide; `align = "center"` in the render options centres it inside the row.
 [[row]]
 height = { length = 5 }
   [[row.child]]
@@ -109,65 +94,66 @@ height = { length = 1 }
 [[row]]
 height = { length = 1 }
 
-# Outside (left, inline weather/sunrise/moon) | Time ratios (right, 4 gauges).
-# Body sits on a 70-col centred band so the content lines up with the home_splash /
-# project_github_activity layouts; the first rail carries the top-border section
-# titles (`border = "top"` consumes the first row, hence the header rail is 2 tall).
+# Outside section: weather stacked above sunrise + moon inside a 70-col centred band.
 [[row]]
-height = { length = 2 }
+height = { length = 4 }
 flex = "center"
   [[row.child]]
   widget = "weather"
-  width = { length = 34 }
+  width = { length = 70 }
   border = "top"
-  title = "outside"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
-  [[row.child]]
-  widget = "year_ratio"
-  width = { length = 34 }
-  border = "top"
-  title = "time"
+  title = "  outside  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
   widget = "sunrise"
-  width = { length = 34 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
-  [[row.child]]
-  widget = "month_ratio"
-  width = { length = 34 }
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
   widget = "moon"
-  width = { length = 34 }
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+
+# Time section: four gauges stacked. First row carries the section title; the rest
+# are plain content rows. Labels are padded to 5 chars so the bars align.
+[[row]]
+height = { length = 2 }
+flex = "center"
   [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
-  [[row.child]]
-  widget = "week_ratio"
-  width = { length = 34 }
+  widget = "year_ratio"
+  width = { length = 70 }
+  border = "top"
+  title = "  time  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
-  widget = "gap"
-  width = { length = 34 }
+  widget = "month_ratio"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
   [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
+  widget = "week_ratio"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "day_ratio"
-  width = { length = 34 }
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }

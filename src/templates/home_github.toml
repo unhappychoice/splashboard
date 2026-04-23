@@ -1,9 +1,9 @@
-# home_github — "my github" preset. Avatar on the left + handle as a figlet hero on
-# the right, contribution heatmap full-width (needs 52 weeks × 2 cells to read), then
-# attention lane (open PRs / review queue) and a recent activity timeline share the
-# same 70-col body band used by the other 0.x presets.
+# home_github — "my github" preset. Avatar on the left + handle as a big-text hero on
+# the right, then three stacked sections: contributions heatmap, attention lane (open
+# PRs / review queue), and recent notifications timeline. All content sits inside the
+# same 70-col body band for consistent alignment.
 #
-# Edit `format` on the `hero` widget to your handle (the figlet banner) and set
+# Edit `format` on `hero` and `subtitle` with your handle / join year, and set
 # `[widget.options].user` on `avatar` if git config doesn't resolve a GitHub identity.
 # Requires `gh auth login` (or `GITHUB_TOKEN`) for the `github_*` fetchers.
 
@@ -12,19 +12,19 @@
 [[widget]]
 id = "avatar"
 fetcher = "github_avatar"
-render = { type = "media_image", fit = "contain", max_width = 14, max_height = 7, align = "left" }
+render = { type = "media_image", fit = "contain", max_width = 14, max_height = 7, align = "center" }
 
 [[widget]]
 id = "hero"
 fetcher = "static"
-format = "github"
-render = { type = "text_ascii", style = "figlet", font = "small", color = "panel_title", align = "left" }
+format = "@unhappychoice"
+render = { type = "text_ascii", style = "blocks", pixel_size = "sextant", color = "panel_title", align = "left" }
 
 [[widget]]
 id = "subtitle"
 fetcher = "static"
-format = "github profile"
-render = { type = "text_plain", align = "center" }
+format = "github profile · member since 2013"
+render = { type = "text_plain", align = "left" }
 
 [[widget]]
 id = "contributions"
@@ -42,7 +42,7 @@ fetcher = "github_review_requests"
 render = { type = "list_plain", bullet = "•", max_items = 4 }
 
 [[widget]]
-id = "recent"
+id = "notifications"
 fetcher = "github_notifications"
 render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 5 }
 
@@ -57,11 +57,11 @@ render = "text_plain"
 [[row]]
 height = { length = 1 }
 
-# Header band: avatar + handle figlet side by side, both hosted inside the 70-col
-# centred band so it lines up with the body rows below. Avatar takes the first 16
-# cells; the figlet handle fills the remaining 54.
+# Header band: avatar + handle side by side inside the 70-col centred band. Avatar
+# takes a fixed 16-cell block (room for the ratatui-image cell at max 14 wide + a
+# little breathing room); the big-text handle fills the remaining 54.
 [[row]]
-height = { length = 7 }
+height = { length = 6 }
 flex = "center"
   [[row.child]]
   widget = "avatar"
@@ -74,27 +74,33 @@ flex = "center"
 height = { length = 1 }
 flex = "center"
   [[row.child]]
+  widget = "gap"
+  width = { length = 16 }
+  [[row.child]]
   widget = "subtitle"
-  width = { length = 70 }
+  width = { length = 54 }
 
 [[row]]
 height = { length = 1 }
 
-# Contributions heatmap: needs the full terminal width — 52 weeks × 2 cells per day
-# overflows any narrower band. Titled rule pinned as a top border so the section
-# reads as the main feature of the splash.
+# Contributions heatmap: trimmed to the same 70-col band as the rest of the body so
+# everything lines up. grid_heatmap renders as many weeks as fit at 2 cells/day — in
+# 70 cells that's ~35 weeks (last ~8 months). Users who want the full 52 weeks can
+# widen this row to `{ length = 108 }` or drop the border/padding.
 [[row]]
 height = { length = 9 }
-border = "top"
-title = "contributions · last year"
+flex = "center"
   [[row.child]]
   widget = "contributions"
+  width = { length = 70 }
+  border = "top"
+  title = "  contributions · last ~8 months  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
 
-# Attention lane: PRs | review queue, two list_plain columns of 34 cells each with
-# the gap between them, all inside the 70-col content band.
+# Attention lane: PRs | review queue — two list_plain columns inside the 70-col band.
 [[row]]
 height = { length = 5 }
 flex = "center"
@@ -102,7 +108,8 @@ flex = "center"
   widget = "my_prs"
   width = { length = 34 }
   border = "top"
-  title = "my PRs"
+  title = "  my PRs  "
+  title_align = "center"
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
@@ -110,19 +117,21 @@ flex = "center"
   widget = "review_queue"
   width = { length = 34 }
   border = "top"
-  title = "review queue"
+  title = "  review queue  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
 
 [[row]]
-height = { length = 6 }
+height = { length = 7 }
 flex = "center"
   [[row.child]]
-  widget = "recent"
+  widget = "notifications"
   width = { length = 70 }
   border = "top"
-  title = "recent"
+  title = "  notifications  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
