@@ -7,10 +7,35 @@ use tachyonfx::{
     pattern::SweepPattern,
 };
 
+use crate::options::OptionSchema;
 use crate::payload::Body;
 use crate::theme::Theme;
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "inner",
+        type_hint: "renderer name (e.g. \"text_ascii\")",
+        required: false,
+        default: Some("shape default renderer"),
+        description: "Renderer whose output the effect is applied over. Falls back to the shape's natural default when omitted.",
+    },
+    OptionSchema {
+        name: "effect",
+        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"slide_in\" | \"hsl_shift\" | \"glitch\"",
+        required: false,
+        default: Some("\"fade_in\""),
+        description: "tachyonfx effect applied to the inner render. Unknown names fall back to `fade_in` rather than failing the widget.",
+    },
+    OptionSchema {
+        name: "duration_ms",
+        type_hint: "milliseconds (u64)",
+        required: false,
+        default: Some("800"),
+        description: "Effect duration. Kept short so the motion completes well inside the 2s ANIMATION_WINDOW and the final frame sits static.",
+    },
+];
 
 /// Shader-like post-process layered on top of another renderer. Draws the inner renderer
 /// normally, then applies a tachyonfx `Effect` over the occupied area for the duration of the
@@ -48,6 +73,9 @@ impl Renderer for AnimatedPostfxRenderer {
     }
     fn animates(&self) -> bool {
         true
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(
         &self,
@@ -109,12 +137,10 @@ fn render_postfx(
 /// sees the fields it understands (style / pixel_size / align).
 fn inner_options(opts: &RenderOptions) -> RenderOptions {
     RenderOptions {
-        style: opts.style.clone(),
-        pixel_size: opts.pixel_size.clone(),
-        align: opts.align.clone(),
         inner: None,
         effect: None,
         duration_ms: None,
+        ..opts.clone()
     }
 }
 
@@ -272,6 +298,7 @@ mod tests {
             inner: Some("text_ascii".into()),
             effect: Some("dissolve".into()),
             duration_ms: Some(1200),
+            ..RenderOptions::default()
         };
         let inner = inner_options(&opts);
         assert_eq!(inner.style.as_deref(), Some("figlet"));

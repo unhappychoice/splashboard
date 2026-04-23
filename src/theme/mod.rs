@@ -155,6 +155,27 @@ impl Default for Theme {
     }
 }
 
+/// Resolve a single-colour theme token by its TOML key (`"text"`, `"panel_title"`, `"status_ok"`
+/// etc.). Used by renderers that accept a `color = "<token>"` option; unknown names return
+/// `None` so the caller can fall back to the renderer's own default.
+pub fn token_color(theme: &Theme, name: &str) -> Option<Color> {
+    Some(match name {
+        "bg" => theme.bg,
+        "bg_subtle" => theme.bg_subtle,
+        "text" => theme.text,
+        "text_dim" => theme.text_dim,
+        "text_secondary" => theme.text_secondary,
+        "panel_border" => theme.panel_border,
+        "panel_title" => theme.panel_title,
+        "status_ok" => theme.status_ok,
+        "status_warn" => theme.status_warn,
+        "status_error" => theme.status_error,
+        "accent_today" => theme.accent_today,
+        "accent_event" => theme.accent_event,
+        _ => return None,
+    })
+}
+
 impl Theme {
     /// nth series colour with wrap-around; empty palette falls back to the default cyan.
     pub fn series_color(&self, i: usize) -> Color {

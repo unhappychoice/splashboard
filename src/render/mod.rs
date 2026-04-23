@@ -103,7 +103,8 @@ impl Shape {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenderOptions {
-    /// text_ascii: "blocks" (default, tui-big-text) | "figlet" (figlet-rs).
+    /// Visual treatment selector. Shared across renderers where "same shape, different look"
+    /// makes sense: `text_ascii` ("blocks" / "figlet"), `chart_sparkline` ("bars" / "line").
     #[serde(default)]
     pub style: Option<String>,
     /// text_ascii blocks style: "full" | "quadrant" | "sextant". None = adaptive (pick by area
@@ -115,6 +116,104 @@ pub struct RenderOptions {
     /// structural renderers (grid_table, gauge_*, chart_*) ignore it.
     #[serde(default)]
     pub align: Option<String>,
+    /// text_ascii figlet font name. Built-ins: "standard" (default), "small", "big", "banner".
+    /// Ignored when `style != "figlet"`.
+    #[serde(default)]
+    pub font: Option<String>,
+    /// Theme token name overriding the renderer's default foreground colour. Any
+    /// `[theme]` key is accepted; unknown names fall back to the renderer's default.
+    /// Honoured by `text_ascii` and `status_badge`.
+    #[serde(default)]
+    pub color: Option<String>,
+    /// media_image: object fit mode. "contain" (default, preserves aspect inside box),
+    /// "cover" (fill box, crop overflow), "stretch" (legacy — warp to box).
+    #[serde(default)]
+    pub fit: Option<String>,
+    /// media_image: upper bound on the image cell width. None = no cap beyond the area.
+    #[serde(default)]
+    pub max_width: Option<u16>,
+    /// media_image: upper bound on the image cell height. None = no cap beyond the area.
+    #[serde(default)]
+    pub max_height: Option<u16>,
+    /// media_image / status_badge: inner padding in cells. `media_image` trims uniformly on
+    /// all sides; `status_badge` uses it as horizontal padding before / after the label.
+    #[serde(default)]
+    pub padding: Option<u16>,
+    /// gauge_line / chart_sparkline: inline label prefix. `gauge_line` renders as
+    /// `label: ▓▓░░ 32%`; `chart_sparkline` as `label  ▁▂▃█`.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// gauge_line: numeric formatting. "percent" (default, `32%`), "fraction" (`118/365`),
+    /// or "both" (`32% (118 of 365)`). "fraction" / "both" require `RatioData` to carry
+    /// `denominator` via a `label` like `"fraction:n/d"` — otherwise falls back to percent.
+    #[serde(default)]
+    pub value_format: Option<String>,
+    /// grid_table: layout mode. "rows" (default — one row per entry) or "inline"
+    /// (single-line `key: value · key: value`).
+    #[serde(default)]
+    pub layout: Option<String>,
+    /// grid_table: per-column alignment. First entry aligns the key column, second the
+    /// value column. Valid values: "left" (default) / "center" / "right".
+    #[serde(default)]
+    pub column_align: Option<Vec<String>>,
+    /// list_plain / list_timeline: bullet glyph prefixed to each entry. "•", "●", "▪",
+    /// "→", or "none" (omit). None leaves list_plain unbulleted, list_timeline at its
+    /// default "●".
+    #[serde(default)]
+    pub bullet: Option<String>,
+    /// list_plain / list_timeline: cap on rendered entries. None = render all.
+    #[serde(default)]
+    pub max_items: Option<usize>,
+    /// list_timeline: how the time prefix is formatted. "relative" (default, `2h`) or
+    /// "absolute" (`2026-04-23`).
+    #[serde(default)]
+    pub date_format: Option<String>,
+    /// status_badge: pill shape. "rounded" (default, `( label )`), "square" (`[ label ]`),
+    /// or "none" (bare — keeps the coloured dot prefix).
+    #[serde(default)]
+    pub shape: Option<String>,
+    /// chart_pie: legend placement. "right" (default) / "bottom" / "none".
+    #[serde(default)]
+    pub legend: Option<String>,
+    /// chart_pie: render as a donut (empty hole in the centre) instead of a full pie.
+    #[serde(default)]
+    pub donut: Option<bool>,
+    /// chart_bar: orient bars horizontally instead of the default vertical.
+    #[serde(default)]
+    pub horizontal: Option<bool>,
+    /// chart_bar: stack series on top of each other (noop for single-series data).
+    #[serde(default)]
+    pub stacked: Option<bool>,
+    /// chart_bar: cap on rendered bars (keeps the top N by value). None = render all.
+    #[serde(default)]
+    pub max_bars: Option<usize>,
+    /// chart_bar: thickness of each bar, in cells. Applied along the axis perpendicular to
+    /// the bar direction (bar height for vertical, bar row-height for horizontal). None
+    /// defaults to `3` for vertical and `1` for horizontal — horizontal bars read fine
+    /// single-row and wrapping several into a compact slot is usually what the user wants.
+    #[serde(default)]
+    pub bar_width: Option<u16>,
+    /// chart_line / chart_scatter: draw a bordered axis block around the plot.
+    #[serde(default)]
+    pub axes: Option<bool>,
+    /// chart_scatter: scatter glyph. "dot" (default, `●`), "cross" (`✕`), "plus" (`+`),
+    /// or any single printable character (used verbatim).
+    /// grid_calendar: event marker glyph, same accepted values.
+    #[serde(default)]
+    pub marker: Option<String>,
+    /// gauge_circle: thickness of the ring in cells. None keeps the block-gauge default.
+    #[serde(default)]
+    pub ring_thickness: Option<u16>,
+    /// gauge_circle: placement of the numeric label. "center" (default) or "below".
+    #[serde(default)]
+    pub label_position: Option<String>,
+    /// grid_heatmap: glyph painted at every cell. Single character (e.g. "■", "●", "▮").
+    /// None keeps the density-ramp glyph set.
+    #[serde(default)]
+    pub cell_char: Option<String>,
+    /// grid_calendar: which day starts the week. "sun" (default), "mon".
+    #[serde(default)]
+    pub week_start: Option<String>,
     /// animated_postfx: name of the inner renderer whose output the effect is applied over.
     /// None falls back to the shape's default renderer.
     #[serde(default)]
@@ -134,6 +233,12 @@ pub struct RenderOptions {
 /// What the TOML accepts for `render`. Short form `render = "text_plain"` uses defaults; long
 /// form `render = { type = "text_ascii", pixel_size = "quadrant" }` carries options. Absence
 /// means "use the default renderer for this shape".
+///
+/// The `Full` variant is noticeably bigger than `Short` — [`RenderOptions`] is a flat bag of
+/// per-renderer fields so a growing catalog expands it. Config-parsed objects live for one
+/// widget's draw path; boxing the variant just to shrink the enum adds an indirection without
+/// measurable win, so the size difference is intentional.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum RenderSpec {
@@ -509,6 +614,7 @@ mod tests {
         assert!(!is_empty_body(&Body::Ratio(RatioData {
             value: 0.0,
             label: None,
+            denominator: None,
         })));
     }
 

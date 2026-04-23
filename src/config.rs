@@ -184,6 +184,10 @@ pub enum BorderSpec {
     Rounded,
     Thick,
     Double,
+    /// Single top edge only, plain style — `border = "top"` + `title = "..."` paints a
+    /// section divider above the row. No side or bottom chrome is drawn, so the row keeps
+    /// its full inner width for the body beneath the rule.
+    Top,
 }
 
 impl Config {
@@ -435,6 +439,7 @@ fn to_border_style(b: BorderSpec) -> Option<BorderStyle> {
         BorderSpec::Rounded => Some(BorderStyle::Rounded),
         BorderSpec::Thick => Some(BorderStyle::Thick),
         BorderSpec::Double => Some(BorderStyle::Double),
+        BorderSpec::Top => Some(BorderStyle::Top),
     }
 }
 
@@ -511,7 +516,7 @@ width = { max = 30 }
 
     #[test]
     fn border_spec_parses_all_styles() {
-        for name in ["plain", "rounded", "thick", "double"] {
+        for name in ["plain", "rounded", "thick", "double", "top"] {
             let toml = format!(
                 r#"
 [[widget]]

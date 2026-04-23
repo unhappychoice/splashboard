@@ -8,6 +8,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, TextData};
 use crate::theme::{self, ColorKey, Theme};
 
@@ -16,6 +17,14 @@ use super::{Registry, RenderOptions, Renderer, Shape};
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 const DEFAULT_CHARS_PER_SECOND: f64 = 40.0;
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "align",
+    type_hint: "\"left\" | \"center\" | \"right\"",
+    required: false,
+    default: Some("\"left\""),
+    description: "Horizontal alignment of the revealed text within its cell.",
+}];
 
 /// Typewriter-style progressive reveal over the `Text` shape. Each frame shows
 /// `elapsed * chars_per_second` characters of the payload, truncating to whatever has "typed"
@@ -39,6 +48,9 @@ impl Renderer for AnimatedTypewriterRenderer {
     }
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(
         &self,

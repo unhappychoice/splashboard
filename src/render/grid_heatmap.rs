@@ -1,11 +1,29 @@
 use ratatui::{Frame, buffer::Buffer, layout::Rect};
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, HeatmapData};
 use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_HEATMAP, theme::TEXT];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "cell_char",
+        type_hint: "single character (e.g. \"■\", \"●\", \"▮\")",
+        required: false,
+        default: Some("\"■\""),
+        description: "Glyph painted at every cell. Strings longer than one visible character are truncated to the first glyph.",
+    },
+    OptionSchema {
+        name: "align",
+        type_hint: "\"left\" | \"center\" | \"right\"",
+        required: false,
+        default: Some("\"left\""),
+        description: "Horizontal alignment of the heatmap inside the slot when the grid is narrower than the available width.",
+    },
+];
 
 /// 2D intensity grid — GitHub-style contribution graph and any other daily/periodic heatmap.
 /// Each cell takes two terminal columns and one row so the grid reads as "dots of equal width"
@@ -31,6 +49,9 @@ impl Renderer for GridHeatmapRenderer {
     }
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(
         &self,
@@ -104,7 +125,12 @@ fn render_heatmap(
         visible_cols,
         col_offset,
         theme,
+        cell_glyph(opts.cell_char.as_deref()),
     );
+}
+
+fn cell_glyph(opt: Option<&str>) -> &str {
+    opt.filter(|s| !s.is_empty()).unwrap_or(CELL_GLYPH)
 }
 
 fn horizontal_shift(align: Option<&str>, area_width: u16, content_width: u16) -> u16 {
@@ -144,6 +170,7 @@ fn paint_cells(
     visible_cols: usize,
     col_offset: usize,
     theme: &Theme,
+    glyph: &str,
 ) {
     let rows = data.cells.len();
     let max_visible_rows = (area.height / CELL_H) as usize;
@@ -156,7 +183,7 @@ fn paint_cells(
             let x = area.x + (c as u16) * CELL_W;
             let y = area.y + (r as u16) * CELL_H;
             if let Some(cell) = buf.cell_mut((x, y)) {
-                cell.set_symbol(CELL_GLYPH);
+                cell.set_symbol(glyph);
                 cell.set_fg(color);
             }
             // Column 1 of each cell stays as the terminal default so the grid reads as

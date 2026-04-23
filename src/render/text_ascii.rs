@@ -1,4 +1,10 @@
-use ratatui::{Frame, layout::Rect, style::Style, widgets::Paragraph};
+use figlet_rs::FIGfont;
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Color, Style},
+    widgets::Paragraph,
+};
 use tui_big_text::{BigText, PixelSize};
 
 use crate::options::OptionSchema;
@@ -7,7 +13,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT, theme::PANEL_TITLE];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -25,6 +31,20 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         description: "Glyph density for `style = \"blocks\"`. Ignored when `style = \"figlet\"`.",
     },
     OptionSchema {
+        name: "font",
+        type_hint: "\"standard\" | \"small\" | \"big\" | \"banner\"",
+        required: false,
+        default: Some("\"standard\""),
+        description: "FIGlet font when `style = \"figlet\"`. Unknown names fall back to `standard`.",
+    },
+    OptionSchema {
+        name: "color",
+        type_hint: "theme token name (e.g. \"panel_title\", \"text\")",
+        required: false,
+        default: Some("\"text\""),
+        description: "Foreground colour token. Any `[theme]` key name is accepted; unknown names fall back to the default.",
+    },
+    OptionSchema {
         name: "align",
         type_hint: "\"left\" | \"center\" | \"right\"",
         required: false,
@@ -32,6 +52,11 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         description: "Horizontal alignment of the rendered text within its cell.",
     },
 ];
+
+const FONT_STANDARD: &str = include_str!("figlet_fonts/standard.flf");
+const FONT_SMALL: &str = include_str!("figlet_fonts/small.flf");
+const FONT_BIG: &str = include_str!("figlet_fonts/big.flf");
+const FONT_BANNER: &str = include_str!("figlet_fonts/banner.flf");
 
 /// ASCII-art text rendering over the `Text` shape. The `style` option selects the visual
 /// treatment; additional sub-options refine the chosen style.
@@ -93,7 +118,7 @@ fn render_blocks(
     let target = align_rect(area, natural_width, opts.align.as_deref());
     let big = BigText::builder()
         .pixel_size(pixel_size)
-        .style(Style::default().fg(theme.text))
+        .style(Style::default().fg(resolve_color(opts, theme)))
         .lines(vec![data.value.clone().into()])
         .build();
     frame.render_widget(big, target);
@@ -106,11 +131,18 @@ fn render_figlet(
     opts: &RenderOptions,
     theme: &Theme,
 ) {
-    let rendered = figletify(&data.value);
+    let rendered = figletify(&data.value, opts.font.as_deref());
     let p = Paragraph::new(rendered)
-        .style(Style::default().fg(theme.text))
+        .style(Style::default().fg(resolve_color(opts, theme)))
         .alignment(parse_alignment(opts.align.as_deref()));
     frame.render_widget(p, area);
+}
+
+fn resolve_color(opts: &RenderOptions, theme: &Theme) -> Color {
+    match opts.color.as_deref() {
+        Some(name) => theme::token_color(theme, name).unwrap_or(theme.text),
+        None => theme.text,
+    }
 }
 
 /// Natural width (in terminal cells) of a tui-big-text block string at the given pixel size.
@@ -153,13 +185,21 @@ fn parse_alignment(s: Option<&str>) -> ratatui::layout::Alignment {
     }
 }
 
-fn figletify(text: &str) -> String {
-    let Ok(font) = figlet_rs::FIGfont::standard() else {
-        return text.to_string();
-    };
+fn figletify(text: &str, font_name: Option<&str>) -> String {
+    let font = load_font(font_name);
     font.convert(text)
         .map(|f| f.to_string())
         .unwrap_or_else(|| text.to_string())
+}
+
+fn load_font(name: Option<&str>) -> FIGfont {
+    let source = match name.unwrap_or("standard") {
+        "small" => FONT_SMALL,
+        "big" => FONT_BIG,
+        "banner" => FONT_BANNER,
+        _ => FONT_STANDARD,
+    };
+    FIGfont::from_content(source).unwrap_or_else(|_| FIGfont::standard().expect("standard font"))
 }
 
 fn parse_pixel_size(s: &str) -> Option<PixelSize> {
@@ -215,6 +255,38 @@ mod tests {
         let w: W = toml::from_str(r#"render = { type = "text_ascii", style = "figlet" }"#).unwrap();
         let registry = Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload("hi"), Some(&w.render), &registry, 60, 10);
+    }
+
+    #[test]
+    fn figlet_fonts_load_without_panicking() {
+        // Every bundled font parses through figlet_rs and converts a sample string.
+        for name in ["standard", "small", "big", "banner"] {
+            let text = figletify("hi", Some(name));
+            assert!(!text.is_empty(), "font {name} produced empty output");
+        }
+    }
+
+    #[test]
+    fn unknown_font_falls_back_to_standard() {
+        let fallback = figletify("hi", Some("no-such-font"));
+        let std_out = figletify("hi", Some("standard"));
+        assert_eq!(fallback, std_out);
+    }
+
+    #[test]
+    fn color_option_resolves_theme_token() {
+        use crate::theme::Theme;
+        let theme = Theme::default();
+        let opts = RenderOptions {
+            color: Some("panel_title".into()),
+            ..RenderOptions::default()
+        };
+        assert_eq!(resolve_color(&opts, &theme), theme.panel_title);
+        let opts_unknown = RenderOptions {
+            color: Some("bogus".into()),
+            ..RenderOptions::default()
+        };
+        assert_eq!(resolve_color(&opts_unknown, &theme), theme.text);
     }
 
     #[test]
