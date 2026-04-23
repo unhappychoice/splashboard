@@ -20,6 +20,17 @@ export default defineConfig({
       ],
       sidebar: [
         {
+          label: 'Guides',
+          items: [
+            { label: 'Getting started', link: '/guides/getting-started/' },
+            { label: 'Configuration', link: '/guides/configuration/' },
+            { label: 'Presets', link: '/guides/presets/' },
+            { label: 'Themes', link: '/guides/themes/' },
+            { label: 'Trust model', link: '/guides/trust/' },
+            { label: 'Cookbook', link: '/guides/cookbook/' },
+          ],
+        },
+        {
           label: 'Reference',
           items: [
             { label: 'Overview', link: '/reference/matrix/' },
