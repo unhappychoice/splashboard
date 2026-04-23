@@ -11,7 +11,7 @@
 [[widget]]
 id = "hero"
 fetcher = "system"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", duration_ms = 1200, style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", duration_ms = 1200, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
   [widget.options]
   kind = "terminal"
 
@@ -34,7 +34,7 @@ render = { type = "text_plain", align = "left" }
 id = "clock"
 fetcher = "clock"
 format = "%H:%M"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 900, style = "blocks", pixel_size = "full", color = "text", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 900, style = "figlet", font = "ansi_shadow", color = "text", align = "center" }
 
 [[widget]]
 id = "date"
@@ -48,7 +48,7 @@ render = { type = "text_plain", align = "center" }
 height = { length = 3 }
 
 [[row]]
-height = { length = 5 }
+height = { length = 7 }
   [[row.child]]
   widget = "hero"
 

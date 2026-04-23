@@ -13,7 +13,7 @@
 [[widget]]
 id = "hero"
 fetcher = "project_name"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
 
 # Subtitle: `project` emits TextBlock (slug / description / license on their own rows).
 # `text_plain` renders via ratatui's `Paragraph` which centers each line individually,
@@ -73,10 +73,10 @@ render = "text_plain"
 height = { length = 1 }
 bg = "subtle"
 
-# Hero gets the full band width — `blocks` at quadrant density renders ~4 rows tall,
-# with the inner `align = "center"` in the render options recentring the glyphs.
+# Hero gets the full band width — `ansi_shadow` figlet is 7 rows tall, with the
+# inner `align = "center"` in the render options recentring the glyphs.
 [[row]]
-height = { length = 5 }
+height = { length = 7 }
 bg = "subtle"
   [[row.child]]
   widget = "hero"
