@@ -30,7 +30,7 @@ render = { type = "text_plain", align = "center" }
 [[widget]]
 id = "calendar"
 fetcher = "clock"
-render = { type = "grid_calendar", align = "left" }
+render = { type = "grid_calendar", align = "center" }
 
 # `clock_almanac` returns Entries of today's astro / calendric rollup (moon /
 # season / zodiac / chinese / iso week / day of year) in a single widget so it
