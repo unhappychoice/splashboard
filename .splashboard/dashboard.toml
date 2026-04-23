@@ -1,134 +1,95 @@
 # Dogfood dashboard — rendered in project_github_activity style (#77). When someone cd's
-# into this repo, they see the polished preset we ship. Hero / subtitle / section
-# dividers / body. No panel borders: breathing rows + static dividers give structure.
+# into this repo, they see the polished preset we ship. Header band (hero + subtitle +
+# stats) full-width with `bg = "subtle"`; body pairs each section into 2-column rows
+# so the dashboard reads as a tight grid rather than a tall stack.
 #
 # Dashboard files hold only widgets + rows. User preferences ([general], [theme]) live in
 # `$HOME/.splashboard/settings.toml` — padding, viewport height, theme preset, etc. belong
 # there so they apply to every dashboard the same user sees.
 #
-# Placeholders for #79 / #81 features not yet landed:
-#   - hero uses `static "splashboard"` (→ `project_name` fetcher post-#81)
-#   - subtitle is hand-written (→ `project` Entries fetcher post-#81)
-#   - hero uses `text_ascii` blocks quadrant (→ figlet banner font post-#79)
+# Everything is fetched at draw time — hero + subtitle come from `project_name` +
+# `project` (git origin + GitHub API), stats/activity from git_* / github_* fetchers.
+
+# ── Header ───────────────────────────────────────────────────────────
 
 [[widget]]
 id = "hero"
-fetcher = "static"
-format = "splashboard"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 2500, pixel_size = "quadrant", align = "center" }
+fetcher = "project_name"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "banner", color = "panel_title", align = "center" }
 
+# Subtitle: `project` emits TextBlock (slug / description / license on their own
+# rows). `text_plain` renders via ratatui's `Paragraph` which centers each line
+# individually, so short lines like "ISC" still sit under the hero centreline
+# instead of hugging the block's left edge.
 [[widget]]
 id = "subtitle"
-fetcher = "static"
-format = "unhappychoice/splashboard · terminal splash renderer · MIT"
-render = { type = "animated_postfx", inner = "text_plain", effect = "sweep_in_down", duration_ms = 1500, align = "center" }
-
-# ── Section dividers ────────────────────────────────────────────────
-
-[[widget]]
-id = "div_commits"
-fetcher = "static"
-format = "───  recent commits  ─────────────────────────────────────────────"
+fetcher = "project"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
-id = "div_ci"
-fetcher = "static"
-format = "───  CI  ─────────────────────────────────────────────────────────"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "div_activity"
-fetcher = "static"
-format = "───  activity · last 52 weeks  ───────────────────────────────────"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "div_open"
-fetcher = "static"
-format = "───  open  ───────────────────────────────────────────────────────"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "div_released"
-fetcher = "static"
-format = "───  released  ───────────────────────────────────────────────────"
-render = { type = "text_plain", align = "center" }
+id = "repo_stats"
+fetcher = "github_repo_stars"
+render = { type = "grid_table", layout = "inline", align = "center" }
 
 # ── Body widgets ────────────────────────────────────────────────────
 
 [[widget]]
-id = "recent_commits"
-fetcher = "git_recent_commits"
-format = "10"
-render = { type = "list_timeline", align = "center" }
-
-[[widget]]
-id = "ci_status"
-fetcher = "github_action_status"
-render = { type = "status_badge", align = "center" }
-
-[[widget]]
-id = "commits_sparkline"
-fetcher = "git_commits_activity"
-render = "chart_sparkline"
-
-[[widget]]
-id = "ci_history"
-fetcher = "github_action_history"
-render = "chart_sparkline"
-
-[[widget]]
-id = "lbl_commits"
-fetcher = "static"
-format = "commits"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "lbl_ci_runs"
-fetcher = "static"
-format = "CI runs"
-render = { type = "text_plain", align = "center" }
-
-[[widget]]
 id = "repo_prs"
 fetcher = "github_repo_prs"
-render = "list_plain"
+render = { type = "list_plain", bullet = "•", max_items = 5 }
 
 [[widget]]
 id = "repo_issues"
 fetcher = "github_repo_issues"
-render = "list_plain"
+render = { type = "list_plain", bullet = "•", max_items = 5 }
+
+[[widget]]
+id = "commits_heatmap"
+fetcher = "git_commits_activity"
+render = "grid_heatmap"
+
+[[widget]]
+id = "top_contributors"
+fetcher = "git_contributors"
+render = { type = "chart_bar", max_bars = 5 }
+
+[[widget]]
+id = "languages"
+fetcher = "github_languages"
+render = { type = "chart_bar", horizontal = true }
 
 [[widget]]
 id = "releases"
 fetcher = "github_recent_releases"
-render = "list_timeline"
+render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 3 }
+
+# Horizontal spacer between sibling containers — a no-op `static` with empty
+# format renders nothing, the width = { length = … } in the row carves the gap.
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = ""
+render = "text_plain"
 
 # ── Layout ──────────────────────────────────────────────────────────
-# Width 方針 (固定 length):
-#   - hero / subtitle / divider / single body: length = 70
-#   - narrow badge (ci_status):                length = 30
-#   - 2-col 行 (sparkline / PR+issue):          length = 35 × 2 = 70 中央
-# divider の dash 数も 70 char に合わせて調整済。すべて `flex = "center"` で横中央揃え。
-# `bg = "subtle"` は row 全幅に敷かれるので、child を narrow にしてもヘッダ帯は端まで
-# 塗られる。percentage ではなく length なのは divider のハードコード dash 数と揃える
-# ため(#79 の `border = "top"` が入れば length も不要になる)。
 
 [[row]]
 height = { length = 1 }
 bg = "subtle"
 
+# Hero gets the full band width — figlet `banner` at 8 rows tall / ~8 cells per
+# glyph overflows a 70-cell box, so let it breathe across the whole subtle band.
+# The inner `align = "center"` in the render options keeps it centered.
 [[row]]
-height = { length = 6 }
+height = { length = 8 }
 bg = "subtle"
-flex = "center"
   [[row.child]]
   widget = "hero"
-  width = { length = 70 }
 
+# Subtitle: 3 stacked lines (slug / description / license) via project's TextBlock
+# shape. Centered on a 70-cell column inside the band.
 [[row]]
-height = { length = 1 }
+height = { length = 3 }
 bg = "subtle"
 flex = "center"
   [[row.child]]
@@ -138,104 +99,76 @@ flex = "center"
 [[row]]
 height = { length = 1 }
 bg = "subtle"
-
-[[row]]
-height = { length = 1 }
-
-[[row]]
-height = { length = 1 }
 flex = "center"
   [[row.child]]
-  widget = "div_commits"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 8 }
-flex = "center"
-  [[row.child]]
-  widget = "recent_commits"
+  widget = "repo_stats"
   width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "div_ci"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 2 }
-flex = "center"
-  [[row.child]]
-  widget = "ci_status"
-  width = { length = 30 }
+bg = "subtle"
 
 [[row]]
 height = { length = 1 }
 
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "div_activity"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "lbl_commits"
-  width = { length = 35 }
-  [[row.child]]
-  widget = "lbl_ci_runs"
-  width = { length = 35 }
-
-[[row]]
-height = { length = 3 }
-flex = "center"
-  [[row.child]]
-  widget = "commits_sparkline"
-  width = { length = 35 }
-  [[row.child]]
-  widget = "ci_history"
-  width = { length = 35 }
-
-[[row]]
-height = { length = 1 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "div_open"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 8 }
-flex = "center"
-  [[row.child]]
-  widget = "repo_prs"
-  width = { length = 35 }
-  [[row.child]]
-  widget = "repo_issues"
-  width = { length = 35 }
-
-[[row]]
-height = { length = 1 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "div_released"
-  width = { length = 70 }
-
+# Row 1: languages horizontal bar chart | releases timeline.
 [[row]]
 height = { length = 6 }
 flex = "center"
   [[row.child]]
+  widget = "languages"
+  width = { length = 34 }
+  border = "top"
+  title = "languages"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
   widget = "releases"
-  width = { length = 70 }
+  width = { length = 34 }
+  border = "top"
+  title = "released"
+
+[[row]]
+height = { length = 1 }
+
+# Row 2: PRs | issues — two list_plain columns.
+[[row]]
+height = { length = 9 }
+flex = "center"
+  [[row.child]]
+  widget = "repo_prs"
+  width = { length = 34 }
+  border = "top"
+  title = "PRs"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "repo_issues"
+  width = { length = 34 }
+  border = "top"
+  title = "issues"
+
+[[row]]
+height = { length = 1 }
+
+# Row 3: commits heatmap | top contributors. Heatmap shows the 52-week
+# contribution grid (repo-level, not viewer-level). Top contributors is a
+# horizontal bar chart capped at 5.
+[[row]]
+height = { length = 10 }
+flex = "center"
+  [[row.child]]
+  widget = "commits_heatmap"
+  width = { length = 34 }
+  border = "top"
+  title = "commits"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "top_contributors"
+  width = { length = 34 }
+  border = "top"
+  title = "top contributors"
