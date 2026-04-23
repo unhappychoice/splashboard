@@ -7,6 +7,11 @@ import starlightLlmsTxt from 'starlight-llms-txt';
 export default defineConfig({
   site: 'https://unhappychoice.github.io',
   base: '/splashboard',
+  // Disable smart-quote / em-dash substitution. The llms-*.txt outputs are derived from
+  // the rendered markdown, so smartypants would splatter U+2019 / U+2014 into what's
+  // supposed to be a plain-text feed — valid UTF-8 but ugly on any client that assumes
+  // ASCII, and noise for LLM ingestion since the source itself never had curly quotes.
+  markdown: { smartypants: false },
   integrations: [
     starlight({
       title: 'splashboard',
