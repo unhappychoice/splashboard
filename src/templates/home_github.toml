@@ -1,6 +1,7 @@
 # home_github — "my github" preset. Avatar on the left + handle as a figlet hero on
-# the right, contribution heatmap full-width, attention lane (open PRs / review queue)
-# in two columns, recent activity as a timeline at the bottom.
+# the right, contribution heatmap full-width (needs 52 weeks × 2 cells to read), then
+# attention lane (open PRs / review queue) and a recent activity timeline share the
+# same 70-col body band used by the other 0.x presets.
 #
 # Edit `format` on the `hero` widget to your handle (the figlet banner) and set
 # `[widget.options].user` on `avatar` if git config doesn't resolve a GitHub identity.
@@ -23,7 +24,7 @@ render = { type = "text_ascii", style = "figlet", font = "small", color = "panel
 id = "subtitle"
 fetcher = "static"
 format = "github profile"
-render = { type = "text_plain", align = "left" }
+render = { type = "text_plain", align = "center" }
 
 [[widget]]
 id = "contributions"
@@ -56,29 +57,32 @@ render = "text_plain"
 [[row]]
 height = { length = 1 }
 
-# Header band: avatar + name/subtitle stacked next to it. Avatar takes a fixed 16-col
-# block; the right-hand column uses Fill to soak up the rest.
+# Header band: avatar + handle figlet side by side, both hosted inside the 70-col
+# centred band so it lines up with the body rows below. Avatar takes the first 16
+# cells; the figlet handle fills the remaining 54.
 [[row]]
 height = { length = 7 }
+flex = "center"
   [[row.child]]
   widget = "avatar"
   width = { length = 16 }
   [[row.child]]
   widget = "hero"
+  width = { length = 54 }
 
 [[row]]
 height = { length = 1 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 16 }
+flex = "center"
   [[row.child]]
   widget = "subtitle"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
 
-# Contributions heatmap: 7-day rows × 52 weeks wants to sit on its own. Title the row
-# with a top border so the section reads as the main feature of the splash.
+# Contributions heatmap: needs the full terminal width — 52 weeks × 2 cells per day
+# overflows any narrower band. Titled rule pinned as a top border so the section
+# reads as the main feature of the splash.
 [[row]]
 height = { length = 9 }
 border = "top"
@@ -89,13 +93,14 @@ title = "contributions · last year"
 [[row]]
 height = { length = 1 }
 
-# Attention lane: PRs | review queue, two list_plain columns.
+# Attention lane: PRs | review queue, two list_plain columns of 34 cells each with
+# the gap between them, all inside the 70-col content band.
 [[row]]
 height = { length = 5 }
 flex = "center"
   [[row.child]]
   widget = "my_prs"
-  width = { length = 36 }
+  width = { length = 34 }
   border = "top"
   title = "my PRs"
   [[row.child]]
@@ -103,7 +108,7 @@ flex = "center"
   width = { length = 2 }
   [[row.child]]
   widget = "review_queue"
-  width = { length = 36 }
+  width = { length = 34 }
   border = "top"
   title = "review queue"
 
@@ -112,10 +117,12 @@ height = { length = 1 }
 
 [[row]]
 height = { length = 6 }
-border = "top"
-title = "recent"
+flex = "center"
   [[row.child]]
   widget = "recent"
+  width = { length = 70 }
+  border = "top"
+  title = "recent"
 
 [[row]]
 height = { length = 1 }

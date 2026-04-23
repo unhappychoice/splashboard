@@ -1,6 +1,8 @@
 # home_splash — "hello terminal" preset. Terminal name rendered as a giant figlet banner
-# with a sweep-in postfx as the hero, attribution underneath, and a single ambient row
-# (date + weather + moon) plus a year-progress gauge sitting quietly at the bottom.
+# with a sweep-in postfx as the hero, OS version underneath as attribution, and a single
+# ambient band (date + weather + sunrise + moon) plus a year-progress gauge sitting
+# quietly at the bottom. All body rows share a 70-col content band (centered) so the
+# section divider, ambient lines, and gauge line up at the same left/right edges.
 #
 # Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
 
@@ -57,19 +59,13 @@ render = { type = "gauge_line", label = "year", value_format = "percent" }
   [widget.options]
   period = "year"
 
-[[widget]]
-id = "gap"
-fetcher = "static"
-format = " "
-render = "text_plain"
-
 # ── Layout ─────────────────────────────────────────────────────────
 
 [[row]]
 height = { length = 1 }
 
-# Hero: figlet `banner` is 8 rows tall; give it the full band width and let the
-# inner `align = "center"` in the render options keep it centred.
+# Hero gets the full row width — figlet `banner` is 8 rows tall and wide; the inner
+# `align = "center"` on the render options recenters it against the full area.
 [[row]]
 height = { length = 8 }
   [[row.child]]
@@ -84,27 +80,37 @@ height = { length = 1 }
 height = { length = 1 }
 
 # Section divider over the ambient band. Height 2 = 1 border rule + 1 content row.
+# Everything below shares the same 70-col centred column so border title, ambient
+# lines, and the year gauge line up cleanly at the edges.
 [[row]]
 height = { length = 2 }
-border = "top"
-title = "today"
+flex = "center"
   [[row.child]]
   widget = "date_bar"
+  width = { length = 70 }
+  border = "top"
+  title = "today"
 
 [[row]]
 height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "weather"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "sunrise"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
+flex = "center"
   [[row.child]]
   widget = "moon"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
@@ -114,7 +120,7 @@ height = { length = 1 }
 flex = "center"
   [[row.child]]
   widget = "year_ratio"
-  width = { length = 60 }
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }

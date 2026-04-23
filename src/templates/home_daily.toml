@@ -1,7 +1,8 @@
 # home_daily — ambient clock preset. Large time as the hero, today's date underneath,
 # outside band (weather / sunrise / moon) on the left, period ratios on the right.
 # No postfx: the value axis is "what time / day / season is it", so the splash sits
-# still instead of drawing attention with motion.
+# still instead of drawing attention with motion. The 4-rail outside/time section
+# shares the same 70-col content band the rest of the 0.x presets use.
 #
 # Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
 
@@ -109,15 +110,15 @@ height = { length = 1 }
 height = { length = 1 }
 
 # Outside (left, inline weather/sunrise/moon) | Time ratios (right, 4 gauges).
-# The first rail carries the top-border section titles; subsequent rails are plain
-# 1-row content. `border = "top"` consumes the first row of its cell, so the header
-# rail is 2 rows tall (1 border + 1 content).
+# Body sits on a 70-col centred band so the content lines up with the home_splash /
+# project_github_activity layouts; the first rail carries the top-border section
+# titles (`border = "top"` consumes the first row, hence the header rail is 2 tall).
 [[row]]
 height = { length = 2 }
 flex = "center"
   [[row.child]]
   widget = "weather"
-  width = { length = 36 }
+  width = { length = 34 }
   border = "top"
   title = "outside"
   [[row.child]]
@@ -125,7 +126,7 @@ flex = "center"
   width = { length = 2 }
   [[row.child]]
   widget = "year_ratio"
-  width = { length = 36 }
+  width = { length = 34 }
   border = "top"
   title = "time"
 
@@ -134,39 +135,39 @@ height = { length = 1 }
 flex = "center"
   [[row.child]]
   widget = "sunrise"
-  width = { length = 36 }
+  width = { length = 34 }
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
   [[row.child]]
   widget = "month_ratio"
-  width = { length = 36 }
+  width = { length = 34 }
 
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
   widget = "moon"
-  width = { length = 36 }
+  width = { length = 34 }
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
   [[row.child]]
   widget = "week_ratio"
-  width = { length = 36 }
+  width = { length = 34 }
 
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
   widget = "gap"
-  width = { length = 36 }
+  width = { length = 34 }
   [[row.child]]
   widget = "gap"
   width = { length = 2 }
   [[row.child]]
   widget = "day_ratio"
-  width = { length = 36 }
+  width = { length = 34 }
 
 [[row]]
 height = { length = 1 }
