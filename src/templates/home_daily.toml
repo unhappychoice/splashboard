@@ -32,32 +32,53 @@ id = "calendar"
 fetcher = "clock"
 render = { type = "grid_calendar", align = "center" }
 
+# `sun & moon` items rendered as a label / value pair per row so each line is
+# vertically aligned (same column for all labels, same column for all values),
+# mirroring the key/value table layout on the outside panel.
 [[widget]]
 id = "sunrise"
 fetcher = "clock_sunrise"
-render = { type = "grid_table", layout = "inline", align = "center" }
+render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
   [widget.options]
   lat = 35.68
   lon = 139.76
 
 [[widget]]
+id = "moon_label"
+fetcher = "static"
+format = "moon"
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
 id = "moon"
 fetcher = "clock_derived"
-render = { type = "text_plain", align = "center" }
+render = { type = "text_plain", align = "left" }
   [widget.options]
   kind = "moon_phase"
 
 [[widget]]
+id = "season_label"
+fetcher = "static"
+format = "season"
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
 id = "season"
 fetcher = "clock_derived"
-render = { type = "text_plain", align = "center" }
+render = { type = "text_plain", align = "left" }
   [widget.options]
   kind = "season"
 
 [[widget]]
+id = "zodiac_label"
+fetcher = "static"
+format = "zodiac"
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
 id = "zodiac"
 fetcher = "clock_derived"
-render = { type = "text_plain", align = "center" }
+render = { type = "text_plain", align = "left" }
   [widget.options]
   kind = "zodiac"
 
@@ -141,9 +162,11 @@ flex = "center"
 [[row]]
 height = { length = 1 }
 
-# Sun & moon details under a centred divider, centred at 70 cols.
+# Sun & moon details. Sunrise/sunset render as a grid_table rows (key/value). The
+# three derived values (moon / season / zodiac) sit under them as label + value
+# pairs so the whole section reads as one aligned two-column table.
 [[row]]
-height = { length = 2 }
+height = { length = 3 }
 flex = "center"
   [[row.child]]
   widget = "sunrise"
@@ -156,22 +179,40 @@ flex = "center"
 height = { length = 1 }
 flex = "center"
   [[row.child]]
+  widget = "moon_label"
+  width = { length = 28 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 1 }
+  [[row.child]]
   widget = "moon"
-  width = { length = 70 }
+  width = { length = 41 }
 
 [[row]]
 height = { length = 1 }
 flex = "center"
+  [[row.child]]
+  widget = "season_label"
+  width = { length = 28 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 1 }
   [[row.child]]
   widget = "season"
-  width = { length = 70 }
+  width = { length = 41 }
 
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
+  widget = "zodiac_label"
+  width = { length = 28 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 1 }
+  [[row.child]]
   widget = "zodiac"
-  width = { length = 70 }
+  width = { length = 41 }
 
 [[row]]
 height = { length = 1 }

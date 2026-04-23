@@ -88,10 +88,19 @@ fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &T
             events.add(date, Style::default().fg(theme.accent_event));
         }
     }
+    let panel_title = Style::default()
+        .fg(theme.panel_title)
+        .add_modifier(Modifier::BOLD);
+    let dim = Style::default().fg(theme.text_dim);
     // `default_style` paints the grid of non-event day numbers + header so unmarked days
     // match the Splash text colour instead of leaking the terminal fg against the navy bg.
+    // Show the month name and weekday labels so the grid is readable as a standalone block
+    // instead of just bare numbers.
     frame.render_widget(
-        Monthly::new(anchor, events).default_style(Style::default().fg(theme.text)),
+        Monthly::new(anchor, events)
+            .default_style(Style::default().fg(theme.text))
+            .show_month_header(panel_title)
+            .show_weekdays_header(dim),
         area,
     );
 }
