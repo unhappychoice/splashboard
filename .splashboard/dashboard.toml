@@ -63,11 +63,11 @@ id = "releases"
 fetcher = "github_recent_releases"
 render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 3 }
 
-# Horizontal spacer between sibling containers — a no-op `static` with empty
-# format renders nothing, the width = { length = … } in the row carves the gap.
+# Horizontal spacer between sibling containers — a no-op `basic_static` with
+# empty format renders nothing, the width = { length = … } in the row carves the gap.
 [[widget]]
 id = "gap"
-fetcher = "static"
+fetcher = "basic_static"
 format = ""
 render = "text_plain"
 

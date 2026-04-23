@@ -57,13 +57,13 @@ trust` — see the [trust guide](/splashboard/guides/trust/).
 ## ReadStore — custom widgets without code
 
 Need a widget no fetcher currently provides? Write the payload to a file
-and point a `read_store` widget at it.
+and point a `basic_read_store` widget at it.
 
 ```toml
 # dashboard.toml
 [[widget]]
 id = "habit"
-fetcher = "read_store"
+fetcher = "basic_read_store"
 file_format = "json"
 render = "gauge_line"
 ```
@@ -121,7 +121,7 @@ Same pattern with a yearly ratio and a fixed target:
 ```
 
 Keep the file `$HOME/.splashboard/store/reading.json`; point a
-`read_store` widget at it with `id = "reading"`.
+`basic_read_store` widget at it with `id = "reading"`.
 
 ## Making your own theme
 

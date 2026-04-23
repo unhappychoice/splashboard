@@ -123,7 +123,7 @@ pub trait RealtimeFetcher: Send + Sync {
 }
 
 /// Fetcher can't emit the shape the renderer expects. Surfaced as a placeholder so the splash
-/// keeps rendering even when the config pairs, say, `fetcher = "disk_usage"` with `render = "grid_calendar"`.
+/// keeps rendering even when the config pairs, say, `fetcher = "system_disk_usage"` with `render = "grid_calendar"`.
 #[derive(Debug, Clone)]
 pub struct ShapeMismatch {
     pub fetcher: String,
@@ -370,9 +370,9 @@ mod tests {
     }
 
     #[test]
-    fn with_builtins_registers_static_fetcher() {
+    fn with_builtins_registers_basic_static_fetcher() {
         let r = Registry::with_builtins();
-        assert!(r.get("static").is_some());
+        assert!(r.get("basic_static").is_some());
     }
 
     #[test]
@@ -407,22 +407,22 @@ mod tests {
 
     #[test]
     fn cache_key_is_stable_for_same_inputs() {
-        let a = default_cache_key("static", &ctx_with(Some("Hi!")));
-        let b = default_cache_key("static", &ctx_with(Some("Hi!")));
+        let a = default_cache_key("basic_static", &ctx_with(Some("Hi!")));
+        let b = default_cache_key("basic_static", &ctx_with(Some("Hi!")));
         assert_eq!(a, b);
     }
 
     #[test]
     fn cache_key_differs_across_fetchers() {
-        let a = default_cache_key("static", &ctx_with(None));
+        let a = default_cache_key("basic_static", &ctx_with(None));
         let b = default_cache_key("clock", &ctx_with(None));
         assert_ne!(a, b);
     }
 
     #[test]
     fn cache_key_differs_when_format_differs() {
-        let a = default_cache_key("static", &ctx_with(Some("Hi!")));
-        let b = default_cache_key("static", &ctx_with(Some("Bye!")));
+        let a = default_cache_key("basic_static", &ctx_with(Some("Hi!")));
+        let b = default_cache_key("basic_static", &ctx_with(Some("Bye!")));
         assert_ne!(a, b);
     }
 
@@ -436,14 +436,14 @@ mod tests {
         a.timeout = Duration::from_secs(1);
         b.timeout = Duration::from_secs(99);
         assert_eq!(
-            default_cache_key("static", &a),
-            default_cache_key("static", &b)
+            default_cache_key("basic_static", &a),
+            default_cache_key("basic_static", &b)
         );
     }
 
     #[test]
     fn cache_key_is_prefixed_with_fetcher_name() {
-        let k = default_cache_key("static", &ctx_with(None));
-        assert!(k.starts_with("static-"));
+        let k = default_cache_key("basic_static", &ctx_with(None));
+        assert!(k.starts_with("basic_static-"));
     }
 }

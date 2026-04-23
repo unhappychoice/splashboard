@@ -119,7 +119,7 @@ id = "clock"                                  # unique within the dashboard
 fetcher = "clock"                             # registry name
 render = { type = "text_ascii", align = "center" }
 refresh_interval = 30                         # cached fetcher TTL seconds
-format = "%H:%M"                              # clock / static-style option
+format = "%H:%M"                              # clock / basic_static-style option
 ```
 
 Fields:
@@ -132,10 +132,10 @@ Fields:
   long form `render = { type = "text_ascii", pixel_size = "quadrant" }`.
   Absent = pick the default renderer for the fetcher's shape.
 - **`format`** — fetcher-specific format string where applicable (e.g.
-  `clock` accepts strftime patterns, `static` takes literal text).
+  `clock` accepts strftime patterns, `basic_static` takes literal text).
 - **`refresh_interval`** — cache TTL for cached fetchers, in seconds.
   Ignored by realtime fetchers.
-- **`file_format`** — `read_store` only: `"json"`, `"toml"`, or `"text"`.
+- **`file_format`** — `basic_read_store` only: `"json"`, `"toml"`, or `"text"`.
 - **`[widget.options]`** — fetcher-specific nested options. See each
   fetcher's reference page for its schema.
 

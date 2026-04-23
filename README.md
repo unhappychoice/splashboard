@@ -83,10 +83,9 @@ See `.splashboard/config.toml` in this repo for the dogfood showcase that exerci
 
 ### Fetchers
 
-- **static** — literal text blocks (greetings, welcome notes)
-- **read_store** — deserializes `$HOME/.splashboard/store/<id>.<ext>` into any supported shape (the escape hatch for "I want a custom widget")
+- **basic_*** — `basic_static` (literal text / text blocks), `basic_read_store` (deserializes `$HOME/.splashboard/store/<id>.<ext>` into any supported shape — the escape hatch for "I want a custom widget")
 - **clock_*** — `clock`, `clock_timezones`, `clock_ratio`, `clock_state`, `clock_derived`, `clock_sunrise`, `clock_countdown`
-- **system_*** — `system`, `system_cpu`, `system_memory`, `system_load`, `system_uptime`, `system_processes`, `disk_usage`
+- **system_*** — `system`, `system_cpu`, `system_memory`, `system_load`, `system_uptime`, `system_processes`, `system_disk_usage`
 - **git_*** — `git_status`, `git_recent_commits`, `git_commits_activity`, `git_contributors`, `git_blame_heatmap`, `git_stash_count`, `git_worktrees`, `git_latest_tag`
 - **github_*** — action status/history, PRs (mine / review-requested / repo), issues (assigned / repo / good-first), releases, notifications, stars, contributions heatmap, contributors
 

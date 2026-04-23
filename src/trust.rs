@@ -342,12 +342,12 @@ mod tests {
     #[test]
     fn partition_keeps_everything_when_trusted() {
         let registry = registry_with(&[
-            ("static", Safety::Safe),
+            ("basic_static", Safety::Safe),
             ("github_prs", Safety::Network),
             ("plugin", Safety::Exec),
         ]);
         let widgets = vec![
-            widget("g", "static"),
+            widget("g", "basic_static"),
             widget("p", "github_prs"),
             widget("x", "plugin"),
         ];
@@ -359,12 +359,12 @@ mod tests {
     #[test]
     fn partition_gates_network_and_exec_when_untrusted() {
         let registry = registry_with(&[
-            ("static", Safety::Safe),
+            ("basic_static", Safety::Safe),
             ("github_prs", Safety::Network),
             ("plugin", Safety::Exec),
         ]);
         let widgets = vec![
-            widget("g", "static"),
+            widget("g", "basic_static"),
             widget("p", "github_prs"),
             widget("x", "plugin"),
         ];
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn partition_keeps_unknown_fetchers_in_fetchable_when_untrusted() {
-        let registry = registry_with(&[("static", Safety::Safe)]);
+        let registry = registry_with(&[("basic_static", Safety::Safe)]);
         let widgets = vec![widget("x", "mystery")];
         let (fetchable, gated) = partition_by_trust(&widgets, &registry, TrustDecision::Untrusted);
         assert_eq!(fetchable.len(), 1);

@@ -39,7 +39,7 @@ pub struct ReadStoreFetcher;
 #[async_trait]
 impl Fetcher for ReadStoreFetcher {
     fn name(&self) -> &str {
-        "read_store"
+        "basic_read_store"
     }
     fn safety(&self) -> Safety {
         // Always Safe: the path is derived from the widget id under a fixed home subdir, so

@@ -378,7 +378,7 @@ pub struct DiskFetcher;
 #[async_trait]
 impl Fetcher for DiskFetcher {
     fn name(&self) -> &str {
-        "disk_usage"
+        "system_disk_usage"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
