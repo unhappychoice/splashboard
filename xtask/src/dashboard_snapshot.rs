@@ -38,13 +38,18 @@ pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result
     let specs = widget_specs(&config.widgets);
     let root = config.to_layout();
 
+    // All widgets already have sample payloads → none are "loading". Passing an empty map
+    // keeps the runtime's loading-placeholder branch disabled for the preview.
+    let loading: HashMap<String, Shape> = HashMap::new();
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).context("init offscreen terminal")?;
     terminal
         .draw(|frame| {
             let area = Rect::new(0, 0, width, height);
             frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
-            layout_engine::draw(frame, area, &root, &payloads, &specs, &renderers, &theme);
+            layout_engine::draw(
+                frame, area, &root, &payloads, &specs, &renderers, &theme, &loading,
+            );
         })
         .context("draw dashboard")?;
     Ok(buffer_to_html(terminal.backend().buffer()))
