@@ -34,7 +34,7 @@ render = { type = "text_plain", align = "left" }
 id = "clock"
 fetcher = "clock"
 format = "%H:%M"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 900, style = "figlet", font = "ansi_shadow", color = "text", align = "center" }
+render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 900, style = "figlet", font = "standard", color = "text", align = "center" }
 
 [[widget]]
 id = "date"
