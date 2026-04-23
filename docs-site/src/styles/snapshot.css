@@ -96,6 +96,12 @@
   padding: 2.3em 1em 0.85em 1em;
   /* No scroll — content scales to fit by construction. Hide any subpixel leakage. */
   overflow: hidden;
+  /* The `<pre>` defaults to `width: auto` = full container width; with the safety-margin
+     divisor above the rendered content is slightly narrower, leaving unused whitespace on
+     the right that reads as left-aligned. Shrink the block to its actual rendered width
+     and centre it in the column. */
+  width: fit-content;
+  margin-inline: auto;
 }
 
 .splash-landing .splash-snapshot::before {
