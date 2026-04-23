@@ -74,3 +74,14 @@
   overflow: hidden;
   vertical-align: top;
 }
+
+/* Landing-page full-dashboard preview: the dogfood config is rendered at 120 cells wide so
+   the figlet hero has room to breathe, which at the reference previews' 0.95rem font-size
+   would overflow the content column on anything below ~1100px. Scale the font down (and
+   tighten line-height to match) so the whole splash lands inside the column at any width
+   above ~640px. Tight clamp lower bound keeps glyphs legible on mobile; upper bound caps
+   the scale on ultra-wide so the splash doesn't dominate the fold. */
+.splash-landing .splash-snapshot {
+  font-size: clamp(0.5rem, 1.35vw, 0.8rem);
+  line-height: 1.05;
+}
