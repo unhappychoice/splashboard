@@ -118,7 +118,7 @@ fn build_body(raw: BTreeMap<String, u64>, shape: Shape, limit: usize) -> Body {
 /// up to the repo's full byte count.
 fn top_n(raw: BTreeMap<String, u64>, limit: usize) -> Vec<(String, u64)> {
     let mut all: Vec<(String, u64)> = raw.into_iter().collect();
-    all.sort_by(|a, b| b.1.cmp(&a.1));
+    all.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     if all.len() <= limit {
         return all;
     }

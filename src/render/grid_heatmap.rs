@@ -125,12 +125,18 @@ fn render_heatmap(
         visible_cols,
         col_offset,
         theme,
-        cell_glyph(opts.cell_char.as_deref()),
+        &cell_glyph(opts.cell_char.as_deref()),
     );
 }
 
-fn cell_glyph(opt: Option<&str>) -> &str {
-    opt.filter(|s| !s.is_empty()).unwrap_or(CELL_GLYPH)
+/// First `char` of the user-supplied glyph — we paint a single-width symbol into cell
+/// column 0 of every heatmap cell, and column 1 stays empty as the spacer between
+/// cells. A multi-char input like `"ab"` would bleed into that spacer and collide with
+/// the 2-col-per-cell geometry, so we truncate to the leading character.
+fn cell_glyph(opt: Option<&str>) -> String {
+    opt.and_then(|s| s.chars().next())
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| CELL_GLYPH.to_string())
 }
 
 fn horizontal_shift(align: Option<&str>, area_width: u16, content_width: u16) -> u16 {

@@ -27,10 +27,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "marker",
-        type_hint: "\"dot\" | \"cross\" | \"plus\" | any single char",
+        type_hint: "\"dot\" | \"block\" | \"bar\" | \"braille\" | \"half_block\"",
         required: false,
         default: Some("\"dot\""),
-        description: "Scatter marker glyph. `dot`/`cross`/`plus` map to common characters; any other string is rendered verbatim.",
+        description: "Scatter glyph family, mapped to ratatui's `symbols::Marker` variants. Unknown names fall back to `dot`.",
     },
 ];
 

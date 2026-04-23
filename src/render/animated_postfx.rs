@@ -23,10 +23,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "effect",
-        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"slide_in\" | \"hsl_shift\" | \"glitch\"",
+        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\"",
         required: false,
         default: Some("\"fade_in\""),
-        description: "tachyonfx effect applied to the inner render. Unknown names fall back to `fade_in` rather than failing the widget.",
+        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). Unknown names fall back to `fade_in` rather than failing the widget.",
     },
     OptionSchema {
         name: "duration_ms",

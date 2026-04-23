@@ -143,9 +143,10 @@ pub struct RenderOptions {
     /// `label: ▓▓░░ 32%`; `chart_sparkline` as `label  ▁▂▃█`.
     #[serde(default)]
     pub label: Option<String>,
-    /// gauge_line: numeric formatting. "percent" (default, `32%`), "fraction" (`118/365`),
-    /// or "both" (`32% (118 of 365)`). "fraction" / "both" require `RatioData` to carry
-    /// `denominator` via a `label` like `"fraction:n/d"` — otherwise falls back to percent.
+    /// gauge_line: numeric formatting. "percent" (default, `32%`), "fraction"
+    /// (`118 of 365`), or "both" (`32% (118 of 365)`). "fraction" / "both" need
+    /// `RatioData.denominator` populated by the fetcher — otherwise they fall back
+    /// to percent.
     #[serde(default)]
     pub value_format: Option<String>,
     /// grid_table: layout mode. "rows" (default — one row per entry) or "inline"

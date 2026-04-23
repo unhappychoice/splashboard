@@ -95,13 +95,14 @@ impl RealtimeFetcher for ClockRatioFetcher {
     }
 }
 
-/// Total "slots" in the current period at the period's natural granularity: days for
-/// year/month/quarter/week, seconds for hour/day. Enables `value_format = "fraction"` to
-/// render `118 of 365` even though the gauge itself is a 0..=1 ratio.
+/// Total "slots" in the current period at a human-readable granularity: days for
+/// year/month/quarter/week, hours for day, minutes for hour. Seconds-level granularity
+/// was rejected — `43200 of 86400` reads as noise; `12 of 24` / `30 of 60` is what
+/// people actually want to see beside a progress bar.
 fn total_units(now: &DateTime<FixedOffset>, period: Period) -> u64 {
     match period {
-        Period::Day => 86_400,
-        Period::Hour => 3_600,
+        Period::Day => 24,
+        Period::Hour => 60,
         Period::Week => 7,
         Period::Month => {
             let start = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap();
