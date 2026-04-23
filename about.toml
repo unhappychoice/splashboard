@@ -1,0 +1,24 @@
+# cargo-about config — licenses we accept in the dependency tree. Any crate licensed
+# outside this list fails `cargo about` so we notice before shipping.
+#
+# Regenerate `THIRDPARTY-LICENSES.md`:
+#   cargo about generate about.hbs -o THIRDPARTY-LICENSES.md
+
+accepted = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "NCSA",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+]
+
+targets = []
