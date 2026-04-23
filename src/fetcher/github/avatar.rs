@@ -118,9 +118,23 @@ async fn download_avatar(user: &str, size: u32) -> Result<PathBuf, FetchError> {
         .bytes()
         .await
         .map_err(|e| FetchError::Failed(format!("avatar body: {e}")))?;
-    let path = out_dir.join(format!("{user}-{size}.png"));
+    // GitHub serves whichever image format the user uploaded, even when the URL ends in `.png`.
+    // The image crate decodes by extension hint, so we need to write the file with the right
+    // suffix or decoding fails.
+    let ext = image_extension(&bytes);
+    let path = out_dir.join(format!("{user}-{size}.{ext}"));
     std::fs::write(&path, &bytes).map_err(|e| FetchError::Failed(format!("write avatar: {e}")))?;
     Ok(path)
+}
+
+fn image_extension(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "png"
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        "jpg"
+    } else {
+        "png"
+    }
 }
 
 fn avatar_dir() -> Option<PathBuf> {
@@ -245,5 +259,48 @@ mod tests {
     fn options_reject_unknown_keys() {
         let raw: toml::Value = toml::from_str("bogus = 1").unwrap();
         assert!(parse_options::<Options>(Some(&raw)).is_err());
+    }
+
+    #[test]
+    fn image_extension_detects_png() {
+        assert_eq!(image_extension(b"\x89PNG\r\n\x1a\nrest"), "png");
+    }
+
+    #[test]
+    fn image_extension_detects_jpeg() {
+        assert_eq!(image_extension(&[0xff, 0xd8, 0xff, 0xdb, 0x00]), "jpg");
+    }
+
+    #[test]
+    fn image_extension_unknown_falls_back_to_png() {
+        assert_eq!(image_extension(&[0, 0, 0, 0]), "png");
+    }
+
+    /// Live smoke test — downloads the splashboard author's avatar and verifies the file looks
+    /// like a real PNG or JPEG. `#[ignore]` keeps CI offline-safe; run with
+    /// `cargo test -- --ignored fetcher::github::avatar::tests::live --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_downloads_image_under_cache_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _g = EnvGuard::set(&[("SPLASHBOARD_HOME", Some(tmp.path().to_str().unwrap()))]);
+        let path = download_avatar("unhappychoice", 64).await.unwrap();
+        eprintln!("wrote {}", path.display());
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(
+            bytes.len() > 256,
+            "avatar suspiciously small: {} bytes",
+            bytes.len()
+        );
+        let ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
+        assert!(matches!(ext, "png" | "jpg"), "unexpected extension {ext:?}");
+        match ext {
+            "png" => assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n"),
+            "jpg" => assert_eq!(&bytes[..3], &[0xff, 0xd8, 0xff]),
+            _ => unreachable!(),
+        }
     }
 }

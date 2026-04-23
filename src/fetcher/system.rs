@@ -811,6 +811,30 @@ mod tests {
         assert!(!detect_terminal().is_empty());
     }
 
+    /// Prints one Text-shape line per `kind` on the host running the tests. Kept `#[ignore]` so
+    /// the regular run stays side-effect free, but a dev can verify real output with
+    /// `cargo test -- --ignored fetcher::system::tests::live_system_text_all_kinds --nocapture`.
+    #[test]
+    #[ignore]
+    fn live_system_text_all_kinds() {
+        let cases = [
+            ("terminal", "kind = \"terminal\""),
+            ("os", "kind = \"os\""),
+            ("os_version", "kind = \"os_version\""),
+            ("hostname", "kind = \"hostname\""),
+            ("shell", "kind = \"shell\""),
+            ("arch", "kind = \"arch\""),
+        ];
+        for (label, opts) in cases {
+            let p = SystemFetcher::new().compute(&ctx_text(Some(opts)));
+            let Body::Text(t) = p.body else {
+                panic!("expected text for {label}");
+            };
+            eprintln!("{label:<12} → {}", t.value);
+            assert!(!t.value.is_empty());
+        }
+    }
+
     #[test]
     fn system_text_block_shape_returns_key_value_strings() {
         let p = SystemFetcher::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
