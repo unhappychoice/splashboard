@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightLlmsTxt from 'starlight-llms-txt';
 
 // Base path matches the GH Pages project URL (unhappychoice.github.io/splashboard/).
 // Internal links in content are relative, so they're unaffected; only the public URL uses this.
@@ -11,6 +12,7 @@ export default defineConfig({
       title: 'splashboard',
       description: 'Customizable terminal splash — fetcher × renderer reference.',
       customCss: ['./src/styles/snapshot.css'],
+      plugins: [starlightLlmsTxt()],
       social: [
         {
           icon: 'github',

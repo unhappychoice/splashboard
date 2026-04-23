@@ -6,14 +6,15 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build",
+    "build": "astro build && node scripts/copy-markdown.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.37.0",
     "astro": "^5.5.0",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "starlight-llms-txt": "^0.7.0"
   },
   "overrides": {
     "@astrojs/sitemap": "3.7.0"
