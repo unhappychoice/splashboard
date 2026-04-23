@@ -6,12 +6,30 @@ use ratatui::{
 };
 use time::{Date, Month};
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, CalendarData};
 use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::ACCENT_TODAY, theme::ACCENT_EVENT, theme::TEXT];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "week_start",
+        type_hint: "\"sun\" | \"mon\"",
+        required: false,
+        default: Some("\"sun\""),
+        description: "Day the week starts on. Reserved for the future — ratatui's Monthly widget always renders Sun-first; the option is accepted so configs stay forward-compatible.",
+    },
+    OptionSchema {
+        name: "marker",
+        type_hint: "string",
+        required: false,
+        default: None,
+        description: "Replacement glyph for event days. Reserved — the current Monthly widget tints event cells via style only; the option is accepted for forward compatibility.",
+    },
+];
 
 /// Month-view calendar for the `Calendar` shape. Highlights `day` (today / focus) and marks
 /// each day in `events`. Silently no-ops on invalid dates — a splash must never panic on bad
@@ -27,6 +45,9 @@ impl Renderer for GridCalendarRenderer {
     }
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(
         &self,

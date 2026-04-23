@@ -12,12 +12,13 @@ use std::sync::Arc;
 mod action_history;
 mod action_status;
 mod assigned_issues;
-mod client;
-mod common;
+pub(crate) mod client;
+pub(crate) mod common;
 mod contributions;
 mod contributors_monthly;
 mod good_first_issues;
 mod items;
+mod languages;
 mod my_prs;
 mod notifications;
 mod recent_releases;
@@ -43,5 +44,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(good_first_issues::GithubGoodFirstIssues),
         Arc::new(contributors_monthly::GithubContributorsMonthly),
         Arc::new(contributions::GithubContributions),
+        Arc::new(languages::GithubLanguages),
     ]
 }

@@ -1,12 +1,30 @@
 use ratatui::{Frame, layout::Rect};
-use tui_piechart::{PieChart, PieSlice};
+use tui_piechart::{LegendPosition, PieChart, PieSlice};
 
+use crate::options::OptionSchema;
 use crate::payload::{BarsData, Body};
 use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "legend",
+        type_hint: "\"right\" | \"bottom\" | \"top\" | \"left\" | \"none\"",
+        required: false,
+        default: Some("\"right\""),
+        description: "Legend placement. `none` hides the legend; any direction pins it to that side of the chart.",
+    },
+    OptionSchema {
+        name: "donut",
+        type_hint: "bool",
+        required: false,
+        default: Some("false"),
+        description: "Render a donut (hollow centre) instead of a filled pie. Implemented by substituting the slice glyph so the centre reads as empty.",
+    },
+];
 
 /// Pie-chart renderer. Consumes the same `Bars` shape as `chart_bar`, so one fetcher feeds
 /// either — `render = "chart_pie"` vs `render = "chart_bar"` is a config choice. Slice colours
@@ -24,34 +42,49 @@ impl Renderer for ChartPieRenderer {
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
     }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
     fn render(
         &self,
         frame: &mut Frame,
         area: Rect,
         body: &Body,
-        _opts: &RenderOptions,
+        opts: &RenderOptions,
         theme: &Theme,
         _registry: &Registry,
     ) {
         if let Body::Bars(d) = body {
-            render_pie(frame, area, d, theme);
+            render_pie(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_pie(frame: &mut Frame, area: Rect, data: &BarsData, theme: &Theme) {
+fn render_pie(frame: &mut Frame, area: Rect, data: &BarsData, opts: &RenderOptions, theme: &Theme) {
     let slices: Vec<PieSlice> = data
         .bars
         .iter()
         .enumerate()
         .map(|(i, b)| PieSlice::new(b.label.as_str(), b.value as f64, theme.series_color(i)))
         .collect();
-    frame.render_widget(
-        PieChart::new(slices)
-            .show_legend(true)
-            .show_percentages(true),
-        area,
-    );
+    let show_legend = !matches!(opts.legend.as_deref(), Some("none"));
+    let mut chart = PieChart::new(slices)
+        .show_legend(show_legend)
+        .show_percentages(true)
+        .legend_position(legend_position(opts.legend.as_deref()));
+    if opts.donut.unwrap_or(false) {
+        chart = chart.pie_char('○');
+    }
+    frame.render_widget(chart, area);
+}
+
+fn legend_position(legend: Option<&str>) -> LegendPosition {
+    match legend {
+        Some("left") => LegendPosition::Left,
+        Some("top") => LegendPosition::Top,
+        Some("bottom") => LegendPosition::Bottom,
+        _ => LegendPosition::Right,
+    }
 }
 
 #[cfg(test)]
@@ -122,6 +155,29 @@ mod tests {
         let joined: String = (0..20).map(|y| line_text(&buf, y)).collect();
         assert!(joined.contains("alpha"), "alpha label missing: {joined:?}");
         assert!(joined.contains("beta"), "beta label missing: {joined:?}");
+    }
+
+    #[test]
+    fn legend_none_hides_labels() {
+        use crate::render::test_utils::line_text;
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W = toml::from_str(r#"render = { type = "chart_pie", legend = "none" }"#).unwrap();
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![bar("alpha", 10), bar("beta", 20)]),
+            Some(&w.render),
+            &registry,
+            60,
+            20,
+        );
+        let joined: String = (0..20).map(|y| line_text(&buf, y)).collect();
+        assert!(
+            !joined.contains("alpha"),
+            "legend should be hidden: {joined:?}"
+        );
     }
 
     #[test]

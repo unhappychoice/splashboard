@@ -1,15 +1,38 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    widgets::canvas::{Canvas, Points},
+    style::Style,
+    symbols::Marker,
+    widgets::{
+        Block, Borders,
+        canvas::{Canvas, Points},
+    },
 };
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, PointSeries, PointSeriesData};
 use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "axes",
+        type_hint: "bool",
+        required: false,
+        default: Some("false"),
+        description: "Draw a bordered block around the canvas so axes read as framed.",
+    },
+    OptionSchema {
+        name: "marker",
+        type_hint: "\"dot\" | \"block\" | \"bar\" | \"braille\" | \"half_block\"",
+        required: false,
+        default: Some("\"dot\""),
+        description: "Scatter glyph family, mapped to ratatui's `symbols::Marker` variants. Unknown names fall back to `dot`.",
+    },
+];
 
 /// Canvas-drawn scatter plot: dots only, no connecting lines. Alternate renderer for
 /// `PointSeries`, paired with the Braille line renderer (`chart_line`) so users get to pick
@@ -26,26 +49,36 @@ impl Renderer for ChartScatterRenderer {
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
     }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
     fn render(
         &self,
         frame: &mut Frame,
         area: Rect,
         body: &Body,
-        _opts: &RenderOptions,
+        opts: &RenderOptions,
         theme: &Theme,
         _registry: &Registry,
     ) {
         if let Body::PointSeries(d) = body {
-            render_scatter(frame, area, d, theme);
+            render_scatter(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_scatter(frame: &mut Frame, area: Rect, data: &PointSeriesData, theme: &Theme) {
+fn render_scatter(
+    frame: &mut Frame,
+    area: Rect,
+    data: &PointSeriesData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let (x_bounds, y_bounds) = bounds(&data.series);
-    let canvas = Canvas::default()
+    let mut canvas = Canvas::default()
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
+        .marker(parse_marker(opts.marker.as_deref()))
         .paint(|ctx| {
             for (i, series) in data.series.iter().enumerate() {
                 ctx.draw(&Points {
@@ -54,7 +87,24 @@ fn render_scatter(frame: &mut Frame, area: Rect, data: &PointSeriesData, theme: 
                 });
             }
         });
+    if opts.axes.unwrap_or(false) {
+        canvas = canvas.block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.panel_border)),
+        );
+    }
     frame.render_widget(canvas, area);
+}
+
+fn parse_marker(marker: Option<&str>) -> Marker {
+    match marker {
+        Some("block") => Marker::Block,
+        Some("bar") => Marker::Bar,
+        Some("braille") => Marker::Braille,
+        Some("half_block") => Marker::HalfBlock,
+        _ => Marker::Dot,
+    }
 }
 
 fn bounds(series: &[PointSeries]) -> ([f64; 2], [f64; 2]) {

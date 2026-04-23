@@ -92,6 +92,12 @@ pub struct RatioData {
     pub value: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Optional total the ratio is a fraction of (e.g. 365 when `value` is "day of year /
+    /// 365"). Populated by fetchers that know the underlying count so renderers can express
+    /// the fraction directly ("118 of 365"). Omitted when no sensible denominator exists —
+    /// renderers fall back to percent-only output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denominator: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -262,6 +268,7 @@ mod tests {
         let p = bare(Body::Ratio(RatioData {
             value: 0.73,
             label: Some("CPU".into()),
+            denominator: Some(100),
         }));
         assert_eq!(p, round_trip(&p));
     }

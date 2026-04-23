@@ -7,7 +7,8 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::payload::{Body, Status, TimelineData};
+use crate::options::OptionSchema;
+use crate::payload::{Body, Status, TimelineData, TimelineEvent};
 use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
@@ -19,6 +20,37 @@ const COLOR_KEYS: &[ColorKey] = &[
     theme::TEXT_DIM,
     theme::TEXT_SECONDARY,
     theme::TEXT,
+];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "bullet",
+        type_hint: "\"●\" | \"•\" | \"▪\" | \"→\" | \"none\"",
+        required: false,
+        default: Some("none"),
+        description: "Glyph prefixed to each event after the time column. `none` (default) shows only the time column and title.",
+    },
+    OptionSchema {
+        name: "max_items",
+        type_hint: "positive integer",
+        required: false,
+        default: Some("all events"),
+        description: "Cap on rendered events, from the top. Older events are dropped when the list is longer than the cap.",
+    },
+    OptionSchema {
+        name: "date_format",
+        type_hint: "\"relative\" | \"absolute\"",
+        required: false,
+        default: Some("\"relative\""),
+        description: "How the time column is formatted. `relative` shows `2h` / `3d`; `absolute` shows `2026-04-23` (ISO date).",
+    },
+    OptionSchema {
+        name: "align",
+        type_hint: "\"left\" | \"center\" | \"right\"",
+        required: false,
+        default: Some("\"left\""),
+        description: "Horizontal alignment of the timeline within its cell.",
+    },
 ];
 
 /// Time-stamped event list. Each row shows a compact relative prefix (`"3h"`, `"2d"`, `"Apr 5"`)
@@ -37,6 +69,9 @@ impl Renderer for ListTimelineRenderer {
     }
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
     }
     fn render(
         &self,
@@ -61,29 +96,39 @@ fn render_timeline_at(
     now: i64,
     theme: &Theme,
 ) {
-    let prefixes: Vec<String> = data
+    let events: Vec<&TimelineEvent> = data
         .events
         .iter()
-        .map(|e| format_relative(e.timestamp, now))
+        .take(opts.max_items.unwrap_or(usize::MAX))
+        .collect();
+    let use_absolute = matches!(opts.date_format.as_deref(), Some("absolute"));
+    let prefixes: Vec<String> = events
+        .iter()
+        .map(|e| format_prefix(e.timestamp, now, use_absolute))
         .collect();
     let prefix_width = prefixes
         .iter()
         .map(|p| p.chars().count())
         .max()
         .unwrap_or(0);
+    let bullet = bullet_for(opts.bullet.as_deref());
     let dim = Style::default().fg(theme.text_dim);
 
-    let mut lines: Vec<Line> = Vec::with_capacity(data.events.len() * 2);
+    let mut lines: Vec<Line> = Vec::with_capacity(events.len() * 2);
     let mut content_width: usize = 0;
-    for (prefix, event) in prefixes.iter().zip(data.events.iter()) {
-        let head = format!("{}{SEPARATOR}", pad_left(prefix, prefix_width));
+    for (prefix, event) in prefixes.iter().zip(events.iter()) {
+        let head = format!("{}{SEPARATOR}{bullet}", pad_left(prefix, prefix_width));
         content_width = content_width.max(head.chars().count() + event.title.chars().count());
         lines.push(Line::from(vec![
             Span::styled(head, dim),
             Span::styled(event.title.clone(), status_style(event.status, theme)),
         ]));
         if let Some(detail) = &event.detail {
-            let indent = format!("{}{SEPARATOR}", " ".repeat(prefix_width));
+            let indent = format!(
+                "{}{SEPARATOR}{}",
+                " ".repeat(prefix_width),
+                " ".repeat(bullet.chars().count())
+            );
             content_width = content_width.max(indent.chars().count() + detail.chars().count());
             lines.push(Line::from(vec![
                 Span::styled(indent, dim),
@@ -99,6 +144,28 @@ fn render_timeline_at(
         Paragraph::new(lines).style(Style::default().fg(theme.text)),
         target,
     );
+}
+
+fn bullet_for(option: Option<&str>) -> String {
+    match option {
+        None | Some("none") | Some("") => String::new(),
+        Some(g) => format!("{g} "),
+    }
+}
+
+fn format_prefix(ts: i64, now: i64, absolute: bool) -> String {
+    if absolute {
+        format_iso_date(ts)
+    } else {
+        format_relative(ts, now)
+    }
+}
+
+fn format_iso_date(ts: i64) -> String {
+    Utc.timestamp_opt(ts, 0)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "—".into())
 }
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
@@ -379,6 +446,69 @@ mod tests {
         let registry = Registry::with_builtins();
         let buf = render_to_buffer_with_spec(&p, None, &registry, 40, 1);
         assert!(line_text(&buf, 0).contains("right now"));
+    }
+
+    #[test]
+    fn max_items_caps_rendered_events() {
+        // Four events in the payload, opts.max_items = 2 → only the first two render.
+        let data = TimelineData {
+            events: (0..4)
+                .map(|i| TimelineEvent {
+                    timestamp: (i as i64) * 10,
+                    title: format!("evt-{i}"),
+                    detail: None,
+                    status: None,
+                })
+                .collect(),
+        };
+        let backend = TestBackend::new(40, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let opts = RenderOptions {
+            max_items: Some(2),
+            ..RenderOptions::default()
+        };
+        terminal
+            .draw(|f| render_timeline_at(f, f.area(), &data, &opts, 1_000, &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let joined: String = (0..5).map(|y| row_text(&buf, y)).collect();
+        assert!(joined.contains("evt-0"));
+        assert!(joined.contains("evt-1"));
+        assert!(
+            !joined.contains("evt-2"),
+            "unexpected third event: {joined:?}"
+        );
+    }
+
+    #[test]
+    fn absolute_date_format_emits_iso_date() {
+        let ts = Utc
+            .with_ymd_and_hms(2026, 4, 23, 0, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp();
+        let data = TimelineData {
+            events: vec![TimelineEvent {
+                timestamp: ts,
+                title: "merged #42".into(),
+                detail: None,
+                status: None,
+            }],
+        };
+        let backend = TestBackend::new(40, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let opts = RenderOptions {
+            date_format: Some("absolute".into()),
+            ..RenderOptions::default()
+        };
+        terminal
+            .draw(|f| render_timeline_at(f, f.area(), &data, &opts, ts + 86_400, &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let row = row_text(&buf, 0);
+        assert!(row.contains("2026-04-23"), "missing ISO date: {row:?}");
     }
 
     #[test]

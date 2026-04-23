@@ -217,6 +217,7 @@ fn empty_body(shape: Shape) -> Body {
         Shape::Ratio => Body::Ratio(RatioData {
             value: 0.0,
             label: None,
+            denominator: None,
         }),
         Shape::NumberSeries => Body::NumberSeries(NumberSeriesData { values: Vec::new() }),
         Shape::PointSeries => Body::PointSeries(PointSeriesData { series: Vec::new() }),

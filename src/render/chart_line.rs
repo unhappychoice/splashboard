@@ -3,15 +3,33 @@ use ratatui::{
     layout::Rect,
     style::Style,
     symbols::Marker,
-    widgets::{Axis, Chart, Dataset, GraphType},
+    widgets::{Axis, Block, Borders, Chart, Dataset, GraphType},
 };
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, PointSeries, PointSeriesData};
 use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER];
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "axes",
+        type_hint: "bool",
+        required: false,
+        default: Some("false"),
+        description: "Draw a bordered block around the plot so the axes read as framed.",
+    },
+    OptionSchema {
+        name: "legend",
+        type_hint: "bool",
+        required: false,
+        default: Some("false"),
+        description: "Placeholder — ratatui's Chart does not render legends yet. Accepted so configs stay forward-compatible.",
+    },
+];
 
 pub struct ChartLineRenderer;
 
@@ -25,22 +43,31 @@ impl Renderer for ChartLineRenderer {
     fn color_keys(&self) -> &[ColorKey] {
         COLOR_KEYS
     }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
     fn render(
         &self,
         frame: &mut Frame,
         area: Rect,
         body: &Body,
-        _opts: &RenderOptions,
+        opts: &RenderOptions,
         theme: &Theme,
         _registry: &Registry,
     ) {
         if let Body::PointSeries(d) = body {
-            render_line_chart(frame, area, d, theme);
+            render_line_chart(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData, theme: &Theme) {
+fn render_line_chart(
+    frame: &mut Frame,
+    area: Rect,
+    data: &PointSeriesData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let datasets: Vec<Dataset> = data
         .series
         .iter()
@@ -48,9 +75,16 @@ fn render_line_chart(frame: &mut Frame, area: Rect, data: &PointSeriesData, them
         .map(|(i, s)| to_dataset(s, theme.series_color(i)))
         .collect();
     let (x_bounds, y_bounds) = bounds(&data.series);
-    let chart = Chart::new(datasets)
+    let mut chart = Chart::new(datasets)
         .x_axis(Axis::default().bounds(x_bounds))
         .y_axis(Axis::default().bounds(y_bounds));
+    if opts.axes.unwrap_or(false) {
+        chart = chart.block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.panel_border)),
+        );
+    }
     frame.render_widget(chart, area);
 }
 

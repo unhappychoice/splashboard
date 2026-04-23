@@ -98,6 +98,9 @@ pub enum BorderStyle {
     Thick,
     #[allow(dead_code)]
     Double,
+    /// Single top edge only, plain style. Used to paint a section divider above a row so a
+    /// `title = "..."` hangs off the top rule — no side / bottom chrome is drawn.
+    Top,
 }
 
 impl Layout {
@@ -332,7 +335,7 @@ fn draw_panel(frame: &mut Frame, area: Rect, panel: &Option<Panel>, theme: &Them
 
 fn build_block<'a>(panel: &'a Panel, theme: &Theme) -> Block<'a> {
     let mut b = Block::default()
-        .borders(Borders::ALL)
+        .borders(to_borders(panel.border))
         .border_type(to_border_type(panel.border))
         .border_style(Style::default().fg(theme.panel_border));
     if let Some(t) = panel.title.as_deref() {
@@ -346,10 +349,17 @@ fn build_block<'a>(panel: &'a Panel, theme: &Theme) -> Block<'a> {
 
 fn to_border_type(style: BorderStyle) -> BorderType {
     match style {
-        BorderStyle::Plain => BorderType::Plain,
+        BorderStyle::Plain | BorderStyle::Top => BorderType::Plain,
         BorderStyle::Rounded => BorderType::Rounded,
         BorderStyle::Thick => BorderType::Thick,
         BorderStyle::Double => BorderType::Double,
+    }
+}
+
+fn to_borders(style: BorderStyle) -> Borders {
+    match style {
+        BorderStyle::Top => Borders::TOP,
+        _ => Borders::ALL,
     }
 }
 
@@ -461,6 +471,24 @@ mod tests {
         let inner = line_text(&buf, 1);
         assert!(inner.contains("cpu"));
         assert!(inner.contains("mem"));
+    }
+
+    #[test]
+    fn top_border_paints_only_the_top_edge_with_title() {
+        let l = Layout::widget("g")
+            .titled("branch")
+            .bordered(BorderStyle::Top);
+        let w = widgets(&[("g", text_widget(&["main"]))]);
+        let buf = render_to_buffer_with(&l, &w, 30, 4);
+        let top = line_text(&buf, 0);
+        // Top rule carries the horizontal glyph and the title hangs off it.
+        assert!(top.contains('─'), "missing horizontal rule: {top:?}");
+        assert!(top.contains("branch"), "missing title: {top:?}");
+        // No corner glyphs — Borders::TOP only draws the top edge.
+        assert!(!top.contains('┌') && !top.contains('┐'));
+        // Side edges must not render: the second row should not contain left/right glyphs.
+        let body = line_text(&buf, 1);
+        assert!(!body.contains('│'), "unexpected side chrome: {body:?}");
     }
 
     #[test]
