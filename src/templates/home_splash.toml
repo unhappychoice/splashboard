@@ -1,10 +1,10 @@
 # home_splash — "ta-da!" preset. Minimal, animated, lots of whitespace. The job is to
 # feel like a title screen: a big animated hero with a greeting underneath, then a large
-# clock and date. Nothing else competes for attention. Users who want daily ambient
-# information (weather / moon / year progress) should pick `home_daily`.
-#
-# Edit `format` on `welcome` / `farewell` if you want something other than the default
-# "hello" / "welcome back" framing.
+# clock and date. Every widget works without any user configuration — splashboard
+# install → home_splash renders a filled splash on first run. For a daily dashboard
+# with moon / season / calendar / time-elapsed gauges pick `home_daily` instead; for
+# weather or sunrise drop a `weather` / `clock_sunrise` block into your own config
+# with latitude + longitude.
 
 # ── Widgets ────────────────────────────────────────────────────────
 

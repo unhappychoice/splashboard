@@ -1,8 +1,12 @@
-# home_daily — "everything at a glance" preset. Dense dashboard: date header +
-# side-by-side weather / calendar at the top, sun & moon details underneath, and
-# time-elapsed gauges (year / month / week / day) at the bottom.
+# home_daily — "everything at a glance" preset. Dense dashboard built from widgets
+# that work without any user configuration: date / month calendar / sky info (moon
+# phase, season, zodiac) / time-elapsed gauges. Nothing here needs a latitude or
+# GitHub token to come to life, so `splashboard install` → `home_daily` renders a
+# filled dashboard on first run.
 #
-# Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
+# For weather or sunrise/sunset you need latitude + longitude per widget; drop a
+# `weather` or `clock_sunrise` block in `$HOME/.splashboard/home.dashboard.toml`
+# with your own coordinates.
 
 # ── Widgets ────────────────────────────────────────────────────────
 
@@ -19,30 +23,13 @@ format = "%A  ·  %e %B %Y  ·  day %j of %Y"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
-id = "weather"
-fetcher = "weather"
-render = { type = "grid_table", layout = "rows" }
-  [widget.options]
-  latitude = 35.68
-  longitude = 139.76
-  units = "metric"
-
-[[widget]]
 id = "calendar"
 fetcher = "clock"
 render = { type = "grid_calendar", align = "center" }
 
-# `sun & moon` items rendered as a label / value pair per row so each line is
-# vertically aligned (same column for all labels, same column for all values),
-# mirroring the key/value table layout on the outside panel.
-[[widget]]
-id = "sunrise"
-fetcher = "clock_sunrise"
-render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
-  [widget.options]
-  lat = 35.68
-  lon = 139.76
-
+# Sky info — label + value pairs that don't need location config. Each widget is a
+# single row; the row layout pins them into the same 28 / 1 / 41 cell columns so
+# every label ends at the same cell and every value starts at the same cell.
 [[widget]]
 id = "moon_label"
 fetcher = "static"
@@ -84,6 +71,19 @@ render = { type = "text_plain", align = "left" }
   [widget.options]
   kind = "zodiac"
 
+[[widget]]
+id = "chinese_label"
+fetcher = "static"
+format = "chinese"
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
+id = "chinese"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "left" }
+  [widget.options]
+  kind = "chinese_zodiac"
+
 # Gauge labels padded to 5 characters so the bars line up vertically across rows.
 [[widget]]
 id = "year_ratio"
@@ -91,6 +91,13 @@ fetcher = "clock_ratio"
 render = { type = "gauge_line", label = "year ", value_format = "percent" }
   [widget.options]
   period = "year"
+
+[[widget]]
+id = "quarter_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "qtr  ", value_format = "percent" }
+  [widget.options]
+  period = "quarter"
 
 [[widget]]
 id = "month_ratio"
@@ -138,25 +145,14 @@ height = { length = 1 }
 [[row]]
 height = { length = 1 }
 
-# Weather | calendar — two 34-col columns side by side inside the 70-col band. The
-# row is sized to fit a full month calendar (8 rows = border + weekday header + 5
-# week-rows + bottom padding); weather renders 3 rows of key/value and leaves the
-# rest blank, keeping the two panels vertically aligned without stretching either.
+# This month — calendar (month header + weekday header + 5 week rows = 7 content
+# rows, plus 1 border = 8 tall). Centred inside the 70-col body band.
 [[row]]
 height = { length = 8 }
 flex = "center"
   [[row.child]]
-  widget = "weather"
-  width = { length = 34 }
-  border = "top"
-  title = "  outside  "
-  title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
-  [[row.child]]
   widget = "calendar"
-  width = { length = 34 }
+  width = { length = 70 }
   border = "top"
   title = "  this month  "
   title_align = "center"
@@ -164,17 +160,18 @@ flex = "center"
 [[row]]
 height = { length = 1 }
 
-# Sun & moon details. Sunrise/sunset render as a grid_table rows (key/value). The
-# three derived values (moon / season / zodiac) sit under them as label + value
-# pairs so the whole section reads as one aligned two-column table.
+# Sky info — label / value rows under a centred section divider. Dedicated 1-row
+# header carries the `─── sky ───` band; subsequent rows are plain 3-cell
+# label / gap / value layouts in 28 / 1 / 41 (matches ratatui Table's default
+# 40 / 1 / 60 split so the sky values align with the time-elapsed values below).
 [[row]]
-height = { length = 3 }
+height = { length = 1 }
 flex = "center"
   [[row.child]]
-  widget = "sunrise"
+  widget = "gap"
   width = { length = 70 }
   border = "top"
-  title = "  sun & moon  "
+  title = "  sky  "
   title_align = "center"
 
 [[row]]
@@ -218,9 +215,22 @@ flex = "center"
 
 [[row]]
 height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "chinese_label"
+  width = { length = 28 }
+  [[row.child]]
+  widget = "gap"
+  width = { length = 1 }
+  [[row.child]]
+  widget = "chinese"
+  width = { length = 41 }
 
-# Time-elapsed gauges stacked. First row carries the section divider; the others
-# are plain 1-row gauges. Padded labels keep the bars aligned.
+[[row]]
+height = { length = 1 }
+
+# Time-elapsed gauges stacked: year / quarter / month / week / day. Labels are
+# right-padded to 5 characters so the bars line up across all rows.
 [[row]]
 height = { length = 2 }
 flex = "center"
@@ -230,6 +240,13 @@ flex = "center"
   border = "top"
   title = "  time elapsed  "
   title_align = "center"
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "quarter_ratio"
+  width = { length = 70 }
 
 [[row]]
 height = { length = 1 }
