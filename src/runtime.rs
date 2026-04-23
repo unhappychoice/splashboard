@@ -131,6 +131,34 @@ fn compute_realtime_payloads(
         .collect()
 }
 
+/// Widgets whose data we're still waiting on — fetchable, cached, but no payload landed yet.
+/// Each iteration recomputes this so the spinner is swapped off the moment the daemon fills
+/// the slot (either via cache replay or a direct refresh). Shape is carried through so future
+/// per-shape skeletons can branch on it in `render_loading`.
+fn compute_loading(
+    cached: &[WidgetConfig],
+    payloads: &HashMap<WidgetId, Payload>,
+    shapes: &HashMap<WidgetId, Shape>,
+) -> HashMap<WidgetId, Shape> {
+    cached
+        .iter()
+        .filter(|w| !payloads.contains_key(&w.id))
+        .filter_map(|w| shapes.get(&w.id).copied().map(|s| (w.id.clone(), s)))
+        .collect()
+}
+
+fn has_loading_widget(cached: &[WidgetConfig], payloads: &HashMap<WidgetId, Payload>) -> bool {
+    cached.iter().any(|w| !payloads.contains_key(&w.id))
+}
+
+/// Loop exit condition factored out so the "wait for both load and animation axes to settle"
+/// invariant can be tested without spinning up a real daemon. Matches the inline check in
+/// `run()` exactly — hitting the hard deadline always exits, otherwise both the daemon
+/// (load axis) and the animation (render axis) must be done.
+fn loop_should_exit(daemon_done: bool, animation_pending: bool, deadline_reached: bool) -> bool {
+    deadline_reached || (daemon_done && !animation_pending)
+}
+
 const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
@@ -197,8 +225,11 @@ pub async fn run(
         wait || config.general.wait_for_fresh || (!cached_widgets.is_empty() && entries.is_empty());
 
     // Render axis: decide whether any configured renderer needs repeat frames. Independent of
-    // the load decision — an animated widget must animate regardless of cache state.
-    let animated = render::any_widget_animates(&config.widgets, &render_registry);
+    // the load decision — an animated widget must animate regardless of cache state. Loading
+    // placeholders also animate (spinner glyph) so we force-enable animation whenever a cached
+    // widget has no entry yet — otherwise the spinner would appear to freeze mid-draw.
+    let animated = render::any_widget_animates(&config.widgets, &render_registry)
+        || has_loading_widget(&cached_widgets, &payloads);
 
     let loop_window = match (wait, animated) {
         (false, false) => None,
@@ -237,6 +268,7 @@ pub async fn run(
 
     // Cache-first one-shot: no looping needed, paint what we have and exit.
     if loop_window.is_none() {
+        let loading = compute_loading(&cached_widgets, &payloads, &shapes);
         finalize_draw(
             &mut terminal,
             &layout,
@@ -247,6 +279,7 @@ pub async fn run(
             padding,
             requested_height,
             viewport_lines,
+            &loading,
         )?;
         let _ = daemon::spawn_fetch_daemon(source);
         finalize_splash(&mut terminal);
@@ -264,9 +297,17 @@ pub async fn run(
                 gated: &gated,
                 shape_invalid: &shape_invalid,
             };
-            let deadline = std::time::Instant::now() + window;
+            let start = std::time::Instant::now();
+            let deadline = start + window;
+            let animation_deadline = animated.then(|| start + ANIMATION_WINDOW);
+            // `wait = true` means the daemon is on the critical path; flip this once it exits
+            // so later iterations skip the `child.wait()` branch. The load-axis and render-axis
+            // exit conditions are independent — break only when both are satisfied, or when the
+            // hard window deadline expires.
+            let mut daemon_done = !wait;
             loop {
                 refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
+                let loading = compute_loading(&cached_widgets, &payloads, &shapes);
                 draw(
                     &mut terminal,
                     &layout,
@@ -276,25 +317,31 @@ pub async fn run(
                     &theme,
                     padding,
                     hidden_rows,
+                    &loading,
                 )?;
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let now = std::time::Instant::now();
+                let remaining = deadline.saturating_duration_since(now);
                 if remaining.is_zero() {
-                    if wait {
+                    if !daemon_done {
                         let _ = child.start_kill();
                     }
                     break;
                 }
+                let animation_pending = animation_deadline.is_some_and(|d| now < d);
+                if loop_should_exit(daemon_done, animation_pending, false) {
+                    break;
+                }
                 let tick = remaining.min(FRAME_TICK);
-                if wait {
-                    match tokio::time::timeout(tick, child.wait()).await {
-                        Ok(_) => break,
-                        Err(_) => continue,
+                if !daemon_done {
+                    if tokio::time::timeout(tick, child.wait()).await.is_ok() {
+                        daemon_done = true;
                     }
                 } else {
                     tokio::time::sleep(tick).await;
                 }
             }
             refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
+            let loading = compute_loading(&cached_widgets, &payloads, &shapes);
             finalize_draw(
                 &mut terminal,
                 &layout,
@@ -305,6 +352,7 @@ pub async fn run(
                 padding,
                 requested_height,
                 viewport_lines,
+                &loading,
             )?;
         }
         Err(_) => {
@@ -325,6 +373,7 @@ pub async fn run(
             }
             // Realtime values in the fallback path are still fresh at this point — the compute
             // above was microseconds ago. No refresh needed before the single final draw.
+            let loading = compute_loading(&cached_widgets, &payloads, &shapes);
             finalize_draw(
                 &mut terminal,
                 &layout,
@@ -335,6 +384,7 @@ pub async fn run(
                 padding,
                 requested_height,
                 viewport_lines,
+                &loading,
             )?;
         }
     }
@@ -519,6 +569,7 @@ fn draw<B: Backend>(
     theme: &Theme,
     padding: (u16, u16),
     hidden_rows: u16,
+    loading: &HashMap<WidgetId, Shape>,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         draw_frame(
@@ -531,6 +582,7 @@ fn draw<B: Backend>(
             theme,
             padding,
             hidden_rows,
+            loading,
         )
     })?;
     Ok(())
@@ -551,6 +603,7 @@ fn draw_final<B: Backend>(
     theme: &Theme,
     padding: (u16, u16),
     hidden_rows: u16,
+    loading: &HashMap<WidgetId, Shape>,
 ) -> io::Result<()> {
     let mut captured: Option<Rect> = None;
     terminal.draw(|frame| {
@@ -566,6 +619,7 @@ fn draw_final<B: Backend>(
             theme,
             padding,
             hidden_rows,
+            loading,
         );
     })?;
     if let Some(area) = captured
@@ -595,10 +649,13 @@ fn finalize_draw<B: Backend>(
     padding: (u16, u16),
     requested_height: u16,
     viewport_lines: u16,
+    loading: &HashMap<WidgetId, Shape>,
 ) -> io::Result<()> {
     let scrollback_rows = requested_height.saturating_sub(viewport_lines);
     if scrollback_rows == 0 {
-        return draw_final(terminal, root, payloads, specs, registry, theme, padding, 0);
+        return draw_final(
+            terminal, root, payloads, specs, registry, theme, padding, 0, loading,
+        );
     }
     flush_full_to_scrollback(
         terminal,
@@ -610,6 +667,7 @@ fn finalize_draw<B: Backend>(
         padding,
         requested_height,
         viewport_lines,
+        loading,
     )
 }
 
@@ -624,6 +682,7 @@ fn flush_full_to_scrollback<B: Backend>(
     padding: (u16, u16),
     requested_height: u16,
     viewport_lines: u16,
+    loading: &HashMap<WidgetId, Shape>,
 ) -> io::Result<()> {
     let width = terminal.size()?.width;
     let full_buf = render_full_into_buffer(
@@ -635,6 +694,7 @@ fn flush_full_to_scrollback<B: Backend>(
         registry,
         theme,
         padding,
+        loading,
     )?;
     let scrollback_rows = requested_height - viewport_lines;
     terminal.insert_before(scrollback_rows, |buf| {
@@ -674,6 +734,7 @@ fn render_full_into_buffer(
     registry: &render::Registry,
     theme: &Theme,
     padding: (u16, u16),
+    loading: &HashMap<WidgetId, Shape>,
 ) -> io::Result<Buffer> {
     let backend = TestBackend::new(width, height);
     let mut inner = Terminal::new(backend)?;
@@ -681,7 +742,9 @@ fn render_full_into_buffer(
         let area = frame.area();
         paint_viewport_bg(frame, area, theme);
         let content = shrink(area, padding);
-        layout::draw(frame, content, root, payloads, specs, registry, theme);
+        layout::draw(
+            frame, content, root, payloads, specs, registry, theme, loading,
+        );
     })?;
     Ok(inner.backend().buffer().clone())
 }
@@ -724,6 +787,7 @@ fn draw_frame(
     theme: &Theme,
     padding: (u16, u16),
     hidden_rows: u16,
+    loading: &HashMap<WidgetId, Shape>,
 ) {
     // Paint the full area first so the padded band takes the theme bg too — otherwise the
     // terminal bg would show through the padding ring and fight the theme surface.
@@ -739,10 +803,21 @@ fn draw_frame(
             height: 1,
             ..content
         };
-        layout::draw(frame, layout_area, root, payloads, specs, registry, theme);
+        layout::draw(
+            frame,
+            layout_area,
+            root,
+            payloads,
+            specs,
+            registry,
+            theme,
+            loading,
+        );
         render_clip_hint(frame, hint_area, hidden_rows, theme);
     } else {
-        layout::draw(frame, content, root, payloads, specs, registry, theme);
+        layout::draw(
+            frame, content, root, payloads, specs, registry, theme, loading,
+        );
     }
 }
 
@@ -839,6 +914,7 @@ mod tests {
         let backend = TestBackend::new(50, 4);
         let mut terminal = Terminal::new(backend).unwrap();
         let theme = Theme::default();
+        let loading = HashMap::new();
         terminal
             .draw(|f| {
                 draw_frame(
@@ -851,6 +927,7 @@ mod tests {
                     &theme,
                     (0, 0),
                     7,
+                    &loading,
                 )
             })
             .unwrap();
@@ -873,6 +950,7 @@ mod tests {
         let backend = TestBackend::new(50, 3);
         let mut terminal = Terminal::new(backend).unwrap();
         let theme = Theme::default();
+        let loading = HashMap::new();
         terminal
             .draw(|f| {
                 draw_frame(
@@ -885,6 +963,7 @@ mod tests {
                     &theme,
                     (0, 0),
                     0,
+                    &loading,
                 )
             })
             .unwrap();
@@ -942,9 +1021,19 @@ mod tests {
         let specs = HashMap::new();
         let registry = render::Registry::with_builtins();
         let theme = Theme::default();
-        let buf =
-            render_full_into_buffer(20, 6, &root, &payloads, &specs, &registry, &theme, (0, 0))
-                .unwrap();
+        let loading = HashMap::new();
+        let buf = render_full_into_buffer(
+            20,
+            6,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            (0, 0),
+            &loading,
+        )
+        .unwrap();
         assert!(row_text(&buf, 0).starts_with("r0"));
         assert!(row_text(&buf, 5).starts_with("r5"));
     }
@@ -964,6 +1053,7 @@ mod tests {
         let backend = TestBackend::new(20, 10);
         let mut terminal = make_terminal(backend, 4).unwrap();
         let theme = Theme::default();
+        let loading = HashMap::new();
         finalize_draw(
             &mut terminal,
             &root,
@@ -974,6 +1064,7 @@ mod tests {
             (0, 0),
             8,
             4,
+            &loading,
         )
         .unwrap();
         let buf = terminal.backend().buffer().clone();
@@ -1005,6 +1096,7 @@ mod tests {
         let backend = TestBackend::new(20, 10);
         let mut terminal = make_terminal(backend, 3).unwrap();
         let theme = Theme::default();
+        let loading = HashMap::new();
         finalize_draw(
             &mut terminal,
             &root,
@@ -1015,6 +1107,7 @@ mod tests {
             (0, 0),
             3,
             3,
+            &loading,
         )
         .unwrap();
         let buf = terminal.backend().buffer().clone();
@@ -1338,5 +1431,56 @@ mod tests {
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 3);
         assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn loop_should_exit_requires_both_axes_to_settle() {
+        // The load axis (daemon) and the render axis (animation) are independent — regression
+        // for the "wait returned as soon as daemon exited, cutting off animation" bug.
+        assert!(
+            loop_should_exit(true, false, false),
+            "daemon done, no animation → exit"
+        );
+        assert!(
+            !loop_should_exit(true, true, false),
+            "animation still playing → keep ticking"
+        );
+        assert!(
+            !loop_should_exit(false, false, false),
+            "daemon still running → wait"
+        );
+        assert!(!loop_should_exit(false, true, false), "both pending → wait");
+        assert!(
+            loop_should_exit(false, true, true),
+            "hard deadline always wins"
+        );
+        assert!(
+            loop_should_exit(true, true, true),
+            "hard deadline always wins"
+        );
+    }
+
+    #[test]
+    fn compute_loading_surfaces_cached_widgets_without_payload() {
+        let cached = vec![widget("pending", "github_my_prs"), widget("ready", "clock")];
+        let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
+        payloads.insert("ready".into(), text_payload("14:00"));
+        let mut shapes: HashMap<WidgetId, Shape> = HashMap::new();
+        shapes.insert("pending".into(), Shape::Entries);
+        shapes.insert("ready".into(), Shape::Text);
+        let loading = compute_loading(&cached, &payloads, &shapes);
+        assert_eq!(loading.len(), 1);
+        assert_eq!(loading.get("pending"), Some(&Shape::Entries));
+        assert!(!loading.contains_key("ready"));
+    }
+
+    #[test]
+    fn has_loading_widget_true_when_any_cached_widget_lacks_payload() {
+        let cached = vec![widget("a", "github_my_prs"), widget("b", "clock")];
+        let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
+        payloads.insert("a".into(), text_payload("x"));
+        assert!(has_loading_widget(&cached, &payloads));
+        payloads.insert("b".into(), text_payload("y"));
+        assert!(!has_loading_widget(&cached, &payloads));
     }
 }

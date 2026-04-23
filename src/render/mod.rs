@@ -28,6 +28,7 @@ mod grid_heatmap;
 mod grid_table;
 mod list_plain;
 mod list_timeline;
+pub mod loading;
 mod media_image;
 mod status_badge;
 mod text_ascii;
