@@ -22,6 +22,19 @@ pub struct Options {
     pub timezone: Option<String>,
     #[serde(default)]
     pub kind: Option<Kind>,
+    /// Only meaningful when `kind = "season"`. `"north"` (default) applies Northern
+    /// Hemisphere seasons (Mar–May = Spring, etc.); `"south"` flips them for users
+    /// below the equator so April reads as Autumn instead of Spring.
+    #[serde(default)]
+    pub hemisphere: Option<Hemisphere>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Hemisphere {
+    #[default]
+    North,
+    South,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
@@ -63,25 +76,35 @@ impl RealtimeFetcher for ClockDerivedFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let now = common::now_in(opts.timezone.as_deref());
-        let line = match opts.kind.unwrap_or(Kind::TimeOfDay) {
-            Kind::TimeOfDay => time_of_day(&now).into(),
-            Kind::MoonPhase => moon_phase(&now),
-            Kind::Zodiac => zodiac(&now),
-            Kind::ChineseZodiac => chinese_zodiac(&now),
-            Kind::Season => season(&now),
-            Kind::JpSeason => jp_season(&now),
-            Kind::Rokuyou => rokuyou(&now),
-            Kind::IsoWeek => iso_week(&now),
-            Kind::DayOfYear => format!("day {}", now.ordinal()),
-            Kind::JulianDay => format!("JD {}", common::julian_day(now.date_naive())),
-            Kind::UnixEpoch => now.timestamp().to_string(),
-        };
+        let line = invoke(
+            &now,
+            opts.kind.unwrap_or(Kind::TimeOfDay),
+            opts.hemisphere.unwrap_or_default(),
+        );
         Payload {
             icon: None,
             status: None,
             format: None,
             body: Body::Text(TextData { value: line }),
         }
+    }
+}
+
+/// Dispatch a single kind against an already-resolved `now`. Shared with the
+/// `clock_almanac` rollup so both fetchers stay in sync on formatting.
+pub(crate) fn invoke(now: &DateTime<FixedOffset>, kind: Kind, hemisphere: Hemisphere) -> String {
+    match kind {
+        Kind::TimeOfDay => time_of_day(now).into(),
+        Kind::MoonPhase => moon_phase(now),
+        Kind::Zodiac => zodiac(now),
+        Kind::ChineseZodiac => chinese_zodiac(now),
+        Kind::Season => season(now, hemisphere),
+        Kind::JpSeason => jp_season(now),
+        Kind::Rokuyou => rokuyou(now),
+        Kind::IsoWeek => iso_week(now),
+        Kind::DayOfYear => format!("day {}", now.ordinal()),
+        Kind::JulianDay => format!("JD {}", common::julian_day(now.date_naive())),
+        Kind::UnixEpoch => now.timestamp().to_string(),
     }
 }
 
@@ -164,12 +187,24 @@ fn chinese_zodiac(now: &DateTime<FixedOffset>) -> String {
     format!("{glyph} {name}")
 }
 
-fn season(now: &DateTime<FixedOffset>) -> String {
-    match now.month() {
-        3..=5 => "Spring".into(),
-        6..=8 => "Summer".into(),
-        9..=11 => "Autumn".into(),
-        _ => "Winter".into(),
+fn season(now: &DateTime<FixedOffset>, hemisphere: Hemisphere) -> String {
+    let north = match now.month() {
+        3..=5 => "Spring",
+        6..=8 => "Summer",
+        9..=11 => "Autumn",
+        _ => "Winter",
+    };
+    match hemisphere {
+        Hemisphere::North => north.into(),
+        // Seasons are ~6 months shifted below the equator: April (Spring up north) is
+        // Autumn in Sydney / Auckland / Buenos Aires.
+        Hemisphere::South => match north {
+            "Spring" => "Autumn",
+            "Summer" => "Winter",
+            "Autumn" => "Spring",
+            _ => "Summer",
+        }
+        .into(),
     }
 }
 
@@ -262,8 +297,36 @@ mod tests {
     }
 
     #[test]
-    fn season_summer_in_july() {
-        assert_eq!(season(&at(2026, 7, 1, 0)), "Summer");
+    fn season_summer_in_july_north() {
+        assert_eq!(season(&at(2026, 7, 1, 0), Hemisphere::North), "Summer");
+    }
+
+    #[test]
+    fn season_winter_in_july_south() {
+        assert_eq!(season(&at(2026, 7, 1, 0), Hemisphere::South), "Winter");
+    }
+
+    #[test]
+    fn season_autumn_in_april_south() {
+        assert_eq!(season(&at(2026, 4, 22, 0), Hemisphere::South), "Autumn");
+    }
+
+    #[test]
+    fn season_defaults_to_north_without_option() {
+        let p = ClockDerivedFetcher.compute(&ctx("kind = \"season\""));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(["Spring", "Summer", "Autumn", "Winter"].contains(&t.value.as_str()));
+    }
+
+    #[test]
+    fn season_respects_south_hemisphere_option() {
+        // Jan-Feb up north is Winter → Summer in the south. Pick a Jan date so the
+        // flip is unambiguous regardless of when the test runs.
+        let opts: Options = toml::from_str("kind = \"season\"\nhemisphere = \"south\"").unwrap();
+        let now = at(2026, 1, 15, 0);
+        assert_eq!(season(&now, opts.hemisphere.unwrap_or_default()), "Summer");
     }
 
     #[test]

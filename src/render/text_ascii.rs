@@ -32,10 +32,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "font",
-        type_hint: "\"standard\" | \"small\" | \"big\" | \"banner\"",
+        type_hint: "\"standard\" | \"small\" | \"big\" | \"banner\" | \"ansi_shadow\" | \"slant\" | \"isometric\" | \"doom\"",
         required: false,
         default: Some("\"standard\""),
-        description: "FIGlet font when `style = \"figlet\"`. Unknown names fall back to `standard`.",
+        description: "FIGlet font when `style = \"figlet\"`. Unknown names fall back to `standard`. `ansi_shadow` and `isometric` use Unicode box-drawing characters; `slant` is the classic italic; `doom` is a bold block face.",
     },
     OptionSchema {
         name: "color",
@@ -57,6 +57,10 @@ const FONT_STANDARD: &str = include_str!("figlet_fonts/standard.flf");
 const FONT_SMALL: &str = include_str!("figlet_fonts/small.flf");
 const FONT_BIG: &str = include_str!("figlet_fonts/big.flf");
 const FONT_BANNER: &str = include_str!("figlet_fonts/banner.flf");
+const FONT_ANSI_SHADOW: &str = include_str!("figlet_fonts/ansi_shadow.flf");
+const FONT_SLANT: &str = include_str!("figlet_fonts/slant.flf");
+const FONT_ISOMETRIC: &str = include_str!("figlet_fonts/isometric1.flf");
+const FONT_DOOM: &str = include_str!("figlet_fonts/doom.flf");
 
 /// ASCII-art text rendering over the `Text` shape. The `style` option selects the visual
 /// treatment; additional sub-options refine the chosen style.
@@ -100,6 +104,35 @@ impl Renderer for TextAsciiRenderer {
             }
         }
     }
+    fn natural_height(
+        &self,
+        body: &Body,
+        opts: &RenderOptions,
+        max_width: u16,
+        _registry: &Registry,
+    ) -> u16 {
+        let Body::Text(d) = body else {
+            return 1;
+        };
+        match opts.style.as_deref() {
+            Some("figlet") => {
+                // u16::MAX lets wrap always succeed — we want the true row count
+                // given the width, not the height-gated one render() uses.
+                let rendered = figlet_wrapped(&d.value, opts.font.as_deref(), max_width, u16::MAX);
+                rendered.lines().count().clamp(1, u16::MAX as usize) as u16
+            }
+            _ => blocks_height(opts.pixel_size.as_deref()),
+        }
+    }
+}
+
+fn blocks_height(pixel_size: Option<&str>) -> u16 {
+    match parse_pixel_size(pixel_size.unwrap_or("quadrant")) {
+        Some(PixelSize::Full) => 8,
+        Some(PixelSize::Quadrant) => 4,
+        Some(PixelSize::Sextant) => 3,
+        _ => 4,
+    }
 }
 
 fn render_blocks(
@@ -131,11 +164,66 @@ fn render_figlet(
     opts: &RenderOptions,
     theme: &Theme,
 ) {
-    let rendered = figletify(&data.value, opts.font.as_deref());
+    let rendered = figlet_wrapped(&data.value, opts.font.as_deref(), area.width, area.height);
     let p = Paragraph::new(rendered)
         .style(Style::default().fg(resolve_color(opts, theme)))
         .alignment(parse_alignment(opts.align.as_deref()));
     frame.render_widget(p, area);
+}
+
+/// Figlet-render `text` and word-wrap the output when it overflows `max_width`
+/// *and* the wrapped version still fits inside `max_height`. A hero cell that's
+/// too short for a 2-block stack (typical 7 + 7 = 14 rows for ansi_shadow)
+/// falls back to the single joined block, which ratatui's `Paragraph` clips to
+/// area width — better a partially visible figlet than a silently-empty cell.
+fn figlet_wrapped(text: &str, font_name: Option<&str>, max_width: u16, max_height: u16) -> String {
+    let font = load_font(font_name);
+    let render = |s: &str| font.convert(s).map(|f| f.to_string());
+    let Some(full) = render(text) else {
+        return text.to_string();
+    };
+    if block_width(&full) <= max_width as usize || !text.contains(' ') {
+        return full;
+    }
+    let mut blocks: Vec<String> = Vec::new();
+    let mut line_words: Vec<&str> = Vec::new();
+    for word in text.split_whitespace() {
+        line_words.push(word);
+        let candidate = line_words.join(" ");
+        let fits = render(&candidate).is_some_and(|r| block_width(&r) <= max_width as usize);
+        if fits {
+            continue;
+        }
+        line_words.pop();
+        if !line_words.is_empty()
+            && let Some(rendered) = render(&line_words.join(" "))
+        {
+            blocks.push(rendered);
+        }
+        line_words.clear();
+        line_words.push(word);
+    }
+    if !line_words.is_empty()
+        && let Some(rendered) = render(&line_words.join(" "))
+    {
+        blocks.push(rendered);
+    }
+    if blocks.is_empty() {
+        return full;
+    }
+    let joined = blocks.join("\n");
+    if joined.lines().count() as u16 <= max_height {
+        joined
+    } else {
+        full
+    }
+}
+
+/// Cell width of a multi-line figlet block = max char-count across all lines.
+/// Figlet fonts emit same-width lines per glyph, so max == any-line width, but
+/// we walk them to be safe against trailing padding differences.
+fn block_width(block: &str) -> usize {
+    block.lines().map(|l| l.chars().count()).max().unwrap_or(0)
 }
 
 fn resolve_color(opts: &RenderOptions, theme: &Theme) -> Color {
@@ -185,18 +273,15 @@ fn parse_alignment(s: Option<&str>) -> ratatui::layout::Alignment {
     }
 }
 
-fn figletify(text: &str, font_name: Option<&str>) -> String {
-    let font = load_font(font_name);
-    font.convert(text)
-        .map(|f| f.to_string())
-        .unwrap_or_else(|| text.to_string())
-}
-
 fn load_font(name: Option<&str>) -> FIGfont {
     let source = match name.unwrap_or("standard") {
         "small" => FONT_SMALL,
         "big" => FONT_BIG,
         "banner" => FONT_BANNER,
+        "ansi_shadow" => FONT_ANSI_SHADOW,
+        "slant" => FONT_SLANT,
+        "isometric" => FONT_ISOMETRIC,
+        "doom" => FONT_DOOM,
         _ => FONT_STANDARD,
     };
     FIGfont::from_content(source).unwrap_or_else(|_| FIGfont::standard().expect("standard font"))
@@ -260,17 +345,57 @@ mod tests {
     #[test]
     fn figlet_fonts_load_without_panicking() {
         // Every bundled font parses through figlet_rs and converts a sample string.
-        for name in ["standard", "small", "big", "banner"] {
-            let text = figletify("hi", Some(name));
+        for name in [
+            "standard",
+            "small",
+            "big",
+            "banner",
+            "ansi_shadow",
+            "slant",
+            "isometric",
+            "doom",
+        ] {
+            let text = figlet_wrapped("hi", Some(name), 200, 200);
             assert!(!text.is_empty(), "font {name} produced empty output");
         }
     }
 
     #[test]
     fn unknown_font_falls_back_to_standard() {
-        let fallback = figletify("hi", Some("no-such-font"));
-        let std_out = figletify("hi", Some("standard"));
+        let fallback = figlet_wrapped("hi", Some("no-such-font"), 200, 200);
+        let std_out = figlet_wrapped("hi", Some("standard"), 200, 200);
         assert_eq!(fallback, std_out);
+    }
+
+    #[test]
+    fn figlet_wraps_multiword_hero_to_fit_width() {
+        // "Windows Terminal" at ansi_shadow is ~100 cells wide on one line.
+        // At a 60-cell width with enough vertical room, each word lands on its
+        // own 7-row block — so the wrapped output is taller than the joined.
+        let joined = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 200, 200)
+            .lines()
+            .count();
+        let wrapped = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 60, 200)
+            .lines()
+            .count();
+        assert!(wrapped > joined, "expected wrap to produce more lines");
+    }
+
+    #[test]
+    fn figlet_skips_wrap_when_no_room_for_stack() {
+        // Same narrow width but only 7 rows tall — the 2-block stack won't fit
+        // vertically so we return the single joined block (ratatui clips the
+        // overflow, less lossy than an empty cell).
+        let joined = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 200, 200);
+        let wrapped = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 60, 7);
+        assert_eq!(wrapped.lines().count(), joined.lines().count());
+    }
+
+    #[test]
+    fn figlet_keeps_short_text_on_one_block() {
+        let rendered = figlet_wrapped("Fri 24", Some("ansi_shadow"), 100, 200);
+        // 7 rows tall, no wrap needed.
+        assert!(rendered.lines().count() <= 8);
     }
 
     #[test]

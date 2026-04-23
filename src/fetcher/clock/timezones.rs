@@ -19,7 +19,36 @@ pub struct ClockTimezonesFetcher;
 #[serde(deny_unknown_fields)]
 pub struct Options {
     #[serde(default)]
-    pub timezones: Vec<String>,
+    pub timezones: Vec<TimezoneSpec>,
+}
+
+/// Accept either a plain IANA string (`"Asia/Tokyo"`) or a `{ tz, label }` pair
+/// (`{ tz = "Asia/Tokyo", label = "Tokyo" }`) so templates can show short
+/// city names without pinning every user to the same alias table.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum TimezoneSpec {
+    Plain(String),
+    Named {
+        tz: String,
+        #[serde(default)]
+        label: Option<String>,
+    },
+}
+
+impl TimezoneSpec {
+    fn tz(&self) -> &str {
+        match self {
+            Self::Plain(s) => s,
+            Self::Named { tz, .. } => tz,
+        }
+    }
+    fn label(&self) -> &str {
+        match self {
+            Self::Plain(s) => s,
+            Self::Named { tz, label } => label.as_deref().unwrap_or(tz),
+        }
+    }
 }
 
 impl RealtimeFetcher for ClockTimezonesFetcher {
@@ -55,7 +84,7 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
         let rows: Vec<(String, String)> = opts
             .timezones
             .iter()
-            .map(|name| (name.clone(), format_time(name, fmt)))
+            .map(|spec| (spec.label().to_string(), format_time(spec.tz(), fmt)))
             .collect();
         let body = match shape {
             Shape::Entries => Body::Entries(EntriesData {

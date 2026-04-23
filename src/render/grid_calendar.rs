@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Alignment, Constraint, Flex, Layout as RatLayout, Rect},
     style::{Modifier, Style},
     widgets::calendar::{CalendarEventStore, Monthly},
 };
@@ -54,17 +54,29 @@ impl Renderer for GridCalendarRenderer {
         frame: &mut Frame,
         area: Rect,
         body: &Body,
-        _opts: &RenderOptions,
+        opts: &RenderOptions,
         theme: &Theme,
         _registry: &Registry,
     ) {
         if let Body::Calendar(d) = body {
-            render_calendar(frame, area, d, theme);
+            render_calendar(frame, area, d, opts, theme);
         }
     }
 }
 
-fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &Theme) {
+/// `Monthly` renders 7 weekday columns × 3 cells each = 21 cells wide. Pinning the
+/// natural width here lets us centre the grid inside a wider cell; without this, the
+/// weekday header and dates glue to the left edge while the month-name header centres
+/// against the full area, which reads as ragged under side-by-side layouts.
+const MONTHLY_GRID_WIDTH: u16 = 21;
+
+fn render_calendar(
+    frame: &mut Frame,
+    area: Rect,
+    data: &CalendarData,
+    opts: &RenderOptions,
+    theme: &Theme,
+) {
     let Some(month) = month_from_u8(data.month) else {
         return;
     };
@@ -88,12 +100,45 @@ fn render_calendar(frame: &mut Frame, area: Rect, data: &CalendarData, theme: &T
             events.add(date, Style::default().fg(theme.accent_event));
         }
     }
+    let panel_title = Style::default()
+        .fg(theme.panel_title)
+        .add_modifier(Modifier::BOLD);
+    let dim = Style::default().fg(theme.text_dim);
+    let target = aligned_area(area, opts.align.as_deref());
     // `default_style` paints the grid of non-event day numbers + header so unmarked days
     // match the Splash text colour instead of leaking the terminal fg against the navy bg.
+    // Show the month name and weekday labels so the grid is readable as a standalone block
+    // instead of just bare numbers.
     frame.render_widget(
-        Monthly::new(anchor, events).default_style(Style::default().fg(theme.text)),
-        area,
+        Monthly::new(anchor, events)
+            .default_style(Style::default().fg(theme.text))
+            .show_month_header(panel_title)
+            .show_weekdays_header(dim),
+        target,
     );
+}
+
+fn aligned_area(area: Rect, align: Option<&str>) -> Rect {
+    if area.width <= MONTHLY_GRID_WIDTH {
+        return area;
+    }
+    let flex = match to_alignment(align) {
+        Alignment::Center => Flex::Center,
+        Alignment::Right => Flex::End,
+        _ => Flex::Start,
+    };
+    let [slot] = RatLayout::horizontal([Constraint::Length(MONTHLY_GRID_WIDTH)])
+        .flex(flex)
+        .areas(area);
+    slot
+}
+
+fn to_alignment(align: Option<&str>) -> Alignment {
+    match align {
+        Some("center") => Alignment::Center,
+        Some("right") => Alignment::Right,
+        _ => Alignment::Left,
+    }
 }
 
 fn month_from_u8(m: u8) -> Option<Month> {

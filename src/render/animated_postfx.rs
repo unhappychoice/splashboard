@@ -88,6 +88,27 @@ impl Renderer for AnimatedPostfxRenderer {
     ) {
         render_postfx(frame, area, body, opts, theme, registry);
     }
+    fn natural_height(
+        &self,
+        body: &Body,
+        opts: &RenderOptions,
+        max_width: u16,
+        registry: &Registry,
+    ) -> u16 {
+        // The visible output is whatever `inner` produces; the postfx layer
+        // doesn't add rows. Delegate so `height = "auto"` on a hero wrapped in
+        // animated_postfx still picks up the inner's wrap height.
+        let shape = shape_of(body);
+        let inner_name = opts
+            .inner
+            .as_deref()
+            .unwrap_or_else(|| default_renderer_for(shape));
+        let Some(inner) = registry.get(inner_name) else {
+            return 1;
+        };
+        let forwarded = inner_options(opts);
+        inner.natural_height(body, &forwarded, max_width, registry)
+    }
 }
 
 fn render_postfx(

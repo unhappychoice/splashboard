@@ -1,0 +1,89 @@
+# home_splash — "ta-da!" preset. Minimal, animated, lots of whitespace. The job is to
+# feel like a title screen: a big animated hero with a greeting underneath, then a large
+# clock and date. Every widget works without any user configuration — splashboard
+# install → home_splash renders a filled splash on first run. For a daily dashboard
+# with moon / season / calendar / time-elapsed gauges pick `home_daily` instead; for
+# weather or sunrise drop a `weather` / `clock_sunrise` block into your own config
+# with latitude + longitude.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "hero"
+fetcher = "system"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", duration_ms = 1200, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
+  [widget.options]
+  kind = "terminal"
+
+# Time-of-day greeting: "morning" / "afternoon" / "evening" / "night". Derived from the
+# wall clock, so the splash reads as context-aware rather than a generic "hello".
+[[widget]]
+id = "greeting_prefix"
+fetcher = "static"
+format = "good "
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
+id = "greeting"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "left" }
+  [widget.options]
+  kind = "time_of_day"
+
+[[widget]]
+id = "clock"
+fetcher = "clock"
+format = "%H:%M"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 900, style = "figlet", font = "standard", color = "text", align = "center" }
+
+[[widget]]
+id = "date"
+fetcher = "clock"
+format = "%A · %e %B %Y"
+render = { type = "text_plain", align = "center" }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 3 }
+
+# `height = "auto"` asks the row to size itself to the hero's rendered height:
+# single-word terminal names ("iTerm2") get one 7-row figlet block, multi-word
+# names ("Windows Terminal") wrap onto two 7-row blocks and the row grows to
+# fit — no wasted vertical space either way.
+[[row]]
+height = "auto"
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 1 }
+
+# "good morning" / "good afternoon" — right-aligned prefix meets left-aligned value
+# so the seam is tight rather than two centred fragments with a gap between them.
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "greeting_prefix"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "greeting"
+  width = { length = 12 }
+
+[[row]]
+height = { length = 2 }
+
+# Big `HH:MM` clock — full pixel density (8 cells/char), ~40 cells wide for `12:34`.
+[[row]]
+height = { length = 8 }
+  [[row.child]]
+  widget = "clock"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "date"
+
+[[row]]
+height = { length = 3 }

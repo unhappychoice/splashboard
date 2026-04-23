@@ -302,6 +302,21 @@ pub trait Renderer: Send + Sync {
         theme: &Theme,
         registry: &Registry,
     );
+    /// Height in cells the renderer would naturally use for `body` at the given
+    /// `max_width`. Only consulted by layout when a row / column is sized
+    /// `Auto`; most renderers stay with the default of `1` (single-line output)
+    /// and let `Length` / `Fill` constraints drive their cell. `text_ascii`
+    /// overrides this so figlet heroes report the wrapped block stack height;
+    /// `animated_postfx` delegates to its inner renderer via `registry`.
+    fn natural_height(
+        &self,
+        _body: &Body,
+        _opts: &RenderOptions,
+        _max_width: u16,
+        _registry: &Registry,
+    ) -> u16 {
+        1
+    }
 }
 
 #[derive(Default, Clone)]

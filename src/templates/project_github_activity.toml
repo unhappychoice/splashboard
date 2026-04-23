@@ -1,0 +1,175 @@
+# project_github_activity — per-repo preset. Hero is the repo name as a figlet banner
+# (fetched dynamically via `project_name` → git remote origin), subtitle shows the repo
+# slug / description / license. Header band sits on `bg = "subtle"` so it reads as a
+# distinct panel; body pairs languages / releases, PRs / issues, commits / contributors
+# into 2-column rows so the dashboard reads as a tight grid rather than a tall stack.
+#
+# Drop this file in as `./.splashboard/dashboard.toml` at a repo root. Nothing here is
+# repo-specific — every widget discovers the repo at fetch time, so the same template
+# produces a tailored dashboard for whichever project the user cd's into.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "hero"
+fetcher = "project_name"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
+
+# Subtitle: `project` emits TextBlock (slug / description / license on their own rows).
+# `text_plain` renders via ratatui's `Paragraph` which centers each line individually,
+# so short lines like "ISC" still sit under the hero centreline instead of hugging the
+# block's left edge.
+[[widget]]
+id = "subtitle"
+fetcher = "project"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "repo_stats"
+fetcher = "github_repo_stars"
+render = { type = "grid_table", layout = "inline", align = "center" }
+
+[[widget]]
+id = "repo_prs"
+fetcher = "github_repo_prs"
+render = { type = "list_plain", bullet = "•", max_items = 5 }
+
+[[widget]]
+id = "repo_issues"
+fetcher = "github_repo_issues"
+render = { type = "list_plain", bullet = "•", max_items = 5 }
+
+[[widget]]
+id = "commits_heatmap"
+fetcher = "git_commits_activity"
+render = "grid_heatmap"
+
+[[widget]]
+id = "top_contributors"
+fetcher = "git_contributors"
+render = { type = "chart_bar", max_bars = 5 }
+
+[[widget]]
+id = "languages"
+fetcher = "github_languages"
+render = { type = "chart_bar", horizontal = true }
+
+[[widget]]
+id = "releases"
+fetcher = "github_recent_releases"
+render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 3 }
+
+# Horizontal spacer between sibling containers — a `static` with a single space
+# renders a blank line, the `width = { length = … }` in the row carves the gap.
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = " "
+render = "text_plain"
+
+# ── Layout ──────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+# Hero gets the full band width — `ansi_shadow` figlet is 7 rows tall, with the
+# inner `align = "center"` in the render options recentring the glyphs.
+[[row]]
+height = { length = 7 }
+bg = "subtle"
+  [[row.child]]
+  widget = "hero"
+
+# Subtitle: 3 stacked lines (slug / description / license) via project's TextBlock
+# shape. Centered on a 70-cell column inside the band.
+[[row]]
+height = { length = 3 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "subtitle"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "repo_stats"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 1 }
+
+# Row 1: languages horizontal bar chart | releases timeline.
+[[row]]
+height = { length = 6 }
+flex = "center"
+  [[row.child]]
+  widget = "languages"
+  width = { length = 34 }
+  border = "top"
+  title = "  languages  "
+  title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "releases"
+  width = { length = 34 }
+  border = "top"
+  title = "  released  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Row 2: PRs | issues — two list_plain columns.
+[[row]]
+height = { length = 9 }
+flex = "center"
+  [[row.child]]
+  widget = "repo_prs"
+  width = { length = 34 }
+  border = "top"
+  title = "  PRs  "
+  title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "repo_issues"
+  width = { length = 34 }
+  border = "top"
+  title = "  issues  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Row 3: commits heatmap | top contributors. Heatmap shows the 52-week contribution
+# grid (repo-level, not viewer-level). Top contributors is a horizontal bar chart
+# capped at 5.
+[[row]]
+height = { length = 10 }
+flex = "center"
+  [[row.child]]
+  widget = "commits_heatmap"
+  width = { length = 34 }
+  border = "top"
+  title = "  commits  "
+  title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "top_contributors"
+  width = { length = 34 }
+  border = "top"
+  title = "  top contributors  "
+  title_align = "center"

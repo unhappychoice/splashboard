@@ -1,0 +1,141 @@
+# home_github — "my github" preset. Avatar on the left + a plain-text handle and bio
+# (pulled from `/users/{login}`) on the right, then three stacked sections: contributions
+# heatmap, attention lane (open PRs / review queue), and recent notifications. All body
+# rows sit inside the 70-col content band used by the other 0.x presets.
+#
+# Set `GITHUB_USER` (or git config `user.email`) so `github_avatar` and `github_user`
+# know which login to pull. Requires `gh auth login` (or `GITHUB_TOKEN`) for the
+# `github_*` fetchers.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "avatar"
+fetcher = "github_avatar"
+render = { type = "media_image", fit = "contain", max_width = 14, max_height = 7, align = "center" }
+
+# Handle as plain text — crisp text_plain line keeps the identity obvious. Users
+# with different logins edit `format` here. (github_avatar + github_user auto-detect
+# from `GITHUB_USER` / git config; the handle string on screen is the one place we
+# want readable typography over another API call.)
+[[widget]]
+id = "handle"
+fetcher = "static"
+format = "@unhappychoice"
+render = { type = "text_plain", align = "left", color = "panel_title" }
+
+# Profile: `github_user` with TextBlock shape — 3 lines (name / bio / location ·
+# member since YYYY). Missing fields collapse so users with no bio don't see a
+# stranded blank line.
+[[widget]]
+id = "profile"
+fetcher = "github_user"
+render = { type = "text_plain", align = "left" }
+
+[[widget]]
+id = "contributions"
+fetcher = "github_contributions"
+render = { type = "grid_heatmap", align = "center" }
+
+[[widget]]
+id = "my_prs"
+fetcher = "github_my_prs"
+render = { type = "list_plain", bullet = "•", max_items = 4 }
+
+[[widget]]
+id = "review_queue"
+fetcher = "github_review_requests"
+render = { type = "list_plain", bullet = "•", max_items = 4 }
+
+[[widget]]
+id = "notifications"
+fetcher = "github_notifications"
+render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 5 }
+
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = " "
+render = "text_plain"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Header band: avatar (fixed 16 cells) + handle one-liner + profile block underneath.
+# The handle takes the first content row; the profile (name / bio / location · year)
+# fills the remaining three, so the text sits vertically centred next to the 7-row
+# avatar image.
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 16 }
+  [[row.child]]
+  widget = "handle"
+  width = { length = 54 }
+
+[[row]]
+height = { length = 4 }
+flex = "center"
+  [[row.child]]
+  widget = "avatar"
+  width = { length = 16 }
+  [[row.child]]
+  widget = "profile"
+  width = { length = 54 }
+
+[[row]]
+height = { length = 1 }
+
+# Contributions heatmap: fits inside the 70-col band (≈ 35 weeks of data at 2 cells
+# per day). Users who want the full 52-week year widen this row to `{ length = 108 }`.
+[[row]]
+height = { length = 9 }
+flex = "center"
+  [[row.child]]
+  widget = "contributions"
+  width = { length = 70 }
+  border = "top"
+  title = "  contributions · last ~8 months  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 5 }
+flex = "center"
+  [[row.child]]
+  widget = "my_prs"
+  width = { length = 34 }
+  border = "top"
+  title = "  my PRs  "
+  title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "review_queue"
+  width = { length = 34 }
+  border = "top"
+  title = "  review queue  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 7 }
+flex = "center"
+  [[row.child]]
+  widget = "notifications"
+  width = { length = 70 }
+  border = "top"
+  title = "  notifications  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }

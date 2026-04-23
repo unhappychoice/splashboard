@@ -97,7 +97,17 @@ impl RealtimeFetcher for SystemFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Entries, Shape::TextBlock, Shape::Text]
+        // Listed specific-to-broad so multi-shape renderers (text_plain, animated_postfx)
+        // pick `Text` by default — that's the variant where `kind = "terminal" | "os" | …`
+        // takes effect, which is what hero / attribution widgets almost always want. The
+        // full rollup still lands via `render = "grid_table"` (Entries-only renderer).
+        &[Shape::Text, Shape::TextBlock, Shape::Entries]
+    }
+    fn default_shape(&self) -> Shape {
+        // Preserve "no render spec = full rollup". Widgets that omit `render = ...` pick up
+        // the Entries view (CPU / memory / uptime / …); the reordered `shapes()` only
+        // affects intersection with multi-shape renderers.
+        Shape::Entries
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         SYSTEM_OPTION_SCHEMAS

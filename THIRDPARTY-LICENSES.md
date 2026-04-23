@@ -51,6 +51,35 @@ program. Contributions from Glenn Chappell.
 
 > I am not responsible for use of this font.
 
+### `ansi_shadow.flf`
+
+ANSI Shadow — author unattributed in the font header. Shipped widely
+with FIGlet-compatible collections; built using patorjk's figfont
+editor (http://patorjk.com/figfont-editor). Uses Unicode box-drawing
+characters to produce a drop-shadow block look.
+
+### `slant.flf`
+
+Slant by Glenn Chappell (3/93) — based on Standard. FIGlet release 2.1
+(12 Aug 1994). Modified by Paul Burton `<solution@earthlink.net>` (12/96).
+
+> Permission is hereby given to modify this font, as long as the
+> modifier's name is placed on a comment line.
+
+### `isometric1.flf`
+
+Isometric1 — adapted from a non-FIGlet font posted by Lennert Stock
+`<stock@fwi.uva.nl>` (15 Jul 1994). Produces a 3D isometric look using
+ASCII art.
+
+### `doom.flf`
+
+DOOM by Frans P. de Vries `<fpv@xymph.iaf.nl>` (18 Jun 1996) — based on
+Big by Glenn Chappell (4/93), which is based on Standard.
+
+> Permission is hereby given to modify this font, as long as the
+> modifier's name is placed on a comment line.
+
 ## Rust crate dependencies
 
 The crates below are linked into the splashboard binary; their full

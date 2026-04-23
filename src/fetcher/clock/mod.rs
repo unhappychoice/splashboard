@@ -4,6 +4,7 @@
 //! and date-derived values. Shared primitives (tz resolution, safe strftime, julian day) live in
 //! `common`.
 
+pub mod almanac;
 mod common;
 pub mod countdown;
 pub mod derived;
@@ -50,6 +51,7 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
         Arc::new(state::ClockStateFetcher),
         Arc::new(sunrise::ClockSunriseFetcher),
         Arc::new(derived::ClockDerivedFetcher),
+        Arc::new(almanac::ClockAlmanacFetcher),
     ]
 }
 

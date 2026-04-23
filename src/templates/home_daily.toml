@@ -1,0 +1,230 @@
+# home_daily — "everything at a glance" preset. Dense 2-column dashboard built from
+# zero-config widgets: quote of the day at the top, then a calendar + sky panel and
+# a world-clock + system panel side-by-side, with time-elapsed gauges full-width at
+# the bottom. `splashboard install → home_daily` renders a filled dashboard on
+# first run without any `[widget.options]` editing.
+#
+# For weather or sunrise/sunset you need latitude + longitude per widget; drop a
+# `weather` or `clock_sunrise` block in `$HOME/.splashboard/home.dashboard.toml`
+# with your own coordinates.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "quote"
+fetcher = "quote_of_day"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "hero"
+fetcher = "clock"
+format = "%a %e"
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
+
+[[widget]]
+id = "date"
+fetcher = "clock"
+format = "%A  ·  %e %B %Y  ·  day %j of %Y"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "calendar"
+fetcher = "clock"
+render = { type = "grid_calendar", align = "center" }
+
+# `clock_almanac` returns Entries of today's astro / calendric rollup (moon /
+# season / zodiac / chinese / iso week / day of year) in a single widget so it
+# can sit next to calendar in the same row-cell.
+#
+# Add `hemisphere = "south"` if you're below the equator so the season row
+# reads Autumn in April instead of Spring.
+[[widget]]
+id = "almanac"
+fetcher = "clock_almanac"
+render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
+
+# World clock — UTC + five cities. Each entry is either a plain IANA zone
+# (displayed verbatim) or a `{ tz, label }` pair for a short header.
+[[widget]]
+id = "world_clock"
+fetcher = "clock_timezones"
+format = "%H:%M"
+render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
+  [widget.options]
+  timezones = [
+    "UTC",
+    { tz = "America/Los_Angeles", label = "LA" },
+    { tz = "America/New_York", label = "NYC" },
+    { tz = "Europe/London", label = "London" },
+    { tz = "Asia/Tokyo", label = "Tokyo" },
+    { tz = "Australia/Sydney", label = "Sydney" },
+  ]
+
+# System — os / host / uptime / load / cpu / memory as a 6-row Entries table so
+# it matches the world-clock column height.
+[[widget]]
+id = "system"
+fetcher = "system"
+render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
+
+# Gauge labels padded to 5 characters so the bars line up vertically across rows.
+[[widget]]
+id = "year_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "year ", value_format = "percent" }
+  [widget.options]
+  period = "year"
+
+[[widget]]
+id = "quarter_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "qtr  ", value_format = "percent" }
+  [widget.options]
+  period = "quarter"
+
+[[widget]]
+id = "month_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "month", value_format = "percent" }
+  [widget.options]
+  period = "month"
+
+[[widget]]
+id = "week_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "week ", value_format = "percent" }
+  [widget.options]
+  period = "week"
+
+[[widget]]
+id = "day_ratio"
+fetcher = "clock_ratio"
+render = { type = "gauge_line", label = "day  ", value_format = "percent" }
+  [widget.options]
+  period = "day"
+
+[[widget]]
+id = "gap"
+fetcher = "static"
+format = " "
+render = "text_plain"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Quote — two centred lines at the top. Deterministic per calendar day.
+[[row]]
+height = { length = 2 }
+flex = "center"
+  [[row.child]]
+  widget = "quote"
+  width = { length = 88 }
+
+[[row]]
+height = { length = 1 }
+
+# Hero + date (full-width, no divider needed).
+[[row]]
+height = { length = 4 }
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "date"
+
+[[row]]
+height = { length = 1 }
+
+# Row 1: calendar | sky almanac — two 34-cell columns with centred dividers.
+# Row height 8 fits the calendar (1 border + month header + weekday + 5 weeks);
+# almanac is 7 rows (1 border + 6 entries) and leaves one trailing blank row.
+[[row]]
+height = { length = 8 }
+flex = "center"
+  [[row.child]]
+  widget = "calendar"
+  width = { length = 34 }
+  border = "top"
+  title = "  this month  "
+  title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "almanac"
+  width = { length = 34 }
+  border = "top"
+  title = "  sky  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Row 2: world clock | system. Both panels are 6 rows of content + 1 border = 7.
+[[row]]
+height = { length = 7 }
+flex = "center"
+  [[row.child]]
+  widget = "world_clock"
+  width = { length = 34 }
+  border = "top"
+  title = "  world clock  "
+  title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "system"
+  width = { length = 34 }
+  border = "top"
+  title = "  system  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Time-elapsed gauges — full-width stack. First row carries the divider.
+[[row]]
+height = { length = 2 }
+flex = "center"
+  [[row.child]]
+  widget = "year_ratio"
+  width = { length = 70 }
+  border = "top"
+  title = "  time elapsed  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "quarter_ratio"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "month_ratio"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "week_ratio"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "day_ratio"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
