@@ -27,6 +27,7 @@ mod repo_issues;
 mod repo_prs;
 mod repo_stars;
 mod review_requests;
+mod user;
 
 use super::Fetcher;
 
@@ -47,5 +48,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(contributions::GithubContributions),
         Arc::new(languages::GithubLanguages),
         Arc::new(avatar::GithubAvatar),
+        Arc::new(user::GithubUser),
     ]
 }

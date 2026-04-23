@@ -1,8 +1,6 @@
-# home_daily — "everything at a glance" preset. Dense, information-heavy dashboard:
-# date header + full outside panel (weather / sunrise / sunset / moon / season /
-# zodiac) + time-elapsed gauges (year / month / week / day) + a month calendar, so
-# the user can cd once in the morning and read out the whole day. Use `home_splash`
-# for the sparse animated alternative.
+# home_daily — "everything at a glance" preset. Dense dashboard: date header +
+# side-by-side weather / calendar at the top, sun & moon details underneath, and
+# time-elapsed gauges (year / month / week / day) at the bottom.
 #
 # Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
 
@@ -30,9 +28,14 @@ render = { type = "grid_table", layout = "rows" }
   units = "metric"
 
 [[widget]]
+id = "calendar"
+fetcher = "clock"
+render = { type = "grid_calendar", align = "center" }
+
+[[widget]]
 id = "sunrise"
 fetcher = "clock_sunrise"
-render = { type = "grid_table", layout = "rows" }
+render = { type = "grid_table", layout = "inline", align = "center" }
   [widget.options]
   lat = 35.68
   lon = 139.76
@@ -40,21 +43,21 @@ render = { type = "grid_table", layout = "rows" }
 [[widget]]
 id = "moon"
 fetcher = "clock_derived"
-render = "text_plain"
+render = { type = "text_plain", align = "center" }
   [widget.options]
   kind = "moon_phase"
 
 [[widget]]
 id = "season"
 fetcher = "clock_derived"
-render = "text_plain"
+render = { type = "text_plain", align = "center" }
   [widget.options]
   kind = "season"
 
 [[widget]]
 id = "zodiac"
 fetcher = "clock_derived"
-render = "text_plain"
+render = { type = "text_plain", align = "center" }
   [widget.options]
   kind = "zodiac"
 
@@ -88,13 +91,17 @@ render = { type = "gauge_line", label = "day  ", value_format = "percent" }
   period = "day"
 
 [[widget]]
-id = "calendar"
-fetcher = "clock"
-render = { type = "grid_calendar", align = "center" }
+id = "gap"
+fetcher = "static"
+format = " "
+render = "text_plain"
 
 # ── Layout ─────────────────────────────────────────────────────────
 
-# Compact header — hero + date, no spacer rows between them.
+[[row]]
+height = { length = 1 }
+
+# Compact header — hero + date, no spacer row between them.
 [[row]]
 height = { length = 4 }
   [[row.child]]
@@ -108,24 +115,42 @@ height = { length = 1 }
 [[row]]
 height = { length = 1 }
 
-# Outside section: weather (3 rows) → sunrise/sunset (2 rows) → moon / season /
-# zodiac (1 row each). 8 rows of content under a single centred section divider.
+# Weather | calendar — two 34-col columns side by side inside the 70-col band. The
+# row is sized to fit a full month calendar (8 rows = border + weekday header + 5
+# week-rows + bottom padding); weather renders 3 rows of key/value and leaves the
+# rest blank, keeping the two panels vertically aligned without stretching either.
 [[row]]
-height = { length = 4 }
+height = { length = 8 }
 flex = "center"
   [[row.child]]
   widget = "weather"
-  width = { length = 70 }
+  width = { length = 34 }
   border = "top"
   title = "  outside  "
   title_align = "center"
+  [[row.child]]
+  widget = "gap"
+  width = { length = 2 }
+  [[row.child]]
+  widget = "calendar"
+  width = { length = 34 }
+  border = "top"
+  title = "  this month  "
+  title_align = "center"
 
+[[row]]
+height = { length = 1 }
+
+# Sun & moon details under a centred divider, centred at 70 cols.
 [[row]]
 height = { length = 2 }
 flex = "center"
   [[row.child]]
   widget = "sunrise"
   width = { length = 70 }
+  border = "top"
+  title = "  sun & moon  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }
@@ -183,21 +208,6 @@ flex = "center"
   [[row.child]]
   widget = "day_ratio"
   width = { length = 70 }
-
-[[row]]
-height = { length = 1 }
-
-# Current month calendar with today highlighted. grid_calendar renders ~22 cells
-# wide × 8 tall; the 70-col slot centres it with margin on either side.
-[[row]]
-height = { length = 9 }
-flex = "center"
-  [[row.child]]
-  widget = "calendar"
-  width = { length = 70 }
-  border = "top"
-  title = "  this month  "
-  title_align = "center"
 
 [[row]]
 height = { length = 1 }
