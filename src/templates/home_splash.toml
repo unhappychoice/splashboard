@@ -1,9 +1,10 @@
-# home_splash — "hello terminal" preset. Terminal name rendered as a big block-font
-# hero with a sweep-in postfx, a `terminal · powered by …` attribution underneath, then
-# two stacked sections: a today divider with date/weather/moon and a quiet year-progress
-# gauge. All body rows share a 70-col content band.
+# home_splash — "ta-da!" preset. Minimal, animated, lots of whitespace. The job is to
+# feel like a title screen: a big animated hero with a greeting underneath, then a large
+# clock and date. Nothing else competes for attention. Users who want daily ambient
+# information (weather / moon / year progress) should pick `home_daily`.
 #
-# Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
+# Edit `format` on `welcome` / `farewell` if you want something other than the default
+# "hello" / "welcome back" framing.
 
 # ── Widgets ────────────────────────────────────────────────────────
 
@@ -14,71 +15,38 @@ render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", 
   [widget.options]
   kind = "terminal"
 
-# Attribution is a 2-widget row: fixed prefix + dynamic OS version. Keeping it a pair
-# of widgets means the prefix stays editable without baking the OS name into TOML.
+# Time-of-day greeting: "morning" / "afternoon" / "evening" / "night". Derived from the
+# wall clock, so the splash reads as context-aware rather than a generic "hello".
 [[widget]]
-id = "attribution_prefix"
+id = "greeting_prefix"
 fetcher = "static"
-format = "terminal · powered by "
+format = "good "
 render = { type = "text_plain", align = "right" }
 
 [[widget]]
-id = "attribution_os"
-fetcher = "system"
+id = "greeting"
+fetcher = "clock_derived"
 render = { type = "text_plain", align = "left" }
   [widget.options]
-  kind = "os_version"
+  kind = "time_of_day"
 
 [[widget]]
-id = "date_bar"
+id = "clock"
 fetcher = "clock"
-format = "%e %B %Y  ·  %A  ·  %H:%M"
+format = "%H:%M"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "fade_in", duration_ms = 900, style = "blocks", pixel_size = "full", color = "text", align = "center" }
+
+[[widget]]
+id = "date"
+fetcher = "clock"
+format = "%A · %e %B %Y"
 render = { type = "text_plain", align = "center" }
-
-[[widget]]
-id = "weather"
-fetcher = "weather"
-render = { type = "grid_table", layout = "inline", align = "center" }
-  [widget.options]
-  latitude = 35.68
-  longitude = 139.76
-  units = "metric"
-
-[[widget]]
-id = "sunrise"
-fetcher = "clock_sunrise"
-render = { type = "grid_table", layout = "inline", align = "center" }
-  [widget.options]
-  lat = 35.68
-  lon = 139.76
-
-[[widget]]
-id = "moon"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "center" }
-  [widget.options]
-  kind = "moon_phase"
-
-[[widget]]
-id = "season"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "center" }
-  [widget.options]
-  kind = "season"
-
-[[widget]]
-id = "year_ratio"
-fetcher = "clock_ratio"
-render = { type = "gauge_line", label = "year ", value_format = "percent" }
-  [widget.options]
-  period = "year"
 
 # ── Layout ─────────────────────────────────────────────────────────
 
 [[row]]
-height = { length = 1 }
+height = { length = 3 }
 
-# Hero: block-style glyphs (quadrant density) via tui-big-text, with a sweep-in postfx.
 [[row]]
 height = { length = 5 }
   [[row.child]]
@@ -87,71 +55,31 @@ height = { length = 5 }
 [[row]]
 height = { length = 1 }
 
-# Attribution: `terminal · powered by ` + system os_version, right+left justified at
-# the seam so they read as one line rather than two centred fragments.
+# "good morning" / "good afternoon" — right-aligned prefix meets left-aligned value
+# so the seam is tight rather than two centred fragments with a gap between them.
 [[row]]
 height = { length = 1 }
 flex = "center"
   [[row.child]]
-  widget = "attribution_prefix"
-  width = { length = 23 }
+  widget = "greeting_prefix"
+  width = { length = 5 }
   [[row.child]]
-  widget = "attribution_os"
-  width = { length = 20 }
-
-[[row]]
-height = { length = 1 }
+  widget = "greeting"
+  width = { length = 12 }
 
 [[row]]
 height = { length = 2 }
-flex = "center"
+
+# Big `HH:MM` clock — full pixel density (8 cells/char), ~40 cells wide for `12:34`.
+[[row]]
+height = { length = 8 }
   [[row.child]]
-  widget = "date_bar"
-  width = { length = 70 }
-  border = "top"
-  title = "  today  "
-  title_align = "center"
+  widget = "clock"
 
 [[row]]
 height = { length = 1 }
-flex = "center"
   [[row.child]]
-  widget = "weather"
-  width = { length = 70 }
+  widget = "date"
 
 [[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "sunrise"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "moon"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "season"
-  width = { length = 70 }
-
-[[row]]
-height = { length = 1 }
-
-[[row]]
-height = { length = 2 }
-flex = "center"
-  [[row.child]]
-  widget = "year_ratio"
-  width = { length = 70 }
-  border = "top"
-  title = "  year  "
-  title_align = "center"
-
-[[row]]
-height = { length = 1 }
+height = { length = 3 }

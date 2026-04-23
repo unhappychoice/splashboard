@@ -1,7 +1,8 @@
-# home_daily — "what day is it" preset. Large day-of-week + day-of-month block-font hero
-# with the full date underneath, then two stacked sections: outside (weather / sunrise /
-# moon) and time (year / month / week / day elapsed fractions). Both sections share the
-# 70-col content band the rest of the 0.x presets use.
+# home_daily — "everything at a glance" preset. Dense, information-heavy dashboard:
+# date header + full outside panel (weather / sunrise / sunset / moon / season /
+# zodiac) + time-elapsed gauges (year / month / week / day) + a month calendar, so
+# the user can cd once in the morning and read out the whole day. Use `home_splash`
+# for the sparse animated alternative.
 #
 # Edit the `[widget.options]` for `weather` / `sunrise` to your latitude / longitude.
 
@@ -16,10 +17,9 @@ render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color
 [[widget]]
 id = "date"
 fetcher = "clock"
-format = "%e %B %Y  ·  %A"
+format = "%A  ·  %e %B %Y  ·  day %j of %Y"
 render = { type = "text_plain", align = "center" }
 
-# Weather in rows mode (3 key/value lines) so it stacks under the "outside" divider.
 [[widget]]
 id = "weather"
 fetcher = "weather"
@@ -32,7 +32,7 @@ render = { type = "grid_table", layout = "rows" }
 [[widget]]
 id = "sunrise"
 fetcher = "clock_sunrise"
-render = { type = "grid_table", layout = "inline" }
+render = { type = "grid_table", layout = "rows" }
   [widget.options]
   lat = 35.68
   lon = 139.76
@@ -44,8 +44,21 @@ render = "text_plain"
   [widget.options]
   kind = "moon_phase"
 
-# Gauge labels are right-padded to 5 characters so the bars line up vertically across
-# year / month / week / day rows.
+[[widget]]
+id = "season"
+fetcher = "clock_derived"
+render = "text_plain"
+  [widget.options]
+  kind = "season"
+
+[[widget]]
+id = "zodiac"
+fetcher = "clock_derived"
+render = "text_plain"
+  [widget.options]
+  kind = "zodiac"
+
+# Gauge labels padded to 5 characters so the bars line up vertically across rows.
 [[widget]]
 id = "year_ratio"
 fetcher = "clock_ratio"
@@ -74,15 +87,16 @@ render = { type = "gauge_line", label = "day  ", value_format = "percent" }
   [widget.options]
   period = "day"
 
+[[widget]]
+id = "calendar"
+fetcher = "clock"
+render = { type = "grid_calendar", align = "center" }
+
 # ── Layout ─────────────────────────────────────────────────────────
 
+# Compact header — hero + date, no spacer rows between them.
 [[row]]
-height = { length = 1 }
-
-# Hero: quadrant-density block glyphs take ~4 rows at this font size. "Thu 23" ≈ 24
-# cells wide; `align = "center"` in the render options centres it inside the row.
-[[row]]
-height = { length = 5 }
+height = { length = 4 }
   [[row.child]]
   widget = "hero"
 
@@ -94,7 +108,8 @@ height = { length = 1 }
 [[row]]
 height = { length = 1 }
 
-# Outside section: weather stacked above sunrise + moon inside a 70-col centred band.
+# Outside section: weather (3 rows) → sunrise/sunset (2 rows) → moon / season /
+# zodiac (1 row each). 8 rows of content under a single centred section divider.
 [[row]]
 height = { length = 4 }
 flex = "center"
@@ -106,7 +121,7 @@ flex = "center"
   title_align = "center"
 
 [[row]]
-height = { length = 1 }
+height = { length = 2 }
 flex = "center"
   [[row.child]]
   widget = "sunrise"
@@ -121,9 +136,23 @@ flex = "center"
 
 [[row]]
 height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "season"
+  width = { length = 70 }
 
-# Time section: four gauges stacked. First row carries the section title; the rest
-# are plain content rows. Labels are padded to 5 chars so the bars align.
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "zodiac"
+  width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+
+# Time-elapsed gauges stacked. First row carries the section divider; the others
+# are plain 1-row gauges. Padded labels keep the bars aligned.
 [[row]]
 height = { length = 2 }
 flex = "center"
@@ -131,7 +160,7 @@ flex = "center"
   widget = "year_ratio"
   width = { length = 70 }
   border = "top"
-  title = "  time  "
+  title = "  time elapsed  "
   title_align = "center"
 
 [[row]]
@@ -154,6 +183,21 @@ flex = "center"
   [[row.child]]
   widget = "day_ratio"
   width = { length = 70 }
+
+[[row]]
+height = { length = 1 }
+
+# Current month calendar with today highlighted. grid_calendar renders ~22 cells
+# wide × 8 tall; the 70-col slot centres it with margin on either side.
+[[row]]
+height = { length = 9 }
+flex = "center"
+  [[row.child]]
+  widget = "calendar"
+  width = { length = 70 }
+  border = "top"
+  title = "  this month  "
+  title_align = "center"
 
 [[row]]
 height = { length = 1 }

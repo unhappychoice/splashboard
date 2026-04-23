@@ -32,10 +32,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "font",
-        type_hint: "\"standard\" | \"small\" | \"big\" | \"banner\"",
+        type_hint: "\"standard\" | \"small\" | \"big\" | \"banner\" | \"ansi_shadow\" | \"slant\" | \"isometric\" | \"doom\"",
         required: false,
         default: Some("\"standard\""),
-        description: "FIGlet font when `style = \"figlet\"`. Unknown names fall back to `standard`.",
+        description: "FIGlet font when `style = \"figlet\"`. Unknown names fall back to `standard`. `ansi_shadow` and `isometric` use Unicode box-drawing characters; `slant` is the classic italic; `doom` is a bold block face.",
     },
     OptionSchema {
         name: "color",
@@ -57,6 +57,10 @@ const FONT_STANDARD: &str = include_str!("figlet_fonts/standard.flf");
 const FONT_SMALL: &str = include_str!("figlet_fonts/small.flf");
 const FONT_BIG: &str = include_str!("figlet_fonts/big.flf");
 const FONT_BANNER: &str = include_str!("figlet_fonts/banner.flf");
+const FONT_ANSI_SHADOW: &str = include_str!("figlet_fonts/ansi_shadow.flf");
+const FONT_SLANT: &str = include_str!("figlet_fonts/slant.flf");
+const FONT_ISOMETRIC: &str = include_str!("figlet_fonts/isometric1.flf");
+const FONT_DOOM: &str = include_str!("figlet_fonts/doom.flf");
 
 /// ASCII-art text rendering over the `Text` shape. The `style` option selects the visual
 /// treatment; additional sub-options refine the chosen style.
@@ -197,6 +201,10 @@ fn load_font(name: Option<&str>) -> FIGfont {
         "small" => FONT_SMALL,
         "big" => FONT_BIG,
         "banner" => FONT_BANNER,
+        "ansi_shadow" => FONT_ANSI_SHADOW,
+        "slant" => FONT_SLANT,
+        "isometric" => FONT_ISOMETRIC,
+        "doom" => FONT_DOOM,
         _ => FONT_STANDARD,
     };
     FIGfont::from_content(source).unwrap_or_else(|_| FIGfont::standard().expect("standard font"))
