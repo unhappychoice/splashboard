@@ -62,6 +62,8 @@ fetcher = "static"
 format = "season"
 render = { type = "text_plain", align = "right" }
 
+# Add `hemisphere = "south"` under `[widget.options]` if you're below the equator
+# (Sydney / Auckland / Buenos Aires etc.) — defaults to northern-hemisphere seasons.
 [[widget]]
 id = "season"
 fetcher = "clock_derived"
