@@ -30,7 +30,7 @@ render = { type = "text_plain", align = "center" }
 [[widget]]
 id = "calendar"
 fetcher = "clock"
-render = { type = "grid_calendar", align = "center" }
+render = { type = "grid_calendar", align = "left" }
 
 # `clock_almanac` returns Entries of today's astro / calendric rollup (moon /
 # season / zodiac / chinese / iso week / day of year) in a single widget so it
@@ -41,7 +41,7 @@ render = { type = "grid_calendar", align = "center" }
 [[widget]]
 id = "almanac"
 fetcher = "clock_almanac"
-render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
+render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
 
 # World clock — UTC + five cities. Each entry is either a plain IANA zone
 # (displayed verbatim) or a `{ tz, label }` pair for a short header.
@@ -49,7 +49,7 @@ render = { type = "grid_table", layout = "rows", column_align = ["right", "left"
 id = "world_clock"
 fetcher = "clock_timezones"
 format = "%H:%M"
-render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
+render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
   [widget.options]
   timezones = [
     "UTC",
@@ -65,7 +65,7 @@ render = { type = "grid_table", layout = "rows", column_align = ["right", "left"
 [[widget]]
 id = "system"
 fetcher = "system"
-render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
+render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
 
 # Gauge labels padded to 5 characters so the bars line up vertically across rows.
 [[widget]]
