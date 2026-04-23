@@ -14,6 +14,17 @@ independent pieces that splashboard combines at render time. Splitting those
 axes is the whole point: the same data can drive multiple visuals, the same
 visual can consume multiple data sources, and each piece evolves on its own.
 
+```
+          one Widget = one composition of three pieces
+
+    Fetcher                Renderer               Layout slot
+ ┌────────────┐       ┌──────────────┐      ┌──────────────┐
+ │   clock    │──────▶│  text_ascii  │─────▶│ row, height 4│
+ │ emits Text │       │ draws blocks │      │   centered   │
+ └────────────┘       └──────────────┘      └──────────────┘
+      WHAT                  HOW                   WHERE
+```
+
 ## The three pieces
 
 ### Fetcher — what data
@@ -37,6 +48,28 @@ you picked. Just know that fresh data after a `cd` is normal (the cache
 hadn't refreshed yet) and `splashboard --wait` blocks until every widget
 has fetched fresh.
 
+```
+  Cached fetcher (most of them — anything that does I/O)
+  ──────────────────────────────────────────────────────
+
+    new shell                  ┌─ reads ──▶ cache/        (paint instant)
+         │                     │                │
+         ▼                     │                │ fresh payload
+   splashboard ────────────────┤                ▼
+                               │        detached child
+                               │                │ runs the fetcher
+                               │                ▼
+                               └─ writes ──── cache/      (next render
+                                                            sees fresh)
+
+
+  Realtime fetcher  (clock / system_cpu / clock_countdown / pomodoro)
+  ──────────────────────────────────────────────────────────────────
+
+    draw tick ──▶ fetch() ──▶ payload ──▶ renderer
+    (per frame)   < 1 ms        no cache, no I/O
+```
+
 ### Renderer — how to draw it
 
 A renderer takes a `Payload` and paints it into a cell of the terminal.
@@ -56,8 +89,25 @@ split exists — same data, different visuals; same visual, different data.
 
 Rows and their children (`[[row]]` / `[[row.child]]`) define the grid that
 widgets occupy. A widget's layout slot determines its width, height,
-border, title, and background. See [Configuration](/splashboard/guides/configuration/)
-for the slot schema.
+border, title, and background.
+
+```
+ ┌─ splash viewport ─────────────────────────────────────┐
+ │ ┌─ row ─────────────────────────────────────────────┐ │
+ │ │ ┌── child ─┐  ┌──── child ───┐  ┌──── child ────┐ │ │
+ │ │ │ widget A │  │   widget B   │  │   widget C    │ │ │
+ │ │ └──────────┘  └──────────────┘  └───────────────┘ │ │
+ │ └───────────────────────────────────────────────────┘ │
+ │ ┌─ row ─────────────────────────────────────────────┐ │
+ │ │                    widget D                       │ │
+ │ └───────────────────────────────────────────────────┘ │
+ └───────────────────────────────────────────────────────┘
+
+      rows stack vertically · children inside a row stack horizontally
+```
+
+See [Configuration](/splashboard/guides/configuration/) for the slot
+schema.
 
 ## Shapes — the contract between fetcher and renderer
 
@@ -87,6 +137,20 @@ Shapes are the **only** coupling between fetchers and renderers. If you add
 a new fetcher that emits an existing shape, every compatible renderer just
 works. If you add a new renderer that accepts an existing shape, every
 fetcher that emits that shape can drive it.
+
+```
+       fetchers emitting Text           renderers accepting Text
+       ──────────────────────           ─────────────────────────
+
+           clock ──────┐                 ┌────────── text_plain
+           static ─────┤                 ├────────── text_ascii
+           project_name┤── Shape::Text ──┤
+           ...         ┤                 ├──── animated_typewriter
+                       └─────────────────┘
+
+       Any fetcher on the left can drive any renderer on the right.
+       Adding one more fetcher that emits Text unlocks all of them.
+```
 
 ## Why this matters in practice
 

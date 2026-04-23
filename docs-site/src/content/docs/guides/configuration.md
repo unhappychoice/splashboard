@@ -45,6 +45,25 @@ Per-directory dashboards stay in the repo as either:
 splashboard picks the dashboard at render time based on the current
 directory:
 
+```
+                   splashboard render
+                          │
+                          ▼
+   ┌───────────────────────────────────────────┐
+   │ CWD has ./.splashboard/dashboard.toml     │
+   │ or ./.splashboard.toml ?                  │─── yes ─▶  per-dir
+   └───────────────────┬───────────────────────┘           (trust-gated)
+                       │ no
+                       ▼
+   ┌───────────────────────────────────────────┐
+   │ CWD is a git repo root (has .git/) ?      │─── yes ─▶  $HOME/.splashboard/
+   └───────────────────┬───────────────────────┘          project.dashboard.toml
+                       │ no
+                       ▼
+                $HOME/.splashboard/
+                home.dashboard.toml
+```
+
 1. **Per-dir dashboard at CWD** (`./.splashboard/dashboard.toml` or
    `./.splashboard.toml`) — if present, it wins. Trust-gated: Network
    widgets are replaced with a placeholder until the file is trusted.
