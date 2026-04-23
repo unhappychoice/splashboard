@@ -7,8 +7,10 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use sysinfo::{Disks, ProcessesToUpdate, System};
 
+use crate::options::OptionSchema;
 use crate::payload::{
     Bar, BarsData, Body, EntriesData, Entry, Payload, RatioData, TextBlockData, TextData,
 };
@@ -32,8 +34,36 @@ pub fn cached_fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![Arc::new(DiskFetcher)]
 }
 
+const SYSTEM_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"terminal\" | \"os\" | \"os_version\" | \"hostname\" | \"shell\" | \"arch\"",
+    required: false,
+    default: Some("\"terminal\""),
+    description: "Selects the single value emitted by the `Text` shape. Ignored by `Entries` / `TextBlock` shapes, which always return the full rollup.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemOptions {
+    #[serde(default)]
+    pub kind: Option<SystemKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemKind {
+    #[default]
+    Terminal,
+    Os,
+    OsVersion,
+    Hostname,
+    Shell,
+    Arch,
+}
+
 /// `os / host / uptime / load / cpu / memory` rollup. `Entries` by default; `TextBlock`
-/// collapses each row to `"key: value"` so the same fetcher can feed the plain text renderer.
+/// collapses each row to `"key: value"`; `Text` emits a single identity field selected by the
+/// `kind` option (terminal name, OS label, hostname, shell, arch) for hero / attribution lines.
 pub struct SystemFetcher {
     state: Mutex<System>,
     os: String,
@@ -67,7 +97,10 @@ impl RealtimeFetcher for SystemFetcher {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Entries, Shape::TextBlock]
+        &[Shape::Entries, Shape::TextBlock, Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_OPTION_SCHEMAS
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
@@ -87,10 +120,14 @@ impl RealtimeFetcher for SystemFetcher {
                 "cpu: 18%",
                 "memory: 67%",
             ]),
+            Shape::Text => samples::text("iTerm2"),
             _ => return None,
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
+        if matches!(ctx.shape, Some(Shape::Text)) {
+            return self.compute_text(ctx);
+        }
         let mut sys = self.state.lock().expect("system state mutex poisoned");
         sys.refresh_cpu_usage();
         sys.refresh_memory();
@@ -111,6 +148,88 @@ impl RealtimeFetcher for SystemFetcher {
             })),
         }
     }
+}
+
+impl SystemFetcher {
+    fn compute_text(&self, ctx: &FetchContext) -> Payload {
+        let opts: SystemOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = resolve_system_kind(opts.kind.unwrap_or_default());
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+fn resolve_system_kind(kind: SystemKind) -> String {
+    match kind {
+        SystemKind::Terminal => detect_terminal(),
+        SystemKind::Os => System::name().unwrap_or_else(|| "unknown".into()),
+        SystemKind::OsVersion => os_label(),
+        SystemKind::Hostname => System::host_name().unwrap_or_else(|| "unknown".into()),
+        SystemKind::Shell => detect_shell(),
+        SystemKind::Arch => std::env::consts::ARCH.into(),
+    }
+}
+
+/// Detect the terminal emulator via well-known env vars. Env vars are the only signal available
+/// without spawning a subprocess, so this is a best-effort match with a generic fallback.
+fn detect_terminal() -> String {
+    let env = |k: &str| std::env::var(k).ok();
+    if env("WT_SESSION").is_some() {
+        return "Windows Terminal".into();
+    }
+    if env("GHOSTTY_RESOURCES_DIR").is_some() {
+        return "Ghostty".into();
+    }
+    if env("KITTY_WINDOW_ID").is_some() || env("TERM").as_deref() == Some("xterm-kitty") {
+        return "Kitty".into();
+    }
+    if env("ALACRITTY_WINDOW_ID").is_some() || env("ALACRITTY_LOG").is_some() {
+        return "Alacritty".into();
+    }
+    if env("WEZTERM_PANE").is_some() {
+        return "WezTerm".into();
+    }
+    match env("TERM_PROGRAM").as_deref() {
+        Some("iTerm.app") => "iTerm2".into(),
+        Some("Apple_Terminal") => "Terminal".into(),
+        Some("ghostty") => "Ghostty".into(),
+        Some("WezTerm") => "WezTerm".into(),
+        Some("Hyper") => "Hyper".into(),
+        Some("vscode") => "VS Code".into(),
+        Some(other) if !other.is_empty() => other.into(),
+        _ => "terminal".into(),
+    }
+}
+
+fn detect_shell() -> String {
+    std::env::var("SHELL")
+        .ok()
+        .and_then(|s| {
+            std::path::Path::new(&s)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "shell".into())
+}
+
+fn parse_options<T: serde::de::DeserializeOwned + Default>(
+    raw: Option<&toml::Value>,
+) -> Result<T, String> {
+    match raw {
+        None => Ok(T::default()),
+        Some(value) => value
+            .clone()
+            .try_into::<T>()
+            .map_err(|e| format!("invalid options: {e}")),
+    }
+}
+
+fn options_placeholder(msg: &str) -> Payload {
+    payload(Body::Text(TextData {
+        value: format!("⚠ {msg}"),
+    }))
 }
 
 /// Aggregated CPU usage across all cores. `Ratio` (0..=1) for gauges, `Text` for plain text.
@@ -559,6 +678,17 @@ mod tests {
         }
     }
 
+    fn ctx_text(options: Option<&str>) -> FetchContext {
+        let options = options.map(|s| toml::from_str::<toml::Value>(s).unwrap());
+        FetchContext {
+            widget_id: "w".into(),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::Text),
+            options,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn format_uptime_covers_minute_hour_day_ranges() {
         assert_eq!(format_uptime(0), "0m");
@@ -647,6 +777,38 @@ mod tests {
             panic!("expected entries");
         };
         assert_eq!(e.items.len(), 6);
+    }
+
+    #[test]
+    fn system_text_shape_defaults_to_terminal_kind() {
+        let p = SystemFetcher::new().compute(&ctx_text(None));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(!t.value.is_empty());
+    }
+
+    #[test]
+    fn system_text_shape_emits_arch_when_requested() {
+        let p = SystemFetcher::new().compute(&ctx_text(Some("kind = \"arch\"")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, std::env::consts::ARCH);
+    }
+
+    #[test]
+    fn system_text_shape_rejects_unknown_kind_to_placeholder() {
+        let p = SystemFetcher::new().compute(&ctx_text(Some("kind = \"bogus\"")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(t.value.starts_with("⚠"));
+    }
+
+    #[test]
+    fn detect_terminal_returns_non_empty_label() {
+        assert!(!detect_terminal().is_empty());
     }
 
     #[test]

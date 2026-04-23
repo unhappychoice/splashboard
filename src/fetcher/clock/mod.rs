@@ -164,11 +164,41 @@ mod tests {
         }
     }
 
+    fn ctx_with_format(format: &str) -> FetchContext {
+        FetchContext {
+            widget_id: "clock".into(),
+            format: Some(format.into()),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::Text),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn default_shape_is_text_with_colon() {
         let p = ClockFetcher.compute(&ctx(None, None));
         match p.body {
             Body::Text(d) => assert!(d.value.contains(':')),
+            _ => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn custom_format_renders_date_template() {
+        let p = ClockFetcher.compute(&ctx_with_format("%Y · %A"));
+        match p.body {
+            Body::Text(d) => {
+                assert!(
+                    d.value.contains(" · "),
+                    "expected middot separator from template, got {:?}",
+                    d.value
+                );
+                assert!(
+                    d.value.chars().next().is_some_and(|c| c.is_ascii_digit()),
+                    "expected year digits at start, got {:?}",
+                    d.value
+                );
+            }
             _ => panic!("expected text"),
         }
     }
