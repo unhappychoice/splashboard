@@ -162,6 +162,7 @@ impl RealtimeFetcher for CpuLoadFetcher {
             _ => payload(Body::Ratio(RatioData {
                 value: ratio,
                 label: Some(label),
+                denominator: None,
             })),
         }
     }
@@ -229,6 +230,7 @@ impl RealtimeFetcher for MemoryFetcher {
             _ => payload(Body::Ratio(RatioData {
                 value: ratio,
                 label: Some(label),
+                denominator: None,
             })),
         }
     }
@@ -409,6 +411,7 @@ impl Fetcher for DiskFetcher {
                     payload(Body::Ratio(RatioData {
                         value: ratio_of(used, total),
                         label: Some(disk_label(total, available)),
+                        denominator: None,
                     }))
                 })
                 .unwrap_or_else(|| {

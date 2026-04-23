@@ -89,7 +89,35 @@ impl RealtimeFetcher for ClockRatioFetcher {
             body: Body::Ratio(RatioData {
                 value: value.clamp(0.0, 1.0),
                 label: Some(label),
+                denominator: Some(total_units(&now, period)),
             }),
+        }
+    }
+}
+
+/// Total "slots" in the current period at the period's natural granularity: days for
+/// year/month/quarter/week, seconds for hour/day. Enables `value_format = "fraction"` to
+/// render `118 of 365` even though the gauge itself is a 0..=1 ratio.
+fn total_units(now: &DateTime<FixedOffset>, period: Period) -> u64 {
+    match period {
+        Period::Day => 86_400,
+        Period::Hour => 3_600,
+        Period::Week => 7,
+        Period::Month => {
+            let start = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap();
+            let end = next_month_start(now.year(), now.month());
+            (end - start).num_days() as u64
+        }
+        Period::Quarter => {
+            let first_month = ((now.month() - 1) / 3) * 3 + 1;
+            let start = NaiveDate::from_ymd_opt(now.year(), first_month, 1).unwrap();
+            let end = next_month_start(now.year(), first_month + 2);
+            (end - start).num_days() as u64
+        }
+        Period::Year => {
+            let start = NaiveDate::from_ymd_opt(now.year(), 1, 1).unwrap();
+            let end = NaiveDate::from_ymd_opt(now.year() + 1, 1, 1).unwrap();
+            (end - start).num_days() as u64
         }
     }
 }

@@ -72,6 +72,7 @@ pub fn ratio(value: f64, label: &str) -> Body {
     Body::Ratio(RatioData {
         value,
         label: Some(label.into()),
+        denominator: None,
     })
 }
 
