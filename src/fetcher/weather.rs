@@ -139,13 +139,13 @@ async fn fetch_report(lat: f64, lon: f64, units: Units) -> Result<Sample, FetchE
 }
 
 fn build_url(lat: f64, lon: f64, units: Units) -> String {
-    let mut url = format!(
+    let base = format!(
         "{API_BASE}?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m"
     );
-    if matches!(units, Units::Imperial) {
-        url.push_str("&temperature_unit=fahrenheit&wind_speed_unit=mph");
+    match units {
+        Units::Metric => format!("{base}&wind_speed_unit=ms"),
+        Units::Imperial => format!("{base}&temperature_unit=fahrenheit&wind_speed_unit=mph"),
     }
-    url
 }
 
 #[derive(Debug, Deserialize)]
@@ -292,10 +292,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_url_metric_omits_imperial_units() {
+    fn build_url_metric_requests_ms_wind() {
         let url = build_url(35.68, 139.76, Units::Metric);
         assert!(url.contains("latitude=35.68"));
         assert!(url.contains("longitude=139.76"));
+        assert!(url.contains("wind_speed_unit=ms"));
         assert!(!url.contains("fahrenheit"));
         assert!(!url.contains("mph"));
     }
@@ -365,5 +366,21 @@ mod tests {
         let raw: toml::Value =
             toml::from_str("latitude = 1.0\nlongitude = 2.0\nbogus = true").unwrap();
         assert!(parse_options::<WeatherOptions>(Some(&raw)).is_err());
+    }
+
+    /// Live smoke test — hits Open-Meteo. `#[ignore]` keeps CI offline-safe; run with
+    /// `cargo test -- --ignored fetcher::weather::tests::live` to verify real API shape.
+    #[tokio::test]
+    #[ignore]
+    async fn live_tokyo_forecast_populates_entries() {
+        let report = fetch_report(35.68, 139.76, Units::Metric).await.unwrap();
+        let body = entries(&report);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 3);
+        for row in &e.items {
+            eprintln!("{} → {}", row.key, row.value.as_deref().unwrap_or(""));
+        }
     }
 }
