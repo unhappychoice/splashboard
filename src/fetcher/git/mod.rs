@@ -20,6 +20,7 @@ mod commits_activity;
 mod contributors;
 mod latest_tag;
 mod recent_commits;
+mod repo_name;
 mod stash_count;
 mod status;
 mod worktrees;
@@ -37,6 +38,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(latest_tag::GitLatestTag),
         Arc::new(worktrees::GitWorktrees),
         Arc::new(blame_heatmap::GitBlameHeatmap),
+        Arc::new(repo_name::GitRepoName),
     ]
 }
 

@@ -15,7 +15,6 @@ use crate::samples;
 pub mod clock;
 pub mod git;
 pub mod github;
-pub mod project;
 pub mod quote_of_day;
 pub mod read_store;
 pub mod static_text;
@@ -225,8 +224,6 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
-        r.register(Arc::new(project::ProjectName));
-        r.register(Arc::new(project::Project));
         r.register(Arc::new(weather::WeatherFetcher));
         for f in clock::realtime_fetchers() {
             r.register_realtime(f);

@@ -1,15 +1,8 @@
-//! `project_name` / `project` — identity of the repo you cd'd into.
-//!
-//! - `project_name` is purely local: parses the git remote's `owner/name` (or falls back to the
-//!   cwd's directory name when there's no github remote). Text shape only. No network.
-//! - `project` pulls the full identity triple (`slug`, `description`, `license`) from the GitHub
-//!   REST API `/repos/{o}/{n}`. Safe — the host is hardcoded, so the auth token can only leave
-//!   to a known origin. Entries or Text.
-//!
-//! Both are zero-config: drop them in, they find the repo via the `origin` remote. Useful for
-//! dashboards where the header wants the real project identity instead of a hand-written label.
+//! `github_repo` — identity triple `{ slug, description, license }` sourced from the GitHub
+//! REST API `/repos/{o}/{n}`. Entries shape feeds `grid_table` (inline or rows); Text joins
+//! the non-empty fields with `·` for a compact subtitle.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -18,50 +11,16 @@ use sha2::{Digest, Sha256};
 use crate::payload::{Body, EntriesData, Entry, Payload, TextBlockData, TextData};
 use crate::render::Shape;
 
-use super::github::client::rest_get;
-use super::github::common::{RepoSlug, resolve_repo, slug_from_url};
-use super::{FetchContext, FetchError, Fetcher, Safety};
+use super::super::{FetchContext, FetchError, Fetcher, Safety};
+use super::client::rest_get;
+use super::common::resolve_repo;
 
-/// `project_name` — repo name as Text, suitable for hero rendering. Derived from
-/// `origin` (or the first configured remote) parsed as `owner/name`; falls back to the cwd's
-/// directory name when no remote exists so a fresh local-only clone still has a header.
-pub struct ProjectName;
+pub struct GithubRepo;
 
 #[async_trait]
-impl Fetcher for ProjectName {
+impl Fetcher for GithubRepo {
     fn name(&self) -> &str {
-        "project_name"
-    }
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-    fn shapes(&self) -> &[Shape] {
-        &[Shape::Text]
-    }
-    fn cache_key(&self, _ctx: &FetchContext) -> String {
-        cwd_scoped(self.name())
-    }
-    fn sample_body(&self, _shape: Shape) -> Option<Body> {
-        Some(Body::Text(TextData {
-            value: "splashboard".into(),
-        }))
-    }
-    async fn fetch(&self, _ctx: &FetchContext) -> Result<Payload, FetchError> {
-        Ok(payload(Body::Text(TextData {
-            value: detect_name().unwrap_or_else(|| "project".into()),
-        })))
-    }
-}
-
-/// `project` — identity triple `{ slug, description, license }` sourced from the GitHub REST
-/// API `/repos/{o}/{n}`. Entries shape feeds `grid_table` (inline or rows); Text joins the
-/// non-empty fields with `·` for a compact subtitle.
-pub struct Project;
-
-#[async_trait]
-impl Fetcher for Project {
-    fn name(&self) -> &str {
-        "project"
+        "github_repo"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -179,25 +138,6 @@ impl Metadata {
     }
 }
 
-fn detect_name() -> Option<String> {
-    let cwd = std::env::current_dir().ok()?;
-    slug_from_cwd(&cwd)
-        .map(|s| s.name)
-        .or_else(|| cwd.file_name().map(|s| s.to_string_lossy().into_owned()))
-}
-
-fn slug_from_cwd(cwd: &Path) -> Option<RepoSlug> {
-    let repo = gix::discover(cwd).ok()?;
-    let names: Vec<_> = repo.remote_names().into_iter().collect();
-    let preferred = names
-        .iter()
-        .find(|n| n.as_ref() == "origin")
-        .or_else(|| names.first())?;
-    let remote = repo.find_remote(preferred.as_ref()).ok()?;
-    let url = remote.url(gix::remote::Direction::Fetch)?;
-    slug_from_url(&url.to_bstring().to_string())
-}
-
 fn cwd_scoped(name: &str) -> String {
     let cwd: PathBuf = std::env::current_dir().unwrap_or_default();
     let digest = Sha256::digest(cwd.to_string_lossy().as_bytes());
@@ -271,17 +211,8 @@ mod tests {
     }
 
     #[test]
-    fn project_name_sample_is_non_empty() {
-        let sample = ProjectName.sample_body(Shape::Text).unwrap();
-        match sample {
-            Body::Text(d) => assert!(!d.value.is_empty()),
-            _ => panic!("expected text sample"),
-        }
-    }
-
-    #[test]
-    fn project_sample_entries_has_three_rows() {
-        let sample = Project.sample_body(Shape::Entries).unwrap();
+    fn sample_entries_has_three_rows() {
+        let sample = GithubRepo.sample_body(Shape::Entries).unwrap();
         match sample {
             Body::Entries(d) => assert_eq!(d.items.len(), 3),
             _ => panic!("expected entries sample"),
