@@ -15,6 +15,7 @@ use crate::samples;
 pub mod clock;
 pub mod git;
 pub mod github;
+pub mod project;
 pub mod read_store;
 pub mod static_text;
 pub mod system;
@@ -222,6 +223,8 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
+        r.register(Arc::new(project::ProjectName));
+        r.register(Arc::new(project::Project));
         for f in clock::realtime_fetchers() {
             r.register_realtime(f);
         }
