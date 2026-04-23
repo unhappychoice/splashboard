@@ -38,6 +38,7 @@ export default defineConfig({
             { label: 'Cookbook', link: '/guides/cookbook/' },
           ],
         },
+        { label: 'Showcases', link: '/showcases/' },
         {
           label: 'Reference',
           items: [
