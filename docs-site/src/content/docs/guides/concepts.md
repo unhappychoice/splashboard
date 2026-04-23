@@ -144,7 +144,7 @@ fetcher that emits that shape can drive it.
 
            clock ──────┐                 ┌────────── text_plain
            basic_static┤                 ├────────── text_ascii
-           project_name┤── Shape::Text ──┤
+           git_repo_name┤── Shape::Text ──┤
            ...         ┤                 ├──── animated_typewriter
                        └─────────────────┘
 

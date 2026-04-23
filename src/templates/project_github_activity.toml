@@ -1,5 +1,5 @@
 # project_github_activity — per-repo preset. Hero is the repo name as a figlet banner
-# (fetched dynamically via `project_name` → git remote origin), subtitle shows the repo
+# (fetched dynamically via `git_repo_name` → git remote origin), subtitle shows the repo
 # slug / description / license. Header band sits on `bg = "subtle"` so it reads as a
 # distinct panel; body pairs languages / releases, PRs / issues, commits / contributors
 # into 2-column rows so the dashboard reads as a tight grid rather than a tall stack.
@@ -12,16 +12,16 @@
 
 [[widget]]
 id = "hero"
-fetcher = "project_name"
+fetcher = "git_repo_name"
 render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
 
-# Subtitle: `project` emits TextBlock (slug / description / license on their own rows).
+# Subtitle: `github_repo` emits TextBlock (slug / description / license on their own rows).
 # `text_plain` renders via ratatui's `Paragraph` which centers each line individually,
 # so short lines like "ISC" still sit under the hero centreline instead of hugging the
 # block's left edge.
 [[widget]]
 id = "subtitle"
-fetcher = "project"
+fetcher = "github_repo"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
@@ -81,7 +81,7 @@ bg = "subtle"
   [[row.child]]
   widget = "hero"
 
-# Subtitle: 3 stacked lines (slug / description / license) via project's TextBlock
+# Subtitle: 3 stacked lines (slug / description / license) via github_repo's TextBlock
 # shape. Centered on a 70-cell column inside the band.
 [[row]]
 height = { length = 3 }

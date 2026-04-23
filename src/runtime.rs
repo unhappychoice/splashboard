@@ -1385,14 +1385,14 @@ mod tests {
 
     #[test]
     fn derive_shape_prefers_fetcher_primary_when_renderer_accepts_multiple() {
-        // `project` lists shapes as [Entries, TextBlock, Text]; `text_plain` accepts
+        // `github_repo` lists shapes as [Entries, TextBlock, Text]; `text_plain` accepts
         // [Text, TextBlock]. Under the old "renderer-first" rule this picked Text and
         // forced the subtitle back to a one-liner. The new intersection rule picks the
         // fetcher's first accepted shape (TextBlock here) so multi-line fetchers get
         // their natural shape without a per-widget override.
         let registry = Registry::with_builtins();
         let render_registry = render::Registry::with_builtins();
-        let w = widget_with_render("s", "project", Some("text_plain"));
+        let w = widget_with_render("s", "github_repo", Some("text_plain"));
         assert_eq!(
             derive_shape(&w, &registry, &render_registry),
             Some(Shape::TextBlock)

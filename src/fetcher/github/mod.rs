@@ -23,6 +23,7 @@ mod languages;
 mod my_prs;
 mod notifications;
 mod recent_releases;
+mod repo;
 mod repo_issues;
 mod repo_prs;
 mod repo_stars;
@@ -49,5 +50,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(languages::GithubLanguages),
         Arc::new(avatar::GithubAvatar),
         Arc::new(user::GithubUser),
+        Arc::new(repo::GithubRepo),
     ]
 }
