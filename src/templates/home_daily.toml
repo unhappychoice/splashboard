@@ -1,12 +1,12 @@
-# home_daily — "everything at a glance" preset. Dense dashboard built from widgets
-# that work without any user configuration: quote of the day, month calendar, sky
-# panel (moon / season / zodiac / chinese zodiac / iso week / day of year), world
-# clock, system stats (uptime / cpu / memory / load), and time-elapsed gauges.
-# Nothing here needs a latitude or GitHub token to come to life, so
-# `splashboard install → home_daily` renders a filled dashboard on first run.
+# home_daily — "everything at a glance" preset. Dense 2-column dashboard built from
+# zero-config widgets: quote of the day at the top, then a calendar + sky panel and
+# a world-clock + system panel side-by-side, with time-elapsed gauges full-width at
+# the bottom. `splashboard install → home_daily` renders a filled dashboard on
+# first run without any `[widget.options]` editing.
 #
 # For weather or sunrise/sunset you need latitude + longitude per widget; drop a
-# `weather` or `clock_sunrise` block in `$HOME/.splashboard/home.dashboard.toml`.
+# `weather` or `clock_sunrise` block in `$HOME/.splashboard/home.dashboard.toml`
+# with your own coordinates.
 
 # ── Widgets ────────────────────────────────────────────────────────
 
@@ -32,90 +32,19 @@ id = "calendar"
 fetcher = "clock"
 render = { type = "grid_calendar", align = "center" }
 
-# Sky info — label / value rows in a 28 / 1 / 41 column grid.
+# `clock_almanac` returns Entries of today's astro / calendric rollup (moon /
+# season / zodiac / chinese / iso week / day of year) in a single widget so it
+# can sit next to calendar in the same row-cell.
+#
+# Add `hemisphere = "south"` if you're below the equator so the season row
+# reads Autumn in April instead of Spring.
 [[widget]]
-id = "moon_label"
-fetcher = "static"
-format = "moon"
-render = { type = "text_plain", align = "right" }
+id = "almanac"
+fetcher = "clock_almanac"
+render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
 
-[[widget]]
-id = "moon"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "left" }
-  [widget.options]
-  kind = "moon_phase"
-
-[[widget]]
-id = "season_label"
-fetcher = "static"
-format = "season"
-render = { type = "text_plain", align = "right" }
-
-# Add `hemisphere = "south"` under `[widget.options]` if you're below the equator
-# (Sydney / Auckland / Buenos Aires etc.) — defaults to northern-hemisphere seasons.
-[[widget]]
-id = "season"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "left" }
-  [widget.options]
-  kind = "season"
-
-[[widget]]
-id = "zodiac_label"
-fetcher = "static"
-format = "zodiac"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "zodiac"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "left" }
-  [widget.options]
-  kind = "zodiac"
-
-[[widget]]
-id = "chinese_label"
-fetcher = "static"
-format = "chinese"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "chinese"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "left" }
-  [widget.options]
-  kind = "chinese_zodiac"
-
-[[widget]]
-id = "iso_week_label"
-fetcher = "static"
-format = "iso week"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "iso_week"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "left" }
-  [widget.options]
-  kind = "iso_week"
-
-[[widget]]
-id = "day_of_year_label"
-fetcher = "static"
-format = "day-of-year"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "day_of_year"
-fetcher = "clock_derived"
-render = { type = "text_plain", align = "left" }
-  [widget.options]
-  kind = "day_of_year"
-
-# World clock — UTC + four major cities. Each entry is either a plain IANA zone
-# (displayed verbatim) or a `{ tz, label }` pair so the row header reads `NYC`
-# instead of `America/New_York`. Edit to taste for your own cities.
+# World clock — UTC + five cities. Each entry is either a plain IANA zone
+# (displayed verbatim) or a `{ tz, label }` pair for a short header.
 [[widget]]
 id = "world_clock"
 fetcher = "clock_timezones"
@@ -124,57 +53,19 @@ render = { type = "grid_table", layout = "rows", column_align = ["right", "left"
   [widget.options]
   timezones = [
     "UTC",
+    { tz = "America/Los_Angeles", label = "LA" },
     { tz = "America/New_York", label = "NYC" },
     { tz = "Europe/London", label = "London" },
     { tz = "Asia/Tokyo", label = "Tokyo" },
     { tz = "Australia/Sydney", label = "Sydney" },
   ]
 
-# System stats — each widget is one row, keyed by a static label and paired with
-# the live value in the same 28 / 1 / 41 column grid as the sky panel.
+# System — os / host / uptime / load / cpu / memory as a 6-row Entries table so
+# it matches the world-clock column height.
 [[widget]]
-id = "uptime_label"
-fetcher = "static"
-format = "uptime"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "uptime"
-fetcher = "system_uptime"
-render = { type = "text_plain", align = "left" }
-
-[[widget]]
-id = "cpu_label"
-fetcher = "static"
-format = "cpu"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "cpu"
-fetcher = "system_cpu"
-render = { type = "text_plain", align = "left" }
-
-[[widget]]
-id = "memory_label"
-fetcher = "static"
-format = "memory"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "memory"
-fetcher = "system_memory"
-render = { type = "text_plain", align = "left" }
-
-[[widget]]
-id = "load_label"
-fetcher = "static"
-format = "load"
-render = { type = "text_plain", align = "right" }
-
-[[widget]]
-id = "load"
-fetcher = "system_load"
-render = { type = "text_plain", align = "left" }
+id = "system"
+fetcher = "system"
+render = { type = "grid_table", layout = "rows", column_align = ["right", "left"] }
 
 # Gauge labels padded to 5 characters so the bars line up vertically across rows.
 [[widget]]
@@ -223,8 +114,7 @@ render = "text_plain"
 [[row]]
 height = { length = 1 }
 
-# Quote of the day — two centred lines (quote + " — author") at the top of the
-# splash. Deterministic per calendar day; rotates at midnight.
+# Quote — two centred lines at the top. Deterministic per calendar day.
 [[row]]
 height = { length = 2 }
 flex = "center"
@@ -235,7 +125,7 @@ flex = "center"
 [[row]]
 height = { length = 1 }
 
-# Compact header — hero + date, no spacer between them.
+# Hero + date (full-width, no divider needed).
 [[row]]
 height = { length = 4 }
   [[row.child]]
@@ -249,196 +139,55 @@ height = { length = 1 }
 [[row]]
 height = { length = 1 }
 
-# This month — calendar fills the 8-row band (month header + weekday header + 5
-# week rows + 1 border rule).
+# Row 1: calendar | sky almanac — two 34-cell columns with centred dividers.
+# Row height 8 fits the calendar (1 border + month header + weekday + 5 weeks);
+# almanac is 7 rows (1 border + 6 entries) and leaves one trailing blank row.
 [[row]]
 height = { length = 8 }
 flex = "center"
   [[row.child]]
   widget = "calendar"
-  width = { length = 70 }
+  width = { length = 34 }
   border = "top"
   title = "  this month  "
   title_align = "center"
-
-[[row]]
-height = { length = 1 }
-
-# Sky — 6 label / value rows under a dedicated 1-row section divider.
-[[row]]
-height = { length = 1 }
-flex = "center"
   [[row.child]]
   widget = "gap"
-  width = { length = 70 }
+  width = { length = 2 }
+  [[row.child]]
+  widget = "almanac"
+  width = { length = 34 }
   border = "top"
   title = "  sky  "
   title_align = "center"
 
 [[row]]
 height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "moon_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "moon"
-  width = { length = 41 }
 
+# Row 2: world clock | system. Both panels are 6 rows of content + 1 border = 7.
 [[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "season_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "season"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "zodiac_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "zodiac"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "chinese_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "chinese"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "iso_week_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "iso_week"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "day_of_year_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "day_of_year"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-
-# World clock — TextBlock of 5 cities rendered via grid_table rows with the same
-# right-aligned key / left-aligned value layout as the sky panel.
-[[row]]
-height = { length = 6 }
+height = { length = 7 }
 flex = "center"
   [[row.child]]
   widget = "world_clock"
-  width = { length = 70 }
+  width = { length = 34 }
   border = "top"
   title = "  world clock  "
   title_align = "center"
-
-[[row]]
-height = { length = 1 }
-
-# System — uptime / cpu / memory / load. Each row uses the same 28 / 1 / 41 split
-# so the values align vertically.
-[[row]]
-height = { length = 1 }
-flex = "center"
   [[row.child]]
   widget = "gap"
-  width = { length = 70 }
+  width = { length = 2 }
+  [[row.child]]
+  widget = "system"
+  width = { length = 34 }
   border = "top"
   title = "  system  "
   title_align = "center"
 
 [[row]]
 height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "uptime_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "uptime"
-  width = { length = 41 }
 
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "cpu_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "cpu"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "memory_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "memory"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "load_label"
-  width = { length = 28 }
-  [[row.child]]
-  widget = "gap"
-  width = { length = 1 }
-  [[row.child]]
-  widget = "load"
-  width = { length = 41 }
-
-[[row]]
-height = { length = 1 }
-
-# Time-elapsed gauges — year / quarter / month / week / day.
+# Time-elapsed gauges — full-width stack. First row carries the divider.
 [[row]]
 height = { length = 2 }
 flex = "center"

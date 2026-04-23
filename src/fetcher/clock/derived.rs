@@ -76,25 +76,35 @@ impl RealtimeFetcher for ClockDerivedFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let now = common::now_in(opts.timezone.as_deref());
-        let line = match opts.kind.unwrap_or(Kind::TimeOfDay) {
-            Kind::TimeOfDay => time_of_day(&now).into(),
-            Kind::MoonPhase => moon_phase(&now),
-            Kind::Zodiac => zodiac(&now),
-            Kind::ChineseZodiac => chinese_zodiac(&now),
-            Kind::Season => season(&now, opts.hemisphere.unwrap_or_default()),
-            Kind::JpSeason => jp_season(&now),
-            Kind::Rokuyou => rokuyou(&now),
-            Kind::IsoWeek => iso_week(&now),
-            Kind::DayOfYear => format!("day {}", now.ordinal()),
-            Kind::JulianDay => format!("JD {}", common::julian_day(now.date_naive())),
-            Kind::UnixEpoch => now.timestamp().to_string(),
-        };
+        let line = invoke(
+            &now,
+            opts.kind.unwrap_or(Kind::TimeOfDay),
+            opts.hemisphere.unwrap_or_default(),
+        );
         Payload {
             icon: None,
             status: None,
             format: None,
             body: Body::Text(TextData { value: line }),
         }
+    }
+}
+
+/// Dispatch a single kind against an already-resolved `now`. Shared with the
+/// `clock_almanac` rollup so both fetchers stay in sync on formatting.
+pub(crate) fn invoke(now: &DateTime<FixedOffset>, kind: Kind, hemisphere: Hemisphere) -> String {
+    match kind {
+        Kind::TimeOfDay => time_of_day(now).into(),
+        Kind::MoonPhase => moon_phase(now),
+        Kind::Zodiac => zodiac(now),
+        Kind::ChineseZodiac => chinese_zodiac(now),
+        Kind::Season => season(now, hemisphere),
+        Kind::JpSeason => jp_season(now),
+        Kind::Rokuyou => rokuyou(now),
+        Kind::IsoWeek => iso_week(now),
+        Kind::DayOfYear => format!("day {}", now.ordinal()),
+        Kind::JulianDay => format!("JD {}", common::julian_day(now.date_naive())),
+        Kind::UnixEpoch => now.timestamp().to_string(),
     }
 }
 
