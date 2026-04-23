@@ -11,18 +11,20 @@ import sharp from 'sharp';
 import wawoff from 'wawoff2';
 import opentype from 'opentype.js';
 
+// Title uses Orbitron 700 for wordmark impact; body copy stays on JetBrains Mono so the
+// card still reads as "terminal tool" at a glance. Two font families, one path per line.
 const FONT_SRC = {
-  regular: 'node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2',
-  bold: 'node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2',
+  title: 'node_modules/@fontsource/orbitron/files/orbitron-latin-700-normal.woff2',
+  body: 'node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2',
 };
 
 // Each entry becomes one <path> in the card. x / y position glyph baselines on the
 // 1200×630 canvas. Palette mirrors Theme::default() in src/theme/mod.rs.
 const LINES = [
-  { text: 'splashboard', x: 80, y: 280, size: 160, weight: 'bold', fill: '#ff8c7a' },
-  { text: 'A customizable terminal splash —', x: 82, y: 360, size: 32, weight: 'regular', fill: '#c5d2dc' },
-  { text: 'rendered on shell startup and on cd.', x: 82, y: 404, size: 32, weight: 'regular', fill: '#c5d2dc' },
-  { text: 'per-directory configs · one splash per repo', x: 82, y: 520, size: 26, weight: 'regular', fill: '#7ea0b5' },
+  { text: 'splashboard', x: 80, y: 260, size: 140, font: 'title', fill: '#ff8c7a' },
+  { text: 'A customizable terminal splash —', x: 82, y: 360, size: 32, font: 'body', fill: '#c5d2dc' },
+  { text: 'rendered on shell startup and on cd.', x: 82, y: 404, size: 32, font: 'body', fill: '#c5d2dc' },
+  { text: 'per-directory configs · one splash per repo', x: 82, y: 520, size: 26, font: 'body', fill: '#7ea0b5' },
 ];
 
 async function loadFont(path) {
@@ -31,12 +33,12 @@ async function loadFont(path) {
 }
 
 const fonts = {
-  regular: await loadFont(FONT_SRC.regular),
-  bold: await loadFont(FONT_SRC.bold),
+  title: await loadFont(FONT_SRC.title),
+  body: await loadFont(FONT_SRC.body),
 };
 
 const paths = LINES.map((line) => {
-  const glyphs = fonts[line.weight].getPath(line.text, line.x, line.y, line.size);
+  const glyphs = fonts[line.font].getPath(line.text, line.x, line.y, line.size);
   return `<path d="${glyphs.toPathData(2)}" fill="${line.fill}"/>`;
 }).join('\n  ');
 

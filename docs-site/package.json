@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/orbitron": "^5.2.8",
     "opentype.js": "^1.3.4",
     "wawoff2": "^2.0.1"
   }
