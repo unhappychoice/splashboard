@@ -503,7 +503,7 @@ mod tests {
         let toml = r#"
 [[widget]]
 id = "x"
-fetcher = "static"
+fetcher = "basic_static"
 render = "text_plain"
 
 [[row]]
@@ -575,7 +575,7 @@ widget = "x"
         let toml = r#"
 [[widget]]
 id = "x"
-fetcher = "static"
+fetcher = "basic_static"
 render = "text_plain"
 
 [[row]]
@@ -632,7 +632,7 @@ preset = "nord"
 
 [[widget]]
 id = "x"
-fetcher = "static"
+fetcher = "basic_static"
 
 [[row]]
 [[row.child]]
@@ -751,12 +751,12 @@ widget = "x"
         let toml = r#"
 [[widget]]
 id = "a"
-fetcher = "static"
+fetcher = "basic_static"
 render = "text_plain"
 
 [[widget]]
 id = "b"
-fetcher = "static"
+fetcher = "basic_static"
 render = "text_plain"
 
 [[row]]

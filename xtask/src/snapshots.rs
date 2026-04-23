@@ -32,6 +32,11 @@ pub fn previews_for(fetcher: &RegisteredFetcher, renderers: &RenderRegistry) -> 
         .flat_map(|(shape, body)| {
             sorted
                 .iter()
+                // Skip renderers that animate. A single-frame PNG-equivalent catches the
+                // effect at process start (e.g. `fade_in` is near-black at t=0), which reads
+                // as "broken snapshot" rather than "preview of the motion". The renderer's
+                // reference page still documents it; there's just no static preview.
+                .filter(|r| !r.animates())
                 .filter(|r| r.accepts().contains(shape))
                 .map(|r| {
                     let (w, h) = renderer_dimensions(r.name());

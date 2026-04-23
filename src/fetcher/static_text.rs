@@ -15,7 +15,7 @@ pub struct StaticText;
 #[async_trait]
 impl Fetcher for StaticText {
     fn name(&self) -> &str {
-        "static"
+        "basic_static"
     }
     fn safety(&self) -> Safety {
         Safety::Safe

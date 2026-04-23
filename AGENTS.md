@@ -61,13 +61,13 @@ Produces a `Payload`. Two flavors:
 
 Key invariants:
 
-- Each fetcher declares its supported shapes via **`fn shapes(&self) -> &[Shape]`**. Multi-shape fetchers (`clock`, `read_store`) branch on `ctx.shape` inside `fetch` / `compute`; the runtime validates the config-requested shape against the list before dispatch and renders a placeholder on mismatch instead of crashing. Single-shape fetchers just return a one-element slice.
+- Each fetcher declares its supported shapes via **`fn shapes(&self) -> &[Shape]`**. Multi-shape fetchers (`clock`, `basic_read_store`) branch on `ctx.shape` inside `fetch` / `compute`; the runtime validates the config-requested shape against the list before dispatch and renders a placeholder on mismatch instead of crashing. Single-shape fetchers just return a one-element slice.
 - Each fetcher declares a **`Safety`** class:
   - `Safe` — renders even in untrusted local configs. Local-only reads, or fixed-host authenticated network (the token only leaves to a known host).
   - `Network` — trust-gated when the URL or query is config-provided (rss, calendar, any fetcher that takes a user URL).
   - `Exec` — **no longer supported**. Plugin protocol (#5) and command widget (#20) are closed. Don't reintroduce.
 
-- `ReadStore` (`src/fetcher/read_store.rs`) is the escape hatch for "I want a custom widget": user writes `$HOME/.splashboard/store/<id>.<ext>`, splashboard deserializes per the declared shape. Always `Safe` (fixed path, no traversal).
+- `basic_read_store` (`src/fetcher/read_store.rs`) is the escape hatch for "I want a custom widget": user writes `$HOME/.splashboard/store/<id>.<ext>`, splashboard deserializes per the declared shape. Always `Safe` (fixed path, no traversal).
 
 - Fetchers declare their output shape(s) explicitly via `shapes()`. Renderers are compat-checked against the emitted `Body` variant at dispatch time.
 

@@ -1,16 +1,42 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightLlmsTxt from 'starlight-llms-txt';
 
 // Base path matches the GH Pages project URL (unhappychoice.github.io/splashboard/).
 // Internal links in content are relative, so they're unaffected; only the public URL uses this.
 export default defineConfig({
   site: 'https://unhappychoice.github.io',
   base: '/splashboard',
+  // Disable smart-quote / em-dash substitution. The llms-*.txt outputs are derived from
+  // the rendered markdown, so smartypants would splatter U+2019 / U+2014 into what's
+  // supposed to be a plain-text feed — valid UTF-8 but ugly on any client that assumes
+  // ASCII, and noise for LLM ingestion since the source itself never had curly quotes.
+  markdown: { smartypants: false },
   integrations: [
     starlight({
       title: 'splashboard',
       description: 'Customizable terminal splash — fetcher × renderer reference.',
-      customCss: ['./src/styles/snapshot.css'],
+      customCss: ['./src/styles/theme.css', './src/styles/snapshot.css'],
+      plugins: [starlightLlmsTxt()],
+      // OG / Twitter preview card. Starlight already emits og:title / og:description /
+      // twitter:card, but not the image; add it site-wide so every page shares the same
+      // card. Absolute URLs required for social platforms.
+      head: [
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image',
+            content: 'https://unhappychoice.github.io/splashboard/og.png',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            name: 'twitter:image',
+            content: 'https://unhappychoice.github.io/splashboard/og.png',
+          },
+        },
+      ],
       social: [
         {
           icon: 'github',
@@ -19,6 +45,19 @@ export default defineConfig({
         },
       ],
       sidebar: [
+        {
+          label: 'Guides',
+          items: [
+            { label: 'Getting started', link: '/guides/getting-started/' },
+            { label: 'Concepts', link: '/guides/concepts/' },
+            { label: 'Configuration', link: '/guides/configuration/' },
+            { label: 'Presets', link: '/guides/presets/' },
+            { label: 'Themes', link: '/guides/themes/' },
+            { label: 'Trust model', link: '/guides/trust/' },
+            { label: 'Cookbook', link: '/guides/cookbook/' },
+          ],
+        },
+        { label: 'Showcases', link: '/showcases/' },
         {
           label: 'Reference',
           items: [

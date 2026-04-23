@@ -9,3 +9,9 @@ dist/
 src/content/docs/reference/matrix.md
 src/content/docs/reference/fetchers/
 src/content/docs/reference/renderers/
+
+# Inline HTML renders of dashboard TOMLs — also regenerated via `cargo xtask`.
+src/assets/rendered/
+
+# OG social card — rasterised from public/og.svg by scripts/build-og.mjs each build.
+public/og.png

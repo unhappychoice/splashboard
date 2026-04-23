@@ -2,9 +2,13 @@
 //!
 //! Layout:
 //! - `<out>/matrix.md` — overview: fetcher index, renderer index, shape×renderer matrix.
-//! - `<out>/fetchers/<name>.md` — one page per fetcher (metadata, options, compatible renderers).
-//! - `<out>/renderers/<name>.md` — one page per renderer (metadata, options, accepted shapes,
-//!   compatible fetchers).
+//! - `<out>/fetchers/<family>/<name>.md` — every fetcher page lives inside its family
+//!   subdir (family = the segment before the first underscore). `clock_ratio` joins
+//!   `clock/`, `github_my_prs` joins `github/`, and Starlight's `autogenerate` surfaces
+//!   each family as a collapsible sidebar group. Same split for renderers. The project
+//!   keeps the family prefix on every registered name (see
+//!   [`AGENTS.md`](../../../AGENTS.md) — "Family prefix for every named token"), so
+//!   there are no orphans to worry about.
 //!
 //! The whole point is that these pages can't drift from code: anyone adding a fetcher or
 //! renderer re-runs `cargo xtask gen-matrix` and the catalog updates mechanically.
@@ -41,17 +45,32 @@ pub fn run(out: &Path) -> Result<()> {
     let fetchers = FetcherRegistry::with_builtins();
     let renderers = RenderRegistry::with_builtins();
     write_file(&out.join("matrix.md"), &overview(&fetchers, &renderers))?;
-    let fetchers_dir = out.join("fetchers");
     for f in fetchers.sorted() {
         let page = fetcher_page(&f, &renderers);
-        write_file(&fetchers_dir.join(format!("{}.md", f.name())), &page)?;
+        write_file(&out.join(rel_path("fetchers", f.name())), &page)?;
     }
-    let renderers_dir = out.join("renderers");
     for r in renderers.sorted() {
         let page = renderer_page(&r, &fetchers);
-        write_file(&renderers_dir.join(format!("{}.md", r.name())), &page)?;
+        write_file(&out.join(rel_path("renderers", r.name())), &page)?;
     }
     Ok(())
+}
+
+/// Path for one catalog entry inside the reference tree. Every name carries a family prefix
+/// by project convention, so grouping is unconditional: `clock_ratio` → `clock/clock_ratio.md`,
+/// `media_image` → `media/media_image.md`.
+fn rel_path(kind: &str, name: &str) -> String {
+    format!("{kind}/{}/{name}.md", family_of(name))
+}
+
+/// Cross-link between two pages. Both live at depth 2 under the reference root
+/// (`<kind>/<family>/<name>.md`), so every hop is `../../<kind>/<family>/<name>.md`.
+fn cross_link(to_kind: &str, to_name: &str) -> String {
+    format!("../../{}/{}/{to_name}.md", to_kind, family_of(to_name))
+}
+
+fn family_of(name: &str) -> &str {
+    name.split_once('_').map(|(f, _)| f).unwrap_or(name)
 }
 
 fn write_file(path: &Path, body: &str) -> Result<()> {
@@ -87,8 +106,9 @@ fn overview_fetcher_table(out: &mut String, fetchers: &FetcherRegistry) {
     for f in fetchers.sorted() {
         let _ = writeln!(
             out,
-            "| [`{name}`](fetchers/{name}.md) | {kind} | {safety} | {shapes} |",
+            "| [`{name}`]({link}) | {kind} | {safety} | {shapes} |",
             name = f.name(),
+            link = rel_path("fetchers", f.name()),
             kind = kind_label(&f),
             safety = safety_label(f.safety()),
             shapes = shapes_list(&f.shapes()),
@@ -104,8 +124,9 @@ fn overview_renderer_table(out: &mut String, renderers: &RenderRegistry) {
     for r in renderers.sorted() {
         let _ = writeln!(
             out,
-            "| [`{name}`](renderers/{name}.md) | {accepts} | {animates} |",
+            "| [`{name}`]({link}) | {accepts} | {animates} |",
             name = r.name(),
+            link = rel_path("renderers", r.name()),
             accepts = shapes_list(r.accepts()),
             animates = if r.animates() { "yes" } else { "no" },
         );
@@ -286,7 +307,13 @@ fn render_compatible_renderers(out: &mut String, shapes: &[Shape], renderers: &R
         let matches: Vec<String> = sorted
             .iter()
             .filter(|r| r.accepts().contains(shape))
-            .map(|r| format!("[`{name}`](../renderers/{name}.md)", name = r.name()))
+            .map(|r| {
+                format!(
+                    "[`{name}`]({link})",
+                    name = r.name(),
+                    link = cross_link("renderers", r.name()),
+                )
+            })
             .collect();
         let cell = if matches.is_empty() {
             "_none_".into()
@@ -307,7 +334,13 @@ fn render_compatible_fetchers(out: &mut String, shapes: &[Shape], fetchers: &Fet
         let matches: Vec<String> = sorted
             .iter()
             .filter(|f| f.shapes().contains(shape))
-            .map(|f| format!("[`{name}`](../fetchers/{name}.md)", name = f.name()))
+            .map(|f| {
+                format!(
+                    "[`{name}`]({link})",
+                    name = f.name(),
+                    link = cross_link("fetchers", f.name()),
+                )
+            })
             .collect();
         let cell = if matches.is_empty() {
             "_none_".into()

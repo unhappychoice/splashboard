@@ -5,20 +5,63 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 
 .splash-snapshot {
+  position: relative;
   font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.95rem;
   line-height: 1.15;
   letter-spacing: 0;
   font-variant-ligatures: none;
   font-feature-settings: normal;
-  padding: 0.85rem 1rem;
+  /* Top padding reserves room for the mock titlebar drawn via ::before; the
+     bottom / sides keep the prior breathing room for the terminal content. */
+  padding: 2.2rem 1rem 0.85rem 1rem;
   border-radius: 0.5rem;
   overflow-x: auto;
   white-space: pre;
   tab-size: 4;
-  background: var(--sl-color-bg-inline-code);
-  color: var(--sl-color-text);
-  border: 1px solid var(--sl-color-hairline);
+  /* Match the Splash default theme so previews read as "this is what the splash
+     looks like", not "this is what splashboard renders inside Starlight's code
+     block". `bg` / `text` / `panel_border` mirror `Theme::default()` in
+     src/theme/mod.rs — keep them in sync if the default palette ever changes.
+     Intentionally not using `prefers-color-scheme`: the Splash palette is
+     dark-by-design, so a light-mode site visitor should still see the preview
+     on the intended background. */
+  background: #0e172a;
+  color: #c5d2dc;
+  border: 1px solid #4a6b75;
+}
+
+/* Mock terminal titlebar: painted in `bg_subtle` (the same lift splashboard
+   itself uses for header bands) so the chrome sits above the content as a
+   distinct strip. */
+.splash-snapshot::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.6rem;
+  background: #17243b;
+  border-bottom: 1px solid #4a6b75;
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+/* Classic traffic-light dots — one real dot plus two cloned via box-shadow so
+   a single pseudo-element carries all three. macOS colour values kept literal
+   because the lights are recognisable regardless of palette. */
+.splash-snapshot::after {
+  content: "";
+  position: absolute;
+  top: 0.52rem;
+  left: 0.9rem;
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow:
+    0.95rem 0 0 #febc2e,
+    1.9rem 0 0 #28c840;
 }
 
 /* Each terminal cell is wrapped in a fixed 1ch-wide inline-block so block glyphs (▟▜▛ etc.)
@@ -30,4 +73,47 @@
   width: 1ch;
   overflow: hidden;
   vertical-align: top;
+}
+
+/* Landing full-dashboard preview: behaves like an image — scales to the container's width
+   while preserving aspect ratio, no horizontal scroll ever. The dogfood renders at 120 cells
+   so at the reference previews' fixed 0.95rem font-size it overflows narrower content
+   columns; wrapping it in `.splash-landing` turns the containing box into a query container
+   and pins the snapshot's `font-size` to a fraction of that width. Every other dimension
+   inside the snapshot (cells via `1ch`, chrome via `em`) follows the font, so width / height
+   / titlebar / dots all scale together in lockstep. */
+.splash-landing {
+  container-type: inline-size;
+}
+
+.splash-landing .splash-snapshot {
+  /* 120 cells × ~0.6 em per mono char + side padding ≈ 78 em of content. Divide container
+     width by that with a small safety margin so content fits without a scrollbar on any
+     container width; cap at 0.9rem so the snapshot doesn't balloon on ultra-wide screens. */
+  font-size: min(0.9rem, calc(100cqi / 82));
+  line-height: 1.15;
+  /* Pad and chrome in em so they scale with the font. */
+  padding: 2.3em 1em 0.85em 1em;
+  /* No scroll — content scales to fit by construction. Hide any subpixel leakage. */
+  overflow: hidden;
+  /* The `<pre>` defaults to `width: auto` = full container width; with the safety-margin
+     divisor above the rendered content is slightly narrower, leaving unused whitespace on
+     the right that reads as left-aligned. Shrink the block to its actual rendered width
+     and centre it in the column. */
+  width: fit-content;
+  margin-inline: auto;
+}
+
+.splash-landing .splash-snapshot::before {
+  height: 1.7em;
+}
+
+.splash-landing .splash-snapshot::after {
+  top: 0.55em;
+  left: 0.95em;
+  width: 0.6em;
+  height: 0.6em;
+  box-shadow:
+    1em 0 0 #febc2e,
+    2em 0 0 #28c840;
 }

@@ -1158,7 +1158,7 @@ mod tests {
     #[test]
     fn should_refresh_when_no_cache_entry() {
         let cached = HashMap::new();
-        assert!(should_refresh(&cached, &widget("a", "static")));
+        assert!(should_refresh(&cached, &widget("a", "basic_static")));
     }
 
     #[test]
@@ -1172,20 +1172,20 @@ mod tests {
                 payload: text_payload("x"),
             },
         );
-        assert!(should_refresh(&cached, &widget("a", "static")));
+        assert!(should_refresh(&cached, &widget("a", "basic_static")));
     }
 
     #[test]
     fn should_skip_when_entry_is_fresh() {
         let mut cached = HashMap::new();
         cached.insert("a".into(), CacheEntry::new(text_payload("x"), 60));
-        assert!(!should_refresh(&cached, &widget("a", "static")));
+        assert!(!should_refresh(&cached, &widget("a", "basic_static")));
     }
 
     fn static_widget(id: &str, text: &str) -> WidgetConfig {
         WidgetConfig {
             id: id.into(),
-            fetcher: "static".into(),
+            fetcher: "basic_static".into(),
             format: Some(text.into()),
             refresh_interval: Some(60),
             ..Default::default()
@@ -1211,7 +1211,7 @@ mod tests {
 
         assert!(fresh.contains_key("greeting"));
         let key = registry
-            .get_cached("static")
+            .get_cached("basic_static")
             .unwrap()
             .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
         let loaded = cache.load(&key).unwrap();
@@ -1277,7 +1277,7 @@ mod tests {
         let registry = Registry::with_builtins();
         let widgets = vec![WidgetConfig {
             id: "greeting".into(),
-            fetcher: "static".into(),
+            fetcher: "basic_static".into(),
             format: Some("Hi!".into()),
             refresh_interval: Some(60),
             ..Default::default()
@@ -1305,7 +1305,7 @@ mod tests {
         let registry = Registry::with_builtins();
         let widgets = vec![static_widget("greeting", "Hi!")];
         let key = registry
-            .get_cached("static")
+            .get_cached("basic_static")
             .unwrap()
             .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
         let _held = cache.try_lock(&key).expect("first acquire");
@@ -1413,7 +1413,11 @@ mod tests {
     #[test]
     fn partition_by_shape_support_keeps_widget_with_compatible_renderer() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("d", "disk_usage", Some("gauge_circle"))];
+        let widgets = vec![widget_with_render(
+            "d",
+            "system_disk_usage",
+            Some("gauge_circle"),
+        )];
         let shapes = single_shape("d", Shape::Ratio);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 1);
@@ -1423,7 +1427,11 @@ mod tests {
     #[test]
     fn partition_by_shape_support_rejects_incompatible_renderer() {
         let registry = Registry::with_builtins();
-        let widgets = vec![widget_with_render("d", "disk_usage", Some("grid_calendar"))];
+        let widgets = vec![widget_with_render(
+            "d",
+            "system_disk_usage",
+            Some("grid_calendar"),
+        )];
         let shapes = single_shape("d", Shape::Calendar);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert!(valid.is_empty());
