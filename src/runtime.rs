@@ -131,24 +131,53 @@ fn compute_realtime_payloads(
         .collect()
 }
 
-/// Widgets whose data we're still waiting on — fetchable, cached, but no payload landed yet.
-/// Each iteration recomputes this so the spinner is swapped off the moment the daemon fills
-/// the slot (either via cache replay or a direct refresh). Shape is carried through so future
-/// per-shape skeletons can branch on it in `render_loading`.
+/// Widgets whose data we're still waiting on. Two cases are both treated as "loading":
+///
+/// 1. No payload at all (first run, cleared cache, brand-new widget) — always loading.
+/// 2. Under `--wait`, a stale cache entry whose TTL has expired — the daemon is on the
+///    critical path and will refetch, so the displayed payload is about to change. Showing a
+///    spinner telegraphs that intent instead of rendering last run's data as if it were
+///    authoritative. Without `--wait` we prefer the stale payload to a spinner because the
+///    refetch is best-effort (background daemon) and may not land in this invocation.
+///
+/// Recomputed each iteration so the spinner is swapped off the moment the daemon fills or
+/// refreshes the slot. Shape is carried through so future per-shape skeletons can branch on
+/// it in `render_loading`.
 fn compute_loading(
     cached: &[WidgetConfig],
     payloads: &HashMap<WidgetId, Payload>,
+    entries: &HashMap<WidgetId, CacheEntry>,
     shapes: &HashMap<WidgetId, Shape>,
+    wait: bool,
 ) -> HashMap<WidgetId, Shape> {
     cached
         .iter()
-        .filter(|w| !payloads.contains_key(&w.id))
+        .filter(|w| is_loading(w, payloads, entries, wait))
         .filter_map(|w| shapes.get(&w.id).copied().map(|s| (w.id.clone(), s)))
         .collect()
 }
 
-fn has_loading_widget(cached: &[WidgetConfig], payloads: &HashMap<WidgetId, Payload>) -> bool {
-    cached.iter().any(|w| !payloads.contains_key(&w.id))
+fn is_loading(
+    w: &WidgetConfig,
+    payloads: &HashMap<WidgetId, Payload>,
+    entries: &HashMap<WidgetId, CacheEntry>,
+    wait: bool,
+) -> bool {
+    if !payloads.contains_key(&w.id) {
+        return true;
+    }
+    wait && entries.get(&w.id).is_some_and(|e| !e.is_fresh())
+}
+
+fn has_loading_widget(
+    cached: &[WidgetConfig],
+    payloads: &HashMap<WidgetId, Payload>,
+    entries: &HashMap<WidgetId, CacheEntry>,
+    wait: bool,
+) -> bool {
+    cached
+        .iter()
+        .any(|w| is_loading(w, payloads, entries, wait))
 }
 
 /// Loop exit condition factored out so the "wait for both load and animation axes to settle"
@@ -229,7 +258,7 @@ pub async fn run(
     // placeholders also animate (spinner glyph) so we force-enable animation whenever a cached
     // widget has no entry yet — otherwise the spinner would appear to freeze mid-draw.
     let animated = render::any_widget_animates(&config.widgets, &render_registry)
-        || has_loading_widget(&cached_widgets, &payloads);
+        || has_loading_widget(&cached_widgets, &payloads, &entries, wait);
 
     let loop_window = match (wait, animated) {
         (false, false) => None,
@@ -268,7 +297,7 @@ pub async fn run(
 
     // Cache-first one-shot: no looping needed, paint what we have and exit.
     if loop_window.is_none() {
-        let loading = compute_loading(&cached_widgets, &payloads, &shapes);
+        let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, wait);
         finalize_draw(
             &mut terminal,
             &layout,
@@ -306,8 +335,8 @@ pub async fn run(
             // hard window deadline expires.
             let mut daemon_done = !wait;
             loop {
-                refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
-                let loading = compute_loading(&cached_widgets, &payloads, &shapes);
+                let entries = refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
+                let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, wait);
                 draw(
                     &mut terminal,
                     &layout,
@@ -340,8 +369,8 @@ pub async fn run(
                     tokio::time::sleep(tick).await;
                 }
             }
-            refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
-            let loading = compute_loading(&cached_widgets, &payloads, &shapes);
+            let entries = refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
+            let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, wait);
             finalize_draw(
                 &mut terminal,
                 &layout,
@@ -373,7 +402,7 @@ pub async fn run(
             }
             // Realtime values in the fallback path are still fresh at this point — the compute
             // above was microseconds ago. No refresh needed before the single final draw.
-            let loading = compute_loading(&cached_widgets, &payloads, &shapes);
+            let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, wait);
             finalize_draw(
                 &mut terminal,
                 &layout,
@@ -442,7 +471,7 @@ fn refresh_payloads(
     buckets: &WidgetBuckets<'_>,
     shapes: &HashMap<WidgetId, Shape>,
     payloads: &mut HashMap<WidgetId, Payload>,
-) {
+) -> HashMap<WidgetId, CacheEntry> {
     let entries = load_entries(cache.as_ref(), registry, buckets.cached, shapes);
     for (id, payload) in entries_to_payloads(&entries) {
         payloads.insert(id, payload);
@@ -453,6 +482,7 @@ fn refresh_payloads(
     for (w, err) in buckets.shape_invalid {
         payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
     }
+    entries
 }
 
 fn fetch_context(w: &WidgetConfig, shape: Option<Shape>, deadline: Duration) -> FetchContext {
@@ -1468,10 +1498,55 @@ mod tests {
         let mut shapes: HashMap<WidgetId, Shape> = HashMap::new();
         shapes.insert("pending".into(), Shape::Entries);
         shapes.insert("ready".into(), Shape::Text);
-        let loading = compute_loading(&cached, &payloads, &shapes);
+        let entries = HashMap::new();
+        let loading = compute_loading(&cached, &payloads, &entries, &shapes, false);
         assert_eq!(loading.len(), 1);
         assert_eq!(loading.get("pending"), Some(&Shape::Entries));
         assert!(!loading.contains_key("ready"));
+    }
+
+    #[test]
+    fn compute_loading_flags_stale_entry_only_under_wait() {
+        // Regression for: under `--wait` a stale cache entry still shows last-run data instead
+        // of telegraphing that a refetch is in flight.
+        let cached = vec![widget("stale", "github_my_prs")];
+        let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
+        payloads.insert("stale".into(), text_payload("last-run"));
+        let mut shapes: HashMap<WidgetId, Shape> = HashMap::new();
+        shapes.insert("stale".into(), Shape::Entries);
+        let mut entries = HashMap::new();
+        entries.insert(
+            "stale".into(),
+            CacheEntry {
+                refreshed_at: 0,
+                ttl_seconds: 60,
+                payload: text_payload("last-run"),
+            },
+        );
+
+        // Without --wait: stale cache is shown as-is, no spinner.
+        let without_wait = compute_loading(&cached, &payloads, &entries, &shapes, false);
+        assert!(
+            without_wait.is_empty(),
+            "stale cache should render without spinner off the wait path"
+        );
+
+        // With --wait: stale cache → spinner because the daemon is on the critical path.
+        let with_wait = compute_loading(&cached, &payloads, &entries, &shapes, true);
+        assert_eq!(with_wait.get("stale"), Some(&Shape::Entries));
+    }
+
+    #[test]
+    fn compute_loading_keeps_fresh_entry_off_spinner_even_under_wait() {
+        let cached = vec![widget("fresh", "github_my_prs")];
+        let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
+        payloads.insert("fresh".into(), text_payload("now"));
+        let mut shapes: HashMap<WidgetId, Shape> = HashMap::new();
+        shapes.insert("fresh".into(), Shape::Entries);
+        let mut entries = HashMap::new();
+        entries.insert("fresh".into(), CacheEntry::new(text_payload("now"), 600));
+        let loading = compute_loading(&cached, &payloads, &entries, &shapes, true);
+        assert!(loading.is_empty());
     }
 
     #[test]
@@ -1479,8 +1554,9 @@ mod tests {
         let cached = vec![widget("a", "github_my_prs"), widget("b", "clock")];
         let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
         payloads.insert("a".into(), text_payload("x"));
-        assert!(has_loading_widget(&cached, &payloads));
+        let entries = HashMap::new();
+        assert!(has_loading_widget(&cached, &payloads, &entries, false));
         payloads.insert("b".into(), text_payload("y"));
-        assert!(!has_loading_widget(&cached, &payloads));
+        assert!(!has_loading_widget(&cached, &payloads, &entries, false));
     }
 }
