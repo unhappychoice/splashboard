@@ -21,6 +21,16 @@ hero:
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import projectGithubActivity from '../../assets/rendered/project_github_activity.html?raw';
+
+## Example: `project_github_activity`
+
+A real render of the dogfood dashboard — no screenshot, no editing. Each
+cell below is painted by the same renderers splashboard uses at runtime,
+driven by each fetcher's sample data (so there's no network or filesystem
+access at build time).
+
+<Fragment set:html={projectGithubActivity} />
 
 ## What is this
 
