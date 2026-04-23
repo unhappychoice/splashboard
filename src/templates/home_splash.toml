@@ -19,7 +19,7 @@ render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", 
 # wall clock, so the splash reads as context-aware rather than a generic "hello".
 [[widget]]
 id = "greeting_prefix"
-fetcher = "static"
+fetcher = "basic_static"
 format = "good "
 render = { type = "text_plain", align = "right" }
 

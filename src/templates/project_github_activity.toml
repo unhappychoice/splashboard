@@ -63,7 +63,7 @@ render = { type = "list_timeline", bullet = "●", date_format = "relative", max
 # renders a blank line, the `width = { length = … }` in the row carves the gap.
 [[widget]]
 id = "gap"
-fetcher = "static"
+fetcher = "basic_static"
 format = " "
 render = "text_plain"
 
