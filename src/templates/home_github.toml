@@ -48,7 +48,7 @@ render = { type = "list_timeline", bullet = "●", date_format = "relative", max
 [[widget]]
 id = "gap"
 fetcher = "static"
-format = ""
+format = " "
 render = "text_plain"
 
 # ── Layout ─────────────────────────────────────────────────────────

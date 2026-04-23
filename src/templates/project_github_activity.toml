@@ -62,7 +62,7 @@ render = { type = "list_timeline", bullet = "●", date_format = "relative", max
 [[widget]]
 id = "gap"
 fetcher = "static"
-format = ""
+format = " "
 render = "text_plain"
 
 # ── Layout ─────────────────────────────────────────────────────────
@@ -100,9 +100,10 @@ bg = "subtle"
 [[row]]
 height = { length = 1 }
 
-# Branch: compact one-line git status on its own band.
+# Branch: compact one-line git status on its own band. Row height is 2 because the top
+# border consumes the first row; content lands on the second.
 [[row]]
-height = { length = 1 }
+height = { length = 2 }
 border = "top"
 title = "branch"
   [[row.child]]

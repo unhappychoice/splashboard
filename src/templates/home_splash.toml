@@ -60,7 +60,7 @@ render = { type = "gauge_line", label = "year", value_format = "percent" }
 [[widget]]
 id = "gap"
 fetcher = "static"
-format = ""
+format = " "
 render = "text_plain"
 
 # ── Layout ─────────────────────────────────────────────────────────
@@ -83,8 +83,9 @@ height = { length = 1 }
 [[row]]
 height = { length = 1 }
 
+# Section divider over the ambient band. Height 2 = 1 border rule + 1 content row.
 [[row]]
-height = { length = 1 }
+height = { length = 2 }
 border = "top"
 title = "today"
   [[row.child]]

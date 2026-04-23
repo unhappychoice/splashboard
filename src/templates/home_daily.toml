@@ -80,7 +80,7 @@ render = { type = "gauge_line", label = "day", value_format = "percent" }
 [[widget]]
 id = "gap"
 fetcher = "static"
-format = ""
+format = " "
 render = "text_plain"
 
 # ── Layout ─────────────────────────────────────────────────────────
@@ -109,10 +109,11 @@ height = { length = 1 }
 height = { length = 1 }
 
 # Outside (left, inline weather/sunrise/moon) | Time ratios (right, 4 gauges).
-# Four 1-row rails keep the left and right columns aligned without needing
-# nested row stacks (the config grammar is one row of columns, not nested rows).
+# The first rail carries the top-border section titles; subsequent rails are plain
+# 1-row content. `border = "top"` consumes the first row of its cell, so the header
+# rail is 2 rows tall (1 border + 1 content).
 [[row]]
-height = { length = 1 }
+height = { length = 2 }
 flex = "center"
   [[row.child]]
   widget = "weather"
