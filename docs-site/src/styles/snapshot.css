@@ -75,13 +75,39 @@
   vertical-align: top;
 }
 
-/* Landing-page full-dashboard preview: the dogfood config is rendered at 120 cells wide so
-   the figlet hero has room to breathe, which at the reference previews' 0.95rem font-size
-   would overflow the content column on anything below ~1100px. Scale the font down (and
-   tighten line-height to match) so the whole splash lands inside the column at any width
-   above ~640px. Tight clamp lower bound keeps glyphs legible on mobile; upper bound caps
-   the scale on ultra-wide so the splash doesn't dominate the fold. */
+/* Landing full-dashboard preview: behaves like an image — scales to the container's width
+   while preserving aspect ratio, no horizontal scroll ever. The dogfood renders at 120 cells
+   so at the reference previews' fixed 0.95rem font-size it overflows narrower content
+   columns; wrapping it in `.splash-landing` turns the containing box into a query container
+   and pins the snapshot's `font-size` to a fraction of that width. Every other dimension
+   inside the snapshot (cells via `1ch`, chrome via `em`) follows the font, so width / height
+   / titlebar / dots all scale together in lockstep. */
+.splash-landing {
+  container-type: inline-size;
+}
+
 .splash-landing .splash-snapshot {
-  font-size: clamp(0.5rem, 1.35vw, 0.8rem);
-  line-height: 1.05;
+  /* 120 cells × ~0.6 em per mono char + side padding ≈ 78 em of content. Divide container
+     width by that with a small safety margin so content fits without a scrollbar on any
+     container width; cap at 0.9rem so the snapshot doesn't balloon on ultra-wide screens. */
+  font-size: min(0.9rem, calc(100cqi / 82));
+  line-height: 1.15;
+  /* Pad and chrome in em so they scale with the font. */
+  padding: 2.3em 1em 0.85em 1em;
+  /* No scroll — content scales to fit by construction. Hide any subpixel leakage. */
+  overflow: hidden;
+}
+
+.splash-landing .splash-snapshot::before {
+  height: 1.7em;
+}
+
+.splash-landing .splash-snapshot::after {
+  top: 0.55em;
+  left: 0.95em;
+  width: 0.6em;
+  height: 0.6em;
+  box-shadow:
+    1em 0 0 #febc2e,
+    2em 0 0 #28c840;
 }
