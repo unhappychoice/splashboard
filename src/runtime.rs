@@ -60,9 +60,22 @@ fn derive_shape(
 ) -> Option<Shape> {
     if let Some(spec) = &w.render
         && let Some(renderer) = renderers.get(spec.renderer_name())
-        && let Some(&shape) = renderer.accepts().first()
     {
-        return Some(shape);
+        let accepted = renderer.accepts();
+        // Prefer the fetcher's own shape ordering intersected with what the renderer
+        // accepts — fetchers list their most-natural shape first (e.g. `project` lists
+        // `TextBlock` ahead of `Text`), and that preference should survive even when the
+        // renderer accepts multiple shapes. Falls back to the renderer's first accept when
+        // the fetcher is unknown or has no intersection, so the old "first accept wins"
+        // behaviour still holds for placeholder / mismatch paths.
+        if let Some(fetcher) = fetchers.get(&w.fetcher)
+            && let Some(shape) = fetcher.shapes().into_iter().find(|s| accepted.contains(s))
+        {
+            return Some(shape);
+        }
+        if let Some(&shape) = accepted.first() {
+            return Some(shape);
+        }
     }
     fetchers.get(&w.fetcher).map(|f| f.default_shape())
 }
@@ -1244,6 +1257,22 @@ mod tests {
         assert_eq!(
             derive_shape(&w, &registry, &render_registry),
             Some(Shape::Text)
+        );
+    }
+
+    #[test]
+    fn derive_shape_prefers_fetcher_primary_when_renderer_accepts_multiple() {
+        // `project` lists shapes as [Entries, TextBlock, Text]; `text_plain` accepts
+        // [Text, TextBlock]. Under the old "renderer-first" rule this picked Text and
+        // forced the subtitle back to a one-liner. The new intersection rule picks the
+        // fetcher's first accepted shape (TextBlock here) so multi-line fetchers get
+        // their natural shape without a per-widget override.
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let w = widget_with_render("s", "project", Some("text_plain"));
+        assert_eq!(
+            derive_shape(&w, &registry, &render_registry),
+            Some(Shape::TextBlock)
         );
     }
 
