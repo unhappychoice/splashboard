@@ -3,6 +3,8 @@ title: Presets
 description: Four curated dashboards you can adopt verbatim — one per context.
 ---
 
+import projectGithubActivity from '../../../assets/rendered/project_github_activity.html?raw';
+
 splashboard 0.x ships four curated dashboard presets. Each is a composed
 design (hero / subtitle / divider / body / hierarchy / breathing), not a
 widget stack. Pick one as a starting point and edit freely.
@@ -141,31 +143,12 @@ project. Repo name as a figlet hero, GitHub metadata subtitle, and a grid
 of activity panes (commits heatmap, top contributors, open PRs / issues,
 languages breakdown, recent releases).
 
-```
-  ┌──────────┐
-  │          │  ███████╗██████╗ ██╗      █████╗ ███████╗██╗  ██╗
-  │  [logo]  │  ██╔════╝██╔══██╗██║     ██╔══██╗██╔════╝██║  ██║
-  │          │  ███████╗██████╔╝██║     ███████║███████╗███████║
-  │          │  ╚════██║██╔═══╝ ██║     ██╔══██║╚════██║██╔══██║
-  │          │  ███████║██║     ███████╗██║  ██║███████║██║  ██║
-  └──────────┘  ╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+<div class="splash-landing" set:html={projectGithubActivity} />
 
-                unhappychoice/splashboard · ★ 1.2k · ISC
-
-     ───  languages  ───────      ───  released  ──────
-
-          Rust     ████████ 89%       ● v0.2.0  3d ago
-          TOML     █        5%        ● v0.1.9  2w ago
-          Shell    ▎        2%        ● v0.1.8  1mo ago
-
-     ───  PRs  ─────────────       ───  issues  ───────
-
-          • #42 feat: theme           • #78 docs: guide
-          • #41 fix: grid             • #77 feat: preset
-          • #40 chore: deps           • #76 meta: 0.x
-
-     ───  commits  ─────────       ───  top contributors
-```
+The preview above is a live render — `cargo xtask` composes the TOML
+below through the real layout engine using each fetcher's sample data,
+so what you see is exactly what the splash looks like (minus real-data
+variation).
 
 Full TOML:
 
