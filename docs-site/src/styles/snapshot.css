@@ -5,13 +5,16 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 
 .splash-snapshot {
+  position: relative;
   font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.95rem;
   line-height: 1.15;
   letter-spacing: 0;
   font-variant-ligatures: none;
   font-feature-settings: normal;
-  padding: 0.85rem 1rem;
+  /* Top padding reserves room for the mock titlebar drawn via ::before; the
+     bottom / sides keep the prior breathing room for the terminal content. */
+  padding: 2.2rem 1rem 0.85rem 1rem;
   border-radius: 0.5rem;
   overflow-x: auto;
   white-space: pre;
@@ -26,6 +29,39 @@
   background: #0e172a;
   color: #c5d2dc;
   border: 1px solid #4a6b75;
+}
+
+/* Mock terminal titlebar: painted in `bg_subtle` (the same lift splashboard
+   itself uses for header bands) so the chrome sits above the content as a
+   distinct strip. */
+.splash-snapshot::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.6rem;
+  background: #17243b;
+  border-bottom: 1px solid #4a6b75;
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+/* Classic traffic-light dots — one real dot plus two cloned via box-shadow so
+   a single pseudo-element carries all three. macOS colour values kept literal
+   because the lights are recognisable regardless of palette. */
+.splash-snapshot::after {
+  content: "";
+  position: absolute;
+  top: 0.52rem;
+  left: 0.9rem;
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow:
+    0.95rem 0 0 #febc2e,
+    1.9rem 0 0 #28c840;
 }
 
 /* Each terminal cell is wrapped in a fixed 1ch-wide inline-block so block glyphs (▟▜▛ etc.)
