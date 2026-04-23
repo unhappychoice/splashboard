@@ -208,12 +208,12 @@ definitive list.
 
 [[widget]]
 id = "hero"
-fetcher = "project_name"
+fetcher = "git_repo_name"
 render = { type = "text_ascii", style = "figlet", font = "banner", align = "center", color = "panel_title" }
 
 [[widget]]
 id = "subtitle"
-fetcher = "project"
+fetcher = "github_repo"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
