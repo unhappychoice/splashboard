@@ -30,6 +30,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Getting started', link: '/guides/getting-started/' },
+            { label: 'Concepts', link: '/guides/concepts/' },
             { label: 'Configuration', link: '/guides/configuration/' },
             { label: 'Presets', link: '/guides/presets/' },
             { label: 'Themes', link: '/guides/themes/' },

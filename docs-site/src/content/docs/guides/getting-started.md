@@ -66,12 +66,15 @@ clock centered in the splash.
 
 From here:
 
-- [Configuration](/splashboard/guides/configuration/) — the full TOML schema
-  (settings, dashboards, widgets, rows, render options).
-- [Presets](/splashboard/guides/presets/) — curated dashboards you can adopt
-  verbatim.
-- [Themes](/splashboard/guides/themes/) — six built-in palettes plus per-token
-  overrides.
+- [Concepts](/splashboard/guides/concepts/) — the mental model (Widget =
+  Fetcher + Renderer + Layout slot). Read this next if the TOML above
+  looks a bit opaque; it unlocks the rest of the docs.
+- [Configuration](/splashboard/guides/configuration/) — the full TOML
+  schema (settings, dashboards, widgets, rows, render options).
+- [Presets](/splashboard/guides/presets/) — curated dashboards you can
+  adopt verbatim.
+- [Themes](/splashboard/guides/themes/) — six built-in palettes plus
+  per-token overrides.
 - The [reference](/splashboard/reference/matrix/) — the complete list of
   fetchers and renderers with their options and compatible shapes.
 

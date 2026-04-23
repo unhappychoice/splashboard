@@ -12,6 +12,9 @@ different splashes automatically — the killer feature competitor products
 
 - **[Getting started](/splashboard/guides/getting-started/)** — install,
   wire into your shell, render the first splash.
+- **[Concepts](/splashboard/guides/concepts/)** — the one-line mental
+  model: Widget = Fetcher + Renderer + Layout slot. Read this before
+  configuration.
 - **[Configuration](/splashboard/guides/configuration/)** — the TOML
   schema: settings, dashboards, widgets, rows, render options.
 - **[Presets](/splashboard/guides/presets/)** — four curated dashboards

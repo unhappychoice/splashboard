@@ -3,6 +3,11 @@ title: Configuration
 description: The TOML schema for settings, dashboards, widgets, rows, and render options.
 ---
 
+This page is the TOML schema. If you haven't read
+[Concepts](/splashboard/guides/concepts/) yet, start there — every field
+below is easier to understand once the Widget = Fetcher + Renderer +
+Layout slot equation has clicked.
+
 splashboard splits configuration into two files by design:
 
 - **settings** — user preferences that apply to every dashboard (theme,
