@@ -16,6 +16,7 @@ pub mod clock;
 pub mod git;
 pub mod github;
 pub mod project;
+pub mod quote_of_day;
 pub mod read_store;
 pub mod static_text;
 pub mod system;
@@ -230,6 +231,7 @@ impl Registry {
         for f in clock::realtime_fetchers() {
             r.register_realtime(f);
         }
+        r.register_realtime(Arc::new(quote_of_day::QuoteOfDayFetcher));
         for f in system::realtime_fetchers() {
             r.register_realtime(f);
         }
