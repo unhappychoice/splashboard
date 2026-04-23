@@ -186,6 +186,11 @@ pub enum SizeSpec {
     Min(u16),
     Max(u16),
     Percentage(u16),
+    /// `height = "auto"` — row / child sizes itself to the rendered content.
+    /// Resolves at draw time via the renderer's `natural_height`, so a figlet
+    /// hero that word-wraps onto a second block gets the row height it needs
+    /// while a single-word hero fits in its natural 7-row box.
+    Auto,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -380,6 +385,9 @@ fn row_height_estimate(size: Option<SizeSpec>) -> u16 {
         Some(SizeSpec::Length(n)) | Some(SizeSpec::Min(n)) | Some(SizeSpec::Max(n)) => n,
         Some(SizeSpec::Fill(_)) => 3,
         Some(SizeSpec::Percentage(_)) => 0,
+        // Content-sized rows don't know their height until render, so use the same
+        // Fill default estimate used by other flexible sizes for viewport sizing.
+        Some(SizeSpec::Auto) => 3,
         None => 3,
     }
 }
@@ -426,6 +434,7 @@ fn make_child(size: Option<SizeSpec>, layout: Layout) -> Child {
         Some(SizeSpec::Min(n)) => Child::min(n, layout),
         Some(SizeSpec::Max(n)) => Child::max(n, layout),
         Some(SizeSpec::Percentage(p)) => Child::percentage(p, layout),
+        Some(SizeSpec::Auto) => Child::auto(layout),
         None => Child::fill(1, layout),
     }
 }

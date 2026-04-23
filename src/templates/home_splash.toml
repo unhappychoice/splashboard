@@ -47,12 +47,12 @@ render = { type = "text_plain", align = "center" }
 [[row]]
 height = { length = 3 }
 
-# 7 rows matches the natural height of an ansi_shadow figlet block.
-# Long multi-word terminal names overflow the 100-cell width as a single line;
-# the renderer skips word-wrap when the cell isn't tall enough for a 2-block
-# stack so the text clips sideways instead of rendering an empty area.
+# `height = "auto"` asks the row to size itself to the hero's rendered height:
+# single-word terminal names ("iTerm2") get one 7-row figlet block, multi-word
+# names ("Windows Terminal") wrap onto two 7-row blocks and the row grows to
+# fit — no wasted vertical space either way.
 [[row]]
-height = { length = 7 }
+height = "auto"
   [[row.child]]
   widget = "hero"
 

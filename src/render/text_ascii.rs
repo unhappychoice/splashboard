@@ -104,6 +104,35 @@ impl Renderer for TextAsciiRenderer {
             }
         }
     }
+    fn natural_height(
+        &self,
+        body: &Body,
+        opts: &RenderOptions,
+        max_width: u16,
+        _registry: &Registry,
+    ) -> u16 {
+        let Body::Text(d) = body else {
+            return 1;
+        };
+        match opts.style.as_deref() {
+            Some("figlet") => {
+                // u16::MAX lets wrap always succeed — we want the true row count
+                // given the width, not the height-gated one render() uses.
+                let rendered = figlet_wrapped(&d.value, opts.font.as_deref(), max_width, u16::MAX);
+                rendered.lines().count().clamp(1, u16::MAX as usize) as u16
+            }
+            _ => blocks_height(opts.pixel_size.as_deref()),
+        }
+    }
+}
+
+fn blocks_height(pixel_size: Option<&str>) -> u16 {
+    match parse_pixel_size(pixel_size.unwrap_or("quadrant")) {
+        Some(PixelSize::Full) => 8,
+        Some(PixelSize::Quadrant) => 4,
+        Some(PixelSize::Sextant) => 3,
+        _ => 4,
+    }
 }
 
 fn render_blocks(

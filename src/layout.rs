@@ -82,6 +82,10 @@ pub enum Size {
     Max(u16),
     #[allow(dead_code)]
     Percentage(u16),
+    /// Height / width chosen from the widget's natural size at render time.
+    /// Resolves by asking the renderer via `natural_height`; the layout engine
+    /// substitutes a `Length(n)` constraint once `n` is known.
+    Auto,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -284,6 +288,13 @@ impl Child {
         }
     }
 
+    pub fn auto(layout: Layout) -> Self {
+        Self {
+            size: Size::Auto,
+            layout,
+        }
+    }
+
     #[allow(dead_code)]
     pub fn percentage(percent: u16, layout: Layout) -> Self {
         Self {
@@ -414,7 +425,11 @@ fn draw_stack(
     theme: &Theme,
     loading: &HashMap<WidgetId, Shape>,
 ) {
-    let constraints: Vec<Constraint> = children.iter().map(|c| to_constraint(c.size)).collect();
+    let axis = direction;
+    let constraints: Vec<Constraint> = children
+        .iter()
+        .map(|c| to_constraint(c.size, &c.layout, axis, area, widgets, specs, registry))
+        .collect();
     let rects = RatLayout::default()
         .direction(to_ratatui_direction(direction))
         .constraints(constraints)
@@ -445,14 +460,107 @@ fn to_ratatui_flex(flex: Flex) -> RatFlex {
     }
 }
 
-fn to_constraint(size: Size) -> Constraint {
+fn to_constraint(
+    size: Size,
+    layout: &Layout,
+    axis: Direction,
+    parent: Rect,
+    widgets: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &Registry,
+) -> Constraint {
     match size {
         Size::Fill(w) => Constraint::Fill(w),
         Size::Length(n) => Constraint::Length(n),
         Size::Min(n) => Constraint::Min(n),
         Size::Max(n) => Constraint::Max(n),
         Size::Percentage(p) => Constraint::Percentage(p),
+        Size::Auto => Constraint::Length(natural_length(
+            layout, axis, parent, widgets, specs, registry,
+        )),
     }
+}
+
+/// Natural size along `axis` for a layout subtree. For widget leaves it asks
+/// the renderer via `natural_height` (used for both axes today — the only real
+/// consumer is `text_ascii` measuring wrapped figlet output, which is vertical
+/// only). Stacks recurse: matching-axis stacks sum their children, cross-axis
+/// stacks take the max. Panels add 1 to the matching axis for a top border.
+fn natural_length(
+    layout: &Layout,
+    axis: Direction,
+    parent: Rect,
+    widgets: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &Registry,
+) -> u16 {
+    let size = match layout {
+        Layout::Widget { id, panel, .. } => {
+            let base = widgets
+                .get(id)
+                .map(|p| widget_natural(id, &p.body, specs, registry, parent.width))
+                .unwrap_or((1, 1));
+            let (w, h) = base;
+            let axis_value = if matches!(axis, Direction::Vertical) {
+                h
+            } else {
+                w
+            };
+            axis_value + panel_axis_overhead(panel, axis)
+        }
+        Layout::Stack {
+            direction,
+            children,
+            panel,
+            ..
+        } => {
+            let values = children.iter().map(|c| match c.size {
+                Size::Length(n) | Size::Min(n) | Size::Max(n) if axis == *direction => n,
+                _ => natural_length(&c.layout, axis, parent, widgets, specs, registry),
+            });
+            let combined = if axis == *direction {
+                values.sum::<u16>()
+            } else {
+                values.max().unwrap_or(0)
+            };
+            combined + panel_axis_overhead(panel, axis)
+        }
+        Layout::Empty => 0,
+    };
+    size.max(1)
+}
+
+fn panel_axis_overhead(panel: &Option<Panel>, axis: Direction) -> u16 {
+    let Some(p) = panel else { return 0 };
+    match p.border {
+        BorderStyle::Top if matches!(axis, Direction::Vertical) => 1,
+        BorderStyle::Plain | BorderStyle::Rounded | BorderStyle::Thick | BorderStyle::Double => 2,
+        _ => 0,
+    }
+}
+
+fn widget_natural(
+    id: &str,
+    body: &crate::payload::Body,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &Registry,
+    max_width: u16,
+) -> (u16, u16) {
+    let spec = specs.get(id);
+    let name = spec
+        .map(|s| s.renderer_name().to_string())
+        .unwrap_or_else(|| {
+            super::render::default_renderer_for(super::render::shape_of(body)).into()
+        });
+    let options = spec.map(|s| s.options()).unwrap_or_default();
+    let renderer = match registry.get(&name) {
+        Some(r) => r,
+        None => return (1, 1),
+    };
+    (
+        max_width,
+        renderer.natural_height(body, &options, max_width, registry),
+    )
 }
 
 fn to_ratatui_direction(d: Direction) -> RatDir {
