@@ -135,11 +135,63 @@ fn render_figlet(
     opts: &RenderOptions,
     theme: &Theme,
 ) {
-    let rendered = figletify(&data.value, opts.font.as_deref());
+    let rendered = figlet_wrapped(&data.value, opts.font.as_deref(), area.width);
     let p = Paragraph::new(rendered)
         .style(Style::default().fg(resolve_color(opts, theme)))
         .alignment(parse_alignment(opts.align.as_deref()));
     frame.render_widget(p, area);
+}
+
+/// Figlet-render `text` and word-wrap the output if it would overflow `max_width`.
+/// Terminal names like "Windows Terminal" spill off a 100-cell splash at figlet
+/// widths; greedy-packing words into as-wide-as-fits figlet blocks and stacking
+/// those blocks vertically keeps the hero inside the cell without clipping. A
+/// single word that still overflows is rendered as-is (truncation is on ratatui —
+/// better a partial glyph than a blank cell).
+fn figlet_wrapped(text: &str, font_name: Option<&str>, max_width: u16) -> String {
+    let font = load_font(font_name);
+    let render = |s: &str| font.convert(s).map(|f| f.to_string());
+    let Some(full) = render(text) else {
+        return text.to_string();
+    };
+    if block_width(&full) <= max_width as usize || !text.contains(' ') {
+        return full;
+    }
+    let mut blocks: Vec<String> = Vec::new();
+    let mut line_words: Vec<&str> = Vec::new();
+    for word in text.split_whitespace() {
+        line_words.push(word);
+        let candidate = line_words.join(" ");
+        let fits = render(&candidate).is_some_and(|r| block_width(&r) <= max_width as usize);
+        if fits {
+            continue;
+        }
+        line_words.pop();
+        if !line_words.is_empty()
+            && let Some(rendered) = render(&line_words.join(" "))
+        {
+            blocks.push(rendered);
+        }
+        line_words.clear();
+        line_words.push(word);
+    }
+    if !line_words.is_empty()
+        && let Some(rendered) = render(&line_words.join(" "))
+    {
+        blocks.push(rendered);
+    }
+    if blocks.is_empty() {
+        full
+    } else {
+        blocks.join("\n")
+    }
+}
+
+/// Cell width of a multi-line figlet block = max char-count across all lines.
+/// Figlet fonts emit same-width lines per glyph, so max == any-line width, but
+/// we walk them to be safe against trailing padding differences.
+fn block_width(block: &str) -> usize {
+    block.lines().map(|l| l.chars().count()).max().unwrap_or(0)
 }
 
 fn resolve_color(opts: &RenderOptions, theme: &Theme) -> Color {
@@ -187,13 +239,6 @@ fn parse_alignment(s: Option<&str>) -> ratatui::layout::Alignment {
         Some("right") => ratatui::layout::Alignment::Right,
         _ => ratatui::layout::Alignment::Left,
     }
-}
-
-fn figletify(text: &str, font_name: Option<&str>) -> String {
-    let font = load_font(font_name);
-    font.convert(text)
-        .map(|f| f.to_string())
-        .unwrap_or_else(|| text.to_string())
 }
 
 fn load_font(name: Option<&str>) -> FIGfont {
@@ -268,17 +313,47 @@ mod tests {
     #[test]
     fn figlet_fonts_load_without_panicking() {
         // Every bundled font parses through figlet_rs and converts a sample string.
-        for name in ["standard", "small", "big", "banner"] {
-            let text = figletify("hi", Some(name));
+        for name in [
+            "standard",
+            "small",
+            "big",
+            "banner",
+            "ansi_shadow",
+            "slant",
+            "isometric",
+            "doom",
+        ] {
+            let text = figlet_wrapped("hi", Some(name), 200);
             assert!(!text.is_empty(), "font {name} produced empty output");
         }
     }
 
     #[test]
     fn unknown_font_falls_back_to_standard() {
-        let fallback = figletify("hi", Some("no-such-font"));
-        let std_out = figletify("hi", Some("standard"));
+        let fallback = figlet_wrapped("hi", Some("no-such-font"), 200);
+        let std_out = figlet_wrapped("hi", Some("standard"), 200);
         assert_eq!(fallback, std_out);
+    }
+
+    #[test]
+    fn figlet_wraps_multiword_hero_to_fit_width() {
+        // "Windows Terminal" at ansi_shadow is ~100 cells wide on one line.
+        // At a 60-cell width, each word lands on its own 7-row block — so the
+        // output ends up taller than either word alone.
+        let joined = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 200)
+            .lines()
+            .count();
+        let wrapped = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 60)
+            .lines()
+            .count();
+        assert!(wrapped > joined, "expected wrap to produce more lines");
+    }
+
+    #[test]
+    fn figlet_keeps_short_text_on_one_block() {
+        let rendered = figlet_wrapped("Fri 24", Some("ansi_shadow"), 100);
+        // 7 rows tall, no wrap needed.
+        assert!(rendered.lines().count() <= 8);
     }
 
     #[test]

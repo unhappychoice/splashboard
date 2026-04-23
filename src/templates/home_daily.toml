@@ -19,7 +19,7 @@ render = { type = "text_plain", align = "center" }
 id = "hero"
 fetcher = "clock"
 format = "%a %e"
-render = { type = "text_ascii", style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
 
 [[widget]]
 id = "date"
@@ -127,7 +127,7 @@ height = { length = 1 }
 
 # Hero + date (full-width, no divider needed).
 [[row]]
-height = { length = 7 }
+height = { length = 4 }
   [[row.child]]
   widget = "hero"
 
