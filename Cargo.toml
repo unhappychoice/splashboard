@@ -16,6 +16,13 @@ readme = "README.md"
 keywords = ["tui", "splash", "dashboard", "terminal", "ratatui"]
 categories = ["command-line-utilities"]
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-v{ version }-{ target }{ archive-suffix }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
 [dependencies]
 ratatui = { version = "0.29", features = ["widget-calendar", "serde"] }
 time = "0.3"
