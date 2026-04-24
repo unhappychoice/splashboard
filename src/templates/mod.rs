@@ -64,7 +64,7 @@ pub const TEMPLATES: &[Template] = &[
     Template {
         name: "project_minimal",
         context: TemplateContext::Project,
-        description: "Quiet four-line preset: repo name + slug / description / license, no figlet. Acknowledges the repo without taking over the screen.",
+        description: "Quiet two-line preset: repo name + latest git tag. Fully offline (no GitHub calls) — acknowledges the repo without taking over the screen.",
         body: include_str!("project_minimal.toml"),
     },
 ];

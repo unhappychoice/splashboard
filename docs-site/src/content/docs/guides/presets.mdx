@@ -144,20 +144,20 @@ Requires `gh auth login` (or `GITHUB_TOKEN`). The repo is discovered
 from `git remote origin`, so any repo you cd into produces a tailored
 dashboard with no per-repo edits.
 
-### `project_minimal` — four quiet lines
+### `project_minimal` — two quiet lines
 
-Repo name + slug / description / license, centred on a lot of
-whitespace. Acknowledges the repo without taking over the screen —
-useful when you cd into the same project hundreds of times a day and
-want `project_github_activity` to feel like a conscious choice rather
-than the default noise.
+Repo name + latest git tag, centred on a lot of whitespace. Acknowledges
+the repo without taking over the screen — useful when you cd into the
+same project hundreds of times a day and want `project_github_activity`
+to feel like a conscious choice rather than the default noise.
 
 <div class="splash-landing" set:html={projectMinimal} />
 
 | role | implementation |
 |---|---|
 | name | `git_repo_name` → `text_plain` |
-| subtitle | `github_repo` (slug / description / license) → `text_plain` |
+| tag | `git_latest_tag` (Text) → `text_plain` |
 
-No token required for the name alone — `github_repo`'s remaining lines
-collapse when unauthenticated, so the preset stays useful in any state.
+Fully offline — every widget reads local git, so the preset renders the
+same whether you're online, behind a firewall, or haven't run
+`gh auth login`.
