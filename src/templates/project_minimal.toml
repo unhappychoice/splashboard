@@ -1,9 +1,9 @@
 # project_minimal — the quiet sibling of `project_github_activity` / `project_splash`.
-# Two centred lines: repo name and its latest git tag. No figlet, no heatmap, no
-# panels, and deliberately no GitHub calls — every widget reads local git, so the
-# preset renders the same whether you're offline, behind a firewall, or haven't
-# run `gh auth login`. For users who want acknowledgment they're in a repo without
-# the splash taking over every `cd`. Pairs with `home_minimal`.
+# Repo name, latest tag, and the last three commits — centred on lots of whitespace,
+# no figlet, no heatmap, no panels. Deliberately GitHub-free: every widget reads
+# local git, so the preset renders the same whether you're offline, behind a
+# firewall, or haven't run `gh auth login`. For users who want acknowledgment they're
+# in a repo without the splash taking over every `cd`. Pairs with `home_minimal`.
 
 # ── Widgets ────────────────────────────────────────────────────────
 
@@ -25,6 +25,16 @@ fetcher = "git_latest_tag"
 shape = "text"
 render = { type = "text_plain", align = "center" }
 
+# The three most recent commits on HEAD, rendered as a timeline. The `format` field
+# is parsed as a commit count — "3" keeps the panel tight without forcing users who
+# want five to re-type the whole widget block. No bullet option here because the
+# default `●` is exactly the minimal dot we'd pick anyway.
+[[widget]]
+id = "recent"
+fetcher = "git_recent_commits"
+format = "3"
+render = { type = "list_timeline", bullet = "●", date_format = "relative" }
+
 # ── Layout ─────────────────────────────────────────────────────────
 
 [[row]]
@@ -39,6 +49,18 @@ height = { length = 1 }
 height = { length = 1 }
   [[row.child]]
   widget = "tag"
+
+[[row]]
+height = { length = 2 }
+
+# Three commit lines on a centred 60-col column so long commit subjects don't hug
+# the terminal edge in a wide window.
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "recent"
+  width = { length = 60 }
 
 [[row]]
 height = { fill = 1 }
