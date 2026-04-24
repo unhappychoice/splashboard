@@ -13,18 +13,38 @@ static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 const STALE_LOCK_THRESHOLD: Duration = Duration::from_secs(30);
 
+/// Outcome of the fetch that produced this cache entry. Surfaced so rendering and diagnostics
+/// can tell a successful fetch from one that failed or timed out without peeking at the body.
+/// Serialized in lowercase (`"ok"`, `"err"`, `"timeout"`); missing from an older cache file
+/// deserializes back to `Ok` via `#[serde(default)]` on the [`CacheEntry::kind`] field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CacheEntryKind {
+    #[default]
+    Ok,
+    Err,
+    Timeout,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CacheEntry {
     pub refreshed_at: u64,
     pub ttl_seconds: u64,
+    #[serde(default)]
+    pub kind: CacheEntryKind,
     pub payload: Payload,
 }
 
 impl CacheEntry {
     pub fn new(payload: Payload, ttl_seconds: u64) -> Self {
+        Self::new_with_kind(payload, ttl_seconds, CacheEntryKind::Ok)
+    }
+
+    pub fn new_with_kind(payload: Payload, ttl_seconds: u64, kind: CacheEntryKind) -> Self {
         Self {
             refreshed_at: now_secs(),
             ttl_seconds,
+            kind,
             payload,
         }
     }
@@ -198,6 +218,38 @@ mod tests {
     }
 
     #[test]
+    fn new_defaults_kind_to_ok() {
+        let entry = CacheEntry::new(sample(), 60);
+        assert_eq!(entry.kind, CacheEntryKind::Ok);
+    }
+
+    #[test]
+    fn new_with_kind_carries_error_kind_through() {
+        let entry = CacheEntry::new_with_kind(sample(), 30, CacheEntryKind::Err);
+        assert_eq!(entry.kind, CacheEntryKind::Err);
+    }
+
+    #[test]
+    fn legacy_entry_without_kind_field_deserializes_as_ok() {
+        // Back-compat: any cache file written before the kind field existed must round-trip
+        // unchanged so users don't lose their warm cache on upgrade. #[serde(default)] on the
+        // field is the invariant under test.
+        // Build the "legacy" shape by serializing a current CacheEntry and stripping the kind
+        // field — avoids hand-coding the payload body tag/content conventions.
+        let entry = CacheEntry::new(sample(), 60);
+        let mut json: serde_json::Value = serde_json::to_value(&entry).unwrap();
+        json.as_object_mut().unwrap().remove("kind");
+        let reparsed: CacheEntry = serde_json::from_value(json).expect("legacy json must parse");
+        assert_eq!(reparsed.kind, CacheEntryKind::Ok);
+    }
+
+    #[test]
+    fn cache_entry_kind_serializes_lowercase() {
+        let json = serde_json::to_string(&CacheEntryKind::Timeout).unwrap();
+        assert_eq!(json, "\"timeout\"");
+    }
+
+    #[test]
     fn entry_is_stale_when_ttl_zero() {
         let entry = CacheEntry::new(sample(), 0);
         assert!(!entry.is_fresh());
@@ -208,6 +260,7 @@ mod tests {
         let entry = CacheEntry {
             refreshed_at: 0,
             ttl_seconds: 60,
+            kind: CacheEntryKind::Ok,
             payload: sample(),
         };
         assert!(!entry.is_fresh());

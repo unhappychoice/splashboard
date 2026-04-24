@@ -46,6 +46,12 @@ pub fn read_store_dir() -> Option<PathBuf> {
     splashboard_home().map(|d| d.join("store"))
 }
 
+/// Directory for the `tracing` file appender. Created lazily by the logging init path so
+/// invocations that never log don't touch the disk.
+pub fn logs_dir() -> Option<PathBuf> {
+    splashboard_home().map(|d| d.join("logs"))
+}
+
 /// Shared mutex guarding any test that mutates `SPLASHBOARD_HOME`. Without this, parallel
 /// tests in different modules can see each other's temporary values through the process-wide
 /// env var. Exposed at crate level so other test modules (`fetcher::read_store`, etc.) can
@@ -85,6 +91,7 @@ mod tests {
         assert_eq!(trust_store_path(), Some(path.join("trust.toml")));
         assert_eq!(cache_dir(), Some(path.join("cache")));
         assert_eq!(read_store_dir(), Some(path.join("store")));
+        assert_eq!(logs_dir(), Some(path.join("logs")));
         unsafe {
             match previous {
                 Some(v) => std::env::set_var("SPLASHBOARD_HOME", v),

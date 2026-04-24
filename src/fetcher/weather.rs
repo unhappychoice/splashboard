@@ -98,10 +98,8 @@ impl Fetcher for WeatherFetcher {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: WeatherOptions = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
+        let opts: WeatherOptions =
+            parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let units = opts.units.unwrap_or_default();
         let report = fetch_report(opts.latitude, opts.longitude, units).await?;
         let body = match ctx.shape.unwrap_or(Shape::Entries) {
@@ -279,12 +277,6 @@ fn payload(body: Body) -> Payload {
         format: None,
         body,
     }
-}
-
-fn placeholder(msg: &str) -> Payload {
-    payload(Body::Text(TextData {
-        value: format!("⚠ {msg}"),
-    }))
 }
 
 #[cfg(test)]

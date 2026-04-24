@@ -15,7 +15,7 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::paths;
-use crate::payload::{Body, ImageData, Payload, TextData};
+use crate::payload::{Body, ImageData, Payload};
 use crate::render::Shape;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
@@ -80,19 +80,10 @@ impl Fetcher for GithubAvatar {
         None
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
-        let user = match resolve_user(opts.user.as_deref()) {
-            Ok(u) => u,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+        let user = resolve_user(opts.user.as_deref()).map_err(FetchError::Failed)?;
         let size = opts.size.unwrap_or(DEFAULT_SIZE);
-        let path = match download_avatar(&user, size).await {
-            Ok(p) => p,
-            Err(e) => return Ok(placeholder(&e.to_string())),
-        };
+        let path = download_avatar(&user, size).await?;
         Ok(payload(Body::Image(ImageData {
             path: path.to_string_lossy().into_owned(),
         })))
@@ -172,12 +163,6 @@ fn payload(body: Body) -> Payload {
         format: None,
         body,
     }
-}
-
-fn placeholder(msg: &str) -> Payload {
-    payload(Body::Text(TextData {
-        value: format!("⚠ {msg}"),
-    }))
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ use splashboard::config::{
 use splashboard::daemon::{self, DashboardKind};
 use splashboard::fetcher::{Registry, Safety};
 use splashboard::install::{self, InstallOptions};
+use splashboard::logging;
 use splashboard::paths;
 use splashboard::render::Registry as RenderRegistry;
 use splashboard::runtime;
@@ -119,6 +120,7 @@ enum CatalogTarget {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> io::Result<()> {
     let cli = Cli::parse();
+    logging::init();
     match cli.command {
         Some(Command::Init { shell }) => {
             print!("{}", shell::init_snippet(shell));

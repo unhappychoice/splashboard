@@ -12,9 +12,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
-use super::common::{
-    RepoSlug, cache_key, parse_options, parse_timestamp, payload, placeholder, resolve_repo,
-};
+use super::common::{RepoSlug, cache_key, parse_options, parse_timestamp, payload, resolve_repo};
 
 const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 5;
@@ -79,14 +77,8 @@ impl Fetcher for GithubRecentReleases {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
-        let slug = match resolve_repo(opts.repo.as_deref()) {
-            Ok(s) => s,
-            Err(e) => return Ok(placeholder(&e.to_string())),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+        let slug = resolve_repo(opts.repo.as_deref())?;
         let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 20);
         let path = format!(
             "/repos/{}/{}/releases?per_page={limit}",

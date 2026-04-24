@@ -13,7 +13,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
-use super::common::{cache_key, parse_options, parse_timestamp, payload, placeholder};
+use super::common::{cache_key, parse_options, parse_timestamp, payload};
 
 const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
 const DEFAULT_LIMIT: u32 = 10;
@@ -85,10 +85,7 @@ impl Fetcher for GithubNotifications {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 50);
         let all = opts.all.unwrap_or(false);
         let path = format!("/notifications?per_page={limit}&all={all}");

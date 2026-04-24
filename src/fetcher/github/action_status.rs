@@ -11,7 +11,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
-use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder, resolve_repo};
+use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
 const SHAPES: &[Shape] = &[Shape::Badge, Shape::Text];
 
@@ -72,14 +72,8 @@ impl Fetcher for GithubActionStatus {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
-        let slug = match resolve_repo(opts.repo.as_deref()) {
-            Ok(s) => s,
-            Err(e) => return Ok(placeholder(&e.to_string())),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+        let slug = resolve_repo(opts.repo.as_deref())?;
         let mut path = format!(
             "/repos/{}/{}/actions/runs?per_page=1",
             slug.owner, slug.name
