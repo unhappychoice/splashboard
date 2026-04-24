@@ -33,7 +33,7 @@ every fetcher emitting it.
 
 | shape | default renderer | also accepted by | used for |
 |---|---|---|---|
-| [`Text`](#text) | `text_plain` | `text_ascii`, `animated_typewriter`, `animated_postfx` | single-string values |
+| [`Text`](#text) | `text_plain` | `text_ascii`, `animated_typewriter`, `animated_postfx`, `animated_figlet_morph`, `animated_boot` | single-string values |
 | [`TextBlock`](#textblock) | `text_plain` | `list_plain` | zero or more lines |
 | [`Entries`](#entries) | `grid_table` | — | key / value rows |
 | [`Ratio`](#ratio) | `gauge_circle` | `gauge_line` | a `0..=1` progress |
@@ -63,7 +63,8 @@ Body::Text(TextData { value: String })
 ```
 
 Renderers: `text_plain` (default), `text_ascii` (figlet / block letters),
-`animated_typewriter`, `animated_postfx`.
+`animated_typewriter`, `animated_postfx`, `animated_figlet_morph`,
+`animated_boot`.
 
 Typical fetchers: `clock`, `clock_derived`, `git_repo_name`, `git_status`,
 `github_repo_stars`, `basic_static`.

@@ -31,7 +31,8 @@ follow a `family_variant` convention so siblings cluster: `text_plain`
 `chart_line` / `chart_pie` / `chart_scatter` / `chart_sparkline`,
 `grid_table` / `grid_calendar` / `grid_heatmap`, `list_plain` /
 `list_timeline`, `status_badge`, `media_image`,
-`animated_typewriter` / `animated_postfx`.
+`animated_typewriter` / `animated_postfx` /
+`animated_figlet_morph` / `animated_boot`.
 
 The convention extends beyond renderers — theme token names, preset
 names, fetcher names all follow it. No standalone public tokens that
@@ -58,10 +59,12 @@ within a single draw cycle. Consulted by the runtime: any `true`
 upgrades the draw phase from a one-shot paint to a 2-second
 multi-frame loop so the animation actually plays.
 
-`animated_typewriter` (character-by-character reveal) and
-`animated_postfx` (tachyonfx-powered sweep / fade / coalesce) return
-`true`. Everything else stays `false` — the splash paints once and
-exits.
+`animated_typewriter` (character-by-character reveal),
+`animated_postfx` (tachyonfx-powered sweep / fade / coalesce /
+`stagger_reveal` / `matrix_rain` / `particle_burst`),
+`animated_figlet_morph` (figlet-font sequence crossfade), and
+`animated_boot` (boot-log scroll then hero) return `true`. Everything
+else stays `false` — the splash paints once and exits.
 
 ### `render(…)` — the draw
 
@@ -97,8 +100,10 @@ Most renderers draw single-line or fixed output and stick with the
 default `1`. A row with `height = "auto"` asks its child's renderer
 how tall it wants to be, given the row's width. `text_ascii` overrides
 to report the wrapped figlet block height so multi-word heroes get a
-row sized to fit; `animated_postfx` delegates to its inner renderer
-via the `registry`.
+row sized to fit; `animated_postfx` / `animated_boot` delegate to
+their inner renderer via the `registry`, and
+`animated_figlet_morph` asks `text_ascii` for the tallest height
+across its font sequence so earlier phases never clip.
 
 ## `RenderOptions`
 
@@ -157,7 +162,7 @@ layout logic:
 [[widget]]
 id = "hero"
 fetcher = "system"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce",
+render = { type = "animated_postfx", inner = "text_ascii", effect = "particle_burst",
            duration_ms = 1500, style = "figlet", font = "ansi_shadow", align = "center" }
 ```
 
@@ -167,6 +172,30 @@ The outer `animated_postfx` carries the effect parameters
 calls the inner renderer for the frozen frame, then applies the
 effect shader on top. The final rested frame is whatever the inner
 renderer would have drawn without the wrapper.
+
+`animated_postfx` ships with a menu of effect names (full list in the
+[renderer reference](/splashboard/reference/renderers/animated/animated_postfx/)):
+
+- `fade_in` / `fade_out` / `dissolve` / `coalesce` / `hsl_shift` — stock
+  tachyonfx reveals.
+- `sweep_in` / `sweep_in_right` / `sweep_in_down` / `sweep_in_up` /
+  `slide_in*` — directional wipes.
+- `stagger_reveal` / `stagger_reveal_radial` — per-cell diagonal /
+  radial fade-in, calm enough for daily-use presets.
+- `matrix_rain` — random glyphs rain and dissolve into the underlying
+  render.
+- `particle_burst` — particles radiate in from the centre and resolve
+  into the inner render. The default for `home_splash`'s hero.
+
+Two sibling renderers bring their own timeline instead of a tachyonfx
+pattern:
+
+- `animated_figlet_morph` — steps `text_ascii` through a sequence of
+  figlet fonts (`small` → `banner` → `ansi_shadow` by default) with a
+  short crossfade between phases. The final font is the resting frame.
+- `animated_boot` — scrolls a list of `[ OK ] …` boot-log lines during
+  the first ~70% of the window, then hands off to the inner renderer
+  for the resting frame. Best on tall hero cells (8+ rows).
 
 The inner renderer keeps its own option schema; options pass through
 untouched.
