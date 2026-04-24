@@ -86,6 +86,24 @@
   container-type: inline-size;
 }
 
+/* Splash template only (`:not([data-has-sidebar])` == `template === 'splash'` in
+   Starlight's routing): on wide viewports, drop the hero's tall `padding-block` default
+   (clamp(2.5rem, 1rem + 10vmin, 10rem) ≈ 80–160px on the bottom), then widen the
+   sibling gap between .hero and .sl-markdown-content to match the 1.5em top margin
+   Starlight puts on the first heading's .sl-heading-wrapper below the preview
+   (≈ 3.25rem / 52px at the h2 font-size). Can't use margin-top on .splash-landing
+   here — its `container-type: inline-size` establishes a BFC, so its margin doesn't
+   stack predictably with `.sl-container > * + *`. */
+@media (min-width: 50rem) {
+  html:not([data-has-sidebar]) .hero {
+    padding-block-end: 0;
+  }
+
+  html:not([data-has-sidebar]) .sl-container > * + * {
+    margin-top: 3.25rem;
+  }
+}
+
 .splash-landing .splash-snapshot {
   /* 120 cells × ~0.6 em per mono char + side padding ≈ 78 em of content. Divide container
      width by that with a small safety margin so content fits without a scrollbar on any

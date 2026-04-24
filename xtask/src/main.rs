@@ -34,14 +34,22 @@ struct Cli {
     rendered_out: PathBuf,
 }
 
-/// Each entry renders `source_config` at `(width, height)` and writes the HTML to `output_name`
-/// under `--rendered-out`. Sizes are picked per-config so the whole layout lands without clipping.
-const DASHBOARD_SNAPSHOTS: &[(&str, &str, u16, u16)] = &[(
-    ".splashboard/dashboard.toml",
-    "project_github_activity.html",
-    120,
-    42,
-)];
+/// Every preset renders at the same 120 × 42 cell canvas so the embedded snapshots read as a
+/// uniform gallery under `.splash-landing` (the CSS scales font-size off a 120-cell baseline and
+/// `.splash-snapshot` has no fixed aspect ratio). 42 = project_github_activity's natural height;
+/// shorter presets get blank rows of theme bg at the bottom, same as an oversized terminal would.
+const SNAPSHOT_WIDTH: u16 = 120;
+const SNAPSHOT_HEIGHT: u16 = 42;
+
+const DASHBOARD_SNAPSHOTS: &[(&str, &str)] = &[
+    ("src/templates/home_splash.toml", "home_splash.html"),
+    ("src/templates/home_daily.toml", "home_daily.html"),
+    ("src/templates/home_github.toml", "home_github.html"),
+    (
+        "src/templates/project_github_activity.toml",
+        "project_github_activity.html",
+    ),
+];
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -51,9 +59,17 @@ fn main() -> Result<()> {
 }
 
 fn render_dashboards(out_dir: &Path) -> Result<()> {
+    // Realtime fetchers (invoked by dashboard_snapshot::sample_payloads) peek at env vars to
+    // guess the terminal / shell / host. Scrub the signals that vary by dev machine so the
+    // committed snapshot is deterministic — "terminal" / "shell" fallbacks, empty hostname.
+    scrub_host_env();
     fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
-    for (config, output_name, width, height) in DASHBOARD_SNAPSHOTS {
-        let html = dashboard_snapshot::render_config_html(Path::new(config), *width, *height)?;
+    for (config, output_name) in DASHBOARD_SNAPSHOTS {
+        let html = dashboard_snapshot::render_config_html(
+            Path::new(config),
+            SNAPSHOT_WIDTH,
+            SNAPSHOT_HEIGHT,
+        )?;
         let dest = out_dir.join(output_name);
         let mut f =
             fs::File::create(&dest).with_context(|| format!("create {}", dest.display()))?;
@@ -62,4 +78,19 @@ fn render_dashboards(out_dir: &Path) -> Result<()> {
         println!("wrote {}", dest.display());
     }
     Ok(())
+}
+
+fn scrub_host_env() {
+    for key in [
+        "WT_SESSION",
+        "GHOSTTY_RESOURCES_DIR",
+        "KITTY_WINDOW_ID",
+        "ALACRITTY_WINDOW_ID",
+        "ALACRITTY_LOG",
+        "WEZTERM_PANE",
+        "TERM_PROGRAM",
+    ] {
+        // SAFETY: xtask is a single-threaded CLI entry point; no other threads can race this.
+        unsafe { std::env::remove_var(key) };
+    }
 }
