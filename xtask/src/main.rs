@@ -45,10 +45,13 @@ const DASHBOARD_SNAPSHOTS: &[(&str, &str)] = &[
     ("src/templates/home_splash.toml", "home_splash.html"),
     ("src/templates/home_daily.toml", "home_daily.html"),
     ("src/templates/home_github.toml", "home_github.html"),
+    ("src/templates/home_minimal.toml", "home_minimal.html"),
+    ("src/templates/project_splash.toml", "project_splash.html"),
     (
         "src/templates/project_github_activity.toml",
         "project_github_activity.html",
     ),
+    ("src/templates/project_minimal.toml", "project_minimal.html"),
 ];
 
 fn main() -> Result<()> {

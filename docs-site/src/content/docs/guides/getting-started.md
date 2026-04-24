@@ -26,11 +26,12 @@ The installer auto-detects your shell and walks you through four gallery
 pickers — each with a live preview rendered from the shipped templates and
 your chosen theme — followed by a final confirmation page:
 
-1. **Home dashboard** — one of `home_splash` / `home_daily` / `home_github`.
-   Shown on new shells and when `cd`-ing anywhere outside a git repo root.
-2. **Project dashboard** — currently `project_github_activity`. Shown when
-   `cd`-ing into the top of any git repo that doesn't ship its own
-   `./.splashboard/`.
+1. **Home dashboard** — one of `home_splash` / `home_daily` / `home_github` /
+   `home_minimal`. Shown on new shells and when `cd`-ing anywhere outside a
+   git repo root.
+2. **Project dashboard** — one of `project_splash` / `project_github_activity` /
+   `project_minimal`. Shown when `cd`-ing into the top of any git repo that
+   doesn't ship its own `./.splashboard/`.
 3. **Theme** — `default` (the Splash signature ocean palette), or one of
    `tokyo_night`, `catppuccin_mocha`, `dracula`, `nord`, `gruvbox_dark`. The
    preview re-renders your home pick under the highlighted theme so you see
@@ -83,8 +84,8 @@ Flag reference:
 
 Available templates:
 
-- **home**: `home_splash`, `home_daily`, `home_github`
-- **project**: `project_github_activity`
+- **home**: `home_splash`, `home_daily`, `home_github`, `home_minimal`
+- **project**: `project_splash`, `project_github_activity`, `project_minimal`
 
 See [Presets](/splashboard/guides/presets/) for a rendered preview of each,
 and [Themes](/splashboard/guides/themes/) for the palette details.

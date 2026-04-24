@@ -188,6 +188,16 @@ fn loop_should_exit(daemon_done: bool, animation_pending: bool, deadline_reached
     deadline_reached || (daemon_done && !animation_pending)
 }
 
+/// Whether the loop should still be holding for the animation window. `animation_due` is the
+/// animation deadline check (`now < deadline`), `real_animated` is true when a configured
+/// renderer genuinely wants to animate, `loading_pending` is true when at least one cached
+/// widget still has no fresh payload. The animation window is only *binding* while something
+/// needs to animate — loading spinners are the common case for minimal presets, and once the
+/// daemon populates their cache entries the window stops blocking exit.
+fn animation_still_due(animation_due: bool, real_animated: bool, loading_pending: bool) -> bool {
+    animation_due && (real_animated || loading_pending)
+}
+
 const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
@@ -256,9 +266,12 @@ pub async fn run(
     // Render axis: decide whether any configured renderer needs repeat frames. Independent of
     // the load decision — an animated widget must animate regardless of cache state. Loading
     // placeholders also animate (spinner glyph) so we force-enable animation whenever a cached
-    // widget has no entry yet — otherwise the spinner would appear to freeze mid-draw.
-    let animated = render::any_widget_animates(&config.widgets, &render_registry)
-        || has_loading_widget(&cached_widgets, &payloads, &entries, wait);
+    // widget has no entry yet — otherwise the spinner would appear to freeze mid-draw. We keep
+    // the two reasons separate: `real_animated` forces the loop to run the full ANIMATION_WINDOW
+    // so a configured effect plays; loading-only animation is dropped the moment the daemon's
+    // fresh entries clear the last spinner (checked per iteration inside the loop).
+    let real_animated = render::any_widget_animates(&config.widgets, &render_registry);
+    let animated = real_animated || has_loading_widget(&cached_widgets, &payloads, &entries, wait);
 
     let loop_window = match (wait, animated) {
         (false, false) => None,
@@ -356,7 +369,17 @@ pub async fn run(
                     }
                     break;
                 }
-                let animation_pending = animation_deadline.is_some_and(|d| now < d);
+                // Hold the loop for the animation window only while there's something that
+                // actually needs to animate: either a configured animated renderer or a
+                // still-loading spinner. A minimal preset on a cold cache sets `animated = true`
+                // purely because of spinners; once the daemon writes their entries the loading
+                // set empties and we can exit as soon as the daemon signals done, instead of
+                // burning the remainder of the 2s window for nothing.
+                let animation_pending = animation_still_due(
+                    animation_deadline.is_some_and(|d| now < d),
+                    real_animated,
+                    !loading.is_empty(),
+                );
                 if loop_should_exit(daemon_done, animation_pending, false) {
                     break;
                 }
@@ -1629,6 +1652,30 @@ mod tests {
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 3);
         assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn animation_still_due_only_while_something_animates() {
+        // Regression: minimal presets on a cold cache used to burn the full 2s animation window
+        // because loading spinners flipped `animated = true`. Once the daemon clears the loading
+        // set, nothing needs to animate and the window stops being binding even though the
+        // deadline hasn't expired yet.
+        assert!(
+            animation_still_due(true, true, false),
+            "real animation pending → still due even with no loading"
+        );
+        assert!(
+            animation_still_due(true, false, true),
+            "loading spinners pending → still due"
+        );
+        assert!(
+            !animation_still_due(true, false, false),
+            "deadline not reached but nothing to animate → not due"
+        );
+        assert!(
+            !animation_still_due(false, true, true),
+            "deadline reached → animation no longer due regardless"
+        );
     }
 
     #[test]

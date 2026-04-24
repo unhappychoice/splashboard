@@ -1,0 +1,68 @@
+# project_minimal — the quiet sibling of `project_github_activity` / `project_splash`.
+# Repo name, latest tag, and the last three commits — centred on lots of whitespace,
+# no figlet, no heatmap, no panels. Deliberately GitHub-free: every widget reads
+# local git, so the preset renders the same whether you're offline, behind a
+# firewall, or haven't run `gh auth login`. For users who want acknowledgment they're
+# in a repo without the splash taking over every `cd`. Pairs with `home_minimal`.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Repo name in plain typography — the whole point of the minimal preset is *not* a
+# giant figlet banner. Picks up the terminal's title colour so the line still reads
+# as a heading next to the dimmer tag below.
+[[widget]]
+id = "name"
+fetcher = "git_repo_name"
+render = { type = "text_plain", align = "center", color = "panel_title" }
+
+# Most recent tag ("v0.2.0") as a single line. `git_latest_tag` Text shape emits
+# just the tag name; Entries would add commit / date which we don't want here. The
+# fetcher renders an empty line when the repo has no tags, so the layout stays
+# stable on fresh repos.
+[[widget]]
+id = "tag"
+fetcher = "git_latest_tag"
+shape = "text"
+render = { type = "text_plain", align = "center" }
+
+# The three most recent commits on HEAD as a flat list — one row per commit. We use
+# `shape = "text_block"` (`"<short_hash> <summary>"`) instead of the default Timeline
+# shape because `list_timeline` hangs the short hash as a detail row under the title,
+# so three Timeline events would span six rows; TextBlock keeps it genuinely three-
+# lines-for-three-commits. `format = "3"` passes the commit count to the fetcher.
+[[widget]]
+id = "recent"
+fetcher = "git_recent_commits"
+shape = "text_block"
+format = "3"
+render = { type = "list_plain", bullet = "●", align = "center" }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { fill = 1 }
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "name"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "tag"
+
+[[row]]
+height = { length = 2 }
+
+# Three commit lines on a centred 60-col column so long commit subjects don't hug
+# the terminal edge in a wide window.
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "recent"
+  width = { length = 60 }
+
+[[row]]
+height = { fill = 1 }
