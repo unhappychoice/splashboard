@@ -18,7 +18,9 @@ mod animated_boot;
 mod animated_figlet_morph;
 mod animated_postfx;
 mod animated_scanlines;
+mod animated_splitflap;
 mod animated_typewriter;
+mod animated_wave;
 mod chart_bar;
 mod chart_line;
 mod chart_pie;
@@ -347,6 +349,8 @@ impl Registry {
         r.register(Arc::new(animated_figlet_morph::AnimatedFigletMorphRenderer));
         r.register(Arc::new(animated_boot::AnimatedBootRenderer));
         r.register(Arc::new(animated_scanlines::AnimatedScanlinesRenderer));
+        r.register(Arc::new(animated_splitflap::AnimatedSplitflapRenderer));
+        r.register(Arc::new(animated_wave::AnimatedWaveRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
@@ -564,6 +568,8 @@ mod tests {
             "animated_figlet_morph",
             "animated_boot",
             "animated_scanlines",
+            "animated_splitflap",
+            "animated_wave",
             "status_badge",
             "list_plain",
             "list_timeline",

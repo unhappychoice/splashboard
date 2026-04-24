@@ -208,6 +208,26 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
             options: options.clone(),
         },
+        RenderSpec::Short(ref name) if name == "animated_splitflap" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_splitflap" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
+        RenderSpec::Short(ref name) if name == "animated_wave" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_wave" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
         // animated_figlet_morph's resting frame = text_ascii with the sequence's last font.
         // No inner knob here — the renderer always delegates to text_ascii — so swap in a
         // matching text_ascii spec for the preview.

@@ -127,7 +127,8 @@ the user's prompt.
 Most renderers produce the same output every frame, so splashboard
 paints once and exits. When a widget's renderer declares
 `animates() = true` (`animated_postfx`, `animated_typewriter`,
-`animated_figlet_morph`, `animated_boot`, `animated_scanlines`), the
+`animated_figlet_morph`, `animated_boot`, `animated_scanlines`,
+`animated_splitflap`, `animated_wave`), the
 runtime upgrades the draw phase into a multi-frame loop capped at
 `ANIMATION_WINDOW` (2 seconds). The final frame is left static, so
 the splash rests at the effect's end state rather than mid-motion.

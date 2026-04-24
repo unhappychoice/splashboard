@@ -3,8 +3,8 @@ use std::time::Instant;
 
 use ratatui::{Frame, layout::Rect, style::Color, widgets::Paragraph};
 use tachyonfx::{
-    Duration as FxDuration, Effect, EffectRenderer, EffectTimer, Interpolation, fx,
-    fx::EvolveSymbolSet,
+    Duration as FxDuration, Effect, EffectRenderer, EffectTimer, Interpolation, IntoEffect, fx,
+    fx::{EvolveSymbolSet, Glitch},
     pattern::{CheckerboardPattern, DiagonalPattern, DissolvePattern, RadialPattern, SweepPattern},
 };
 
@@ -24,10 +24,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "effect",
-        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\" | \"stagger_reveal\" | \"stagger_reveal_radial\" | \"matrix_rain\" | \"particle_burst\" | \"bounce_in\" | \"elastic_in\" | \"checkerboard_in\" | \"neon_flash\"",
+        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\" | \"stagger_reveal\" | \"stagger_reveal_radial\" | \"matrix_rain\" | \"particle_burst\" | \"bounce_in\" | \"elastic_in\" | \"checkerboard_in\" | \"neon_flash\" | \"glitch_in\"",
         required: false,
         default: Some("\"fade_in\""),
-        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). `stagger_reveal` reveals cells along a diagonal (top-left → bottom-right); `stagger_reveal_radial` reveals outward from the centre. `matrix_rain` rains random glyphs that dissolve into the underlying render; `particle_burst` scatters radial particles that resolve into the figlet. `bounce_in` / `elastic_in` use bounce/spring timing curves for a playful arrival; `checkerboard_in` reveals tiles in a checker pattern; `neon_flash` pulses through a bright hue before settling. Unknown names fall back to `fade_in` rather than failing the widget.",
+        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). `stagger_reveal` reveals cells along a diagonal (top-left → bottom-right); `stagger_reveal_radial` reveals outward from the centre. `matrix_rain` rains random glyphs that dissolve into the underlying render; `particle_burst` scatters radial particles that resolve into the figlet. `bounce_in` / `elastic_in` use bounce/spring timing curves for a playful arrival; `checkerboard_in` reveals tiles in a checker pattern; `neon_flash` pulses through a bright hue before settling. `glitch_in` scrambles a fraction of cells then settles into the clean render — a broken-signal / decode vibe. Unknown names fall back to `fade_in` rather than failing the widget.",
     },
     OptionSchema {
         name: "duration_ms",
@@ -236,6 +236,19 @@ fn build_effect(name: &str, duration_ms: u32) -> Effect {
             None,
             EffectTimer::from_ms(duration_ms, Interpolation::SineInOut),
         ),
+        "glitch_in" => {
+            // Glitch cells mutate a fraction of the area at random for short bursts. We cap
+            // the whole run with `with_duration` so the effect stops exactly at the boundary;
+            // afterwards `render_postfx` skips re-applying it and the clean inner render is
+            // what the user sees.
+            let glitch = Glitch::builder()
+                .cell_glitch_ratio(0.30)
+                .action_start_delay_ms(0..(duration_ms / 2).max(1))
+                .action_ms((duration_ms / 10).max(40)..(duration_ms / 3).max(120))
+                .build()
+                .into_effect();
+            fx::with_duration(FxDuration::from_millis(duration_ms), glitch)
+        }
         _ => fx::fade_from_fg(Color::Black, timer),
     }
 }
@@ -284,6 +297,7 @@ mod tests {
             "elastic_in",
             "checkerboard_in",
             "neon_flash",
+            "glitch_in",
         ] {
             let _ = build_effect(name, 800);
         }
