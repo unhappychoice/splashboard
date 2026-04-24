@@ -92,15 +92,17 @@ and [Themes](/splashboard/guides/themes/) for the palette details.
 
 ### Prefer to own the rc edit yourself?
 
-`splashboard init <shell>` still emits the raw snippet — handy when you
-manage your rc from a dotfile repo and want the splashboard line source-
-tracked alongside everything else:
+If you manage your rc from a dotfile repo and want the splashboard line
+source-tracked alongside everything else, append one line that re-sources
+`splashboard init <shell>` on every shell start. This is the same line
+`splashboard install` writes, and it means upgrades to splashboard ship an
+updated init snippet automatically — no re-run of `install` required.
 
 ```bash
-splashboard init zsh        >> ~/.zshrc
-splashboard init bash       >> ~/.bashrc
-splashboard init fish       >> ~/.config/fish/config.fish
-splashboard init powershell >> $PROFILE
+echo 'eval "$(splashboard init zsh)"'                              >> ~/.zshrc
+echo 'eval "$(splashboard init bash)"'                             >> ~/.bashrc
+echo 'splashboard init fish | source'                              >> ~/.config/fish/config.fish
+echo 'Invoke-Expression (& splashboard init powershell | Out-String)' >> $PROFILE
 ```
 
 ## The first splash
