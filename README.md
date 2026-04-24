@@ -66,6 +66,15 @@ splashboard init fish | source
 Invoke-Expression (& splashboard init powershell | Out-String)
 ```
 
+Or dump the snippet verbatim if you'd rather source-track the raw bytes in your dotfile repo (re-run to pick up upgrades):
+
+```bash
+splashboard init zsh        >> ~/.zshrc
+splashboard init bash       >> ~/.bashrc
+splashboard init fish       >> ~/.config/fish/config.fish
+splashboard init powershell >> $PROFILE
+```
+
 The init snippet renders on new shells and re-renders when you `cd` into a directory that holds a project-local dashboard.
 
 ## Configuring a splash

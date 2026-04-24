@@ -112,6 +112,16 @@ splashboard init fish | source
 Invoke-Expression (& splashboard init powershell | Out-String)
 ```
 
+Or, if you'd rather source-track the raw snippet itself in your dotfile
+repo, dump the output into your rc once (re-run to pick up upgrades):
+
+```bash
+splashboard init zsh        >> ~/.zshrc
+splashboard init bash       >> ~/.bashrc
+splashboard init fish       >> ~/.config/fish/config.fish
+splashboard init powershell >> $PROFILE
+```
+
 ## The first splash
 
 Open a new shell — you should see the preset you picked. The shell rc is now
