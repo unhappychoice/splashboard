@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ratatui::Terminal;
@@ -17,7 +18,7 @@ use ratatui::style::Style;
 use ratatui::widgets::Block;
 
 use splashboard::config::{Config, DashboardConfig, SettingsConfig, WidgetConfig};
-use splashboard::fetcher::{RegisteredFetcher, Registry as FetcherRegistry};
+use splashboard::fetcher::{FetchContext, RegisteredFetcher, Registry as FetcherRegistry};
 use splashboard::layout as layout_engine;
 use splashboard::payload::{Body, Payload, TextBlockData, TextData};
 use splashboard::render::{Registry as RenderRegistry, RenderSpec, Shape, default_renderer_for};
@@ -55,8 +56,9 @@ pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result
     Ok(buffer_to_html(terminal.backend().buffer()))
 }
 
-/// Resolve a sample `Payload` per widget using the fetcher-preferred shape intersected with
-/// the renderer's accepted shape — same rule the runtime applies.
+/// Resolve a `Payload` per widget. Realtime fetchers (`clock`, `clock_derived`, `system`, …)
+/// compute live through their real pipeline so format / options land in the output; cached
+/// fetchers fall back to `sample_body` since running them would need network / disk access.
 fn sample_payloads(
     widgets: &[WidgetConfig],
     fetchers: &FetcherRegistry,
@@ -67,6 +69,17 @@ fn sample_payloads(
         .filter_map(|w| {
             let fetcher = fetchers.get(&w.fetcher)?;
             let shape = resolve_shape(w, &fetcher, renderers)?;
+            if let Some(realtime) = fetcher.as_realtime() {
+                let ctx = FetchContext {
+                    widget_id: w.id.clone(),
+                    format: w.format.clone(),
+                    timeout: Duration::from_millis(50),
+                    file_format: None,
+                    shape: Some(shape),
+                    options: w.options.clone(),
+                };
+                return Some((w.id.clone(), realtime.compute(&ctx)));
+            }
             let body = override_from_format(w, shape).or_else(|| fetcher.sample_body(shape))?;
             Some((
                 w.id.clone(),

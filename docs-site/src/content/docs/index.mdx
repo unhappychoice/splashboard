@@ -23,13 +23,6 @@ hero:
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 import projectGithubActivity from '../../assets/rendered/project_github_activity.html?raw';
 
-## Example: `project_github_activity`
-
-A real render of the dogfood dashboard — no screenshot, no editing. Each
-cell below is painted by the same renderers splashboard uses at runtime,
-driven by each fetcher's sample data (so there's no network or filesystem
-access at build time).
-
 <div class="splash-landing" set:html={projectGithubActivity} />
 
 ## What is this
@@ -97,7 +90,3 @@ reshapes the splash to itself when you `cd` in. Competitor products
     href="/splashboard/guides/trust/"
   />
 </CardGrid>
-
-Reference pages are generated from code via `cargo xtask`. Adding a new
-fetcher or renderer and re-running the generator ticks the catalog
-mechanically — the pages can't drift from the built-in registries.

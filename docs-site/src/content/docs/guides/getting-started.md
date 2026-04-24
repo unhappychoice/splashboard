@@ -16,10 +16,6 @@ prerequisite.
 cargo install splashboard
 ```
 
-Prebuilt binaries and a Homebrew tap are planned (see
-[issue #16](https://github.com/unhappychoice/splashboard/issues/16)); until
-then, `cargo install` is the supported path.
-
 ## Wire it into your shell
 
 `splashboard init <shell>` prints a snippet that calls `splashboard` on every

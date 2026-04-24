@@ -135,7 +135,10 @@ Fields:
   `clock` accepts strftime patterns, `basic_static` takes literal text).
 - **`refresh_interval`** — cache TTL for cached fetchers, in seconds.
   Ignored by realtime fetchers.
-- **`file_format`** — `basic_read_store` only: `"json"`, `"toml"`, or `"text"`.
+- **`file_format`** — `basic_read_store` only: `"json"`, `"toml"`, or
+  `"text"`. The file is deserialized into the
+  [shape](/splashboard/guides/concepts/shape/) the paired renderer
+  expects.
 - **`[widget.options]`** — fetcher-specific nested options. See each
   fetcher's reference page for its schema.
 

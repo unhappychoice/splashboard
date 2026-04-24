@@ -54,74 +54,12 @@ each repo carrying a config.
 Network widgets in a per-dir dashboard stay gated behind `splashboard
 trust` — see the [trust guide](/splashboard/guides/trust/).
 
-## ReadStore — custom widgets without code
+## Custom widgets without code
 
-Need a widget no fetcher currently provides? Write the payload to a file
-and point a `basic_read_store` widget at it.
-
-```toml
-# dashboard.toml
-[[widget]]
-id = "habit"
-fetcher = "basic_read_store"
-file_format = "json"
-render = "gauge_line"
-```
-
-splashboard reads from
-`$HOME/.splashboard/store/habit.json` (the filename matches the widget
-`id`). Write anything there — a cron job, a shell function, a
-post-commit hook — and the splash picks it up.
-
-ReadStore understands every non-dynamic shape: `Text`, `TextBlock`,
-`Entries`, `Ratio`, `NumberSeries`, `PointSeries`, `Bars`, `Image`,
-`Calendar`, `Heatmap`. The shape you get is the one the renderer
-accepts; `gauge_line` above takes a `Ratio`, so:
-
-```json
-{
-  "ratio": 0.6,
-  "label": "habit · 6 of 10 days"
-}
-```
-
-### Habit tracker example
-
-A tiny shell script that ticks today off and writes the ratio:
-
-```bash
-#!/usr/bin/env bash
-# ~/.local/bin/habit-tick
-store="$HOME/.splashboard/store/habit.json"
-touch "$HOME/.splashboard/habit.log"
-date +%Y-%m-%d >> "$HOME/.splashboard/habit.log"
-sort -u -o "$HOME/.splashboard/habit.log" "$HOME/.splashboard/habit.log"
-
-count=$(grep -c "^$(date +%Y-%m)" "$HOME/.splashboard/habit.log")
-days=$(date +%d)
-ratio=$(awk "BEGIN { printf \"%.3f\", $count / $days }")
-
-cat > "$store" <<EOF
-{ "ratio": $ratio, "label": "this month · $count of $days days" }
-EOF
-```
-
-Call `habit-tick` on the days you did the thing; the splash reflects it
-next render.
-
-### Goal progress
-
-Same pattern with a yearly ratio and a fixed target:
-
-```json
-{
-  "ratio": 0.47,
-  "label": "reading · 14 of 30 books"
-}
-```
-
-Keep the file `$HOME/.splashboard/store/reading.json`; point a
-`basic_read_store` widget at it with `id = "reading"`.
+Use [ReadStore](/splashboard/guides/read-store/) — write a payload
+file, pair it with a renderer, splashboard draws it. No code, no
+subprocess. Good for habit trackers, goal progress, and anything you
+can shell-script to a file.
 
 ## Making your own theme
 
