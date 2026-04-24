@@ -50,12 +50,20 @@ splashboard install \
   --wait
 ```
 
-Prefer to own the rc edit yourself? `splashboard init <shell>` still emits the raw snippet:
+Prefer to own the rc edit yourself? Add one line to your shell rc — the same line `splashboard install` writes — and the snippet is re-sourced on every shell start, so upgrades to splashboard ship an updated snippet automatically:
 
 ```bash
-splashboard init zsh  >> ~/.zshrc
-splashboard init bash >> ~/.bashrc
-splashboard init fish >> ~/.config/fish/config.fish
+# ~/.zshrc
+eval "$(splashboard init zsh)"
+
+# ~/.bashrc
+eval "$(splashboard init bash)"
+
+# ~/.config/fish/config.fish
+splashboard init fish | source
+
+# $PROFILE (PowerShell)
+Invoke-Expression (& splashboard init powershell | Out-String)
 ```
 
 The init snippet renders on new shells and re-renders when you `cd` into a directory that holds a project-local dashboard.
