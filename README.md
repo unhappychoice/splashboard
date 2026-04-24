@@ -17,6 +17,8 @@ Instead of a blinking cursor, every new shell shows a dashboard of the things yo
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/unhappychoice/splashboard/main/install.sh | bash
+```
+```bash
 splashboard install
 ```
 
