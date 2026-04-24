@@ -49,10 +49,20 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Getting started', link: '/guides/getting-started/' },
-            { label: 'Concepts', link: '/guides/concepts/' },
+            {
+              label: 'Concepts',
+              items: [
+                { label: 'Overview', link: '/guides/concepts/' },
+                { label: 'Widget', link: '/guides/concepts/widget/' },
+                { label: 'Shape', link: '/guides/concepts/shape/' },
+                { label: 'Fetcher', link: '/guides/concepts/fetcher/' },
+                { label: 'Renderer', link: '/guides/concepts/renderer/' },
+              ],
+            },
             { label: 'Configuration', link: '/guides/configuration/' },
             { label: 'Presets', link: '/guides/presets/' },
             { label: 'Themes', link: '/guides/themes/' },
+            { label: 'ReadStore', link: '/guides/read-store/' },
             { label: 'Trust model', link: '/guides/trust/' },
             { label: 'Cookbook', link: '/guides/cookbook/' },
           ],

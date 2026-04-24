@@ -1,0 +1,214 @@
+---
+title: Renderer
+description: The Renderer trait — accepts, animates, options, alignment, empty-state handling, and the naming convention that keeps the catalog sorted.
+---
+
+A renderer takes a `Payload` body and paints it into a ratatui cell.
+It's the HOW half of the composition — it doesn't know who produced
+the body, just that its shape is one it accepts.
+
+## The trait
+
+```rust
+pub trait Renderer: Send + Sync {
+    fn name(&self) -> &str;
+    fn accepts(&self) -> &[Shape];
+    fn animates(&self) -> bool { false }
+    fn option_schemas(&self) -> &[OptionSchema] { &[] }
+    fn color_keys(&self) -> &[ColorKey] { &[] }
+    fn render(&self, frame, area, body, opts, theme, registry);
+    fn natural_height(&self, body, opts, theme, max_width, registry) -> u16 { 1 }
+}
+```
+
+Six methods that matter, each doing one thing.
+
+### `name()` — the identifier
+
+Used in config (`render = "grid_heatmap"`) and in the catalog. Names
+follow a `family_variant` convention so siblings cluster: `text_plain`
+/ `text_ascii`, `gauge_line` / `gauge_circle`, `chart_bar` /
+`chart_line` / `chart_pie` / `chart_scatter` / `chart_sparkline`,
+`grid_table` / `grid_calendar` / `grid_heatmap`, `list_plain` /
+`list_timeline`, `status_badge`, `media_image`,
+`animated_typewriter` / `animated_postfx`.
+
+The convention extends beyond renderers — theme token names, preset
+names, fetcher names all follow it. No standalone public tokens that
+could later need a family prefix.
+
+### `accepts()` — compatibility
+
+The list of shapes this renderer can draw. The runtime's dispatcher
+compat-checks the body's shape against this before calling `render`.
+An unknown renderer name or a mismatch draws an in-band error; it
+never panics. Users see what's misconfigured rather than a dead
+splash.
+
+A single renderer can accept multiple shapes — `text_plain` draws
+both `Text` and `TextBlock`, `grid_table` draws `Entries` and
+`Badge`, `chart_bar` draws both `NumberSeries` and `Bars`. The
+accepts list is the source of truth for the compatibility matrix on
+the [reference overview](/splashboard/reference/matrix/).
+
+### `animates()` — runtime hinting
+
+`true` if the renderer produces different output on repeated calls
+within a single draw cycle. Consulted by the runtime: any `true`
+upgrades the draw phase from a one-shot paint to a 2-second
+multi-frame loop so the animation actually plays.
+
+`animated_typewriter` (character-by-character reveal) and
+`animated_postfx` (tachyonfx-powered sweep / fade / coalesce) return
+`true`. Everything else stays `false` — the splash paints once and
+exits.
+
+### `render(…)` — the draw
+
+```rust
+fn render(
+    &self,
+    frame: &mut Frame,
+    area: Rect,
+    body: &Body,
+    opts: &RenderOptions,
+    theme: &Theme,
+    registry: &Registry,
+);
+```
+
+The meat. Paints inside `area` using ratatui widgets, reading colours
+from `theme` and honouring the renderer-specific fields inside
+`opts`. The `registry` is threaded through so composite renderers
+(like `animated_postfx`) can dispatch to an inner renderer by name.
+
+### `option_schemas()` / `color_keys()` — docs metadata
+
+`option_schemas()` declares the renderer-specific fields (`style`,
+`pixel_size`, `align`, `font`) the `render` inline table accepts.
+`color_keys()` declares the theme tokens the renderer reads. Both are
+consumed at docs-generation time — `cargo xtask` emits one reference
+page per renderer listing every knob and every token it touches,
+straight from the declaration. The catalog can't drift from the code.
+
+### `natural_height(…)` — auto-sized rows
+
+Most renderers draw single-line or fixed output and stick with the
+default `1`. A row with `height = "auto"` asks its child's renderer
+how tall it wants to be, given the row's width. `text_ascii` overrides
+to report the wrapped figlet block height so multi-word heroes get a
+row sized to fit; `animated_postfx` delegates to its inner renderer
+via the `registry`.
+
+## `RenderOptions`
+
+The `render` field in config is either a bare string (renderer name)
+or an inline table. The table carries renderer-specific fields:
+
+```toml
+# Bare string form — uses all defaults.
+render = "text_plain"
+
+# Full form — type + options.
+render = { type = "text_ascii", style = "figlet", font = "banner", align = "center" }
+```
+
+Common fields:
+
+- `type` — the renderer name (required in the full form).
+- `align` — `"left"` / `"center"` / `"right"`. Honoured by renderers
+  where horizontal alignment makes sense (`text_plain`, `text_ascii`,
+  `grid_heatmap`). Structural renderers (`grid_table`, gauges,
+  charts) ignore it — their layout is intrinsic.
+- `color` — a theme token override (e.g. `"panel_title"` for the coral
+  accent). Optional; defaults to the renderer's declared `color_keys`.
+
+Renderer-specific fields vary (`style`, `pixel_size`, `font`,
+`max_items`, `bullet`, `date_format`, `effect`, `duration_ms`, …) and
+are documented on each renderer's reference page.
+
+## Empty-state handling
+
+Bodies with no data never reach `render`. The dispatcher
+(`render::render_payload`) short-circuits any body that
+`is_empty_body(&body)` considers empty to the shared "nothing here
+yet" placeholder:
+
+- `Text` with empty `value`
+- `TextBlock` with no lines or all blank
+- `Entries`, `NumberSeries`, `PointSeries`, `Bars`, `Timeline` —
+  empty collection
+- `Image` with empty path
+- `Heatmap` with no cells
+- `Badge` with empty label
+
+`Ratio` and `Calendar` are exceptions — `0%` and "this month" are
+both legitimate data.
+
+Centralising this means every renderer sees the same "no data"
+behaviour. Don't bake empty handling into individual renderers.
+
+## Animation integration
+
+Animated renderers wrap an inner renderer rather than duplicating its
+layout logic:
+
+```toml
+[[widget]]
+id = "hero"
+fetcher = "system"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce",
+           duration_ms = 1500, style = "figlet", font = "ansi_shadow", align = "center" }
+```
+
+The outer `animated_postfx` carries the effect parameters
+(`effect`, `duration_ms`) and every option the inner renderer reads
+(`style`, `font`, `align`, …). At dispatch time the outer animator
+calls the inner renderer for the frozen frame, then applies the
+effect shader on top. The final rested frame is whatever the inner
+renderer would have drawn without the wrapper.
+
+The inner renderer keeps its own option schema; options pass through
+untouched.
+
+## Defaults per shape
+
+Omitting `render` in config picks the shape's default renderer:
+
+| shape | default |
+|---|---|
+| `Text` | `text_plain` |
+| `TextBlock` | `text_plain` |
+| `Entries` | `grid_table` |
+| `Ratio` | `gauge_circle` |
+| `NumberSeries` | `chart_sparkline` |
+| `PointSeries` | `chart_line` |
+| `Bars` | `chart_bar` |
+| `Image` | `media_image` |
+| `Calendar` | `grid_calendar` |
+| `Heatmap` | `grid_heatmap` |
+| `Badge` | `status_badge` |
+| `Timeline` | `list_timeline` |
+
+Only write `render = ...` when you want to override the default.
+
+## Adding a renderer
+
+1. New file under `src/render/` named for the renderer
+   (`src/render/chart_radar.rs`).
+2. Define a unit struct (`pub struct ChartRadarRenderer;`) and
+   implement `Renderer` on it.
+3. Pick a name: `family_variant`. Reuse an existing family if your
+   renderer is a cousin (`chart_*` / `grid_*` / `gauge_*` / `list_*`);
+   start a new family only if nothing fits.
+4. Honour `align` where alignment makes semantic sense.
+5. Declare `option_schemas()` and `color_keys()` so the reference
+   page generates automatically.
+6. Register in `Registry::with_builtins()` in `src/render/mod.rs`.
+7. Add rendering tests via `src/render/test_utils.rs` — scan the
+   resulting `Buffer` for expected cells/symbols.
+8. Run `cargo xtask` to update the reference matrix and per-renderer
+   page.
+
+The dispatcher handles compatibility / empty-state / error display;
+your renderer only needs to implement `render` for the happy path.
