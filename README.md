@@ -99,8 +99,6 @@ height = { length = 3 }
 
 Same fetcher can drive multiple renderers — `clock` renders as `text_ascii`, `text_plain`, or `animated_typewriter`, whichever fits the row.
 
-See `.splashboard/config.toml` in this repo for the dogfood showcase that exercises every shipped fetcher family.
-
 ## What's built in
 
 ### Fetchers
