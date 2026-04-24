@@ -22,13 +22,10 @@ that mixes a Safe `git_status` with a Network `rss` fetcher renders the
 `git_status` immediately and gates the `rss` behind trust. You see what's
 local right away; the external call waits for consent.
 
-:::note
-Every fetcher that ships in 0.x today is classified `Safe`. Network
-widgets (RSS, calendar feeds, custom URLs) arrive with the
-fetcher roadmap ([#62 – #68](https://github.com/unhappychoice/splashboard/issues/41)).
-The gate below is already active — it's what enforces the consent step
-when those land.
-:::
+Every fetcher that ships today is classified `Safe`, so you won't see
+the consent prompt yet. The gate described below is already active — it
+kicks in the moment a Network widget (RSS, calendar feed, custom URL)
+lands in a local config.
 
 ### What counts as "fixed host"?
 
@@ -101,9 +98,8 @@ re-invalidates trust.
 ## What's not in the model
 
 The classification has a third class, `Exec`, reserved for subprocess
-widgets. It's **permanently unreachable** — subprocess plugins
-([#5](https://github.com/unhappychoice/splashboard/issues/5)) and the
-`command = "..."` widget ([#20](https://github.com/unhappychoice/splashboard/issues/20))
-were closed by design. splashboard is a curated renderer, not a shell
-script host. Custom widgets ship as built-in PRs or use the
-[ReadStore](/splashboard/guides/cookbook/#readstore-custom-widgets-without-code).
+widgets. It's **permanently unreachable** — subprocess plugins and
+`command = "..."` widgets were closed by design. splashboard is a
+curated renderer, not a shell script host. Custom widgets ship as
+built-in PRs or use the
+[ReadStore](/splashboard/guides/read-store/).
