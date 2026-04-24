@@ -18,9 +18,6 @@ Instead of a blinking cursor, every new shell shows a dashboard of the things yo
 ```bash
 curl -fsSL https://raw.githubusercontent.com/unhappychoice/splashboard/main/install.sh | bash
 ```
-```bash
-splashboard install
-```
 
 The install script detects your platform (Linux / macOS × x86_64 / aarch64), downloads the matching prebuilt binary from the latest [GitHub Release](https://github.com/unhappychoice/splashboard/releases), and drops it into `~/.local/bin` (override via `INSTALL_DIR=...`).
 
@@ -47,6 +44,10 @@ nix profile install github:unhappychoice/splashboard
 Prebuilt binaries for Linux (x86_64 / aarch64), macOS (x86_64 / aarch64), and Windows (x86_64) are also attached to each [GitHub Release](https://github.com/unhappychoice/splashboard/releases).
 
 </details>
+
+```bash
+splashboard install
+```
 
 Prefer to own the rc edit yourself? Append one line that re-sources `splashboard init <shell>` on every shell start — upgrades to splashboard ship an updated init snippet automatically:
 
