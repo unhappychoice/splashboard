@@ -6,7 +6,7 @@
 //! The rest helpers accept a path like `"/user"` or `"/repos/foo/bar"`; the base URL is joined
 //! here so fetchers stay free of URL plumbing. GraphQL goes through a single POST helper.
 
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use reqwest::{Client, StatusCode};
@@ -38,6 +38,27 @@ pub fn resolve_token() -> Result<String, FetchError> {
     std::env::var("GH_TOKEN")
         .or_else(|_| std::env::var("GITHUB_TOKEN"))
         .map_err(|_| FetchError::Failed("GH_TOKEN / GITHUB_TOKEN not set".into()))
+}
+
+/// Login of the token-authenticated user. Resolved lazily via `GET /user` and memoised for the
+/// rest of the process so we never spend more than one roundtrip on a value that never changes
+/// within a session. Lets `github_avatar` / `github_user` work with zero config when a token is
+/// already set.
+pub async fn resolve_authenticated_user() -> Result<String, FetchError> {
+    static CACHED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    let slot = CACHED.get_or_init(|| Mutex::new(None));
+    if let Some(cached) = slot.lock().ok().and_then(|g| g.clone()) {
+        return Ok(cached);
+    }
+    #[derive(Deserialize)]
+    struct Me {
+        login: String,
+    }
+    let me: Me = rest_get("/user").await?;
+    if let Ok(mut g) = slot.lock() {
+        *g = Some(me.login.clone());
+    }
+    Ok(me.login)
 }
 
 /// REST GET → deserialize JSON. Non-2xx responses surface the GitHub-reported `message` when
