@@ -16,7 +16,21 @@ Instead of a blinking cursor, every new shell shows a dashboard of the things yo
 ## Install
 
 ```bash
+# cargo
 cargo install splashboard
+
+# Homebrew (macOS / Linux)
+brew install unhappychoice/tap/splashboard
+
+# cargo-binstall (prebuilt binaries from GitHub Releases)
+cargo binstall splashboard
+```
+
+Prebuilt binaries for Linux (x86_64 / aarch64), macOS (x86_64 / aarch64), and Windows (x86_64) are also attached to each [GitHub Release](https://github.com/unhappychoice/splashboard/releases).
+
+After install, run:
+
+```bash
 splashboard install
 ```
 
