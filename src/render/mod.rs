@@ -17,6 +17,7 @@ use crate::theme::{ColorKey, Theme};
 mod animated_boot;
 mod animated_figlet_morph;
 mod animated_postfx;
+mod animated_scanlines;
 mod animated_typewriter;
 mod chart_bar;
 mod chart_line;
@@ -345,6 +346,7 @@ impl Registry {
         r.register(Arc::new(animated_postfx::AnimatedPostfxRenderer));
         r.register(Arc::new(animated_figlet_morph::AnimatedFigletMorphRenderer));
         r.register(Arc::new(animated_boot::AnimatedBootRenderer));
+        r.register(Arc::new(animated_scanlines::AnimatedScanlinesRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
@@ -561,6 +563,7 @@ mod tests {
             "animated_postfx",
             "animated_figlet_morph",
             "animated_boot",
+            "animated_scanlines",
             "status_badge",
             "list_plain",
             "list_timeline",

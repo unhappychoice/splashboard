@@ -186,6 +186,16 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
             options: options.clone(),
         },
+        RenderSpec::Short(ref name) if name == "animated_scanlines" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_scanlines" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
         RenderSpec::Short(ref name) if name == "animated_figlet_morph" => RenderSpec::Full {
             type_name: "text_ascii".into(),
             options: RenderOptions {

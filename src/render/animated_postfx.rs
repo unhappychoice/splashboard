@@ -5,7 +5,7 @@ use ratatui::{Frame, layout::Rect, style::Color, widgets::Paragraph};
 use tachyonfx::{
     Duration as FxDuration, Effect, EffectRenderer, EffectTimer, Interpolation, fx,
     fx::EvolveSymbolSet,
-    pattern::{DiagonalPattern, DissolvePattern, RadialPattern, SweepPattern},
+    pattern::{CheckerboardPattern, DiagonalPattern, DissolvePattern, RadialPattern, SweepPattern},
 };
 
 use crate::options::OptionSchema;
@@ -24,10 +24,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "effect",
-        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\" | \"stagger_reveal\" | \"stagger_reveal_radial\" | \"matrix_rain\" | \"particle_burst\"",
+        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\" | \"stagger_reveal\" | \"stagger_reveal_radial\" | \"matrix_rain\" | \"particle_burst\" | \"bounce_in\" | \"elastic_in\" | \"checkerboard_in\" | \"neon_flash\"",
         required: false,
         default: Some("\"fade_in\""),
-        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). `stagger_reveal` reveals cells along a diagonal (top-left → bottom-right); `stagger_reveal_radial` reveals outward from the centre. `matrix_rain` rains random glyphs that dissolve into the underlying render; `particle_burst` scatters radial particles that resolve into the figlet. Unknown names fall back to `fade_in` rather than failing the widget.",
+        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). `stagger_reveal` reveals cells along a diagonal (top-left → bottom-right); `stagger_reveal_radial` reveals outward from the centre. `matrix_rain` rains random glyphs that dissolve into the underlying render; `particle_burst` scatters radial particles that resolve into the figlet. `bounce_in` / `elastic_in` use bounce/spring timing curves for a playful arrival; `checkerboard_in` reveals tiles in a checker pattern; `neon_flash` pulses through a bright hue before settling. Unknown names fall back to `fade_in` rather than failing the widget.",
     },
     OptionSchema {
         name: "duration_ms",
@@ -216,6 +216,26 @@ fn build_effect(name: &str, duration_ms: u32) -> Effect {
             .with_pattern(DissolvePattern::new()),
         "particle_burst" => fx::evolve_into(EvolveSymbolSet::Shaded, timer)
             .with_pattern(RadialPattern::with_transition((0.5, 0.5), 8.0)),
+        "bounce_in" => fx::fade_from_fg(
+            Color::Black,
+            EffectTimer::from_ms(duration_ms, Interpolation::BounceOut),
+        )
+        .with_pattern(SweepPattern::up_to_down(6)),
+        "elastic_in" => fx::fade_from_fg(
+            Color::Black,
+            EffectTimer::from_ms(duration_ms, Interpolation::ElasticOut),
+        )
+        .with_pattern(RadialPattern::with_transition((0.5, 0.5), 4.0)),
+        "checkerboard_in" => fx::fade_from_fg(Color::Black, timer)
+            .with_pattern(CheckerboardPattern::with_cell_size(2)),
+        // Bright hue rotation + lightness lift during the window — reads as the neon
+        // warming up then settling back into the theme colour. The timer is
+        // SineInOut so the pulse is symmetric.
+        "neon_flash" => fx::hsl_shift(
+            Some([120.0, 20.0, 35.0]),
+            None,
+            EffectTimer::from_ms(duration_ms, Interpolation::SineInOut),
+        ),
         _ => fx::fade_from_fg(Color::Black, timer),
     }
 }
@@ -260,6 +280,10 @@ mod tests {
             "stagger_reveal_radial",
             "matrix_rain",
             "particle_burst",
+            "bounce_in",
+            "elastic_in",
+            "checkerboard_in",
+            "neon_flash",
         ] {
             let _ = build_effect(name, 800);
         }

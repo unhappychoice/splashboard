@@ -32,7 +32,7 @@ follow a `family_variant` convention so siblings cluster: `text_plain`
 `grid_table` / `grid_calendar` / `grid_heatmap`, `list_plain` /
 `list_timeline`, `status_badge`, `media_image`,
 `animated_typewriter` / `animated_postfx` /
-`animated_figlet_morph` / `animated_boot`.
+`animated_figlet_morph` / `animated_boot` / `animated_scanlines`.
 
 The convention extends beyond renderers — theme token names, preset
 names, fetcher names all follow it. No standalone public tokens that
@@ -61,10 +61,13 @@ multi-frame loop so the animation actually plays.
 
 `animated_typewriter` (character-by-character reveal),
 `animated_postfx` (tachyonfx-powered sweep / fade / coalesce /
-`stagger_reveal` / `matrix_rain` / `particle_burst`),
-`animated_figlet_morph` (figlet-font sequence crossfade), and
-`animated_boot` (boot-log scroll then hero) return `true`. Everything
-else stays `false` — the splash paints once and exits.
+`stagger_reveal` / `matrix_rain` / `particle_burst` / `bounce_in` /
+`elastic_in` / `checkerboard_in` / `neon_flash`),
+`animated_figlet_morph` (figlet-font sequence crossfade),
+`animated_boot` (boot-log scroll then hero), and
+`animated_scanlines` (CRT-style horizontal scanline sweep) return
+`true`. Everything else stays `false` — the splash paints once and
+exits.
 
 ### `render(…)` — the draw
 
@@ -100,10 +103,10 @@ Most renderers draw single-line or fixed output and stick with the
 default `1`. A row with `height = "auto"` asks its child's renderer
 how tall it wants to be, given the row's width. `text_ascii` overrides
 to report the wrapped figlet block height so multi-word heroes get a
-row sized to fit; `animated_postfx` / `animated_boot` delegate to
-their inner renderer via the `registry`, and
-`animated_figlet_morph` asks `text_ascii` for the tallest height
-across its font sequence so earlier phases never clip.
+row sized to fit; `animated_postfx` / `animated_boot` /
+`animated_scanlines` delegate to their inner renderer via the
+`registry`, and `animated_figlet_morph` asks `text_ascii` for the
+tallest height across its font sequence so earlier phases never clip.
 
 ## `RenderOptions`
 
@@ -186,8 +189,13 @@ renderer would have drawn without the wrapper.
   render.
 - `particle_burst` — particles radiate in from the centre and resolve
   into the inner render. The default for `home_splash`'s hero.
+- `bounce_in` / `elastic_in` — bounce / spring timing curves for a
+  playful arrival.
+- `checkerboard_in` — tile-by-tile fade-in on a checker grid.
+- `neon_flash` — a bright hue / lightness pulse that settles back into
+  the theme colour; for a "neon sign warming up" vibe.
 
-Two sibling renderers bring their own timeline instead of a tachyonfx
+Three sibling renderers bring their own timeline instead of a tachyonfx
 pattern:
 
 - `animated_figlet_morph` — steps `text_ascii` through a sequence of
@@ -196,6 +204,9 @@ pattern:
 - `animated_boot` — scrolls a list of `[ OK ] …` boot-log lines during
   the first ~70% of the window, then hands off to the inner renderer
   for the resting frame. Best on tall hero cells (8+ rows).
+- `animated_scanlines` — CRT-style horizontal scanline sweeps down the
+  widget cell, revealing the inner render as it passes. Rows below the
+  scanline stay blank until the line reaches them.
 
 The inner renderer keeps its own option schema; options pass through
 untouched.
