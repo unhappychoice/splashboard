@@ -8,7 +8,7 @@ import homeDaily from '../../../assets/rendered/home_daily.html?raw';
 import homeGithub from '../../../assets/rendered/home_github.html?raw';
 import homeMinimal from '../../../assets/rendered/home_minimal.html?raw';
 import projectSplash from '../../../assets/rendered/project_splash.html?raw';
-import projectGithubActivity from '../../../assets/rendered/project_github_activity.html?raw';
+import projectGithub from '../../../assets/rendered/project_github.html?raw';
 import projectMinimal from '../../../assets/rendered/project_minimal.html?raw';
 
 Seven curated dashboards — four home, three project. Pick one of each as a
@@ -120,13 +120,13 @@ clones.
 Swap the hero's `effect = "..."` for `stagger_reveal` / `matrix_rain` /
 `neon_flash` / `glitch_in` to audition other openings.
 
-### `project_github_activity` — repo hero + activity grid
+### `project_github` — repo hero + activity grid
 
 Repo name as a figlet hero, slug / description / license subtitle, and
 a grid of activity panes: commits heatmap, top contributors, open PRs /
 issues, languages breakdown, recent releases.
 
-<div class="splash-landing" set:html={projectGithubActivity} />
+<div class="splash-landing" set:html={projectGithub} />
 
 | role | implementation |
 |---|---|
@@ -150,7 +150,7 @@ Repo name, latest tag, and a three-entry commit timeline. Centred on a
 lot of whitespace, no figlet, no panels. Acknowledges the repo and says
 "here's what you were just doing" without taking over the screen —
 useful when you cd into the same project hundreds of times a day and
-want `project_github_activity` to feel like a conscious choice rather
+want `project_github` to feel like a conscious choice rather
 than the default noise.
 
 <div class="splash-landing" set:html={projectMinimal} />

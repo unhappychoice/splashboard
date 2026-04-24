@@ -44,7 +44,7 @@ Non-interactive flow for dotfiles bootstrap:
 splashboard install \
   --shell zsh \
   --home-template home_splash \
-  --project-template project_github_activity \
+  --project-template project_github \
   --theme tokyo_night \
   --no-bg \
   --wait
@@ -98,8 +98,6 @@ height = { length = 3 }
 ```
 
 Same fetcher can drive multiple renderers — `clock` renders as `text_ascii`, `text_plain`, or `animated_typewriter`, whichever fits the row.
-
-See `.splashboard/config.toml` in this repo for the dogfood showcase that exercises every shipped fetcher family.
 
 ## What's built in
 

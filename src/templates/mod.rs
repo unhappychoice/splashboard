@@ -56,10 +56,10 @@ pub const TEMPLATES: &[Template] = &[
         body: include_str!("project_splash.toml"),
     },
     Template {
-        name: "project_github_activity",
+        name: "project_github",
         context: TemplateContext::Project,
         description: "Dynamic repo hero + subtitle; branch state, commit / CI sparklines, open PRs, and recent releases.",
-        body: include_str!("project_github_activity.toml"),
+        body: include_str!("project_github.toml"),
     },
     Template {
         name: "project_minimal",

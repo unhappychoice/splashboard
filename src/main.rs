@@ -58,7 +58,7 @@ enum Command {
         /// Home template name (e.g. `home_splash`). Required in non-TTY mode.
         #[arg(long)]
         home_template: Option<String>,
-        /// Project template name (e.g. `project_github_activity`). Required in non-TTY mode.
+        /// Project template name (e.g. `project_github`). Required in non-TTY mode.
         #[arg(long)]
         project_template: Option<String>,
         /// Theme preset for `settings.toml`. One of `default`, `catppuccin_mocha`,
