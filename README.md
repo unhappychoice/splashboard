@@ -24,6 +24,9 @@ brew install unhappychoice/tap/splashboard
 
 # cargo-binstall (prebuilt binaries from GitHub Releases)
 cargo binstall splashboard
+
+# One-liner install script (Linux / macOS)
+curl -fsSL https://raw.githubusercontent.com/unhappychoice/splashboard/main/install.sh | bash
 ```
 
 Prebuilt binaries for Linux (x86_64 / aarch64), macOS (x86_64 / aarch64), and Windows (x86_64) are also attached to each [GitHub Release](https://github.com/unhappychoice/splashboard/releases).
