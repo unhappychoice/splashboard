@@ -30,7 +30,8 @@ pub enum Layout {
         panel: Option<Panel>,
         bg: BgLevel,
     },
-    #[allow(dead_code)]
+    /// Reserves its slot but paints nothing. Used by config spacers
+    /// (`[[row.child]]` without a `widget`, or `[[row]] gap = N` between siblings).
     Empty,
 }
 

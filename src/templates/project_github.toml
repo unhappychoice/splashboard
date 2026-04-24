@@ -59,14 +59,6 @@ id = "releases"
 fetcher = "github_recent_releases"
 render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 3 }
 
-# Horizontal spacer between sibling containers — a `static` with a single space
-# renders a blank line, the `width = { length = … }` in the row carves the gap.
-[[widget]]
-id = "gap"
-fetcher = "basic_static"
-format = " "
-render = "text_plain"
-
 # ── Layout ──────────────────────────────────────────────────────────
 
 [[row]]
@@ -110,15 +102,13 @@ height = { length = 1 }
 [[row]]
 height = { length = 6 }
 flex = "center"
+gap = 2
   [[row.child]]
   widget = "languages"
   width = { length = 34 }
   border = "top"
   title = "  languages  "
   title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
   [[row.child]]
   widget = "releases"
   width = { length = 34 }
@@ -133,15 +123,13 @@ height = { length = 1 }
 [[row]]
 height = { length = 9 }
 flex = "center"
+gap = 2
   [[row.child]]
   widget = "repo_prs"
   width = { length = 34 }
   border = "top"
   title = "  PRs  "
   title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
   [[row.child]]
   widget = "repo_issues"
   width = { length = 34 }
@@ -158,15 +146,13 @@ height = { length = 1 }
 [[row]]
 height = { length = 10 }
 flex = "center"
+gap = 2
   [[row.child]]
   widget = "commits_heatmap"
   width = { length = 34 }
   border = "top"
   title = "  commits  "
   title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
   [[row.child]]
   widget = "top_contributors"
   width = { length = 34 }
