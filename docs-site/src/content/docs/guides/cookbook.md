@@ -52,11 +52,11 @@ Drop widgets in there to get a single "every repo root" splash without
 each repo carrying a config.
 
 Network widgets in a per-dir dashboard stay gated behind `splashboard
-trust` — see the [trust guide](/splashboard/guides/trust/).
+trust` — see the [trust guide](/guides/trust/).
 
 ## Custom widgets without code
 
-Use [ReadStore](/splashboard/guides/read-store/) — write a payload
+Use [ReadStore](/guides/read-store/) — write a payload
 file, pair it with a renderer, splashboard draws it. No code, no
 subprocess. Good for habit trackers, goal progress, and anything you
 can shell-script to a file.
@@ -79,7 +79,7 @@ palette_series = ["#7aa2f7", "#565f89"]
 ```
 
 Every renderer declares the tokens it reads on its
-[reference page](/splashboard/reference/matrix/), so you can work
+[reference page](/reference/matrix/), so you can work
 backward: "I want this widget to pop more" → open the widget's page →
 see which token it uses → override that.
 

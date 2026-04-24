@@ -4,7 +4,7 @@ description: The TOML schema for settings, dashboards, widgets, rows, and render
 ---
 
 This page is the TOML schema. If you haven't read
-[Concepts](/splashboard/guides/concepts/) yet, start there — every field
+[Concepts](/guides/concepts/) yet, start there — every field
 below is easier to understand once the Widget = Fetcher + Renderer +
 Layout slot equation has clicked.
 
@@ -103,7 +103,7 @@ panel_title = "#ff0088"
 ```
 
 Full theme token list and the `"reset"` escape hatch for light terminals:
-see [Themes](/splashboard/guides/themes/).
+see [Themes](/guides/themes/).
 
 ## Dashboard files
 
@@ -127,7 +127,7 @@ Fields:
 - **`id`** (required) — unique string used to reference the widget from
   rows.
 - **`fetcher`** (required) — registry name. Browse with
-  [`splashboard catalog fetcher`](/splashboard/reference/matrix/).
+  [`splashboard catalog fetcher`](/reference/matrix/).
 - **`render`** — renderer selection. Short form `render = "text_plain"` or
   long form `render = { type = "text_ascii", pixel_size = "quadrant" }`.
   Absent = pick the default renderer for the fetcher's shape.
@@ -137,7 +137,7 @@ Fields:
   Ignored by realtime fetchers.
 - **`file_format`** — `basic_read_store` only: `"json"`, `"toml"`, or
   `"text"`. The file is deserialized into the
-  [shape](/splashboard/guides/concepts/shape/) the paired renderer
+  [shape](/guides/concepts/shape/) the paired renderer
   expects.
 - **`[widget.options]`** — fetcher-specific nested options. See each
   fetcher's reference page for its schema.
@@ -207,7 +207,7 @@ about, others are ignored. The common ones:
   `chart_bar` options.
 - **`ring_thickness`**, **`label_position`** — `gauge_circle` options.
 
-See each renderer's [reference page](/splashboard/reference/matrix/) for the
+See each renderer's [reference page](/reference/matrix/) for the
 definitive list.
 
 ### A worked example

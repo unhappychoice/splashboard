@@ -36,18 +36,18 @@ the shape matches.
 
 Each piece has its own page:
 
-- [Widget](/splashboard/guides/concepts/widget/) — how a widget is
+- [Widget](/guides/concepts/widget/) — how a widget is
   assembled from config, what its lifecycle looks like across cold /
   warm / animated frames, and how placeholders substitute when things
   go sideways.
-- [Shape](/splashboard/guides/concepts/shape/) — the 12 variants
+- [Shape](/guides/concepts/shape/) — the 12 variants
   splashboard ships today, with the Rust `Body` struct, an example
   payload, the renderers that accept it, and typical fetchers that
   emit it.
-- [Fetcher](/splashboard/guides/concepts/fetcher/) — the Cached
+- [Fetcher](/guides/concepts/fetcher/) — the Cached
   vs Realtime contract, the Safety classification, options / cache
   keys / sample bodies, and how to add your own.
-- [Renderer](/splashboard/guides/concepts/renderer/) — the trait's
+- [Renderer](/guides/concepts/renderer/) — the trait's
   surface (`accepts` / `animates` / `render`), how alignment and
   empty-state handling work, and the naming convention that keeps
   related renderers clustered in the catalog.
@@ -118,7 +118,7 @@ problems that bound the whole tool.
 
 The one escape hatch for "I want a widget no built-in fetcher provides"
 is
-[ReadStore](/splashboard/guides/read-store/):
+[ReadStore](/guides/read-store/):
 you write a payload file, splashboard deserialises it into any supported
 shape, any compatible renderer draws it. Perfect for habit trackers,
 goal progress, custom metrics — anything you can shell-script to a file.
@@ -128,9 +128,9 @@ lands as a built-in fetcher PR instead.
 
 ## Next
 
-- [Configuration](/splashboard/guides/configuration/) — the TOML schema
+- [Configuration](/guides/configuration/) — the TOML schema
   now that the model makes sense.
-- [Reference](/splashboard/reference/matrix/) — every built-in fetcher
+- [Reference](/reference/matrix/) — every built-in fetcher
   and renderer with its options and compatible shapes. Browse it as a
   catalog once you're thinking in terms of "what shape do I need, who
   emits it, who draws it".

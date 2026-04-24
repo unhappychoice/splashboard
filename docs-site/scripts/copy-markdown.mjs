@@ -3,7 +3,7 @@
 // HTML — same approach as the `llms.txt` family but per-page.
 //
 // `src/content/docs/guides/getting-started.md` → `dist/guides/getting-started.md`,
-// served at `/splashboard/guides/getting-started.md` on GH Pages.
+// served at `/guides/getting-started.md`.
 
 import { readdir, mkdir, copyFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';

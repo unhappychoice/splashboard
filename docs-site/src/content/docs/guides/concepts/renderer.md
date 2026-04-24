@@ -51,7 +51,7 @@ A single renderer can accept multiple shapes — `text_plain` draws
 both `Text` and `TextBlock`, `grid_table` draws `Entries` and
 `Badge`, `chart_bar` draws both `NumberSeries` and `Bars`. The
 accepts list is the source of truth for the compatibility matrix on
-the [reference overview](/splashboard/reference/matrix/).
+the [reference overview](/reference/matrix/).
 
 ### `animates()` — runtime hinting
 
@@ -181,7 +181,7 @@ effect shader on top. The final rested frame is whatever the inner
 renderer would have drawn without the wrapper.
 
 `animated_postfx` ships with a menu of effect names (full list in the
-[renderer reference](/splashboard/reference/renderers/animated/animated_postfx/)):
+[renderer reference](/reference/renderers/animated/animated_postfx/)):
 
 - `fade_in` / `fade_out` / `dissolve` / `coalesce` / `hsl_shift` — stock
   tachyonfx reveals.
