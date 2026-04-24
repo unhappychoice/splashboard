@@ -27,13 +27,14 @@ render = { type = "text_plain", align = "center" }
 
 # The three most recent commits on HEAD, rendered as a timeline. The `format` field
 # is parsed as a commit count — "3" keeps the panel tight without forcing users who
-# want five to re-type the whole widget block. No bullet option here because the
-# default `●` is exactly the minimal dot we'd pick anyway.
+# want five to re-type the whole widget block. `align = "center"` centres the whole
+# timeline block on the widest line so it lines up visually with the centered hero
+# and tag above, instead of sitting left-aligned inside a centred cell.
 [[widget]]
 id = "recent"
 fetcher = "git_recent_commits"
 format = "3"
-render = { type = "list_timeline", bullet = "●", date_format = "relative" }
+render = { type = "list_timeline", bullet = "●", date_format = "relative", align = "center" }
 
 # ── Layout ─────────────────────────────────────────────────────────
 
