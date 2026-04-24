@@ -324,11 +324,7 @@ pub fn resolve_local_dashboard_path() -> Option<PathBuf> {
 fn resolve_from(cwd: &Path, on_cd: bool) -> Option<DashboardSource> {
     if is_home_dir(cwd) {
         // Dotfiles-in-git case: CWD == $HOME still means "home context", not "project".
-        return if on_cd {
-            None
-        } else {
-            Some(DashboardSource::Home)
-        };
+        return Some(DashboardSource::Home);
     }
     if let Some(path) = find_local_at(cwd) {
         return Some(DashboardSource::Local(path));
@@ -725,6 +721,28 @@ widget = "x"
     fn on_cd_silent_in_plain_subdir() {
         let dir = tempfile::tempdir().unwrap();
         assert!(resolve_from(dir.path(), true).is_none());
+    }
+
+    #[test]
+    fn on_cd_fires_home_at_home_dir() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("HOME").ok();
+        // SAFETY: scoped mutation of process env; the lock above serializes with other
+        // env-touching tests.
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+        }
+        let src = resolve_from(tmp.path(), true).unwrap();
+        assert!(matches!(src, DashboardSource::Home));
+        unsafe {
+            match previous {
+                Some(v) => std::env::set_var("HOME", v),
+                None => std::env::remove_var("HOME"),
+            }
+        }
     }
 
     #[test]
