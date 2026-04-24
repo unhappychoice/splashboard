@@ -9,12 +9,39 @@ and verifying the first splash. It assumes nothing more than a working terminal.
 
 ## Install the binary
 
-splashboard is distributed on crates.io. A stable Rust toolchain is the only
-prerequisite.
+The one-liner below detects your platform (Linux / macOS × x86_64 / aarch64),
+pulls the matching prebuilt binary from the latest GitHub Release, and drops
+it into `~/.local/bin` (override via `INSTALL_DIR=...`). No Rust toolchain
+required.
 
 ```bash
-cargo install splashboard
+curl -fsSL https://raw.githubusercontent.com/unhappychoice/splashboard/main/install.sh | bash
 ```
+
+<details>
+<summary>Other install methods</summary>
+
+```bash
+# cargo (needs a stable Rust toolchain)
+cargo install splashboard
+
+# Homebrew (macOS / Linux)
+brew install unhappychoice/tap/splashboard
+
+# cargo-binstall (prebuilt from GitHub Releases)
+cargo binstall splashboard
+
+# Nix flake
+nix run github:unhappychoice/splashboard
+nix profile install github:unhappychoice/splashboard
+```
+
+Prebuilt binaries for Linux (x86_64 / aarch64), macOS (x86_64 / aarch64),
+and Windows (x86_64) are attached to each
+[GitHub Release](https://github.com/unhappychoice/splashboard/releases) —
+handy if you prefer to drop the binary in manually.
+
+</details>
 
 ## Run `splashboard install`
 
