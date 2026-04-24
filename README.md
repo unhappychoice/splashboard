@@ -1,15 +1,19 @@
-# splashboard
-
-[![CI](https://github.com/unhappychoice/splashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/unhappychoice/splashboard/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/unhappychoice/splashboard/branch/main/graph/badge.svg)](https://codecov.io/gh/unhappychoice/splashboard)
-
 <p align="center">
-  <img src="docs/screenshots/project_github.png" alt="splashboard project_github preset" width="820">
+  <img src="docs/screenshots/project_github.png" alt="splashboard" width="820">
 </p>
 
-A customizable terminal splash rendered on shell startup and on `cd`.
+<p align="center">
+  <a href="https://crates.io/crates/splashboard"><img src="https://img.shields.io/crates/v/splashboard.svg?style=flat-square&color=E06B4B" alt="crates.io"></a>
+  <a href="https://github.com/unhappychoice/splashboard/releases"><img src="https://img.shields.io/github/v/release/unhappychoice/splashboard?style=flat-square&color=E0C14B&label=release" alt="release"></a>
+  <a href="https://github.com/unhappychoice/splashboard/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/unhappychoice/splashboard/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
+  <a href="https://codecov.io/gh/unhappychoice/splashboard"><img src="https://img.shields.io/codecov/c/github/unhappychoice/splashboard?style=flat-square" alt="coverage"></a>
+  <a href="https://github.com/unhappychoice/splashboard/blob/main/LICENSE"><img src="https://img.shields.io/crates/l/splashboard.svg?style=flat-square" alt="license"></a>
+</p>
 
-> `splashboard` = `splash` + `dashboard`.
+<p align="center">
+  <strong>A customizable terminal splash rendered on shell startup and on <code>cd</code>.</strong><br>
+  <sub><code>splashboard</code> = <code>splash</code> + <code>dashboard</code></sub>
+</p>
 
 Instead of a blinking cursor, every new shell shows a dashboard of the things you actually care about — greetings, git status, CI health, PRs, a contributions heatmap, the moon phase. The killer feature: a repo that ships `./.splashboard/dashboard.toml` auto-reshapes the splash when you `cd` in, so different repos get different splashes for free.
 
