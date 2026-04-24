@@ -19,10 +19,6 @@ Instead of a blinking cursor, every new shell shows a dashboard of the things yo
 curl -fsSL https://raw.githubusercontent.com/unhappychoice/splashboard/main/install.sh | bash
 ```
 
-The install script detects your platform (Linux / macOS × x86_64 / aarch64), downloads the matching prebuilt binary from the latest [GitHub Release](https://github.com/unhappychoice/splashboard/releases), and drops it into `~/.local/bin` (override via `INSTALL_DIR=...`).
-
-`splashboard install` then detects your shell, walks you through template / theme pickers, and wires your rc for you.
-
 <details>
 <summary>Other install methods</summary>
 
@@ -45,6 +41,7 @@ Prebuilt binaries for Linux (x86_64 / aarch64), macOS (x86_64 / aarch64), and Wi
 
 </details>
 
+`splashboard install` then detects your shell, walks you through template / theme pickers, and wires your rc for you.
 ```bash
 splashboard install
 ```
