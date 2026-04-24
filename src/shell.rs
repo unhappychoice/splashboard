@@ -51,10 +51,18 @@ pub fn detect_shell(env: impl Fn(&str) -> Option<String>) -> Option<Shell> {
 }
 
 fn classify_shell_path(path: &str) -> Option<Shell> {
-    let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
-    // Strip extensions like `.exe` so `zsh.exe` still classifies on WSL-ish edge cases.
-    let bare = name.split('.').next().unwrap_or(&name);
-    match bare {
+    // Strip the directory prefix by splitting on either separator ourselves — Rust's
+    // `Path` is platform-aware (`\` isn't a separator on Unix), so using it here would
+    // leave `C:\...\pwsh.exe` as one opaque segment on Linux tests and in WSL. Split on
+    // both `/` and `\` then trim the trailing `.exe` so `zsh.exe` / `pwsh.exe` classify
+    // on every platform.
+    let basename = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let bare = basename
+        .split('.')
+        .next()
+        .unwrap_or(basename)
+        .to_ascii_lowercase();
+    match bare.as_str() {
         "bash" => Some(Shell::Bash),
         "zsh" => Some(Shell::Zsh),
         "fish" => Some(Shell::Fish),
@@ -179,6 +187,24 @@ mod tests {
     fn detect_returns_none_for_unknown_shell() {
         assert_eq!(detect_shell(env_with(&[("SHELL", "/bin/ksh")])), None);
         assert_eq!(detect_shell(env_with(&[])), None);
+    }
+
+    /// Windows-style `$SHELL` values (rare but seen on WSL with a PowerShell shim) carry
+    /// `\` separators and a `.exe` suffix. The classifier has to strip both to resolve
+    /// the shell identity.
+    #[test]
+    fn detect_handles_windows_style_paths() {
+        assert_eq!(
+            detect_shell(env_with(&[(
+                "SHELL",
+                "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+            )])),
+            Some(Shell::Powershell)
+        );
+        assert_eq!(
+            detect_shell(env_with(&[("SHELL", "C:\\cygwin64\\bin\\zsh.exe")])),
+            Some(Shell::Zsh)
+        );
     }
 
     #[test]

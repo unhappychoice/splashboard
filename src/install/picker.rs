@@ -365,13 +365,22 @@ fn run_settings_pickers(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     preview_template: Option<&'static Template>,
 ) -> io::Result<Option<SettingsChoices>> {
-    let Some(theme) = run_theme_picker(terminal, preview_template)? else {
-        return Ok(None);
+    let theme = match run_theme_picker(terminal, preview_template)? {
+        ThemePick::Cancelled => return Ok(None),
+        ThemePick::Chose(key) => key,
     };
     let Some((bg, wait)) = run_toggle_picker(terminal)? else {
         return Ok(None);
     };
     Ok(Some(SettingsChoices { theme, bg, wait }))
+}
+
+/// Outcome of the theme screen. Flat three-way result avoids the
+/// `Option<Option<&str>>` double-nesting — `Chose(None)` means "user picked `default`,
+/// which writes no preset line", distinct from `Cancelled`.
+enum ThemePick {
+    Cancelled,
+    Chose(Option<&'static str>),
 }
 
 /// Candidate rows in the theme picker. `None` maps to the built-in Splash palette (i.e.
@@ -423,7 +432,7 @@ fn theme_options() -> Vec<ThemeOption> {
 fn run_theme_picker(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     preview_template: Option<&'static Template>,
-) -> io::Result<Option<Option<&'static str>>> {
+) -> io::Result<ThemePick> {
     let options = theme_options();
     // Pre-build a themed preview per option. When no home template is available (the
     // catalog is empty — shouldn't happen in practice) we fall through to `None` and
@@ -445,8 +454,8 @@ fn run_theme_picker(
         })?;
 
         match wait_for_action(options.len(), selected)? {
-            Action::Cancel => return Ok(None),
-            Action::Confirm => return Ok(Some(options[selected].key)),
+            Action::Cancel => return Ok(ThemePick::Cancelled),
+            Action::Confirm => return Ok(ThemePick::Chose(options[selected].key)),
             Action::Move(to) => selected = to,
             Action::Toggle | Action::Tick => {}
         }
