@@ -87,8 +87,8 @@ Available templates:
 - **home**: `home_splash`, `home_daily`, `home_github`, `home_minimal`
 - **project**: `project_splash`, `project_github`, `project_minimal`
 
-See [Presets](/splashboard/guides/presets/) for a rendered preview of each,
-and [Themes](/splashboard/guides/themes/) for the palette details.
+See [Presets](/guides/presets/) for a rendered preview of each,
+and [Themes](/guides/themes/) for the palette details.
 
 ### Prefer to own the rc edit yourself?
 
@@ -131,16 +131,16 @@ Run `splashboard` directly to re-render without waiting for a new shell.
 
 From here:
 
-- [Concepts](/splashboard/guides/concepts/) — the mental model (Widget =
+- [Concepts](/guides/concepts/) — the mental model (Widget =
   Fetcher + Renderer + Layout slot). Read this next if the TOML above
   looks a bit opaque; it unlocks the rest of the docs.
-- [Configuration](/splashboard/guides/configuration/) — the full TOML
+- [Configuration](/guides/configuration/) — the full TOML
   schema (settings, dashboards, widgets, rows, render options).
-- [Presets](/splashboard/guides/presets/) — curated dashboards you can
+- [Presets](/guides/presets/) — curated dashboards you can
   adopt verbatim.
-- [Themes](/splashboard/guides/themes/) — six built-in palettes plus
+- [Themes](/guides/themes/) — six built-in palettes plus
   per-token overrides.
-- The [reference](/splashboard/reference/matrix/) — the complete list of
+- The [reference](/reference/matrix/) — the complete list of
   fetchers and renderers with their options and compatible shapes.
 
 ## Troubleshooting
@@ -158,12 +158,12 @@ Unset the variable or widen the terminal and try again.
 
 **A widget renders `🔒 requires trust`.** The widget is classified as
 `Network` and the local dashboard it came from has not been trusted yet. See
-the [trust model guide](/splashboard/guides/trust/) for the consent flow —
+the [trust model guide](/guides/trust/) for the consent flow —
 `splashboard trust` is usually what you want.
 
 **A GitHub widget renders an error.** `github_*` fetchers need a token with
 read access. Export `GH_TOKEN` (or `GITHUB_TOKEN`) before starting the shell.
-See the [cookbook](/splashboard/guides/cookbook/#github-credentials) for the
+See the [cookbook](/guides/cookbook/#github-credentials) for the
 recommended place to put it.
 
 **I want to see fresh data, not cached.** Run `splashboard --wait` once. The

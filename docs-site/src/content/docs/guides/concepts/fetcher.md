@@ -129,7 +129,7 @@ Home-scoped configs (`$HOME/.splashboard/*.dashboard.toml`) are
 implicitly trusted — you own HOME, so anything you put there is
 authoritative. The trust gate only applies to project-local dashboards
 that travel with a cloned repo. See
-[Trust model](/splashboard/guides/trust/) for the full threat model.
+[Trust model](/guides/trust/) for the full threat model.
 
 ### What counts as "fixed host"?
 
@@ -190,7 +190,7 @@ Two built-in fetchers cover custom widgets without code:
 
 - **`basic_read_store`** — reads
   `$HOME/.splashboard/store/<id>.<ext>` and deserialises it as the
-  [shape](/splashboard/guides/concepts/shape/) the paired renderer
+  [shape](/guides/concepts/shape/) the paired renderer
   accepts. The filename matches the widget's `id`; `file_format` picks
   the encoding (`"json"`, `"toml"`, or `"text"`). Ideal for "I want a
   widget for X and don't want to write a fetcher".
@@ -203,7 +203,7 @@ Two built-in fetchers cover custom widgets without code:
   render = { type = "chart_sparkline" }   # pins the shape to NumberSeries
   ```
 
-  See [ReadStore](/splashboard/guides/read-store/).
+  See [ReadStore](/guides/read-store/).
 
 The rule of thumb:
 

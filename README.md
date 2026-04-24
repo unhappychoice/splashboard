@@ -47,14 +47,14 @@ echo 'Invoke-Expression (& splashboard init powershell | Out-String)' >> $PROFIL
 
 ## Docs
 
-📖 **<https://unhappychoice.github.io/splashboard/>**
+📖 **<https://splashboard.unhappychoice.com/>**
 
-- [Getting started](https://unhappychoice.github.io/splashboard/guides/getting-started/) — install, wire your shell, render your first splash
-- [Concepts](https://unhappychoice.github.io/splashboard/guides/concepts/) — the mental model (Widget = Fetcher + Renderer + Layout slot)
-- [Configuration](https://unhappychoice.github.io/splashboard/guides/configuration/) — the full TOML schema
-- [Presets](https://unhappychoice.github.io/splashboard/guides/presets/) & [Themes](https://unhappychoice.github.io/splashboard/guides/themes/) — curated dashboards and palettes
-- [Trust model](https://unhappychoice.github.io/splashboard/guides/trust/) — how per-directory configs are sandboxed
-- [Reference](https://unhappychoice.github.io/splashboard/reference/matrix/) — every fetcher and renderer with options and compatible shapes
+- [Getting started](https://splashboard.unhappychoice.com/guides/getting-started/) — install, wire your shell, render your first splash
+- [Concepts](https://splashboard.unhappychoice.com/guides/concepts/) — the mental model (Widget = Fetcher + Renderer + Layout slot)
+- [Configuration](https://splashboard.unhappychoice.com/guides/configuration/) — the full TOML schema
+- [Presets](https://splashboard.unhappychoice.com/guides/presets/) & [Themes](https://splashboard.unhappychoice.com/guides/themes/) — curated dashboards and palettes
+- [Trust model](https://splashboard.unhappychoice.com/guides/trust/) — how per-directory configs are sandboxed
+- [Reference](https://splashboard.unhappychoice.com/reference/matrix/) — every fetcher and renderer with options and compatible shapes
 
 ## Status
 

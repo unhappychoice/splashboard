@@ -112,7 +112,7 @@ palette_heatmap = ["#111", "#333", "#666", "#999", "#fff"]
 
 ## Which tokens does this renderer use?
 
-Every renderer's [reference page](/splashboard/reference/matrix/) lists
+Every renderer's [reference page](/reference/matrix/) lists
 the tokens it reads. The list is generated from `ColorKey` declarations
 in the renderer itself, so it can't drift from what the code actually
 uses.

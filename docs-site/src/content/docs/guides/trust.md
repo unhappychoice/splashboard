@@ -102,4 +102,4 @@ widgets. It's **permanently unreachable** — subprocess plugins and
 `command = "..."` widgets were closed by design. splashboard is a
 curated renderer, not a shell script host. Custom widgets ship as
 built-in PRs or use the
-[ReadStore](/splashboard/guides/read-store/).
+[ReadStore](/guides/read-store/).

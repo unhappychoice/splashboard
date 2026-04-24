@@ -47,7 +47,7 @@ every fetcher emitting it.
 | [`Timeline`](#timeline) | `list_timeline` | — | chronological events |
 
 The authoritative compatibility matrix is in the
-[reference overview](/splashboard/reference/matrix/) — generated from
+[reference overview](/reference/matrix/) — generated from
 each renderer's `accepts()`, so it can't drift.
 
 ## `Text`

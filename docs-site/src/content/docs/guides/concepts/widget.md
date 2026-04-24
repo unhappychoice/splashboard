@@ -105,7 +105,7 @@ the background fetch. The next render picks up the fresh payload.
 For local project dashboards (`./.splashboard/dashboard.toml`),
 `Network` fetchers are gated behind `splashboard trust`. An untrusted
 Network widget renders a `🔒 requires trust` placeholder instead of
-running. See [Trust model](/splashboard/guides/trust/).
+running. See [Trust model](/guides/trust/).
 
 ### Empty-state placeholder
 

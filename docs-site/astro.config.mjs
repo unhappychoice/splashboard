@@ -2,11 +2,8 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
 
-// Base path matches the GH Pages project URL (unhappychoice.github.io/splashboard/).
-// Internal links in content are relative, so they're unaffected; only the public URL uses this.
 export default defineConfig({
-  site: 'https://unhappychoice.github.io',
-  base: '/splashboard',
+  site: 'https://splashboard.unhappychoice.com',
   // Disable smart-quote / em-dash substitution. The llms-*.txt outputs are derived from
   // the rendered markdown, so smartypants would splatter U+2019 / U+2014 into what's
   // supposed to be a plain-text feed — valid UTF-8 but ugly on any client that assumes
@@ -26,14 +23,14 @@ export default defineConfig({
           tag: 'meta',
           attrs: {
             property: 'og:image',
-            content: 'https://unhappychoice.github.io/splashboard/og.png',
+            content: 'https://splashboard.unhappychoice.com/og.png',
           },
         },
         {
           tag: 'meta',
           attrs: {
             name: 'twitter:image',
-            content: 'https://unhappychoice.github.io/splashboard/og.png',
+            content: 'https://splashboard.unhappychoice.com/og.png',
           },
         },
       ],

@@ -6,14 +6,14 @@ description: Write a payload file, pick a shape, let splashboard draw it — the
 ReadStore is splashboard's one escape hatch for "I want a widget no
 built-in fetcher provides". You write the payload to a file, point a
 `basic_read_store` widget at it, and splashboard deserialises the file
-into whatever [shape](/splashboard/guides/concepts/shape/) the paired
+into whatever [shape](/guides/concepts/shape/) the paired
 renderer expects.
 
 - No code.
 - No subprocess.
 - Fixed path under `$HOME/.splashboard/store/` — config can't redirect
   the read, so it's
-  [Safe](/splashboard/guides/trust/#safety-classes) even in an
+  [Safe](/guides/trust/#safety-classes) even in an
   untrusted local dashboard.
 
 Use it when curated UX (auth, rate limits, stateful update) isn't
@@ -62,7 +62,7 @@ file as the inner data struct for the target shape, *not* the
 ```
 
 The envelope form is what you see on the
-[Shape page](/splashboard/guides/concepts/shape/) and inside
+[Shape page](/guides/concepts/shape/) and inside
 splashboard's cache files. ReadStore strips it so your file stays as
 short as possible — one concept per file, matching what you'd write if
 you'd just invented the format yourself.
@@ -98,18 +98,18 @@ Omit it for everything else → defaults to `"json"`.
 If the file doesn't exist, ReadStore returns an empty body for the
 declared shape (empty cells, `0.0` ratio, no entries, …) — the splash
 stays quiet rather than erroring. The shared
-[empty-state placeholder](/splashboard/guides/concepts/renderer/#empty-state-handling)
+[empty-state placeholder](/guides/concepts/renderer/#empty-state-handling)
 paints in the widget's slot.
 
 ## Supported shapes
 
 ReadStore supports every non-dynamic
-[shape](/splashboard/guides/concepts/shape/) — 10 of the 12 variants.
+[shape](/guides/concepts/shape/) — 10 of the 12 variants.
 The two exceptions:
 
-- [`Badge`](/splashboard/guides/concepts/shape/#badge) — status pills
+- [`Badge`](/guides/concepts/shape/#badge) — status pills
   are always "right now" values; use a built-in fetcher.
-- [`Timeline`](/splashboard/guides/concepts/shape/#timeline) — event
+- [`Timeline`](/guides/concepts/shape/#timeline) — event
   streams assume dynamic data; ReadStore is for snapshots.
 
 Concrete JSON per supported shape:
@@ -317,7 +317,7 @@ render = "grid_heatmap"
 - Files live at `$HOME/.splashboard/store/<widget-id>.<ext>`.
 - The widget `id` is sanitised — only `[A-Za-z0-9_-]` survive, so a
   hostile repo-local config can't traverse out of the store directory.
-- Classified `Safe` in the [trust model](/splashboard/guides/trust/) —
+- Classified `Safe` in the [trust model](/guides/trust/) —
   always runs, even from an untrusted local dashboard, because the
   read path is fixed.
 
