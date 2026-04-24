@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-04-24
 
 ### ✨ Features
 
@@ -135,6 +135,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v0.2.0 ([df1dfb4](https://github.com/unhappychoice/splashboard/commit/df1dfb4))
+- ci(release): build Linux binaries with cargo-zigbuild against glibc 2.17 ([52eb2a9](https://github.com/unhappychoice/splashboard/commit/52eb2a9))
+- ops: add release automation (cargo-release / GH Releases / crates.io / brew tap / Nix) ([8989900](https://github.com/unhappychoice/splashboard/commit/8989900))
 - docs(readme): add project_github hero screenshot at the top ([2c35306](https://github.com/unhappychoice/splashboard/commit/2c35306))
 - docs(readme): keep shell-wiring instructions in the README ([bf4f9e8](https://github.com/unhappychoice/splashboard/commit/bf4f9e8))
 - docs(readme): slim README down to install + docs-site pointer ([7aee01f](https://github.com/unhappychoice/splashboard/commit/7aee01f))
