@@ -4,7 +4,8 @@ use std::time::Instant;
 use ratatui::{Frame, layout::Rect, style::Color, widgets::Paragraph};
 use tachyonfx::{
     Duration as FxDuration, Effect, EffectRenderer, EffectTimer, Interpolation, fx,
-    pattern::SweepPattern,
+    fx::EvolveSymbolSet,
+    pattern::{DiagonalPattern, DissolvePattern, RadialPattern, SweepPattern},
 };
 
 use crate::options::OptionSchema;
@@ -23,10 +24,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
     OptionSchema {
         name: "effect",
-        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\"",
+        type_hint: "\"fade_in\" | \"fade_out\" | \"dissolve\" | \"coalesce\" | \"sweep_in\" | \"sweep_in_right\" | \"sweep_in_down\" | \"sweep_in_up\" | \"slide_in\" | \"slide_in_right\" | \"slide_in_down\" | \"slide_in_up\" | \"hsl_shift\" | \"stagger_reveal\" | \"stagger_reveal_radial\" | \"matrix_rain\" | \"particle_burst\"",
         required: false,
         default: Some("\"fade_in\""),
-        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). Unknown names fall back to `fade_in` rather than failing the widget.",
+        description: "tachyonfx effect applied to the inner render. `sweep_in*` / `slide_in*` use a directional reveal (default = left→right; `_right`/`_down`/`_up` suffixes invert the direction). `stagger_reveal` reveals cells along a diagonal (top-left → bottom-right); `stagger_reveal_radial` reveals outward from the centre. `matrix_rain` rains random glyphs that dissolve into the underlying render; `particle_burst` scatters radial particles that resolve into the figlet. Unknown names fall back to `fade_in` rather than failing the widget.",
     },
     OptionSchema {
         name: "duration_ms",
@@ -207,6 +208,14 @@ fn build_effect(name: &str, duration_ms: u32) -> Effect {
             fx::fade_from_fg(Color::Black, timer).with_pattern(SweepPattern::down_to_up(3))
         }
         "hsl_shift" => fx::hsl_shift(Some([180.0, 0.0, 0.0]), None, timer),
+        "stagger_reveal" => fx::fade_from_fg(Color::Black, timer)
+            .with_pattern(DiagonalPattern::top_left_to_bottom_right()),
+        "stagger_reveal_radial" => fx::fade_from_fg(Color::Black, timer)
+            .with_pattern(RadialPattern::with_transition((0.5, 0.5), 6.0)),
+        "matrix_rain" => fx::evolve_into(EvolveSymbolSet::BlocksVertical, timer)
+            .with_pattern(DissolvePattern::new()),
+        "particle_burst" => fx::evolve_into(EvolveSymbolSet::Shaded, timer)
+            .with_pattern(RadialPattern::with_transition((0.5, 0.5), 8.0)),
         _ => fx::fade_from_fg(Color::Black, timer),
     }
 }
@@ -247,6 +256,10 @@ mod tests {
             "slide_in_down",
             "slide_in_up",
             "hsl_shift",
+            "stagger_reveal",
+            "stagger_reveal_radial",
+            "matrix_rain",
+            "particle_burst",
         ] {
             let _ = build_effect(name, 800);
         }

@@ -17,7 +17,9 @@ use crate::fetcher::{RegisteredFetcher, Registry as FetcherRegistry};
 use crate::layout as layout_engine;
 use crate::layout::WidgetId;
 use crate::payload::{Body, ImageData, Payload, TextBlockData, TextData};
-use crate::render::{Registry as RenderRegistry, RenderSpec, Shape, default_renderer_for};
+use crate::render::{
+    Registry as RenderRegistry, RenderOptions, RenderSpec, Shape, default_renderer_for,
+};
 use crate::samples;
 use crate::theme::Theme;
 
@@ -186,6 +188,47 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
             options: options.clone(),
         },
+        RenderSpec::Short(ref name) if name == "animated_boot" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_boot" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
+        // animated_figlet_morph's resting frame = text_ascii with the sequence's last font.
+        // No inner knob here — the renderer always delegates to text_ascii — so swap in a
+        // matching text_ascii spec for the preview.
+        RenderSpec::Short(ref name) if name == "animated_figlet_morph" => RenderSpec::Full {
+            type_name: "text_ascii".into(),
+            options: RenderOptions {
+                style: Some("figlet".into()),
+                font: Some("ansi_shadow".into()),
+                ..RenderOptions::default()
+            },
+        },
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_figlet_morph" => {
+            let resting_font = options
+                .font_sequence
+                .as_ref()
+                .and_then(|seq| seq.last().cloned())
+                .unwrap_or_else(|| "ansi_shadow".into());
+            RenderSpec::Full {
+                type_name: "text_ascii".into(),
+                options: RenderOptions {
+                    style: Some("figlet".into()),
+                    font: Some(resting_font),
+                    color: options.color.clone(),
+                    align: options.align.clone(),
+                    ..RenderOptions::default()
+                },
+            }
+        }
         other => other,
     }
 }
