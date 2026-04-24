@@ -159,7 +159,7 @@ than the default noise.
 |---|---|
 | name | `git_repo_name` → `text_plain` |
 | tag | `git_latest_tag` (Text) → `text_plain` |
-| recent | `git_recent_commits` (format = `"3"`) → `list_timeline` |
+| recent | `git_recent_commits` (shape = `"text_block"`, format = `"3"`) → `list_plain` |
 
 Fully offline — every widget reads local git, so the preset renders the
 same whether you're online, behind a firewall, or haven't run
