@@ -146,6 +146,33 @@ pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
     }
 }
 
+/// Payload rendered in place of a widget whose fetch returned `Err`. One-line `⚠ <msg>`, with a
+/// follow-up pointer to the log file so the user can track structured details (error chain,
+/// cache key, fetcher name) without forcing a second line into the splash for every error.
+pub fn error_placeholder(msg: &str) -> Payload {
+    Payload {
+        icon: None,
+        status: None,
+        format: None,
+        body: Body::TextBlock(TextBlockData {
+            lines: vec![format!("⚠ {msg}"), "see $HOME/.splashboard/logs".into()],
+        }),
+    }
+}
+
+/// Payload rendered in place of a widget whose fetch exceeded the runtime deadline. Kept
+/// separate from [`error_placeholder`] so users can tell "slow" from "broken" at a glance.
+pub fn timeout_placeholder() -> Payload {
+    Payload {
+        icon: None,
+        status: None,
+        format: None,
+        body: Body::TextBlock(TextBlockData {
+            lines: vec!["⏱ timed out".into(), "see $HOME/.splashboard/logs".into()],
+        }),
+    }
+}
+
 pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
     use sha2::{Digest, Sha256};
     let raw = format!("{}|{}", name, ctx.format.as_deref().unwrap_or(""));

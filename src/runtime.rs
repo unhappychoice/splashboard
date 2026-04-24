@@ -14,7 +14,7 @@ use ratatui::{
 };
 use tokio::task::JoinSet;
 
-use crate::cache::{Cache, CacheEntry};
+use crate::cache::{Cache, CacheEntry, CacheEntryKind};
 use crate::config::{Config, WidgetConfig};
 use crate::daemon;
 use crate::fetcher::{self, FetchContext, Registry, ShapeMismatch};
@@ -523,6 +523,11 @@ fn entries_to_payloads(entries: &HashMap<WidgetId, CacheEntry>) -> HashMap<Widge
         .collect()
 }
 
+/// Short TTL for error/timeout cache entries so a transient blip doesn't pin the widget on the
+/// warning placeholder for long. Set well below the 60s default refresh so the next tick
+/// retries; long enough that back-to-back renders don't re-run a fetch that just failed.
+const ERROR_CACHE_TTL_SECS: u64 = 30;
+
 async fn fetch_all(
     registry: &Registry,
     cache: Option<&Cache>,
@@ -550,23 +555,54 @@ async fn fetch_all(
         };
         let id = w.id.clone();
         let ttl = w.refresh_interval.unwrap_or(DEFAULT_REFRESH_SECS);
+        let fetcher_name = fetcher.name().to_string();
         set.spawn(async move {
             let _lock = lock;
-            let payload = tokio::time::timeout(deadline, fetcher.fetch(&ctx))
-                .await
-                .ok()?
-                .ok()?;
-            Some((id, cache_key, ttl, payload))
+            match tokio::time::timeout(deadline, fetcher.fetch(&ctx)).await {
+                Ok(Ok(payload)) => (id, cache_key, ttl, CacheEntryKind::Ok, payload),
+                Ok(Err(e)) => {
+                    tracing::error!(
+                        widget = %id,
+                        fetcher = %fetcher_name,
+                        cache_key = %cache_key,
+                        error = %e,
+                        "fetch failed"
+                    );
+                    (
+                        id,
+                        cache_key,
+                        ERROR_CACHE_TTL_SECS,
+                        CacheEntryKind::Err,
+                        fetcher::error_placeholder(&e.to_string()),
+                    )
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        widget = %id,
+                        fetcher = %fetcher_name,
+                        cache_key = %cache_key,
+                        timeout_ms = deadline.as_millis() as u64,
+                        "fetch timed out"
+                    );
+                    (
+                        id,
+                        cache_key,
+                        ERROR_CACHE_TTL_SECS,
+                        CacheEntryKind::Timeout,
+                        fetcher::timeout_placeholder(),
+                    )
+                }
+            }
         });
     }
 
     let mut out = HashMap::new();
     while let Some(joined) = set.join_next().await {
-        let Ok(Some((id, key, ttl, payload))) = joined else {
+        let Ok((id, key, ttl, kind, payload)) = joined else {
             continue;
         };
         if let Some(c) = cache {
-            let _ = c.store(&key, &CacheEntry::new(payload.clone(), ttl));
+            let _ = c.store(&key, &CacheEntry::new_with_kind(payload.clone(), ttl, kind));
         }
         out.insert(id, payload);
     }
@@ -902,6 +938,7 @@ mod tests {
     use super::*;
     use crate::layout::Layout as LayoutTree;
     use crate::payload::{Body, TextBlockData, TextData};
+    use async_trait::async_trait;
     use ratatui::{Terminal, backend::TestBackend};
 
     fn text_payload(line: &str) -> Payload {
@@ -1169,6 +1206,7 @@ mod tests {
             CacheEntry {
                 refreshed_at: 0,
                 ttl_seconds: 60,
+                kind: CacheEntryKind::Ok,
                 payload: text_payload("x"),
             },
         );
@@ -1344,6 +1382,128 @@ mod tests {
         )
         .await;
         assert!(fresh.is_empty());
+    }
+
+    /// Returning `Err` from a fetcher must surface a placeholder payload *and* write the failure
+    /// to the cache (with `CacheEntryKind::Err` and a short TTL) so the next render sees the `⚠`
+    /// instead of stale success data. Regression for #95 — pre-fix this path silently dropped the
+    /// error via `.ok()?.ok()?`.
+    #[tokio::test]
+    async fn fetch_all_lifts_err_to_placeholder_and_cache() {
+        struct Boom;
+
+        #[async_trait]
+        impl fetcher::Fetcher for Boom {
+            fn name(&self) -> &str {
+                "boom"
+            }
+            fn safety(&self) -> fetcher::Safety {
+                fetcher::Safety::Safe
+            }
+            fn shapes(&self) -> &[Shape] {
+                &[Shape::Text]
+            }
+            async fn fetch(
+                &self,
+                _: &fetcher::FetchContext,
+            ) -> Result<Payload, fetcher::FetchError> {
+                Err(fetcher::FetchError::Failed("boom".into()))
+            }
+        }
+
+        let mut registry = Registry::default();
+        registry.register(std::sync::Arc::new(Boom));
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let widgets = vec![widget("x", "boom")];
+
+        let fresh = fetch_all(
+            &registry,
+            Some(&cache),
+            &widgets,
+            &HashMap::new(),
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        let payload = fresh.get("x").expect("error must surface as a payload");
+        match &payload.body {
+            Body::TextBlock(t) => assert!(
+                t.lines.iter().any(|l| l.contains("boom")),
+                "error message must appear in the placeholder: {:?}",
+                t.lines
+            ),
+            other => panic!("expected TextBlock error placeholder, got {other:?}"),
+        }
+
+        let key = registry
+            .get_cached("boom")
+            .unwrap()
+            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
+        let stored = cache.load(&key).expect("error entry must be cached");
+        assert_eq!(stored.kind, CacheEntryKind::Err);
+        assert_eq!(stored.ttl_seconds, ERROR_CACHE_TTL_SECS);
+    }
+
+    /// Deadline expiry turns into a distinct `CacheEntryKind::Timeout` placeholder so diagnostics
+    /// can tell "slow" from "broken".
+    #[tokio::test]
+    async fn fetch_all_lifts_timeout_to_placeholder_and_cache() {
+        struct Slow;
+
+        #[async_trait]
+        impl fetcher::Fetcher for Slow {
+            fn name(&self) -> &str {
+                "slow"
+            }
+            fn safety(&self) -> fetcher::Safety {
+                fetcher::Safety::Safe
+            }
+            fn shapes(&self) -> &[Shape] {
+                &[Shape::Text]
+            }
+            async fn fetch(
+                &self,
+                _: &fetcher::FetchContext,
+            ) -> Result<Payload, fetcher::FetchError> {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                unreachable!("deadline must fire before the sleep resolves")
+            }
+        }
+
+        let mut registry = Registry::default();
+        registry.register(std::sync::Arc::new(Slow));
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let widgets = vec![widget("x", "slow")];
+
+        let fresh = fetch_all(
+            &registry,
+            Some(&cache),
+            &widgets,
+            &HashMap::new(),
+            &HashMap::new(),
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let payload = fresh.get("x").expect("timeout must surface as a payload");
+        match &payload.body {
+            Body::TextBlock(t) => assert!(
+                t.lines.iter().any(|l| l.contains("timed out")),
+                "timeout message must appear: {:?}",
+                t.lines
+            ),
+            other => panic!("expected TextBlock timeout placeholder, got {other:?}"),
+        }
+
+        let key = registry
+            .get_cached("slow")
+            .unwrap()
+            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
+        let stored = cache.load(&key).expect("timeout entry must be cached");
+        assert_eq!(stored.kind, CacheEntryKind::Timeout);
     }
 
     fn widget_with_render(id: &str, fetcher: &str, renderer: Option<&str>) -> WidgetConfig {
@@ -1528,6 +1688,7 @@ mod tests {
             CacheEntry {
                 refreshed_at: 0,
                 ttl_seconds: 60,
+                kind: CacheEntryKind::Ok,
                 payload: text_payload("last-run"),
             },
         );

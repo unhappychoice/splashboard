@@ -5,6 +5,7 @@ pub mod daemon;
 pub mod fetcher;
 pub mod install;
 pub mod layout;
+pub mod logging;
 pub mod options;
 pub mod paths;
 pub mod payload;

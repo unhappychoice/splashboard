@@ -11,7 +11,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
-use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder};
+use super::common::{RepoSlug, cache_key, parse_options, payload};
 use super::items::{SearchResult, render_items};
 
 const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
@@ -98,10 +98,7 @@ impl Fetcher for GithubGoodFirstIssues {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 30);
         let label = opts
             .label

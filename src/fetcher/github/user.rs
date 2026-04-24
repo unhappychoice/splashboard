@@ -13,7 +13,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
-use super::common::{cache_key, parse_options, payload, placeholder};
+use super::common::{cache_key, parse_options, payload};
 
 // TextBlock is listed first so the default renderer (text_plain accepts both Text and
 // TextBlock) picks the 3-line profile block — that's the header-band use case. Users
@@ -78,14 +78,8 @@ impl Fetcher for GithubUser {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
-        let user = match resolve_user(opts.user.as_deref()) {
-            Ok(u) => u,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+        let user = resolve_user(opts.user.as_deref()).map_err(FetchError::Failed)?;
         let info: UserInfo = rest_get(&format!("/users/{user}")).await?;
         let body = match ctx.shape.unwrap_or(Shape::TextBlock) {
             Shape::Text => Body::Text(TextData {

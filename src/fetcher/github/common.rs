@@ -22,17 +22,6 @@ pub fn text_block_body(values: Vec<String>) -> Body {
     Body::TextBlock(TextBlockData { lines: values })
 }
 
-/// Two-line warning body — mirrors `clock::common::placeholder` so misconfigured widgets look
-/// consistent across fetcher families.
-pub fn placeholder(msg: &str) -> Payload {
-    payload(Body::TextBlock(TextBlockData {
-        lines: vec![
-            format!("⚠ {msg}"),
-            "check [widget.options] or set GH_TOKEN".into(),
-        ],
-    }))
-}
-
 pub fn parse_options<T: serde::de::DeserializeOwned + Default>(
     raw: Option<&toml::Value>,
 ) -> Result<T, String> {

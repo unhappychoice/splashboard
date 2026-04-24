@@ -13,7 +13,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::graphql;
-use super::common::{cache_key, parse_options, payload, placeholder};
+use super::common::{cache_key, parse_options, payload};
 
 const SHAPES: &[Shape] = &[Shape::Heatmap];
 
@@ -70,10 +70,7 @@ impl Fetcher for GithubContributions {
         }
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let calendar = match opts.login.as_deref() {
             None => fetch_viewer().await?,
             Some(login) => fetch_user(login).await?,

@@ -13,7 +13,7 @@ use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::{http, resolve_token};
-use super::common::{RepoSlug, cache_key, parse_options, payload, placeholder, resolve_repo};
+use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
 const SHAPES: &[Shape] = &[Shape::Bars, Shape::Entries];
 const DEFAULT_LIMIT: u32 = 10;
@@ -86,19 +86,13 @@ impl Fetcher for GithubContributorsMonthly {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let opts: Options = match parse_options(ctx.options.as_ref()) {
-            Ok(o) => o,
-            Err(msg) => return Ok(placeholder(&msg)),
-        };
-        let slug = match resolve_repo(opts.repo.as_deref()) {
-            Ok(s) => s,
-            Err(e) => return Ok(placeholder(&e.to_string())),
-        };
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+        let slug = resolve_repo(opts.repo.as_deref())?;
         let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 30) as usize;
         let days = opts.days.unwrap_or(30).clamp(7, 365) as i64;
         match fetch_stats(&slug).await? {
-            StatsOutcome::Computing => Ok(placeholder(
-                "github: stats warming up (refresh in a minute)",
+            StatsOutcome::Computing => Err(FetchError::Failed(
+                "github: stats warming up (refresh in a minute)".into(),
             )),
             StatsOutcome::Ready(stats) => {
                 let rows = top_contributors(&stats, days, limit);

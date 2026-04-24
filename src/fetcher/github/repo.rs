@@ -57,10 +57,7 @@ impl Fetcher for GithubRepo {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let slug = match resolve_repo(None) {
-            Ok(s) => s,
-            Err(e) => return Ok(placeholder(&e.to_string())),
-        };
+        let slug = resolve_repo(None)?;
         let info: RepoInfo = rest_get(&format!("/repos/{}/{}", slug.owner, slug.name)).await?;
         let meta = Metadata {
             slug: Some(format!("{}/{}", slug.owner, slug.name)),
@@ -159,17 +156,6 @@ fn payload(body: Body) -> Payload {
         status: None,
         format: None,
         body,
-    }
-}
-
-fn placeholder(msg: &str) -> Payload {
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body: Body::Text(TextData {
-            value: format!("⚠ {msg}"),
-        }),
     }
 }
 
