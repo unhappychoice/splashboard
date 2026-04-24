@@ -9,9 +9,8 @@ the relevant section below.
 
 ## Presets
 
-_Screenshots pending. Ships alongside the preset work in_
-_[#77](https://github.com/unhappychoice/splashboard/issues/77):_
-_`home_splash`, `home_daily`, `home_github`, `project_github_activity`._
+_Screenshots pending: `home_splash`, `home_daily`, `home_github`,_
+_`project_github_activity`._
 
 ## Themes
 

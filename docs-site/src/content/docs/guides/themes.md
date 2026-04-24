@@ -11,14 +11,6 @@ five community staples.
 
 ## Built-in presets
 
-:::note
-Screenshots for all six presets rendering the same dashboard are
-pending — they ship as part of
-[issue #78](https://github.com/unhappychoice/splashboard/issues/78)
-once the preset work in
-[#77](https://github.com/unhappychoice/splashboard/issues/77) lands.
-:::
-
 | preset | motif |
 |---|---|
 | `default` | "Splash" — sunrise over deep ocean. Coral hero, cyan-teal accents, navy ground. |
