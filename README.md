@@ -29,14 +29,36 @@ Three first-class contexts:
 
 ```bash
 cargo install splashboard
+splashboard install
+```
 
-# Wire into your shell — emits a snippet; source or append to your rc.
-splashboard init bash >> ~/.bashrc
+`splashboard install` detects your shell, walks through four previewed pickers — home
+template, project template, theme, and a toggle screen for `bg` / `wait_for_fresh` — shows
+a final confirmation page with the resolved plan, then writes `home.dashboard.toml` +
+`project.dashboard.toml` + a starter `settings.toml` to `$HOME/.splashboard/` and wires
+your shell rc. Re-running is idempotent: files whose content is still current stay
+untouched, and anything that changes lands the prior copy in a `.bak` sidecar first.
+Non-interactive flow for dotfiles bootstrap:
+
+```bash
+splashboard install \
+  --shell zsh \
+  --home-template home_splash \
+  --project-template project_github_activity \
+  --theme tokyo_night \
+  --no-bg \
+  --wait
+```
+
+Prefer to own the rc edit yourself? `splashboard init <shell>` still emits the raw snippet:
+
+```bash
 splashboard init zsh  >> ~/.zshrc
+splashboard init bash >> ~/.bashrc
 splashboard init fish >> ~/.config/fish/config.fish
 ```
 
-The init snippet renders on new shells and re-renders when you `cd` into a directory that holds a project-local config.
+The init snippet renders on new shells and re-renders when you `cd` into a directory that holds a project-local dashboard.
 
 ## Configuring a splash
 
