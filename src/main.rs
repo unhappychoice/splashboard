@@ -9,6 +9,7 @@ use splashboard::config::{
 };
 use splashboard::daemon::{self, DashboardKind};
 use splashboard::fetcher::{Registry, Safety};
+use splashboard::install::{self, InstallOptions};
 use splashboard::paths;
 use splashboard::render::Registry as RenderRegistry;
 use splashboard::runtime;
@@ -43,6 +44,34 @@ enum Command {
     Init {
         #[arg(value_enum)]
         shell: Shell,
+    },
+    /// One-shot onboarding: pick a home/project template pair, write them to
+    /// `$HOME/.splashboard/`, and wire your shell rc so the splash renders on every new shell.
+    /// Runs an interactive gallery picker in a TTY; non-TTY callers must pass
+    /// `--home-template` and `--project-template`. Existing files are always backed up to
+    /// `.bak` sidecars before being overwritten, so re-running is safe.
+    Install {
+        /// Shell to wire. Omit to auto-detect from `$SHELL`.
+        #[arg(long, value_enum)]
+        shell: Option<Shell>,
+        /// Home template name (e.g. `home_splash`). Required in non-TTY mode.
+        #[arg(long)]
+        home_template: Option<String>,
+        /// Project template name (e.g. `project_github_activity`). Required in non-TTY mode.
+        #[arg(long)]
+        project_template: Option<String>,
+        /// Theme preset for `settings.toml`. One of `default`, `catppuccin_mocha`,
+        /// `dracula`, `gruvbox_dark`, `nord`, `tokyo_night`.
+        #[arg(long)]
+        theme: Option<String>,
+        /// Inherit the terminal's own background instead of painting the Splash palette.
+        /// Writes `bg = "reset"` + `bg_subtle = "reset"` into `settings.toml`.
+        #[arg(long)]
+        no_bg: bool,
+        /// Block the first render until every widget has fetched at least once. Writes
+        /// `wait_for_fresh = true` into `settings.toml`.
+        #[arg(long)]
+        wait: bool,
     },
     /// Grant this project-local dashboard permission to run Network widgets. Safe widgets
     /// always run regardless; this is the consent step for anything that talks to the outside
@@ -95,6 +124,24 @@ async fn main() -> io::Result<()> {
             print!("{}", shell::init_snippet(shell));
             Ok(())
         }
+        Some(Command::Install {
+            shell,
+            home_template,
+            project_template,
+            theme,
+            no_bg,
+            wait,
+        }) => install::run(InstallOptions {
+            shell,
+            home_template,
+            project_template,
+            theme,
+            // Flag absence = "leave it to the picker / default"; flag presence = force the
+            // opposite of the default. `--no-bg` disables bg, `--wait` enables wait.
+            bg: no_bg.then_some(false),
+            wait: wait.then_some(true),
+            ..Default::default()
+        }),
         Some(Command::FetchOnly { kind, path }) => {
             daemon::run_fetch_only(kind, path.as_deref()).await
         }

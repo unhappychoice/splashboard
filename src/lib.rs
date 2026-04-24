@@ -3,6 +3,7 @@ pub mod catalog;
 pub mod config;
 pub mod daemon;
 pub mod fetcher;
+pub mod install;
 pub mod layout;
 pub mod options;
 pub mod paths;
