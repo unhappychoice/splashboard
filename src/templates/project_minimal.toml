@@ -1,0 +1,49 @@
+# project_minimal — the quiet sibling of `project_github_activity` / `project_splash`.
+# Four centred lines: repo name, slug, description, license. No figlet, no heatmap,
+# no panels. For users who want acknowledgment they're in a repo without the splash
+# taking over every `cd`. Drop in as `./.splashboard/dashboard.toml` at a repo root —
+# every widget resolves the repo at fetch time, so the same template works anywhere.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Repo name in plain typography — the whole point of the minimal preset is *not* a
+# giant figlet banner. Picks up the terminal's title colour so the line still reads
+# as a heading next to the dimmer subtitle below.
+[[widget]]
+id = "name"
+fetcher = "git_repo_name"
+render = { type = "text_plain", align = "center", color = "panel_title" }
+
+# Subtitle: slug / description / license — three short lines from `github_repo`. The
+# fetcher collapses missing fields, so repos without a description don't get a blank
+# gap between the other rows.
+[[widget]]
+id = "subtitle"
+fetcher = "github_repo"
+render = { type = "text_plain", align = "center" }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { fill = 1 }
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "name"
+
+[[row]]
+height = { length = 1 }
+
+# github_repo TextBlock is up to 3 rows (slug / description / license). The 80-col
+# width matches the other presets so long descriptions don't hug a narrow column
+# inside a wide terminal.
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "subtitle"
+  width = { length = 80 }
+
+[[row]]
+height = { fill = 1 }

@@ -1,14 +1,18 @@
 ---
 title: Presets
-description: Four curated dashboards you can adopt verbatim — one per context.
+description: Seven curated dashboards you can adopt verbatim — pair one home with one project.
 ---
 
 import homeSplash from '../../../assets/rendered/home_splash.html?raw';
 import homeDaily from '../../../assets/rendered/home_daily.html?raw';
 import homeGithub from '../../../assets/rendered/home_github.html?raw';
+import homeMinimal from '../../../assets/rendered/home_minimal.html?raw';
+import projectSplash from '../../../assets/rendered/project_splash.html?raw';
 import projectGithubActivity from '../../../assets/rendered/project_github_activity.html?raw';
+import projectMinimal from '../../../assets/rendered/project_minimal.html?raw';
 
-Four curated dashboards. Pick one as a starting point and edit freely.
+Seven curated dashboards — four home, three project. Pick one of each as a
+starting point and edit freely.
 
 - **Home presets** apply when the shell starts outside a git repo —
   copy into `$HOME/.splashboard/home.dashboard.toml`.
@@ -80,7 +84,41 @@ have it resolvable from git config `user.email` — so the avatar and
 profile pick up your login. Edit the `handle` widget's `format` to
 match.
 
+### `home_minimal` — three quiet lines
+
+Time-of-day greeting, a one-line date, and the daily quote. No figlet,
+no heatmap — just enough to feel acknowledged without a dashboard
+taking over every shell start.
+
+<div class="splash-landing" set:html={homeMinimal} />
+
+| role | implementation |
+|---|---|
+| greeting | `basic_static "good "` + `clock_derived` (kind = time_of_day) → `text_plain` |
+| date | `clock` (format `%A · %e %B %Y · %H:%M`) → `text_plain` |
+| quote | `quote_of_day` (Text) → `text_plain` |
+
+Pairs naturally with `project_minimal` if you want the same restraint
+inside a repo.
+
 ## Project presets
+
+### `project_splash` — animated repo hero
+
+Repo name as a giant figlet with a particle-burst reveal, followed by
+slug / description / license. Nothing else. For repo owners who want
+`./.splashboard/dashboard.toml` to feel like a title screen when someone
+clones.
+
+<div class="splash-landing" set:html={projectSplash} />
+
+| role | implementation |
+|---|---|
+| hero | `git_repo_name` → `text_ascii` (figlet, ansi_shadow), wrapped in `animated_postfx` (particle_burst) |
+| subtitle | `github_repo` (slug / description / license) → `text_plain` |
+
+Swap the hero's `effect = "..."` for `stagger_reveal` / `matrix_rain` /
+`neon_flash` / `glitch_in` to audition other openings.
 
 ### `project_github_activity` — repo hero + activity grid
 
@@ -105,3 +143,21 @@ issues, languages breakdown, recent releases.
 Requires `gh auth login` (or `GITHUB_TOKEN`). The repo is discovered
 from `git remote origin`, so any repo you cd into produces a tailored
 dashboard with no per-repo edits.
+
+### `project_minimal` — four quiet lines
+
+Repo name + slug / description / license, centred on a lot of
+whitespace. Acknowledges the repo without taking over the screen —
+useful when you cd into the same project hundreds of times a day and
+want `project_github_activity` to feel like a conscious choice rather
+than the default noise.
+
+<div class="splash-landing" set:html={projectMinimal} />
+
+| role | implementation |
+|---|---|
+| name | `git_repo_name` → `text_plain` |
+| subtitle | `github_repo` (slug / description / license) → `text_plain` |
+
+No token required for the name alone — `github_repo`'s remaining lines
+collapse when unauthenticated, so the preset stays useful in any state.

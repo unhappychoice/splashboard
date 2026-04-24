@@ -44,10 +44,28 @@ pub const TEMPLATES: &[Template] = &[
         body: include_str!("home_github.toml"),
     },
     Template {
+        name: "home_minimal",
+        context: TemplateContext::Home,
+        description: "Quiet three-line preset: a time-of-day greeting, one-line date, and the daily quote — no figlet, lots of whitespace.",
+        body: include_str!("home_minimal.toml"),
+    },
+    Template {
+        name: "project_splash",
+        context: TemplateContext::Project,
+        description: "Repo name as a giant figlet hero with a postfx reveal, slug / description / license underneath — nothing else. For repo-shipped configs.",
+        body: include_str!("project_splash.toml"),
+    },
+    Template {
         name: "project_github_activity",
         context: TemplateContext::Project,
         description: "Dynamic repo hero + subtitle; branch state, commit / CI sparklines, open PRs, and recent releases.",
         body: include_str!("project_github_activity.toml"),
+    },
+    Template {
+        name: "project_minimal",
+        context: TemplateContext::Project,
+        description: "Quiet four-line preset: repo name + slug / description / license, no figlet. Acknowledges the repo without taking over the screen.",
+        body: include_str!("project_minimal.toml"),
     },
 ];
 

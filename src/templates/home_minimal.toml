@@ -1,0 +1,84 @@
+# home_minimal — the quiet sibling of home_splash / home_daily / home_github. No figlet,
+# no heatmap, no multi-column body. Three centred lines and a lot of whitespace, so every
+# `cd` home feels like taking a breath instead of opening a dashboard. Zero config — every
+# widget works out of the box; users who want weather or a custom greeting edit
+# `$HOME/.splashboard/home.dashboard.toml` directly.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# "good morning" / "good afternoon" / "good evening" / "good night" — built from the
+# wall clock via `clock_derived` so the splash reads context-aware without a greeting
+# fetcher of its own. Prefix + value are two widgets so the seam stays tight (right-
+# aligned "good " meets left-aligned "evening").
+[[widget]]
+id = "greeting_prefix"
+fetcher = "basic_static"
+format = "good "
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
+id = "greeting"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "left", color = "panel_title" }
+  [widget.options]
+  kind = "time_of_day"
+
+# One-line date + time. `clock` is a RealtimeFetcher so the minute ticks over without a
+# cache refresh — the splash feels live even though nothing else on screen moves.
+[[widget]]
+id = "datetime"
+fetcher = "clock"
+format = "%A · %e %B %Y · %H:%M"
+render = { type = "text_plain", align = "center" }
+
+# `quote_of_day` Text shape emits a single deterministic-per-day line "… — Author".
+# TextBlock would wrap onto two lines; the single-line Text shape is what suits the
+# minimal layout.
+[[widget]]
+id = "quote"
+fetcher = "quote_of_day"
+shape = "text"
+render = { type = "text_plain", align = "center" }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+# Top padding — pushes the content toward vertical centre without a hard-coded row
+# count (terminal heights vary).
+[[row]]
+height = { fill = 1 }
+
+# Greeting: `good ` (right-aligned, 5 cells) meets `evening` (left-aligned, 12 cells)
+# so "good evening" sits as a single crisp seam instead of two centred fragments.
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "greeting_prefix"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "greeting"
+  width = { length = 12 }
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "datetime"
+
+[[row]]
+height = { length = 2 }
+
+# Quote — centred on the 80-col content band so long quotes don't wrap against narrower
+# terminals but still sit visually anchored inside a wider one.
+[[row]]
+height = { length = 2 }
+flex = "center"
+  [[row.child]]
+  widget = "quote"
+  width = { length = 80 }
+
+# Bottom padding — matches the top so the block sits vertically centred.
+[[row]]
+height = { fill = 1 }

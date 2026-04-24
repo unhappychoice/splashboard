@@ -1,0 +1,56 @@
+# project_splash — "ta-da!" preset for a repo-shipped `./.splashboard/dashboard.toml`.
+# Giant repo-name figlet with a post-effect reveal, a tight two-line subtitle, and
+# nothing else. Sister to `home_splash`: same vocabulary (animated hero + minimal body),
+# different hero source (repo name vs terminal name). For the dense github-forward
+# sibling pick `project_github_activity`; for the even-quieter one pick `project_minimal`.
+# Every widget resolves the repo at fetch time, so the same template works in any
+# git root.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+[[widget]]
+id = "hero"
+# Giant repo-name figlet reveal via `animated_postfx`. `particle_burst` scatters
+# radial particles that coalesce into the figlet — same signature opening used by
+# `home_splash`. Swap `effect = "..."` to audition `stagger_reveal` / `matrix_rain` /
+# `neon_flash` / `glitch_in` without touching the rest of the preset.
+fetcher = "git_repo_name"
+render = { type = "animated_postfx", inner = "text_ascii", effect = "particle_burst", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
+
+# Subtitle — slug / description / license on three lines via `github_repo` TextBlock.
+# `text_plain` centres each line individually, so single-word fields (e.g. "MIT")
+# still sit under the hero's centreline instead of the block's left edge.
+[[widget]]
+id = "subtitle"
+fetcher = "github_repo"
+render = { type = "text_plain", align = "center" }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+# Top padding pushes the hero away from the first terminal row so the particle burst
+# has breathing room.
+[[row]]
+height = { length = 2 }
+
+# `height = "auto"` asks the row to size to the figlet's rendered height — shorter
+# repo names get tighter top/bottom framing; longer names (that wrap onto a second
+# figlet block) grow the row instead of clipping.
+[[row]]
+height = "auto"
+  [[row.child]]
+  widget = "hero"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "subtitle"
+  width = { length = 80 }
+
+# Bottom padding mirrors the top so the hero sits vertically weighted inside the
+# viewport rather than hugging the top edge.
+[[row]]
+height = { fill = 1 }
