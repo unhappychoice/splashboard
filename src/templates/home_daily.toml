@@ -103,12 +103,6 @@ render = { type = "gauge_line", label = "day  ", value_format = "percent" }
   [widget.options]
   period = "day"
 
-[[widget]]
-id = "gap"
-fetcher = "basic_static"
-format = " "
-render = "text_plain"
-
 # ── Layout ─────────────────────────────────────────────────────────
 
 [[row]]
@@ -145,15 +139,13 @@ height = { length = 1 }
 [[row]]
 height = { length = 8 }
 flex = "center"
+gap = 2
   [[row.child]]
   widget = "calendar"
   width = { length = 34 }
   border = "top"
   title = "  this month  "
   title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
   [[row.child]]
   widget = "almanac"
   width = { length = 34 }
@@ -168,15 +160,13 @@ height = { length = 1 }
 [[row]]
 height = { length = 7 }
 flex = "center"
+gap = 2
   [[row.child]]
   widget = "world_clock"
   width = { length = 34 }
   border = "top"
   title = "  world clock  "
   title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
   [[row.child]]
   widget = "system"
   width = { length = 34 }

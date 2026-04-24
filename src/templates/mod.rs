@@ -184,11 +184,14 @@ mod tests {
                 d.widgets.iter().map(|w| w.id.clone()).collect();
             for row in &d.rows {
                 for child in &row.children {
+                    let Some(id) = child.widget.as_deref() else {
+                        continue;
+                    };
                     assert!(
-                        defined.contains(&child.widget),
+                        defined.contains(id),
                         "{}: layout references unknown widget `{}`",
                         t.name,
-                        child.widget,
+                        id,
                     );
                 }
             }

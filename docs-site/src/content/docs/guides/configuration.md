@@ -151,16 +151,22 @@ Rows stack vertically. Each row's children stack horizontally.
 height = { length = 6 }     # cells — or { fill = 1 }, { min = 3 }, { percentage = 50 }
 bg = "subtle"               # "default" or "subtle" (paints theme.bg_subtle)
 flex = "center"             # how children distribute when they don't fill the row
+gap = 2                     # cells of blank space between sibling children
 title = "system"            # optional row-level title (goes with a row border)
 border = "top"              # "none" | "plain" | "rounded" | "thick" | "double" | "top"
 
   [[row.child]]
-  widget = "clock"          # widget id from [[widget]]
+  widget = "clock"          # widget id from [[widget]] — omit for a pure layout spacer
   width = { length = 30 }   # same size shapes as row height
   title = "now"             # optional child-level title
   border = "rounded"        # optional child-level chrome
   bg = "subtle"             # optional per-child bg
 ```
+
+Two ways to carve whitespace between children: `gap = N` on the row (sugar
+for the common case) auto-splices `N`-cell spacers between every pair; or
+drop a `[[row.child]]` with `width = { length = N }` and **no `widget =`**
+for an explicit spacer you can place anywhere in the row.
 
 Size forms (`height`, `width`):
 

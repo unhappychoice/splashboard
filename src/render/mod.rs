@@ -472,19 +472,25 @@ fn render_empty_state(frame: &mut Frame, area: Rect, theme: &Theme) {
     if area.width == 0 || area.height == 0 {
         return;
     }
+    // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
+    // Centered both axes via a Fill / Length / Fill vertical layout.
+    let (lines_src, min_width): (&[&str], u16) = if area.height >= 2 {
+        (&["◌", "nothing here yet"], 16)
+    } else {
+        (&["◌ nothing here yet"], 18)
+    };
+    // Skip rendering when the caption can't fit — a narrow spacer (e.g. 2-cell `basic_static`
+    // gap) should read as absent space, not leak truncated "no…" fragments into neighbors.
+    if area.width < min_width {
+        return;
+    }
     let dim = Style::default()
         .fg(theme.text_dim)
         .add_modifier(Modifier::ITALIC);
-    // Two lines if there's room (icon + caption), otherwise collapse to the caption alone.
-    // Centered both axes via a Fill / Length / Fill vertical layout.
-    let lines: Vec<Line> = if area.height >= 2 {
-        vec![
-            Line::from("◌").style(dim),
-            Line::from("nothing here yet").style(dim),
-        ]
-    } else {
-        vec![Line::from("◌ nothing here yet").style(dim)]
-    };
+    let lines: Vec<Line> = lines_src
+        .iter()
+        .map(|s| Line::from(*s).style(dim))
+        .collect();
     let content_height = lines.len() as u16;
     let chunks = Layout::vertical([
         Constraint::Fill(1),
@@ -682,6 +688,31 @@ mod tests {
         assert!(
             joined.contains("nothing here yet"),
             "missing caption: {joined:?}"
+        );
+    }
+
+    #[test]
+    fn empty_placeholder_skipped_when_area_too_narrow() {
+        // Regression: 2-cell `basic_static` gap widgets used as horizontal spacers were
+        // rendering a truncated "no…" fragment from the "nothing here yet" caption, spilling
+        // the artifact into the neighboring widget's column.
+        use crate::payload::{Payload, TextData};
+        use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: String::new(),
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("text_plain".into());
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 2, 6);
+        let joined: String = (0..6).map(|y| line_text(&buf, y)).collect();
+        assert!(
+            !joined.contains("no") && !joined.contains('◌'),
+            "narrow area should render nothing, got: {joined:?}"
         );
     }
 

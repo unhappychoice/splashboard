@@ -128,6 +128,11 @@ pub struct RowConfig {
     /// visually off the main content.
     #[serde(default)]
     pub bg: Option<BgSpec>,
+    /// Horizontal gap inserted between sibling children, in cells. Sugar for the common
+    /// 2/3-column case — `gap = 2` auto-splices empty spacers between children so configs
+    /// don't have to declare a `basic_static` "gap" widget just to carve whitespace.
+    #[serde(default)]
+    pub gap: Option<u16>,
     #[serde(default, rename = "child")]
     pub children: Vec<ChildConfig>,
 }
@@ -154,7 +159,11 @@ pub enum FlexSpec {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChildConfig {
-    pub widget: String,
+    /// Referenced widget id. Absent means this child is a pure layout spacer — the slot
+    /// reserves its `width` but paints nothing. Preferred over the historical
+    /// `basic_static`-with-empty-format hack for gap columns.
+    #[serde(default)]
+    pub widget: Option<String>,
     #[serde(default)]
     pub width: Option<SizeSpec>,
     #[serde(default)]
@@ -396,13 +405,28 @@ fn row_height_estimate(size: Option<SizeSpec>) -> u16 {
 }
 
 fn to_row_child(row: &RowConfig) -> Child {
-    let mut inner = Layout::cols(row.children.iter().map(to_col_child).collect());
+    let cols = intersperse_gaps(row.children.iter().map(to_col_child).collect(), row.gap);
+    let mut inner = Layout::cols(cols);
     if let Some(f) = row.flex {
         inner = inner.flexed(to_flex(f));
     }
     let decorated = apply_panel(inner, row.title.as_deref(), row.border, row.title_align);
     let decorated = apply_bg(decorated, row.bg);
     make_child(row.height, decorated)
+}
+
+fn intersperse_gaps(children: Vec<Child>, gap: Option<u16>) -> Vec<Child> {
+    let Some(n) = gap.filter(|n| *n > 0) else {
+        return children;
+    };
+    let mut out = Vec::with_capacity(children.len() * 2);
+    for (i, c) in children.into_iter().enumerate() {
+        if i > 0 {
+            out.push(Child::length(n, Layout::Empty));
+        }
+        out.push(c);
+    }
+    out
 }
 
 fn to_flex(f: FlexSpec) -> Flex {
@@ -417,7 +441,10 @@ fn to_flex(f: FlexSpec) -> Flex {
 }
 
 fn to_col_child(c: &ChildConfig) -> Child {
-    let leaf = Layout::widget(c.widget.clone());
+    let leaf = match c.widget.as_deref() {
+        Some(id) => Layout::widget(id.to_string()),
+        None => Layout::Empty,
+    };
     let decorated = apply_panel(leaf, c.title.as_deref(), c.border, c.title_align);
     let decorated = apply_bg(decorated, c.bg);
     make_child(c.width, decorated)
@@ -769,6 +796,101 @@ widget = "x"
         // Sub-directory: even though an ancestor is a git root, `resolve_from` must not walk
         // up — that's what keeps cd into src/ from re-triggering the project splash.
         assert!(resolve_from(&sub, true).is_none());
+    }
+
+    #[test]
+    fn child_without_widget_is_layout_spacer() {
+        // `[[row.child]]` with no `widget = ...` is a pure layout spacer — it reserves its
+        // `width` but renders nothing. Replaces the historical `basic_static` gap hack.
+        let toml = r#"
+[[widget]]
+id = "a"
+fetcher = "basic_static"
+render = "text_plain"
+
+[[row]]
+height = { length = 3 }
+[[row.child]]
+width = { length = 2 }
+[[row.child]]
+widget = "a"
+"#;
+        let d = DashboardConfig::parse(toml).unwrap();
+        assert!(d.rows[0].children[0].widget.is_none());
+        let layout = Config::from_parts(SettingsConfig::default(), d).to_layout();
+        let cols = match layout {
+            Layout::Stack { children, .. } => match &children[0].layout {
+                Layout::Stack { children: cs, .. } => cs.clone(),
+                _ => panic!("expected inner cols stack"),
+            },
+            _ => panic!("expected rows at root"),
+        };
+        assert!(matches!(cols[0].layout, Layout::Empty));
+        assert!(matches!(cols[1].layout, Layout::Widget { .. }));
+    }
+
+    #[test]
+    fn row_gap_splices_spacers_between_children() {
+        let toml = r#"
+[[widget]]
+id = "a"
+fetcher = "basic_static"
+render = "text_plain"
+
+[[widget]]
+id = "b"
+fetcher = "basic_static"
+render = "text_plain"
+
+[[row]]
+height = { length = 3 }
+gap = 2
+[[row.child]]
+widget = "a"
+[[row.child]]
+widget = "b"
+"#;
+        let d = DashboardConfig::parse(toml).unwrap();
+        assert_eq!(d.rows[0].gap, Some(2));
+        let layout = Config::from_parts(SettingsConfig::default(), d).to_layout();
+        let cols = match layout {
+            Layout::Stack { children, .. } => match &children[0].layout {
+                Layout::Stack { children: cs, .. } => cs.clone(),
+                _ => panic!("expected inner cols stack"),
+            },
+            _ => panic!("expected rows at root"),
+        };
+        assert_eq!(cols.len(), 3);
+        assert!(matches!(cols[0].layout, Layout::Widget { .. }));
+        assert!(matches!(cols[1].layout, Layout::Empty));
+        assert!(matches!(cols[2].layout, Layout::Widget { .. }));
+        assert!(matches!(cols[1].size, crate::layout::Size::Length(2)));
+    }
+
+    #[test]
+    fn row_gap_zero_is_noop() {
+        let toml = r#"
+[[widget]]
+id = "a"
+fetcher = "basic_static"
+
+[[row]]
+gap = 0
+[[row.child]]
+widget = "a"
+[[row.child]]
+widget = "a"
+"#;
+        let d = DashboardConfig::parse(toml).unwrap();
+        let layout = Config::from_parts(SettingsConfig::default(), d).to_layout();
+        let cols = match layout {
+            Layout::Stack { children, .. } => match &children[0].layout {
+                Layout::Stack { children: cs, .. } => cs.clone(),
+                _ => panic!(),
+            },
+            _ => panic!(),
+        };
+        assert_eq!(cols.len(), 2);
     }
 
     #[test]

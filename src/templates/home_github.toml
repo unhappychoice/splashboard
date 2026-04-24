@@ -43,12 +43,6 @@ id = "notifications"
 fetcher = "github_notifications"
 render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 5 }
 
-[[widget]]
-id = "gap"
-fetcher = "basic_static"
-format = " "
-render = "text_plain"
-
 # ── Layout ─────────────────────────────────────────────────────────
 
 [[row]]
@@ -88,15 +82,13 @@ height = { length = 1 }
 [[row]]
 height = { length = 5 }
 flex = "center"
+gap = 2
   [[row.child]]
   widget = "my_prs"
   width = { length = 34 }
   border = "top"
   title = "  my PRs  "
   title_align = "center"
-  [[row.child]]
-  widget = "gap"
-  width = { length = 2 }
   [[row.child]]
   widget = "review_queue"
   width = { length = 34 }
