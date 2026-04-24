@@ -12,7 +12,7 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::client::rest_get;
+use super::client::{resolve_authenticated_user, rest_get};
 use super::common::{cache_key, parse_options, payload};
 
 // TextBlock is listed first so the default renderer (text_plain accepts both Text and
@@ -25,8 +25,8 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "user",
     type_hint: "string (github login)",
     required: false,
-    default: Some("$GITHUB_USER env var"),
-    description: "GitHub login to fetch. Falls back to the `GITHUB_USER` env var when omitted.",
+    default: Some("authenticated token user"),
+    description: "GitHub login to fetch. Falls back to the `GITHUB_USER` env var, then to the login that owns `GH_TOKEN` / `GITHUB_TOKEN`.",
 }];
 
 pub struct GithubUser;
@@ -79,7 +79,9 @@ impl Fetcher for GithubUser {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
-        let user = resolve_user(opts.user.as_deref()).map_err(FetchError::Failed)?;
+        let user = resolve_user(opts.user.as_deref())
+            .await
+            .map_err(FetchError::Failed)?;
         let info: UserInfo = rest_get(&format!("/users/{user}")).await?;
         let body = match ctx.shape.unwrap_or(Shape::TextBlock) {
             Shape::Text => Body::Text(TextData {
@@ -109,11 +111,13 @@ fn one_liner(info: &UserInfo) -> String {
     parts.join(" · ")
 }
 
-/// 3-line block for subtitle use: display name / bio / location + join year. Empty
-/// fields collapse so users without a bio don't see a stranded blank line.
+/// Up-to-4-line block for subtitle use: `@login` / display name / bio / location + join year.
+/// Empty fields collapse so users without a bio don't see a stranded blank line.
 fn text_block_lines(info: &UserInfo) -> Vec<String> {
-    let name = nonempty(&info.name).cloned().unwrap_or(info.login.clone());
-    let mut lines = vec![name];
+    let mut lines = vec![format!("@{}", info.login)];
+    if let Some(name) = nonempty(&info.name) {
+        lines.push(name.clone());
+    }
     if let Some(bio) = nonempty(&info.bio) {
         lines.push(bio.clone());
     }
@@ -171,7 +175,7 @@ fn join_year(created_at: &Option<String>) -> Option<String> {
         .map(String::from)
 }
 
-fn resolve_user(explicit: Option<&str>) -> Result<String, String> {
+async fn resolve_user(explicit: Option<&str>) -> Result<String, String> {
     if let Some(u) = explicit.filter(|s| !s.is_empty()) {
         return Ok(u.into());
     }
@@ -180,7 +184,9 @@ fn resolve_user(explicit: Option<&str>) -> Result<String, String> {
     {
         return Ok(u);
     }
-    Err("set `user = \"<login>\"` or the GITHUB_USER env var".into())
+    resolve_authenticated_user()
+        .await
+        .map_err(|e| format!("resolve github user: {e}"))
 }
 
 fn user_for_key(ctx: &FetchContext) -> String {
@@ -251,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn text_block_uses_name_then_bio_then_tail() {
+    fn text_block_leads_with_login_then_name_bio_tail() {
         let i = info(
             Some("Yuji Ueki"),
             Some("TUI hacker"),
@@ -262,7 +268,8 @@ mod tests {
         assert_eq!(
             text_block_lines(&i),
             vec![
-                "Yuji Ueki".to_string(),
+                "@unhappychoice".to_string(),
+                "Yuji Ueki".into(),
                 "TUI hacker".into(),
                 "Tokyo · member since 2013".into(),
             ]
@@ -270,9 +277,9 @@ mod tests {
     }
 
     #[test]
-    fn text_block_falls_back_to_login_when_name_missing() {
+    fn text_block_collapses_to_just_login_when_all_else_missing() {
         let i = info(None, None, None, None, None);
-        assert_eq!(text_block_lines(&i), vec!["unhappychoice".to_string()]);
+        assert_eq!(text_block_lines(&i), vec!["@unhappychoice".to_string()]);
     }
 
     #[test]

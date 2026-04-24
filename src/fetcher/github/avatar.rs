@@ -19,7 +19,7 @@ use crate::payload::{Body, ImageData, Payload};
 use crate::render::Shape;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::client::http;
+use super::client::{http, resolve_authenticated_user};
 use super::common::cache_key;
 
 const AVATAR_BASE: &str = "https://github.com";
@@ -30,8 +30,8 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         name: "user",
         type_hint: "string (github login)",
         required: false,
-        default: Some("$GITHUB_USER env var"),
-        description: "GitHub login to fetch the avatar for. Falls back to the `GITHUB_USER` env var.",
+        default: Some("authenticated token user"),
+        description: "GitHub login to fetch the avatar for. Falls back to the `GITHUB_USER` env var, then to the login that owns `GH_TOKEN` / `GITHUB_TOKEN`.",
     },
     OptionSchema {
         name: "size",
@@ -81,7 +81,9 @@ impl Fetcher for GithubAvatar {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
-        let user = resolve_user(opts.user.as_deref()).map_err(FetchError::Failed)?;
+        let user = resolve_user(opts.user.as_deref())
+            .await
+            .map_err(FetchError::Failed)?;
         let size = opts.size.unwrap_or(DEFAULT_SIZE);
         let path = download_avatar(&user, size).await?;
         Ok(payload(Body::Image(ImageData {
@@ -132,7 +134,7 @@ fn avatar_dir() -> Option<PathBuf> {
     paths::cache_dir().map(|d| d.join("avatars"))
 }
 
-fn resolve_user(explicit: Option<&str>) -> Result<String, String> {
+async fn resolve_user(explicit: Option<&str>) -> Result<String, String> {
     if let Some(u) = explicit.filter(|s| !s.is_empty()) {
         return Ok(u.into());
     }
@@ -141,7 +143,9 @@ fn resolve_user(explicit: Option<&str>) -> Result<String, String> {
     {
         return Ok(u);
     }
-    Err("set `user = \"<login>\"` or the GITHUB_USER env var".into())
+    resolve_authenticated_user()
+        .await
+        .map_err(|e| format!("resolve github user: {e}"))
 }
 
 fn parse_options<T: serde::de::DeserializeOwned + Default>(
@@ -208,29 +212,33 @@ mod tests {
         }
     }
 
-    #[test]
-    fn resolve_user_prefers_explicit_option() {
+    #[tokio::test]
+    async fn resolve_user_prefers_explicit_option() {
         let _g = EnvGuard::set(&[("GITHUB_USER", Some("from-env"))]);
-        assert_eq!(resolve_user(Some("from-opt")).unwrap(), "from-opt");
+        assert_eq!(resolve_user(Some("from-opt")).await.unwrap(), "from-opt");
     }
 
-    #[test]
-    fn resolve_user_falls_back_to_env() {
+    #[tokio::test]
+    async fn resolve_user_falls_back_to_env() {
         let _g = EnvGuard::set(&[("GITHUB_USER", Some("env-user"))]);
-        assert_eq!(resolve_user(None).unwrap(), "env-user");
+        assert_eq!(resolve_user(None).await.unwrap(), "env-user");
     }
 
-    #[test]
-    fn resolve_user_empty_option_falls_through_to_env() {
+    #[tokio::test]
+    async fn resolve_user_empty_option_falls_through_to_env() {
         let _g = EnvGuard::set(&[("GITHUB_USER", Some("env-user"))]);
-        assert_eq!(resolve_user(Some("")).unwrap(), "env-user");
+        assert_eq!(resolve_user(Some("")).await.unwrap(), "env-user");
     }
 
-    #[test]
-    fn resolve_user_fails_when_neither_supplied() {
-        let _g = EnvGuard::set(&[("GITHUB_USER", None)]);
-        let err = resolve_user(None).unwrap_err();
-        assert!(err.contains("GITHUB_USER"));
+    #[tokio::test]
+    async fn resolve_user_without_env_or_token_surfaces_token_hint() {
+        let _g = EnvGuard::set(&[
+            ("GITHUB_USER", None),
+            ("GH_TOKEN", None),
+            ("GITHUB_TOKEN", None),
+        ]);
+        let err = resolve_user(None).await.unwrap_err();
+        assert!(err.contains("GH_TOKEN"), "unexpected error: {err}");
     }
 
     #[test]
