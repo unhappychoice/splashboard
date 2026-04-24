@@ -14,8 +14,13 @@ use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 use crate::theme::{ColorKey, Theme};
 
+mod animated_boot;
+mod animated_figlet_morph;
 mod animated_postfx;
+mod animated_scanlines;
+mod animated_splitflap;
 mod animated_typewriter;
+mod animated_wave;
 mod chart_bar;
 mod chart_line;
 mod chart_pie;
@@ -230,6 +235,16 @@ pub struct RenderOptions {
     /// static for the remainder.
     #[serde(default)]
     pub duration_ms: Option<u64>,
+    /// animated_figlet_morph: ordered list of figlet font names to step through. Each phase
+    /// takes `duration_ms / N` and crossfades into the next; the final entry is the resting
+    /// font once the animation completes. None falls back to `["small", "banner", "ansi_shadow"]`.
+    #[serde(default)]
+    pub font_sequence: Option<Vec<String>>,
+    /// animated_boot: ordered list of boot-log lines scrolled in one by one before the hero
+    /// settles. None uses a small default set; an empty list disables the boot lines and
+    /// falls straight to the inner render.
+    #[serde(default)]
+    pub boot_lines: Option<Vec<String>>,
 }
 
 /// What the TOML accepts for `render`. Short form `render = "text_plain"` uses defaults; long
@@ -331,6 +346,11 @@ impl Registry {
         r.register(Arc::new(text_ascii::TextAsciiRenderer));
         r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
         r.register(Arc::new(animated_postfx::AnimatedPostfxRenderer));
+        r.register(Arc::new(animated_figlet_morph::AnimatedFigletMorphRenderer));
+        r.register(Arc::new(animated_boot::AnimatedBootRenderer));
+        r.register(Arc::new(animated_scanlines::AnimatedScanlinesRenderer));
+        r.register(Arc::new(animated_splitflap::AnimatedSplitflapRenderer));
+        r.register(Arc::new(animated_wave::AnimatedWaveRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
@@ -545,6 +565,11 @@ mod tests {
             "text_ascii",
             "animated_typewriter",
             "animated_postfx",
+            "animated_figlet_morph",
+            "animated_boot",
+            "animated_scanlines",
+            "animated_splitflap",
+            "animated_wave",
             "status_badge",
             "list_plain",
             "list_timeline",

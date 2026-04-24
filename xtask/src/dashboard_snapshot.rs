@@ -21,7 +21,9 @@ use splashboard::config::{Config, DashboardConfig, SettingsConfig, WidgetConfig}
 use splashboard::fetcher::{FetchContext, RegisteredFetcher, Registry as FetcherRegistry};
 use splashboard::layout as layout_engine;
 use splashboard::payload::{Body, Payload, TextBlockData, TextData};
-use splashboard::render::{Registry as RenderRegistry, RenderSpec, Shape, default_renderer_for};
+use splashboard::render::{
+    Registry as RenderRegistry, RenderOptions, RenderSpec, Shape, default_renderer_for,
+};
 use splashboard::theme::Theme;
 
 use crate::html_snapshot::buffer_to_html;
@@ -174,6 +176,74 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
             options: options.clone(),
         },
+        RenderSpec::Short(ref name) if name == "animated_boot" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_boot" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
+        RenderSpec::Short(ref name) if name == "animated_scanlines" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_scanlines" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
+        RenderSpec::Short(ref name) if name == "animated_splitflap" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_splitflap" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
+        RenderSpec::Short(ref name) if name == "animated_wave" => {
+            RenderSpec::Short("text_plain".into())
+        }
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_wave" => RenderSpec::Full {
+            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            options: options.clone(),
+        },
+        RenderSpec::Short(ref name) if name == "animated_figlet_morph" => RenderSpec::Full {
+            type_name: "text_ascii".into(),
+            options: RenderOptions {
+                style: Some("figlet".into()),
+                font: Some("ansi_shadow".into()),
+                ..RenderOptions::default()
+            },
+        },
+        RenderSpec::Full {
+            ref type_name,
+            ref options,
+        } if type_name == "animated_figlet_morph" => {
+            let resting_font = options
+                .font_sequence
+                .as_ref()
+                .and_then(|seq| seq.last().cloned())
+                .unwrap_or_else(|| "ansi_shadow".into());
+            RenderSpec::Full {
+                type_name: "text_ascii".into(),
+                options: RenderOptions {
+                    style: Some("figlet".into()),
+                    font: Some(resting_font),
+                    color: options.color.clone(),
+                    align: options.align.clone(),
+                    ..RenderOptions::default()
+                },
+            }
+        }
         other => other,
     }
 }

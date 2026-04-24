@@ -13,7 +13,7 @@
 [[widget]]
 id = "hero"
 fetcher = "git_repo_name"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "coalesce", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
+render = { type = "text_ascii", style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
 
 # Subtitle: `github_repo` emits TextBlock (slug / description / license on their own rows).
 # `text_plain` renders via ratatui's `Paragraph` which centers each line individually,

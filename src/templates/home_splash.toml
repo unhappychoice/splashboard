@@ -11,7 +11,13 @@
 [[widget]]
 id = "hero"
 fetcher = "system"
-render = { type = "animated_postfx", inner = "text_ascii", effect = "sweep_in", duration_ms = 1200, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
+# Signature opening: particles radiate in from the centre and resolve into the figlet.
+# Swap `effect = "..."` to audition the siblings: `stagger_reveal`, `stagger_reveal_radial`,
+# `matrix_rain`. For the boot-log reveal swap the whole spec to
+# `{ type = "animated_boot", inner = "text_ascii", duration_ms = 1800, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }`.
+# For the figlet-font morph swap to
+# `{ type = "animated_figlet_morph", duration_ms = 1800, color = "panel_title", align = "center" }`.
+render = { type = "animated_postfx", inner = "text_ascii", effect = "particle_burst", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
   [widget.options]
   kind = "terminal"
 

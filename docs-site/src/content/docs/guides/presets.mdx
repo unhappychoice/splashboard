@@ -31,7 +31,7 @@ clock, and the date.
 
 | role | implementation |
 |---|---|
-| hero | `system` (kind = terminal) → `text_ascii` (figlet, ansi_shadow), wrapped in `animated_postfx` (sweep_in) |
+| hero | `system` (kind = terminal) → `text_ascii` (figlet, ansi_shadow), wrapped in `animated_postfx` (particle_burst) |
 | greeting | `basic_static "good "` + `clock_derived` (kind = time_of_day) → `text_plain` |
 | clock | `clock` (format `%H:%M`) → `text_ascii` (figlet, standard), wrapped in `animated_postfx` (fade_in) |
 | date | `clock` (format `%A · %e %B %Y`) → `text_plain` |
@@ -92,7 +92,7 @@ issues, languages breakdown, recent releases.
 
 | role | implementation |
 |---|---|
-| hero | `git_repo_name` → `text_ascii` (figlet, ansi_shadow), wrapped in `animated_postfx` (coalesce) |
+| hero | `git_repo_name` → `text_ascii` (figlet, ansi_shadow) |
 | subtitle | `github_repo` (slug / description / license) → `text_plain` |
 | repo stats | `github_repo_stars` → `grid_table` (inline) |
 | languages | `github_languages` → `chart_bar` (horizontal) |
