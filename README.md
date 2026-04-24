@@ -16,7 +16,16 @@ cargo install splashboard
 splashboard install
 ```
 
-The installer detects your shell, walks you through template / theme pickers, and wires your rc.
+`splashboard install` detects your shell, walks you through template / theme pickers, and wires your rc for you.
+
+Prefer to own the rc edit yourself? Append one line that re-sources `splashboard init <shell>` on every shell start — upgrades to splashboard ship an updated init snippet automatically:
+
+```bash
+echo 'eval "$(splashboard init zsh)"'                              >> ~/.zshrc
+echo 'eval "$(splashboard init bash)"'                             >> ~/.bashrc
+echo 'splashboard init fish | source'                              >> ~/.config/fish/config.fish
+echo 'Invoke-Expression (& splashboard init powershell | Out-String)' >> $PROFILE
+```
 
 ## Docs
 
