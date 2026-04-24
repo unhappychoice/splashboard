@@ -121,8 +121,12 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
+            use_zigbuild: true
+            zig_target: x86_64-unknown-linux-gnu.2.17
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-22.04-arm
+            os: ubuntu-22.04
+            use_zigbuild: true
+            zig_target: aarch64-unknown-linux-gnu.2.17
           - target: x86_64-pc-windows-msvc
             os: windows-latest
           - target: x86_64-apple-darwin
@@ -137,7 +141,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Install Zig (for zigbuild)
+        if: matrix.use_zigbuild
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+      - name: Install cargo-zigbuild
+        if: matrix.use_zigbuild
+        run: cargo install --locked cargo-zigbuild
+      - name: Build (zigbuild, pinned glibc)
+        if: matrix.use_zigbuild
+        run: cargo zigbuild --release --target ${{ matrix.zig_target }} -p splashboard
       - name: Build
+        if: '!matrix.use_zigbuild'
         run: cargo build --release --target ${{ matrix.target }} -p splashboard
       - name: Create archive (Unix)
         if: matrix.os != 'windows-latest'
