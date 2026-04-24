@@ -340,7 +340,14 @@ fn resolve_from(cwd: &Path, on_cd: bool) -> Option<DashboardSource> {
 }
 
 fn is_home_dir(path: &Path) -> bool {
-    let Some(home) = dirs::home_dir() else {
+    // Respect `HOME` first so the test suite can redirect the home dir on any platform.
+    // On Windows, `dirs::home_dir()` consults `SHGetKnownFolderPath(FOLDERID_Profile)` and
+    // ignores env vars; checking `HOME` keeps behavior aligned with shells that set it
+    // (git-bash, MSYS, WSL, configured PowerShell profiles).
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir);
+    let Some(home) = home else {
         return false;
     };
     canonicalize_or(path) == canonicalize_or(&home)
