@@ -1,6 +1,7 @@
 //! `github_contributors_monthly` — who's shipping this month, ranked by commit count. Uses the
-//! stats endpoint, which returns 202 while GitHub computes the aggregate; we surface a
-//! transient placeholder rather than blocking.
+//! stats endpoint, which returns 202 while GitHub computes the aggregate; we return `Err` so
+//! the runtime surfaces a transient warning placeholder and re-checks on the next refresh
+//! rather than blocking the render.
 
 use async_trait::async_trait;
 use chrono::{Duration, Utc};

@@ -41,7 +41,8 @@ pub fn resolve_token() -> Result<String, FetchError> {
 }
 
 /// REST GET → deserialize JSON. Non-2xx responses surface the GitHub-reported `message` when
-/// present (`{"message":"Not Found"}`) so the placeholder is actionable.
+/// present (`{"message":"Not Found"}`) so the runtime's error placeholder and the log line
+/// are both actionable.
 pub async fn rest_get<T: DeserializeOwned>(path: &str) -> Result<T, FetchError> {
     let token = resolve_token()?;
     let url = format!("{API_BASE}{path}");
