@@ -36,7 +36,7 @@ struct Cli {
 
 /// Every preset renders at the same 120 × 42 cell canvas so the embedded snapshots read as a
 /// uniform gallery under `.splash-landing` (the CSS scales font-size off a 120-cell baseline and
-/// `.splash-snapshot` has no fixed aspect ratio). 42 = project_github_activity's natural height;
+/// `.splash-snapshot` has no fixed aspect ratio). 42 = project_github's natural height;
 /// shorter presets get blank rows of theme bg at the bottom, same as an oversized terminal would.
 const SNAPSHOT_WIDTH: u16 = 120;
 const SNAPSHOT_HEIGHT: u16 = 42;
@@ -47,10 +47,7 @@ const DASHBOARD_SNAPSHOTS: &[(&str, &str)] = &[
     ("src/templates/home_github.toml", "home_github.html"),
     ("src/templates/home_minimal.toml", "home_minimal.html"),
     ("src/templates/project_splash.toml", "project_splash.html"),
-    (
-        "src/templates/project_github_activity.toml",
-        "project_github_activity.html",
-    ),
+    ("src/templates/project_github.toml", "project_github.html"),
     ("src/templates/project_minimal.toml", "project_minimal.html"),
 ];
 

@@ -1,4 +1,4 @@
-# project_minimal — the quiet sibling of `project_github_activity` / `project_splash`.
+# project_minimal — the quiet sibling of `project_github` / `project_splash`.
 # Repo name, latest tag, and the last three commits — centred on lots of whitespace,
 # no figlet, no heatmap, no panels. Deliberately GitHub-free: every widget reads
 # local git, so the preset renders the same whether you're offline, behind a

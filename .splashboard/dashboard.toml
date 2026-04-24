@@ -1,4 +1,4 @@
-# Dogfood dashboard — rendered in project_github_activity style (#77). When someone cd's
+# Dogfood dashboard — rendered in project_github style (#77). When someone cd's
 # into this repo, they see the polished preset we ship. Header band (hero + subtitle +
 # stats) full-width with `bg = "subtle"`; body pairs each section into 2-column rows
 # so the dashboard reads as a tight grid rather than a tall stack.

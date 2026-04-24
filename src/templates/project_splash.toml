@@ -2,7 +2,7 @@
 # Giant repo-name figlet with a post-effect reveal, a tight two-line subtitle, and
 # nothing else. Sister to `home_splash`: same vocabulary (animated hero + minimal body),
 # different hero source (repo name vs terminal name). For the dense github-forward
-# sibling pick `project_github_activity`; for the even-quieter one pick `project_minimal`.
+# sibling pick `project_github`; for the even-quieter one pick `project_minimal`.
 # Every widget resolves the repo at fetch time, so the same template works in any
 # git root.
 

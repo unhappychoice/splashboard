@@ -44,7 +44,7 @@ Non-interactive flow for dotfiles bootstrap:
 splashboard install \
   --shell zsh \
   --home-template home_splash \
-  --project-template project_github_activity \
+  --project-template project_github \
   --theme tokyo_night \
   --no-bg \
   --wait

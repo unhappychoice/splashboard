@@ -10,7 +10,7 @@ the relevant section below.
 ## Presets
 
 _Screenshots pending: `home_splash`, `home_daily`, `home_github`,_
-_`home_minimal`, `project_splash`, `project_github_activity`,_
+_`home_minimal`, `project_splash`, `project_github`,_
 _`project_minimal`._
 
 ## Themes

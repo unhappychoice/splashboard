@@ -511,7 +511,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let dest = Destinations::for_home_dir(dir.path());
         let home = templates::find("home_splash").unwrap();
-        let project = templates::find("project_github_activity").unwrap();
+        let project = templates::find("project_github").unwrap();
         let report = write_dashboards(&dest, home, project).unwrap();
         assert_eq!(report.home, WriteOutcome::Created);
         assert_eq!(report.project, WriteOutcome::Created);
@@ -526,7 +526,7 @@ mod tests {
         let dest = Destinations::for_home_dir(dir.path());
         std::fs::write(&dest.home_dashboard, "# existing\n").unwrap();
         let home = templates::find("home_splash").unwrap();
-        let project = templates::find("project_github_activity").unwrap();
+        let project = templates::find("project_github").unwrap();
         let report = write_dashboards(&dest, home, project).unwrap();
         assert_eq!(report.home, WriteOutcome::Overwrote);
         assert_eq!(report.project, WriteOutcome::Created);
@@ -546,7 +546,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let dest = Destinations::for_home_dir(dir.path());
         let home = templates::find("home_splash").unwrap();
-        let project = templates::find("project_github_activity").unwrap();
+        let project = templates::find("project_github").unwrap();
         // First run populates.
         write_dashboards(&dest, home, project).unwrap();
         // Second run with the same inputs should short-circuit.
@@ -667,7 +667,7 @@ mod tests {
         let opts = InstallOptions {
             shell: Some(Shell::Zsh),
             home_template: Some("home_splash".into()),
-            project_template: Some("project_github_activity".into()),
+            project_template: Some("project_github".into()),
             config_dir: Some(home_dir.clone()),
             rc_path: Some(rc.clone()),
             ..Default::default()
@@ -691,7 +691,7 @@ mod tests {
         let opts = InstallOptions {
             shell: Some(Shell::Zsh),
             home_template: Some("home_splash".into()),
-            project_template: Some("project_github_activity".into()),
+            project_template: Some("project_github".into()),
             theme: Some("tokyo_night".into()),
             bg: Some(false),
             wait: Some(true),
@@ -720,7 +720,7 @@ mod tests {
         let opts = InstallOptions {
             shell: Some(Shell::Zsh),
             home_template: Some("home_splash".into()),
-            project_template: Some("project_github_activity".into()),
+            project_template: Some("project_github".into()),
             theme: Some("tokyo_night".into()),
             config_dir: Some(home_dir.clone()),
             rc_path: Some(rc.clone()),
@@ -750,7 +750,7 @@ mod tests {
         let opts = InstallOptions {
             shell: Some(Shell::Zsh),
             home_template: Some("home_splash".into()),
-            project_template: Some("project_github_activity".into()),
+            project_template: Some("project_github".into()),
             theme: Some("tokyo_night".into()),
             config_dir: Some(home_dir.clone()),
             rc_path: Some(rc.clone()),

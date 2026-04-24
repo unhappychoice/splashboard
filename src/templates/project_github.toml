@@ -1,4 +1,4 @@
-# project_github_activity — per-repo preset. Hero is the repo name as a figlet banner
+# project_github — per-repo preset. Hero is the repo name as a figlet banner
 # (fetched dynamically via `git_repo_name` → git remote origin), subtitle shows the repo
 # slug / description / license. Header band sits on `bg = "subtle"` so it reads as a
 # distinct panel; body pairs languages / releases, PRs / issues, commits / contributors
