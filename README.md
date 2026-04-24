@@ -3,6 +3,10 @@
 [![CI](https://github.com/unhappychoice/splashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/unhappychoice/splashboard/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/unhappychoice/splashboard/branch/main/graph/badge.svg)](https://codecov.io/gh/unhappychoice/splashboard)
 
+<p align="center">
+  <img src="docs/screenshots/project_github.png" alt="splashboard project_github preset" width="820">
+</p>
+
 A customizable terminal splash rendered on shell startup and on `cd`.
 
 > `splashboard` = `splash` + `dashboard`.
