@@ -26,6 +26,7 @@ mod chart_line;
 mod chart_pie;
 mod chart_scatter;
 mod chart_sparkline;
+mod gauge_battery;
 mod gauge_circle;
 mod gauge_line;
 mod grid_calendar;
@@ -354,6 +355,7 @@ impl Registry {
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
+        r.register(Arc::new(gauge_battery::GaugeBatteryRenderer));
         r.register(Arc::new(gauge_circle::GaugeCircleRenderer));
         r.register(Arc::new(gauge_line::GaugeLineRenderer));
         r.register(Arc::new(chart_sparkline::ChartSparklineRenderer));
@@ -582,6 +584,7 @@ mod tests {
             "grid_table",
             "grid_heatmap",
             "grid_calendar",
+            "gauge_battery",
             "gauge_circle",
             "gauge_line",
             "chart_sparkline",

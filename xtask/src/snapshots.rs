@@ -65,6 +65,7 @@ fn renderer_dimensions(renderer: &str) -> (u16, u16) {
         "list_plain" => (40, 4),
         "status_badge" => (40, 1),
         "grid_table" => (40, 5),
+        "gauge_battery" => (40, 5),
         "gauge_circle" => (40, 3),
         "gauge_line" => (40, 1),
         "chart_sparkline" => (40, 3),
