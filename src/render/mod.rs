@@ -209,6 +209,12 @@ pub struct RenderOptions {
     /// grid_calendar: event marker glyph, same accepted values.
     #[serde(default)]
     pub marker: Option<String>,
+    /// gauge_battery: how the fill colour follows `Ratio.value`. "neutral" (default) is single
+    /// `theme.text`. "fill" treats the value as how-full (low → status_error, high → status_ok)
+    /// — right for battery / quota progress. "drain" inverts (high → status_error) — right for
+    /// disk / memory / cpu where the ratio is "fraction used".
+    #[serde(default)]
+    pub tone: Option<String>,
     /// gauge_circle: thickness of the ring in cells. None keeps the block-gauge default.
     #[serde(default)]
     pub ring_thickness: Option<u16>,

@@ -21,17 +21,26 @@ const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_ERROR,
 ];
 
-const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
-    name: "label",
-    type_hint: "string",
-    required: false,
-    default: Some("payload.label"),
-    description: "Optional prefix shown before the battery, e.g. `\"BAT\"` → `BAT ▕████░▏▮ 75%`. Falls back to `RatioData.label`; omitted when neither is set.",
-}];
+const OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "label",
+        type_hint: "string",
+        required: false,
+        default: Some("payload.label"),
+        description: "Optional prefix shown before the battery, e.g. `\"BAT\"` → `BAT ▕████░▏▮ 75%`. Falls back to `RatioData.label`; omitted when neither is set.",
+    },
+    OptionSchema {
+        name: "tone",
+        type_hint: "\"neutral\" | \"fill\" | \"drain\"",
+        required: false,
+        default: Some("\"neutral\""),
+        description: "How the fill colour follows the value. `neutral` is single `theme.text` (matches the rest of the `gauge_*` family). `fill` treats the value as how-full (low → status_error, high → status_ok) — right for battery / quota progress. `drain` inverts (high → status_error) — right for `system_disk_usage` / `system_memory` / `system_cpu` where the ratio is \"fraction used\".",
+    },
+];
 
-/// Battery-icon renderer for `Ratio`. Compact on short slots, boxed on tall slots; fill colour
-/// follows level (low/mid/full → status_error/warn/ok). Pairs naturally with disk usage,
-/// laptop battery, quota progress.
+/// Battery-icon renderer for `Ratio`. Compact on short slots, boxed on tall slots. The fill
+/// colour is theme-neutral by default; opt into a level-driven palette via `tone = "fill"` for
+/// battery-style readouts (low → red) or `tone = "drain"` for usage-style readouts (high → red).
 pub struct GaugeBatteryRenderer;
 
 const FILLED: &str = "█";
@@ -78,7 +87,7 @@ fn render_battery(
     let ratio = data.value.clamp(0.0, 1.0);
     let prefix = resolve_prefix(opts, data);
     let percent = format!("{}%", (ratio * 100.0).round() as u64);
-    let fill = level_color(ratio, theme);
+    let fill = tone_color(ratio, opts.tone.as_deref(), theme);
     if area.height < 3 {
         render_compact(frame, area, ratio, &prefix, &percent, fill, theme);
     } else {
@@ -252,6 +261,14 @@ fn prefix_width(prefix: &str) -> u16 {
     }
 }
 
+fn tone_color(ratio: f64, tone: Option<&str>, theme: &Theme) -> Color {
+    match tone.unwrap_or("neutral") {
+        "fill" => level_color(ratio, theme),
+        "drain" => level_color(1.0 - ratio, theme),
+        _ => theme.text,
+    }
+}
+
 fn level_color(ratio: f64, theme: &Theme) -> Color {
     if ratio < 0.20 {
         theme.status_error
@@ -336,11 +353,32 @@ mod tests {
     }
 
     #[test]
-    fn level_color_buckets() {
+    fn tone_neutral_is_default_and_uses_text_colour() {
         let theme = Theme::default();
-        assert_eq!(level_color(0.05, &theme), theme.status_error);
-        assert_eq!(level_color(0.30, &theme), theme.status_warn);
-        assert_eq!(level_color(0.80, &theme), theme.status_ok);
+        assert_eq!(tone_color(0.05, None, &theme), theme.text);
+        assert_eq!(tone_color(0.95, Some("neutral"), &theme), theme.text);
+    }
+
+    #[test]
+    fn tone_fill_maps_low_to_error() {
+        let theme = Theme::default();
+        assert_eq!(tone_color(0.05, Some("fill"), &theme), theme.status_error);
+        assert_eq!(tone_color(0.30, Some("fill"), &theme), theme.status_warn);
+        assert_eq!(tone_color(0.80, Some("fill"), &theme), theme.status_ok);
+    }
+
+    #[test]
+    fn tone_drain_inverts_for_usage_metrics() {
+        let theme = Theme::default();
+        assert_eq!(tone_color(0.95, Some("drain"), &theme), theme.status_error);
+        assert_eq!(tone_color(0.70, Some("drain"), &theme), theme.status_warn);
+        assert_eq!(tone_color(0.20, Some("drain"), &theme), theme.status_ok);
+    }
+
+    #[test]
+    fn unknown_tone_falls_back_to_neutral() {
+        let theme = Theme::default();
+        assert_eq!(tone_color(0.05, Some("garbage"), &theme), theme.text);
     }
 
     #[test]
