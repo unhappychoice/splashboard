@@ -15,9 +15,12 @@ _`project_minimal`._
 
 ## Themes
 
-_Screenshots pending. The same dashboard rendered under each of the six_
-_built-in palettes (`default`, `tokyo_night`, `nord`, `dracula`,_
-_`gruvbox_dark`, `catppuccin_mocha`) side by side._
+_Screenshots pending. The same dashboard rendered under each of the 26_
+_built-in palettes — Splash signature plus the dark and light staples_
+_from the editor-theme ecosystem (Catppuccin family, Tokyo Night family,_
+_Rosé Pine family, Solarized, Gruvbox, GitHub, Nord, Dracula, Monokai,_
+_Kanagawa, Everforest, One Dark, Night Owl, SynthWave '84, Ayu Mirage,_
+_Material Palenight) side by side._
 
 ## In the wild
 

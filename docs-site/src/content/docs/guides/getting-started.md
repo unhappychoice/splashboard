@@ -165,7 +165,7 @@ From here:
   schema (settings, dashboards, widgets, rows, render options).
 - [Presets](/guides/presets/) — curated dashboards you can
   adopt verbatim.
-- [Themes](/guides/themes/) — six built-in palettes plus
+- [Themes](/guides/themes/) — 26 built-in palettes plus
   per-token overrides.
 - The [reference](/reference/matrix/) — the complete list of
   fetchers and renderers with their options and compatible shapes.

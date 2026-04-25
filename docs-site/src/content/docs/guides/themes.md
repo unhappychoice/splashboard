@@ -1,24 +1,57 @@
 ---
 title: Themes
-description: Six built-in palettes, per-token overrides, and the reset escape hatch for light terminals.
+description: 26 built-in palettes covering every well-known editor theme, per-token overrides, and the reset escape hatch.
 ---
 
 Every renderer looks up semantic tokens rather than hard-coding colours, so
 a single `[theme] preset = "..."` line repaints the whole splash.
 
-splashboard ships with six presets: one signature palette (`default`) and
-five community staples.
+splashboard ships with **26 built-in presets** — the signature `default`
+palette plus the dark and light staples from across the editor-theme
+ecosystem (Catppuccin, Tokyo Night, Rosé Pine, Solarized, Gruvbox,
+GitHub, Nord, and more).
 
 ## Built-in presets
+
+### Dark themes
 
 | preset | motif |
 |---|---|
 | `default` | "Splash" — sunrise over deep ocean. Coral hero, cyan-teal accents, navy ground. |
 | `tokyo_night` | cool blue-purple, low-saturation. |
+| `tokyo_night_storm` | softer storm-cloud variant of Tokyo Night. |
 | `nord` | arctic blue-gray, muted accents. |
 | `dracula` | dark purple, vibrant neon accents. |
 | `gruvbox_dark` | warm earth, retro yellow hero. |
 | `catppuccin_mocha` | pastel on dark mauve. |
+| `catppuccin_macchiato` | a step lighter than Mocha. |
+| `catppuccin_frappe` | warmer pastel mid-dark. |
+| `rose_pine` | soho dark with rose and pine highlights. |
+| `rose_pine_moon` | moonlit blue-violet variant. |
+| `kanagawa` | Hokusai-inspired indigo with autumn accents. |
+| `everforest_dark` | woodland green with warm muted accents. |
+| `one_dark` | Atom's flagship dark, balanced cyan/red. |
+| `solarized_dark` | the precision-engineered classic. |
+| `monokai` | punchy magenta and lime on warm gray. |
+| `night_owl` | deep midnight blue, calm accents. |
+| `synthwave_84` | neon pink and cyan retro grid. |
+| `ayu_mirage` | soft slate with bright sky and lime. |
+| `material_palenight` | material design dark with lavender. |
+| `github_dark` | the github.com dark mode palette. |
+
+### Light themes
+
+Light presets ship with a light `bg` baked in — pick one when your
+terminal is light, or override individual tokens with `"reset"` (see
+below) to inherit the terminal's own background.
+
+| preset | motif |
+|---|---|
+| `catppuccin_latte` | pastel on cream. |
+| `rose_pine_dawn` | warm cream with pine accents. |
+| `solarized_light` | the classic light counterpart. |
+| `gruvbox_light` | earthy retro on warm cream. |
+| `github_light` | the github.com light mode palette. |
 
 ## Selecting a preset
 
@@ -53,11 +86,14 @@ Accepted colour forms:
   variants.
 - `"reset"` — see below.
 
-## The `"reset"` escape hatch (light terminals)
+## The `"reset"` escape hatch (terminal-native chrome)
 
-splashboard presets are tuned for dark terminals — every preset ships a
-dark `bg`. On a light terminal, that background clashes with the rest of
-your prompt.
+Most splashboard presets ship with a baked-in `bg` (and the dark presets
+specifically assume a dark terminal). If you want the splash to inherit
+your terminal's own background or foreground instead — useful when your
+terminal is themed but your splash isn't, or when no built-in light
+preset matches your terminal exactly — `"reset"` falls back to
+`Color::Reset` for that slot only.
 
 `"reset"` falls back to `Color::Reset` for that slot only — i.e. the
 terminal's own default. Users on light terminals typically want:
