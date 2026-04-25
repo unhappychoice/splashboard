@@ -26,6 +26,7 @@ mod chart_line;
 mod chart_pie;
 mod chart_scatter;
 mod chart_sparkline;
+mod gauge_battery;
 mod gauge_circle;
 mod gauge_line;
 mod grid_calendar;
@@ -208,6 +209,12 @@ pub struct RenderOptions {
     /// grid_calendar: event marker glyph, same accepted values.
     #[serde(default)]
     pub marker: Option<String>,
+    /// gauge_battery: how the fill colour follows `Ratio.value`. "neutral" (default) is single
+    /// `theme.text`. "fill" treats the value as how-full (low → status_error, high → status_ok)
+    /// — right for battery / quota progress. "drain" inverts (high → status_error) — right for
+    /// disk / memory / cpu where the ratio is "fraction used".
+    #[serde(default)]
+    pub tone: Option<String>,
     /// gauge_circle: thickness of the ring in cells. None keeps the block-gauge default.
     #[serde(default)]
     pub ring_thickness: Option<u16>,
@@ -354,6 +361,7 @@ impl Registry {
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
+        r.register(Arc::new(gauge_battery::GaugeBatteryRenderer));
         r.register(Arc::new(gauge_circle::GaugeCircleRenderer));
         r.register(Arc::new(gauge_line::GaugeLineRenderer));
         r.register(Arc::new(chart_sparkline::ChartSparklineRenderer));
@@ -582,6 +590,7 @@ mod tests {
             "grid_table",
             "grid_heatmap",
             "grid_calendar",
+            "gauge_battery",
             "gauge_circle",
             "gauge_line",
             "chart_sparkline",
