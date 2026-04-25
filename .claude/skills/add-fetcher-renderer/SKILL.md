@@ -1,11 +1,31 @@
 ---
 name: add-fetcher-renderer
-description: Implement a new fetcher or renderer for splashboard. Use when the user asks to add a fetcher (e.g. `system_battery`, `weather_*`, `git_*`) or a renderer (e.g. `gauge_battery`, `chart_radar`). Drives the workflow: spec-out → code → self-review → user smoke-tests via `.splashboard/dashboard.toml` → wrap up.
+description: Implement a new fetcher or renderer for splashboard. Use when the user asks to add a fetcher (e.g. `system_battery`, `weather_*`, `git_*`) or a renderer (e.g. `gauge_battery`, `chart_radar`). Drives the workflow: pick-candidate → spec-out → code → self-review → user smoke-tests via `.splashboard/dashboard.toml` → wrap up.
 ---
 
 # add-fetcher-renderer
 
 Implements one fetcher *or* one renderer (not the whole `Fetcher × Renderer × Layout` composition — the layout slot is the user's call). Read `AGENTS.md` first for the architectural contracts; this skill only covers process.
+
+**Phases 0 and 1 are blocking on a user reply.** Auto mode does *not* license you to pick a candidate or finalise a spec on the user's behalf — both decisions ship in user-visible config (`render = "..."` / `fetcher = "..."`) and are expensive to rename. Always ask a concrete question and stop until the user answers. Only Phase 2 onward proceeds without further prompts.
+
+## Phase 0 — Pick the candidate (候補選定)
+
+Skip this phase only if the user named a specific candidate ("add `system_battery`", "implement `gauge_segment`"). Otherwise — including any open-ended ask ("add some renderer", "implement a fetcher") — work through this phase before Phase 1.
+
+1. **Survey the full catalog.** Don't pick from memory; read the actual issue bodies. The candidates live as checkboxes on the meta issues, and they churn — yesterday's open box may already be checked.
+   - Renderers: `gh issue view 61 --json body -q .body`
+   - Fetchers: `gh issue view 62 --json body -q .body` for Local/System; `63` VCS/Forge; `64` Coding & Build; `65` Cloud/Infra/Ops; `66` Communication & PM; `67` Social & Media; `68` Life & Ambient.
+   - Index / rubric: `gh issue view 41 --json body -q .body`.
+2. **Filter to the open boxes** in whichever issue matches the user's intent. If the user didn't narrow, scan every relevant sub-issue (renderer ask → only #61; fetcher ask → all of #62–#68).
+3. **Rank by the prioritization rubric** from #41:
+   1. Renderer primitives that unlock many fetchers → highest leverage.
+   2. Daily-driver coverage (a fresh install looks satisfying without secrets).
+   3. Per-dir killer feature (cd into a project shows more than without splashboard).
+   4. Dedicated built-ins beat ReadStore for curated UX; ReadStore is the ad-hoc escape hatch.
+   Demote anything needing secrets / a network token to render anything (`Network`-class with required user setup loses to a Safe sibling).
+4. **Present a shortlist of 3–5 candidates**, one line each, with: catalog box being ticked, family, why it ranks where it does (one phrase — "unlocks N existing fetchers", "fills `Ratio` family gap", "no new deps", "needs `battery` crate"). Lead with your top pick and note the runner-up so the user has a real choice.
+5. **Ask the user which to implement.** Stop. Do not start Phase 1 on a guess. Auto mode does not override this — the candidate decision is the user's, not yours.
 
 ## Phase 1 — Spec-out (要件確認)
 
@@ -27,7 +47,7 @@ Implements one fetcher *or* one renderer (not the whole `Fetcher × Renderer × 
 5. **Color semantics warning** (renderers). Don't bake a context-specific colour map as the default. The `gauge_battery` lesson: a battery-coloured fill (low → red) silently mis-coloured every "fraction used" widget. If the colour mapping depends on caller intent, default to `theme.text` and add an opt-in `tone` / `mode` option.
 6. **Memory check.** If the user says 考えたい / 検討したい, propose options and stop — don't branch yet.
 
-State the plan back in 3–5 bullets and wait for confirmation before Phase 2.
+State the plan back in 3–5 bullets and **ask an explicit yes/no question** ("Proceed with this plan?") — don't just narrate the plan and roll into Phase 2. Stop until the user answers. Auto mode does not override this; naming, options, and safety class all leak into user-facing config and are painful to undo.
 
 ## Phase 2 — Implement (実装)
 
