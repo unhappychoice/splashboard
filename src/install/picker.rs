@@ -395,6 +395,7 @@ struct ThemeOption {
 fn theme_options() -> Vec<ThemeOption> {
     // Hand-written so the order / copy isn't driven by alphabetical preset names —
     // "default" reads better first and the descriptions let users choose by vibe.
+    // Light themes go at the bottom so the picker stays dark-first in the dominant case.
     vec![
         ThemeOption {
             key: None,
@@ -407,14 +408,29 @@ fn theme_options() -> Vec<ThemeOption> {
             description: "Tokyo Night — vibrant blue night, magenta accents.",
         },
         ThemeOption {
+            key: Some("tokyo_night_storm"),
+            label: "tokyo_night_storm",
+            description: "Tokyo Night Storm — softer storm-cloud variant.",
+        },
+        ThemeOption {
             key: Some("catppuccin_mocha"),
             label: "catppuccin_mocha",
             description: "Catppuccin Mocha — pastel dark, lavender accents.",
         },
         ThemeOption {
+            key: Some("catppuccin_macchiato"),
+            label: "catppuccin_macchiato",
+            description: "Catppuccin Macchiato — slightly lighter than Mocha.",
+        },
+        ThemeOption {
+            key: Some("catppuccin_frappe"),
+            label: "catppuccin_frappe",
+            description: "Catppuccin Frappé — warmer pastel mid-dark.",
+        },
+        ThemeOption {
             key: Some("dracula"),
             label: "dracula",
-            description: "Dracula — dark purple base, vivid accents.",
+            description: "Dracula — dark purple base, vivid neon accents.",
         },
         ThemeOption {
             key: Some("nord"),
@@ -425,6 +441,91 @@ fn theme_options() -> Vec<ThemeOption> {
             key: Some("gruvbox_dark"),
             label: "gruvbox_dark",
             description: "Gruvbox Dark — warm retro, earthy palette.",
+        },
+        ThemeOption {
+            key: Some("rose_pine"),
+            label: "rose_pine",
+            description: "Rosé Pine — soho dark with rose and pine highlights.",
+        },
+        ThemeOption {
+            key: Some("rose_pine_moon"),
+            label: "rose_pine_moon",
+            description: "Rosé Pine Moon — moonlit blue-violet variant.",
+        },
+        ThemeOption {
+            key: Some("kanagawa"),
+            label: "kanagawa",
+            description: "Kanagawa — Hokusai-inspired indigo with autumn accents.",
+        },
+        ThemeOption {
+            key: Some("everforest_dark"),
+            label: "everforest_dark",
+            description: "Everforest Dark — woodland green with warm muted accents.",
+        },
+        ThemeOption {
+            key: Some("one_dark"),
+            label: "one_dark",
+            description: "One Dark — Atom's flagship dark, balanced cyan/red.",
+        },
+        ThemeOption {
+            key: Some("solarized_dark"),
+            label: "solarized_dark",
+            description: "Solarized Dark — the precision-engineered classic.",
+        },
+        ThemeOption {
+            key: Some("monokai"),
+            label: "monokai",
+            description: "Monokai — punchy magenta and lime on warm gray.",
+        },
+        ThemeOption {
+            key: Some("night_owl"),
+            label: "night_owl",
+            description: "Night Owl — deep midnight blue, calm accents.",
+        },
+        ThemeOption {
+            key: Some("synthwave_84"),
+            label: "synthwave_84",
+            description: "SynthWave '84 — neon pink and cyan retro grid.",
+        },
+        ThemeOption {
+            key: Some("ayu_mirage"),
+            label: "ayu_mirage",
+            description: "Ayu Mirage — soft slate with bright sky and lime.",
+        },
+        ThemeOption {
+            key: Some("material_palenight"),
+            label: "material_palenight",
+            description: "Material Palenight — material design dark with lavender.",
+        },
+        ThemeOption {
+            key: Some("github_dark"),
+            label: "github_dark",
+            description: "GitHub Dark — the github.com dark mode palette.",
+        },
+        ThemeOption {
+            key: Some("catppuccin_latte"),
+            label: "catppuccin_latte",
+            description: "Catppuccin Latte (light) — pastel on cream.",
+        },
+        ThemeOption {
+            key: Some("rose_pine_dawn"),
+            label: "rose_pine_dawn",
+            description: "Rosé Pine Dawn (light) — warm cream with pine accents.",
+        },
+        ThemeOption {
+            key: Some("solarized_light"),
+            label: "solarized_light",
+            description: "Solarized Light — the classic light counterpart.",
+        },
+        ThemeOption {
+            key: Some("gruvbox_light"),
+            label: "gruvbox_light",
+            description: "Gruvbox Light — earthy retro on warm cream.",
+        },
+        ThemeOption {
+            key: Some("github_light"),
+            label: "github_light",
+            description: "GitHub Light — the github.com light mode palette.",
         },
     ]
 }
