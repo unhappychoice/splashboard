@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 
 use crate::options::OptionSchema;
 use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload, TextBlockData, TextData};
@@ -73,7 +74,21 @@ impl Fetcher for ProjectTodoInCode {
         Shape::Text
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
-        repo_cache_key(self.name(), ctx)
+        // Mix `[widget.options]` into the key — markers / limit change what gets read, so two
+        // widgets pointing at this fetcher with different options must not share a cache slot.
+        // `toml = "0.8"` keeps tables in sorted order, so `Value::to_string()` is stable across runs.
+        let base = repo_cache_key(self.name(), ctx);
+        let opts = ctx
+            .options
+            .as_ref()
+            .map(toml::Value::to_string)
+            .unwrap_or_default();
+        if opts.is_empty() {
+            return base;
+        }
+        let digest = Sha256::digest(opts.as_bytes());
+        let hex: String = digest.iter().take(4).map(|b| format!("{b:02x}")).collect();
+        format!("{base}-{hex}")
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -500,6 +515,34 @@ mod tests {
         let out = truncate(&s, 100);
         assert!(out.ends_with('…'));
         assert_eq!(out.chars().count(), 101);
+    }
+
+    #[test]
+    fn cache_key_changes_with_options() {
+        let mut ctx = FetchContext {
+            widget_id: "w".into(),
+            ..Default::default()
+        };
+        let key_default = ProjectTodoInCode.cache_key(&ctx);
+        ctx.options = Some(toml::from_str(r#"markers = ["TODO"]"#).unwrap());
+        let key_a = ProjectTodoInCode.cache_key(&ctx);
+        ctx.options = Some(toml::from_str(r#"markers = ["FIXME"]"#).unwrap());
+        let key_b = ProjectTodoInCode.cache_key(&ctx);
+        assert_ne!(key_default, key_a);
+        assert_ne!(key_a, key_b);
+    }
+
+    #[test]
+    fn cache_key_is_stable_for_equivalent_options() {
+        let mut ctx = FetchContext {
+            widget_id: "w".into(),
+            ..Default::default()
+        };
+        ctx.options = Some(toml::from_str(r#"markers = ["TODO", "FIXME"]"#).unwrap());
+        let a = ProjectTodoInCode.cache_key(&ctx);
+        ctx.options = Some(toml::from_str(r#"markers = ["TODO", "FIXME"]"#).unwrap());
+        let b = ProjectTodoInCode.cache_key(&ctx);
+        assert_eq!(a, b);
     }
 
     #[test]
