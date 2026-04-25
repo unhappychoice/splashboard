@@ -1,5 +1,9 @@
-//! Project-scoped fetchers — read state from the discovered git repo / worktree under CWD.
+//! Code-internal metric fetchers — grep / parse the source tree of the discovered git repo.
 //! All `Safety::Safe` (local file reads only).
+//!
+//! Distinct from the future `project_*` family in #62, which is for project-level operational
+//! state (test coverage, bundle size, dependency alerts, license check). `code_*` is "what's
+//! inside the source files".
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +20,7 @@ use super::git::{fail, open_repo, payload, repo_cache_key};
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![Arc::new(ProjectTodoInCode)]
+    vec![Arc::new(CodeTodos)]
 }
 
 const SHAPES: &[Shape] = &[Shape::Text, Shape::TextBlock, Shape::Entries, Shape::Bars];
@@ -26,6 +30,21 @@ const FILE_SIZE_CAP: u64 = 1024 * 1024;
 const MAX_FILES_SCANNED: usize = 5_000;
 const INTERNAL_HIT_CAP: usize = 500;
 const SNIPPET_CHARS: usize = 100;
+
+/// Path-segment prefixes that get skipped even when they're tracked. Covers the common case
+/// of vendored / generated trees that some projects commit (Go monorepos with `vendor/`,
+/// repos that ship a `dist/` build, accidental `node_modules/`). `.gitignore`-d trees are
+/// already filtered out by walking the index — this list is the second line of defense for
+/// committed-vendored code that would otherwise inflate hit counts with library `TODO`s.
+const EXCLUDED_DIRS: &[&str] = &[
+    "node_modules",
+    "vendor",
+    "third_party",
+    "target",
+    "dist",
+    "build",
+    ".git",
+];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -49,8 +68,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
 /// literals don't inflate the count. `Text` summarises `"N TODOs in M files"`; `TextBlock`
 /// lists `path:line: snippet`; `Entries` / `Bars` rank files by hit count. Walks the index
 /// of the repo discovered from CWD so untracked and `.gitignore`-d files are skipped
-/// automatically.
-pub struct ProjectTodoInCode;
+/// automatically; vendored / generated trees that happen to be committed (`node_modules/`,
+/// `vendor/`, `dist/`, `target/`, …) are skipped via [`EXCLUDED_DIRS`] so library TODOs
+/// don't bleed into the count.
+pub struct CodeTodos;
 
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,9 +83,9 @@ struct Options {
 }
 
 #[async_trait]
-impl Fetcher for ProjectTodoInCode {
+impl Fetcher for CodeTodos {
     fn name(&self) -> &str {
-        "project_todo_in_code"
+        "code_todos"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -199,6 +220,9 @@ fn scan_repo(repo: &gix::Repository, markers: &[String]) -> Result<ScanResult, F
         let Ok(path_str) = std::str::from_utf8(entry.path(&index)) else {
             continue;
         };
+        if is_in_excluded_dir(path_str) {
+            continue;
+        }
         let abs = workdir.join(path_str);
         let Ok(metadata) = std::fs::metadata(&abs) else {
             continue;
@@ -243,6 +267,13 @@ fn scan_repo(repo: &gix::Repository, markers: &[String]) -> Result<ScanResult, F
 fn is_regular_file(mode: gix::index::entry::Mode) -> bool {
     use gix::index::entry::Mode;
     matches!(mode, Mode::FILE | Mode::FILE_EXECUTABLE)
+}
+
+/// True iff any segment of `path` (slash-separated, as the index always stores it) matches a
+/// directory name in [`EXCLUDED_DIRS`]. Skips committed-vendored trees so library TODOs don't
+/// inflate the count.
+fn is_in_excluded_dir(path: &str) -> bool {
+    path.split('/').any(|seg| EXCLUDED_DIRS.contains(&seg))
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
@@ -475,6 +506,31 @@ mod tests {
     }
 
     #[test]
+    fn vendored_directories_are_excluded_even_when_committed() {
+        // `commit_touching` reuses the message as the appended file content, so we use
+        // distinct payloads with the marker baked into each.
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "src/main.rs", "// TODO: app marker");
+        commit_touching(&repo, "node_modules/foo.js", "// TODO: node marker");
+        commit_touching(&repo, "vendor/lib/x.go", "// TODO: vendor marker");
+        commit_touching(&repo, "src/dist/x.js", "// TODO: dist marker");
+        let scan = scan_repo(&repo, &defaults()).unwrap();
+        assert_eq!(scan.total, 1);
+        assert_eq!(scan.hits[0].path, "src/main.rs");
+    }
+
+    #[test]
+    fn excluded_dir_check_only_matches_segments() {
+        // `vendor/x.go` excluded; `myvendor/x.go` and `vendor.go` are regular files.
+        assert!(is_in_excluded_dir("vendor/foo.go"));
+        assert!(is_in_excluded_dir("src/vendor/foo.go"));
+        assert!(is_in_excluded_dir("a/b/node_modules/c"));
+        assert!(!is_in_excluded_dir("myvendor/foo.go"));
+        assert!(!is_in_excluded_dir("src/vendor.go"));
+        assert!(!is_in_excluded_dir("README.md"));
+    }
+
+    #[test]
     fn custom_markers_supersede_defaults() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "x.rs", "// TODO: ignored\n// XXX: caught");
@@ -580,11 +636,11 @@ mod tests {
             widget_id: "w".into(),
             ..Default::default()
         };
-        let key_default = ProjectTodoInCode.cache_key(&ctx);
+        let key_default = CodeTodos.cache_key(&ctx);
         ctx.options = Some(toml::from_str(r#"markers = ["TODO"]"#).unwrap());
-        let key_a = ProjectTodoInCode.cache_key(&ctx);
+        let key_a = CodeTodos.cache_key(&ctx);
         ctx.options = Some(toml::from_str(r#"markers = ["FIXME"]"#).unwrap());
-        let key_b = ProjectTodoInCode.cache_key(&ctx);
+        let key_b = CodeTodos.cache_key(&ctx);
         assert_ne!(key_default, key_a);
         assert_ne!(key_a, key_b);
     }
@@ -596,9 +652,9 @@ mod tests {
             ..Default::default()
         };
         ctx.options = Some(toml::from_str(r#"markers = ["TODO", "FIXME"]"#).unwrap());
-        let a = ProjectTodoInCode.cache_key(&ctx);
+        let a = CodeTodos.cache_key(&ctx);
         ctx.options = Some(toml::from_str(r#"markers = ["TODO", "FIXME"]"#).unwrap());
-        let b = ProjectTodoInCode.cache_key(&ctx);
+        let b = CodeTodos.cache_key(&ctx);
         assert_eq!(a, b);
     }
 

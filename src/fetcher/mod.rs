@@ -13,9 +13,9 @@ use crate::render::Shape;
 use crate::samples;
 
 pub mod clock;
+pub mod code;
 pub mod git;
 pub mod github;
-pub mod project;
 pub mod quote_of_day;
 pub mod read_store;
 pub mod static_text;
@@ -269,7 +269,7 @@ impl Registry {
         for f in github::fetchers() {
             r.register(f);
         }
-        for f in project::fetchers() {
+        for f in code::fetchers() {
             r.register(f);
         }
         r
