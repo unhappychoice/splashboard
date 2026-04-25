@@ -29,6 +29,7 @@ mod chart_sparkline;
 mod gauge_battery;
 mod gauge_circle;
 mod gauge_line;
+mod gauge_segment;
 mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
@@ -209,12 +210,16 @@ pub struct RenderOptions {
     /// grid_calendar: event marker glyph, same accepted values.
     #[serde(default)]
     pub marker: Option<String>,
-    /// gauge_battery: how the fill colour follows `Ratio.value`. "neutral" (default) is single
-    /// `theme.text`. "fill" treats the value as how-full (low → status_error, high → status_ok)
-    /// — right for battery / quota progress. "drain" inverts (high → status_error) — right for
-    /// disk / memory / cpu where the ratio is "fraction used".
+    /// gauge_battery / gauge_segment: how the fill colour follows `Ratio.value`. "neutral"
+    /// (default) is single `theme.text`. "fill" treats the value as how-full (low →
+    /// status_error, high → status_ok) — right for battery / quota progress. "drain" inverts
+    /// (high → status_error) — right for disk / memory / cpu where the ratio is "fraction used".
     #[serde(default)]
     pub tone: Option<String>,
+    /// gauge_segment: number of LED segments rendered. None defaults to 5 — the canonical
+    /// "5-LED bar" silhouette. Values are clamped to at least 1.
+    #[serde(default)]
+    pub segments: Option<u16>,
     /// gauge_circle: thickness of the ring in cells. None keeps the block-gauge default.
     #[serde(default)]
     pub ring_thickness: Option<u16>,
@@ -364,6 +369,7 @@ impl Registry {
         r.register(Arc::new(gauge_battery::GaugeBatteryRenderer));
         r.register(Arc::new(gauge_circle::GaugeCircleRenderer));
         r.register(Arc::new(gauge_line::GaugeLineRenderer));
+        r.register(Arc::new(gauge_segment::GaugeSegmentRenderer));
         r.register(Arc::new(chart_sparkline::ChartSparklineRenderer));
         r.register(Arc::new(chart_line::ChartLineRenderer));
         r.register(Arc::new(chart_scatter::ChartScatterRenderer));
@@ -593,6 +599,7 @@ mod tests {
             "gauge_battery",
             "gauge_circle",
             "gauge_line",
+            "gauge_segment",
             "chart_sparkline",
             "chart_line",
             "chart_scatter",
