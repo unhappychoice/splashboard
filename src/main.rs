@@ -96,6 +96,13 @@ enum Command {
         #[command(subcommand)]
         target: Option<CatalogTarget>,
     },
+    /// Print embedded license text. Defaults to the third-party dependency bundle
+    /// (`THIRDPARTY-LICENSES.md`); pass `--own` for splashboard's own ISC LICENSE.
+    License {
+        /// Print splashboard's own ISC LICENSE instead of the third-party bundle.
+        #[arg(long)]
+        own: bool,
+    },
     /// Internal: run fetchers and update the cache. Spawned as a detached child by the main
     /// splashboard invocation; not intended to be run directly.
     #[command(hide = true)]
@@ -151,6 +158,7 @@ async fn main() -> io::Result<()> {
         Some(Command::Revoke { path }) => run_revoke(path),
         Some(Command::ListTrusted) => run_list_trusted(),
         Some(Command::Catalog { target }) => run_catalog(target),
+        Some(Command::License { own }) => run_license(own),
         None => {
             // Swallow render errors at the shell-facing boundary so a broken splash never breaks
             // the user's prompt. Internal paths (FetchOnly above) still propagate errors.
@@ -332,6 +340,16 @@ fn run_catalog(target: Option<CatalogTarget>) -> io::Result<()> {
             std::process::exit(2);
         }
     }
+}
+
+fn run_license(own: bool) -> io::Result<()> {
+    let text = if own {
+        include_str!("../LICENSE")
+    } else {
+        include_str!("../THIRDPARTY-LICENSES.md")
+    };
+    print!("{text}");
+    Ok(())
 }
 
 fn resolve_trust_target(override_path: Option<PathBuf>) -> Option<PathBuf> {
