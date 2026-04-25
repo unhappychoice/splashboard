@@ -1,8 +1,13 @@
 use ratatui::{
-    Frame,
-    layout::{Alignment, Constraint, Flex, Layout as RatLayout, Rect},
+    Frame, Terminal,
+    backend::TestBackend,
+    buffer::Buffer,
+    layout::{Alignment, Constraint, Flex, Layout as RatLayout, Position, Rect},
     style::{Modifier, Style},
-    widgets::calendar::{CalendarEventStore, Monthly},
+    widgets::{
+        Widget,
+        calendar::{CalendarEventStore, Monthly},
+    },
 };
 use time::{Date, Month};
 
@@ -109,13 +114,45 @@ fn render_calendar(
     // match the Splash text colour instead of leaking the terminal fg against the navy bg.
     // Show the month name and weekday labels so the grid is readable as a standalone block
     // instead of just bare numbers.
-    frame.render_widget(
-        Monthly::new(anchor, events)
-            .default_style(Style::default().fg(theme.text))
-            .show_month_header(panel_title)
-            .show_weekdays_header(dim),
-        target,
-    );
+    let widget = Monthly::new(anchor, events)
+        .default_style(Style::default().fg(theme.text))
+        .show_month_header(panel_title)
+        .show_weekdays_header(dim);
+    // ratatui's `Monthly` compares an absolute `y` against `buf.area.height` when deciding
+    // whether to draw each week row, so any non-zero viewport origin (subsequent inline
+    // renders after the cursor has scrolled down) skips the date grid entirely. Render into
+    // an origin-anchored off-screen buffer first, then blit into the frame.
+    if let Ok(off) = render_offscreen(target.width, target.height, widget) {
+        blit(&off, frame.buffer_mut(), target);
+    }
+}
+
+fn render_offscreen<W: Widget>(width: u16, height: u16, widget: W) -> std::io::Result<Buffer> {
+    let mut term = Terminal::new(TestBackend::new(width.max(1), height.max(1)))?;
+    term.draw(|f| widget.render(f.area(), f.buffer_mut()))?;
+    Ok(term.backend().buffer().clone())
+}
+
+fn blit(src: &Buffer, dst: &mut Buffer, target: Rect) {
+    let dst_area = dst.area;
+    for sy in 0..src.area.height {
+        let dy = target.y + sy;
+        if dy >= dst_area.bottom() {
+            break;
+        }
+        for sx in 0..src.area.width {
+            let dx = target.x + sx;
+            if dx >= dst_area.right() {
+                break;
+            }
+            if let (Some(src_cell), Some(dst_cell)) = (
+                src.cell(Position::new(src.area.x + sx, src.area.y + sy)),
+                dst.cell_mut(Position::new(dx, dy)),
+            ) {
+                *dst_cell = src_cell.clone();
+            }
+        }
+    }
 }
 
 fn aligned_area(area: Rect, align: Option<&str>) -> Rect {
@@ -193,6 +230,57 @@ mod tests {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("grid_calendar".into());
         let _ = render_to_buffer_with_spec(&payload(2026, 13, None), Some(&spec), &registry, 24, 9);
+    }
+
+    #[test]
+    fn renders_at_non_zero_viewport_y() {
+        // Regression: ratatui's Monthly compares an absolute `y` against `buf.area.height`
+        // when deciding whether to draw each week row. A non-zero viewport origin (subsequent
+        // inline renders after a previous splash + prompt scrolls the cursor down) makes
+        // every week row fail the guard, so the date grid silently disappears while the
+        // month/weekday headers still render. Reproducing the failing condition requires a
+        // buffer whose `area.y` is non-zero AND larger than `area.height`.
+        use ratatui::{Terminal, TerminalOptions, Viewport, backend::TestBackend};
+        let backend = TestBackend::new(24, 30);
+        let mut terminal = Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: Viewport::Inline(8),
+            },
+        )
+        .unwrap();
+        // Burn down the inline viewport to a high y so the buggy guard fires.
+        for _ in 0..3 {
+            terminal
+                .draw(|f| f.render_widget(ratatui::widgets::Clear, f.area()))
+                .unwrap();
+            terminal.insert_before(8, |_| {}).unwrap();
+        }
+        let theme = Theme::default();
+        let p = payload(2026, 4, Some(25));
+        let Body::Calendar(data) = &p.body else {
+            unreachable!()
+        };
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                render_calendar(f, area, data, &RenderOptions::default(), &theme);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let mut dump = String::new();
+        for y in 0..buf.area.height {
+            let row: String = (0..buf.area.width)
+                .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
+                .collect();
+            dump.push_str(&row);
+            dump.push('\n');
+        }
+        assert!(dump.contains("April"), "expected month header:\n{dump}");
+        assert!(
+            dump.contains("25"),
+            "expected day 25 in calendar at non-zero viewport y:\n{dump}"
+        );
     }
 
     #[test]
