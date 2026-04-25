@@ -13,6 +13,7 @@ use crate::render::Shape;
 use crate::samples;
 
 pub mod clock;
+pub mod code;
 pub mod git;
 pub mod github;
 pub mod quote_of_day;
@@ -266,6 +267,9 @@ impl Registry {
             r.register(f);
         }
         for f in github::fetchers() {
+            r.register(f);
+        }
+        for f in code::fetchers() {
             r.register(f);
         }
         r

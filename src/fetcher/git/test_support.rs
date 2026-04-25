@@ -15,6 +15,10 @@ pub fn make_repo() -> (TempDir, gix::Repository) {
     run(tmp.path(), &["config", "user.name", "Test"]);
     run(tmp.path(), &["config", "commit.gpgsign", "false"]);
     run(tmp.path(), &["config", "tag.gpgsign", "false"]);
+    // Detach from the user's global excludes file so paths like `node_modules/` /
+    // `vendor/` / `dist/` (commonly ignored globally) aren't silently skipped by
+    // `git add` inside test repos.
+    run(tmp.path(), &["config", "core.excludesfile", "/dev/null"]);
     let repo = gix::discover(tmp.path()).expect("discover");
     (tmp, repo)
 }

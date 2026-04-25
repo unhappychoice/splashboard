@@ -26,7 +26,7 @@ mod status;
 mod worktrees;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![
