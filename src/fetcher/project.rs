@@ -33,7 +33,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         type_hint: "array of strings",
         required: false,
         default: Some("[\"TODO\", \"FIXME\"]"),
-        description: "Markers grepped for. Each is matched as a whole-word ASCII token against tracked source files.",
+        description: "Markers grepped for. Each must appear as a whole-word ASCII token followed by `:` (or `(name):`) — `// TODO: refactor` matches, `## TODO` heading and `\"TODO\"` literals don't.",
     },
     OptionSchema {
         name: "limit",
@@ -44,10 +44,12 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
 ];
 
-/// Greps tracked source files for `TODO` / `FIXME`-style markers. `Text` summarises
-/// `"N TODOs in M files"`; `TextBlock` lists `path:line: snippet`; `Entries` / `Bars` rank
-/// files by hit count. Walks the index of the repo discovered from CWD so untracked and
-/// `.gitignore`-d files (build artefacts, vendored deps) are skipped automatically.
+/// Greps tracked source files for `TODO:` / `FIXME:`-style comment markers. The trailing
+/// colon (also accepting `TODO(name):`) is required so README headings, prose, and string
+/// literals don't inflate the count. `Text` summarises `"N TODOs in M files"`; `TextBlock`
+/// lists `path:line: snippet`; `Entries` / `Bars` rank files by hit count. Walks the index
+/// of the repo discovered from CWD so untracked and `.gitignore`-d files are skipped
+/// automatically.
 pub struct ProjectTodoInCode;
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -252,7 +254,7 @@ fn match_marker(line: &str, markers: &[&str]) -> Option<String> {
     let bytes = line.as_bytes();
     let mut best: Option<usize> = None;
     for needle in markers {
-        if let Some(pos) = find_word(bytes, needle.as_bytes())
+        if let Some(pos) = find_marker(bytes, needle.as_bytes())
             && best.map(|b| pos < b).unwrap_or(true)
         {
             best = Some(pos);
@@ -261,15 +263,40 @@ fn match_marker(line: &str, markers: &[&str]) -> Option<String> {
     best.map(|pos| truncate(line[pos..].trim_end(), SNIPPET_CHARS))
 }
 
-fn find_word(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+/// Find a marker followed by a `TODO:` / `TODO(name):` style colon. Word-boundary on the
+/// leading side so `TODOLIST` doesn't match; trailing `:` excludes README headings, prose,
+/// and string-literal hits like `"TODO"`. The optional `(...)` arm handles the `TODO(yuji):`
+/// author-tag convention. `::` (C++ namespace) is rejected explicitly.
+fn find_marker(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
     (0..=haystack.len() - needle.len()).find(|&i| {
-        haystack[i..i + needle.len()] == *needle
+        let end = i + needle.len();
+        haystack[i..end] == *needle
             && (i == 0 || !is_word_byte(haystack[i - 1]))
-            && (i + needle.len() == haystack.len() || !is_word_byte(haystack[i + needle.len()]))
+            && (end < haystack.len() && !is_word_byte(haystack[end]))
+            && trailing_colon(haystack, end)
     })
+}
+
+fn trailing_colon(bytes: &[u8], mut i: usize) -> bool {
+    if bytes.get(i) == Some(&b'(') {
+        let mut depth = 1;
+        i += 1;
+        while i < bytes.len() && depth > 0 {
+            match bytes[i] {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {}
+            }
+            i += 1;
+        }
+        if depth != 0 {
+            return false;
+        }
+    }
+    bytes.get(i) == Some(&b':') && bytes.get(i + 1) != Some(&b':')
 }
 
 fn is_word_byte(b: u8) -> bool {
@@ -361,6 +388,28 @@ mod tests {
     }
 
     #[test]
+    fn marker_without_trailing_colon_is_ignored() {
+        // README headings, prose, string literals: noise we explicitly want to filter out.
+        let (_tmp, repo) = make_repo();
+        commit_touching(
+            &repo,
+            "README.md",
+            "## TODO\nstill TODO somewhere\nlet x = \"TODO\";",
+        );
+        let scan = scan_repo(&repo, &defaults()).unwrap();
+        assert_eq!(scan.total, 0);
+    }
+
+    #[test]
+    fn author_tagged_marker_is_recognised() {
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "src/lib.rs", "// TODO(yuji): wire this up");
+        let scan = scan_repo(&repo, &defaults()).unwrap();
+        assert_eq!(scan.total, 1);
+        assert!(scan.hits[0].text.starts_with("TODO(yuji):"));
+    }
+
+    #[test]
     fn untracked_file_is_ignored() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "tracked.rs", "nothing");
@@ -374,7 +423,7 @@ mod tests {
     fn ranks_files_by_hit_count() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "many.rs", "// TODO: a\n// TODO: b\n// TODO: c");
-        commit_touching(&repo, "few.rs", "// TODO: a");
+        commit_touching(&repo, "few.rs", "// TODO: only one");
         let scan = scan_repo(&repo, &defaults()).unwrap();
         let labels: Vec<_> = scan.file_counts.iter().map(|(p, _)| p.clone()).collect();
         assert_eq!(labels, vec!["many.rs", "few.rs"]);
@@ -383,11 +432,19 @@ mod tests {
     }
 
     #[test]
-    fn matcher_requires_word_boundary() {
-        // "TODOLIST" should not match the "TODO" marker.
+    fn matcher_requires_word_boundary_and_trailing_colon() {
+        // Word boundary: `TODOLIST` must not match.
         assert!(match_marker("let TODOLIST = 1;", &["TODO"]).is_none());
+        // Trailing colon: prose / headings / literals without `:` must not match.
+        assert!(match_marker("## TODO", &["TODO"]).is_none());
+        assert!(match_marker("/*TODO*/", &["TODO"]).is_none());
+        assert!(match_marker("let x = \"TODO\";", &["TODO"]).is_none());
+        // Canonical comment forms match.
         assert!(match_marker("// TODO: x", &["TODO"]).is_some());
-        assert!(match_marker("/*TODO*/", &["TODO"]).is_some());
+        assert!(match_marker("# TODO: x", &["TODO"]).is_some());
+        assert!(match_marker("// TODO(yuji): x", &["TODO"]).is_some());
+        // C++ namespace `std::TODO::foo` must not match.
+        assert!(match_marker("std::TODO::foo()", &["TODO"]).is_none());
     }
 
     #[test]
@@ -401,7 +458,7 @@ mod tests {
     fn binary_files_are_skipped() {
         let (tmp, repo) = make_repo();
         let workdir = tmp.path();
-        std::fs::write(workdir.join("blob.bin"), b"\x00\x01\x02TODO\x00").unwrap();
+        std::fs::write(workdir.join("blob.bin"), b"\x00\x01\x02TODO: x\x00").unwrap();
         // Track and commit the binary so the index sees it.
         std::process::Command::new("git")
             .args(["add", "blob.bin"])
@@ -424,7 +481,7 @@ mod tests {
         let markers = vec!["XXX".to_string()];
         let scan = scan_repo(&repo, &markers).unwrap();
         assert_eq!(scan.total, 1);
-        assert!(scan.hits[0].text.starts_with("XXX"));
+        assert!(scan.hits[0].text.starts_with("XXX:"));
     }
 
     #[test]
