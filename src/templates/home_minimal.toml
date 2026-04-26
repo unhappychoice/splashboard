@@ -31,12 +31,12 @@ fetcher = "clock"
 format = "%A · %e %B %Y · %H:%M"
 render = { type = "text_plain", align = "center" }
 
-# `quote_of_day` Text shape emits a single deterministic-per-day line "… — Author".
+# `random_quote` Text shape emits a single deterministic-per-day line "… — Author".
 # TextBlock would wrap onto two lines; the single-line Text shape is what suits the
 # minimal layout.
 [[widget]]
 id = "quote"
-fetcher = "quote_of_day"
+fetcher = "random_quote"
 shape = "text"
 render = { type = "text_plain", align = "center" }
 
