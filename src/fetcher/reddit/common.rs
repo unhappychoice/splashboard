@@ -313,6 +313,163 @@ mod tests {
         };
         assert_eq!(entries.items[0].key, "reddit unavailable");
         assert_eq!(entries.items[0].value.as_deref(), Some("reddit timeout"));
+
+        let text = network_unavailable_body(Shape::TextBlock, "boom");
+        let Body::TextBlock(t) = text else {
+            panic!("expected text_block");
+        };
+        assert!(t.lines[0].contains("boom"));
+    }
+
+    #[test]
+    fn render_posts_text_block_lines_include_meta_and_title() {
+        let posts = vec![sample_post(Some("https://example.com/a"))];
+        let body = render_posts(&posts, Shape::TextBlock);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text_block");
+        };
+        assert_eq!(t.lines, vec!["r/rust · 1↑ 1c  t".to_string()]);
+    }
+
+    #[test]
+    fn render_posts_entries_use_title_as_key_and_meta_as_value() {
+        let posts = vec![sample_post(None)];
+        let body = render_posts(&posts, Shape::Entries);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items[0].key, "t");
+        assert_eq!(e.items[0].value.as_deref(), Some("r/rust · 1↑ 1c"));
+    }
+
+    #[test]
+    fn render_posts_linked_text_block_carries_link() {
+        let posts = vec![sample_post(Some("https://example.com/a"))];
+        let body = render_posts(&posts, Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked_text_block");
+        };
+        assert_eq!(b.items[0].text, "r/rust · 1↑ 1c  t");
+        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/a"));
+    }
+
+    #[test]
+    fn render_posts_falls_back_to_permalink_when_url_missing() {
+        let posts = vec![Post {
+            title: Some("hello".into()),
+            score: Some(2),
+            num_comments: Some(0),
+            subreddit: Some("rust".into()),
+            permalink: Some("/r/rust/comments/xyz/hello/".into()),
+            url: None,
+        }];
+        let body = render_posts(&posts, Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked_text_block");
+        };
+        assert_eq!(
+            b.items[0].url.as_deref(),
+            Some("https://www.reddit.com/r/rust/comments/xyz/hello/"),
+        );
+    }
+
+    #[test]
+    fn render_posts_handles_missing_title_subreddit_and_score() {
+        let posts = vec![Post {
+            title: None,
+            score: None,
+            num_comments: None,
+            subreddit: None,
+            permalink: None,
+            url: None,
+        }];
+        let body = render_posts(&posts, Shape::TextBlock);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text_block");
+        };
+        assert_eq!(t.lines, vec!["0↑ 0c  (no title)".to_string()]);
+    }
+
+    #[test]
+    fn render_posts_empty_input_produces_empty_body() {
+        let body = render_posts(&[], Shape::Entries);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert!(e.items.is_empty());
+
+        let body = render_posts(&[], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked_text_block");
+        };
+        assert!(b.items.is_empty());
+    }
+
+    #[test]
+    fn post_deserializes_full_listing_envelope() {
+        let raw = r#"{
+          "data": {
+            "children": [
+              {
+                "data": {
+                  "title": "Post",
+                  "score": 42,
+                  "num_comments": 7,
+                  "subreddit": "rust",
+                  "permalink": "/r/rust/comments/abc/post/",
+                  "url": "https://example.com/post"
+                }
+              }
+            ]
+          }
+        }"#;
+        // Reuse the same envelope shape as `client::Listing<T>` to prove the Post DTO
+        // deserializes against a realistic Reddit response.
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            data: EnvelopeData,
+        }
+        #[derive(serde::Deserialize)]
+        struct EnvelopeData {
+            children: Vec<EnvelopeChild>,
+        }
+        #[derive(serde::Deserialize)]
+        struct EnvelopeChild {
+            data: Post,
+        }
+        let parsed: Envelope = serde_json::from_str(raw).unwrap();
+        let first = &parsed.data.children[0].data;
+        assert_eq!(first.title.as_deref(), Some("Post"));
+        assert_eq!(first.score, Some(42));
+        assert_eq!(first.num_comments, Some(7));
+        assert_eq!(first.subreddit.as_deref(), Some("rust"));
+        assert_eq!(
+            first.permalink.as_deref(),
+            Some("/r/rust/comments/abc/post/")
+        );
+        assert_eq!(first.url.as_deref(), Some("https://example.com/post"));
+    }
+
+    #[test]
+    fn post_deserializes_with_negative_score() {
+        let raw = r#"{ "title": "downvoted", "score": -42 }"#;
+        let post: Post = serde_json::from_str(raw).unwrap();
+        assert_eq!(post.score, Some(-42));
+    }
+
+    #[test]
+    fn sample_post_body_returns_some_for_supported_shapes() {
+        for shape in [Shape::LinkedTextBlock, Shape::TextBlock, Shape::Entries] {
+            assert!(
+                sample_post_body(shape).is_some(),
+                "expected sample for {shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sample_post_body_returns_none_for_unsupported_shape() {
+        assert!(sample_post_body(Shape::Ratio).is_none());
     }
 
     fn sample_post(url: Option<&str>) -> Post {

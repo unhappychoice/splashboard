@@ -154,6 +154,15 @@ async fn fetch_subreddit_posts(
     listing_type: ListingType,
     period: Period,
 ) -> Result<Vec<Post>, FetchError> {
+    fetch_listing(&listing_path(subreddit, count, listing_type, period)).await
+}
+
+fn listing_path(
+    subreddit: &str,
+    count: usize,
+    listing_type: ListingType,
+    period: Period,
+) -> String {
     let mut path = format!(
         "/r/{subreddit}/{}.json?limit={count}&raw_json=1",
         listing_type.path()
@@ -162,7 +171,7 @@ async fn fetch_subreddit_posts(
         path.push_str("&t=");
         path.push_str(period.as_query());
     }
-    fetch_listing(&path).await
+    path
 }
 
 #[cfg(test)]
@@ -215,5 +224,34 @@ mod tests {
         ] {
             assert_eq!(variant.as_query(), expected);
         }
+    }
+
+    #[test]
+    fn listing_path_appends_period_only_for_top() {
+        assert_eq!(
+            listing_path("rust", 10, ListingType::Top, Period::Week),
+            "/r/rust/top.json?limit=10&raw_json=1&t=week"
+        );
+        assert_eq!(
+            listing_path("rust", 10, ListingType::Hot, Period::Week),
+            "/r/rust/hot.json?limit=10&raw_json=1"
+        );
+        assert_eq!(
+            listing_path("rust", 5, ListingType::New, Period::Day),
+            "/r/rust/new.json?limit=5&raw_json=1"
+        );
+        assert_eq!(
+            listing_path("rust", 3, ListingType::Rising, Period::Day),
+            "/r/rust/rising.json?limit=3&raw_json=1"
+        );
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.subreddit.is_none());
+        assert!(opts.count.is_none());
+        assert!(opts.r#type.is_none());
+        assert!(opts.period.is_none());
     }
 }

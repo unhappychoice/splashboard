@@ -300,4 +300,102 @@ mod tests {
         };
         assert!(t.lines[0].contains(MISSING_BODY_PLACEHOLDER));
     }
+
+    #[test]
+    fn render_comments_entries_truncate_long_body() {
+        let body = render_comments(
+            &[Comment {
+                body: Some("a".repeat(200)),
+                score: Some(1),
+                subreddit: Some("rust".into()),
+                permalink: None,
+            }],
+            32,
+            Shape::Entries,
+        );
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert!(e.items[0].key.ends_with('…'));
+        assert_eq!(e.items[0].key.chars().count(), 32);
+        assert_eq!(e.items[0].value.as_deref(), Some("r/rust · 1↑"));
+    }
+
+    #[test]
+    fn render_comments_drops_url_when_permalink_missing() {
+        let body = render_comments(
+            &[Comment {
+                body: Some("hi".into()),
+                score: Some(1),
+                subreddit: Some("rust".into()),
+                permalink: None,
+            }],
+            80,
+            Shape::LinkedTextBlock,
+        );
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert!(b.items[0].url.is_none());
+    }
+
+    #[test]
+    fn comment_link_prepends_site_base() {
+        let comment = Comment {
+            body: None,
+            score: None,
+            subreddit: None,
+            permalink: Some("/r/rust/comments/abc/x/".into()),
+        };
+        assert_eq!(
+            comment_link(&comment).as_deref(),
+            Some("https://www.reddit.com/r/rust/comments/abc/x/"),
+        );
+    }
+
+    #[test]
+    fn comment_deserializes_full_shape() {
+        let raw = r#"{
+          "body": "hello",
+          "score": -2,
+          "subreddit": "rust",
+          "permalink": "/r/rust/comments/abc/x/"
+        }"#;
+        let c: Comment = serde_json::from_str(raw).unwrap();
+        assert_eq!(c.body.as_deref(), Some("hello"));
+        assert_eq!(c.score, Some(-2));
+        assert_eq!(c.subreddit.as_deref(), Some("rust"));
+        assert_eq!(c.permalink.as_deref(), Some("/r/rust/comments/abc/x/"));
+    }
+
+    #[test]
+    fn truncate_preserves_multibyte_safely() {
+        // Multi-byte chars must not be cut mid-codepoint; chars().take() is the contract.
+        let s = "あいうえおかきくけこ"; // 10 chars, 30 bytes UTF-8
+        assert_eq!(truncate(s, 5).chars().count(), 5);
+        assert!(truncate(s, 5).ends_with('…'));
+    }
+
+    #[test]
+    fn sample_comment_body_returns_some_for_supported_shapes() {
+        for shape in [Shape::LinkedTextBlock, Shape::TextBlock, Shape::Entries] {
+            assert!(
+                sample_comment_body(shape).is_some(),
+                "expected sample for {shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sample_comment_body_returns_none_for_unsupported_shape() {
+        assert!(sample_comment_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.user.is_none());
+        assert!(opts.count.is_none());
+        assert!(opts.max_chars.is_none());
+    }
 }

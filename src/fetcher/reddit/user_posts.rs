@@ -99,4 +99,11 @@ mod tests {
         let raw: toml::Value = toml::from_str("user = \"spez\"\nbogus = true").unwrap();
         assert!(raw.try_into::<Options>().is_err());
     }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.user.is_none());
+        assert!(opts.count.is_none());
+    }
 }
