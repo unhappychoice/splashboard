@@ -14,8 +14,8 @@ use sha2::{Digest, Sha256};
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    BadgeData, Body, EntriesData, Entry, Payload, Status, TextBlockData, TextData, TimelineData,
-    TimelineEvent,
+    BadgeData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload, Status,
+    TextBlockData, TextData, TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -29,6 +29,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_MAX_ITEMS: usize = 10;
 const MAX_ITEMS_CAP: usize = 100;
 const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
     Shape::Text,
     Shape::TextBlock,
     Shape::Entries,
@@ -130,6 +131,7 @@ enum DueWindow {
 
 #[derive(Debug, Deserialize)]
 struct ApiTask {
+    id: String,
     content: String,
     priority: u8,
     #[serde(default)]
@@ -154,6 +156,7 @@ struct ApiDue {
 struct TaskView {
     content: String,
     priority: u8,
+    url: Option<String>,
     due_label: Option<String>,
     due_sort_key: Option<i64>,
     timeline_ts: Option<i64>,
@@ -175,7 +178,7 @@ impl Fetcher for TodoistTasks {
     }
 
     fn default_shape(&self) -> Shape {
-        Shape::TextBlock
+        Shape::LinkedTextBlock
     }
 
     fn option_schemas(&self) -> &[OptionSchema] {
@@ -188,6 +191,16 @@ impl Fetcher for TodoistTasks {
 
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "overdue · P4 Fix flaky CI",
+                    Some("https://app.todoist.com/app/task/123"),
+                ),
+                (
+                    "today · P3 Draft release notes",
+                    Some("https://app.todoist.com/app/task/456"),
+                ),
+            ]),
             Shape::Text => samples::text("todo 5 tasks (2 overdue)"),
             Shape::TextBlock => samples::text_block(&[
                 "overdue · P4 Fix flaky CI",
@@ -379,6 +392,7 @@ fn to_task_view(task: ApiTask, now: &DateTime<Local>) -> TaskView {
     TaskView {
         content: task.content,
         priority: task.priority.clamp(1, 4),
+        url: task_link(&task.id),
         due_label,
         due_sort_key,
         timeline_ts: timeline_ts.or(Some(created_ts)),
@@ -447,6 +461,16 @@ fn render_body(tasks: &[TaskView], shape: Shape, max_items: usize) -> Body {
         Shape::Text => Body::Text(TextData {
             value: format!("todo {} tasks ({} overdue)", tasks.len(), overdue_count),
         }),
+        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
+            items: tasks
+                .iter()
+                .take(max_items)
+                .map(|t| LinkedLine {
+                    text: task_line(t),
+                    url: t.url.clone(),
+                })
+                .collect(),
+        }),
         Shape::Entries => Body::Entries(EntriesData {
             items: tasks
                 .iter()
@@ -499,6 +523,10 @@ fn task_line(task: &TaskView) -> String {
 fn task_meta(task: &TaskView) -> String {
     let due = task.due_label.as_deref().unwrap_or("no due");
     format!("{due} · P{}", task.priority)
+}
+
+fn task_link(id: &str) -> Option<String> {
+    (!id.is_empty()).then(|| format!("https://app.todoist.com/app/task/{id}"))
 }
 
 fn parse_options(raw: Option<&toml::Value>) -> Result<Options, FetchError> {
@@ -607,6 +635,7 @@ mod tests {
         let tasks = vec![TaskView {
             content: "Fix bug".into(),
             priority: 4,
+            url: Some("https://app.todoist.com/app/task/1".into()),
             due_label: Some("overdue".into()),
             due_sort_key: Some(1),
             timeline_ts: Some(1),
@@ -618,5 +647,24 @@ mod tests {
         };
         assert_eq!(b.status, Status::Error);
         assert!(b.label.contains("overdue"));
+    }
+
+    #[test]
+    fn linked_text_block_includes_task_url() {
+        let tasks = vec![TaskView {
+            content: "Review PR".into(),
+            priority: 2,
+            url: Some("https://app.todoist.com/app/task/42".into()),
+            due_label: Some("today".into()),
+            due_sort_key: Some(1),
+            timeline_ts: Some(1),
+            is_overdue: false,
+        }];
+        let body = render_body(&tasks, Shape::LinkedTextBlock, 10);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked_text_block");
+        };
+        assert_eq!(b.items.len(), 1);
+        assert_eq!(b.items[0].url.as_deref(), Some("https://app.todoist.com/app/task/42"));
     }
 }

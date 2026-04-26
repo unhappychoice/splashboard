@@ -674,7 +674,7 @@ fn should_refresh(cached: &HashMap<WidgetId, CacheEntry>, w: &WidgetConfig) -> b
     }
 }
 
-fn make_terminal<B: Backend>(backend: B, viewport_lines: u16) -> io::Result<Terminal<B>> {
+fn make_terminal<B: Backend>(backend: B, viewport_lines: u16) -> Result<Terminal<B>, B::Error> {
     Terminal::with_options(
         backend,
         TerminalOptions {
@@ -694,7 +694,7 @@ fn draw<B: Backend>(
     padding: (u16, u16),
     hidden_rows: u16,
     loading: &HashMap<WidgetId, Shape>,
-) -> io::Result<()> {
+) -> Result<(), B::Error> {
     terminal.draw(|frame| {
         draw_frame(
             frame,
@@ -728,7 +728,7 @@ fn draw_final<B: Backend>(
     padding: (u16, u16),
     hidden_rows: u16,
     loading: &HashMap<WidgetId, Shape>,
-) -> io::Result<()> {
+) -> Result<(), B::Error> {
     let mut captured: Option<Rect> = None;
     terminal.draw(|frame| {
         let area = frame.area();
@@ -774,7 +774,7 @@ fn finalize_draw<B: Backend>(
     requested_height: u16,
     viewport_lines: u16,
     loading: &HashMap<WidgetId, Shape>,
-) -> io::Result<()> {
+) -> Result<(), B::Error> {
     let scrollback_rows = requested_height.saturating_sub(viewport_lines);
     if scrollback_rows == 0 {
         return draw_final(
@@ -807,7 +807,7 @@ fn flush_full_to_scrollback<B: Backend>(
     requested_height: u16,
     viewport_lines: u16,
     loading: &HashMap<WidgetId, Shape>,
-) -> io::Result<()> {
+) -> Result<(), B::Error> {
     let width = terminal.size()?.width;
     let full_buf = render_full_into_buffer(
         width,
@@ -819,7 +819,7 @@ fn flush_full_to_scrollback<B: Backend>(
         theme,
         padding,
         loading,
-    )?;
+    );
     let scrollback_rows = requested_height - viewport_lines;
     terminal.insert_before(scrollback_rows, |buf| {
         copy_rows(&full_buf, 0..scrollback_rows, buf);
@@ -859,18 +859,20 @@ fn render_full_into_buffer(
     theme: &Theme,
     padding: (u16, u16),
     loading: &HashMap<WidgetId, Shape>,
-) -> io::Result<Buffer> {
+) -> Buffer {
     let backend = TestBackend::new(width, height);
-    let mut inner = Terminal::new(backend)?;
-    inner.draw(|frame| {
-        let area = frame.area();
-        paint_viewport_bg(frame, area, theme);
-        let content = shrink(area, padding);
-        layout::draw(
-            frame, content, root, payloads, specs, registry, theme, loading,
-        );
-    })?;
-    Ok(inner.backend().buffer().clone())
+    let mut inner = Terminal::new(backend).expect("TestBackend::new is infallible");
+    inner
+        .draw(|frame| {
+            let area = frame.area();
+            paint_viewport_bg(frame, area, theme);
+            let content = shrink(area, padding);
+            layout::draw(
+                frame, content, root, payloads, specs, registry, theme, loading,
+            );
+        })
+        .expect("TestBackend draw is infallible");
+    inner.backend().buffer().clone()
 }
 
 /// Copies a vertical slice from `src` (rows `src_y_range`, taken relative to `src.area.top()`)
@@ -1157,8 +1159,7 @@ mod tests {
             &theme,
             (0, 0),
             &loading,
-        )
-        .unwrap();
+        );
         assert!(row_text(&buf, 0).starts_with("r0"));
         assert!(row_text(&buf, 5).starts_with("r5"));
     }

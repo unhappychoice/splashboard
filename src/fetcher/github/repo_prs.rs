@@ -14,7 +14,12 @@ use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 use super::items::{IssueItem, render_items};
 
-const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::TextBlock,
+    Shape::Entries,
+    Shape::Timeline,
+];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -95,7 +100,7 @@ impl Fetcher for GithubRepoPrs {
         let items: Vec<IssueItem> = rest_get(&path).await?;
         Ok(payload(render_items(
             &items,
-            ctx.shape.unwrap_or(Shape::TextBlock),
+            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
             false,
         )))
     }

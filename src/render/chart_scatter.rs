@@ -15,6 +15,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub marker: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -74,11 +81,12 @@ fn render_scatter(
     opts: &RenderOptions,
     theme: &Theme,
 ) {
+    let specific: Options = opts.parse_specific();
     let (x_bounds, y_bounds) = bounds(&data.series);
     let mut canvas = Canvas::default()
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
-        .marker(parse_marker(opts.marker.as_deref()))
+        .marker(parse_marker(specific.marker.as_deref()))
         .paint(|ctx| {
             for (i, series) in data.series.iter().enumerate() {
                 ctx.draw(&Points {

@@ -12,6 +12,15 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub bins: Option<u16>,
+    #[serde(default)]
+    pub axis_labels: Option<bool>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT, theme::TEXT_DIM];
 
 const MIN_AUTO_BINS: u16 = 5;
@@ -91,9 +100,10 @@ fn render_histogram(
     if chart_area.width == 0 || chart_area.height == 0 || data.values.is_empty() {
         return;
     }
-    let want_axes = opts.axis_labels.unwrap_or(false);
+    let specific: Options = opts.parse_specific();
+    let want_axes = specific.axis_labels.unwrap_or(false);
     let (top_label_area, bars_area, bottom_label_area) = split_axis_areas(chart_area, want_axes);
-    let bins = resolve_bins(opts.bins, data.values.len(), bars_area.width);
+    let bins = resolve_bins(specific.bins, data.values.len(), bars_area.width);
     let counts = boost_to_visible(bucket_counts(&data.values, bins), bars_area.height);
     let bars: Vec<Bar> = counts
         .iter()
@@ -348,13 +358,15 @@ mod tests {
     #[test]
     fn explicit_bins_option_parses() {
         let spec = histogram_spec(r#"{ type = "chart_histogram", bins = 12 }"#);
-        assert_eq!(spec.options().bins, Some(12));
+        let parsed: Options = spec.options().parse_specific();
+        assert_eq!(parsed.bins, Some(12));
     }
 
     #[test]
     fn axis_labels_option_parses() {
         let spec = histogram_spec(r#"{ type = "chart_histogram", axis_labels = true }"#);
-        assert_eq!(spec.options().axis_labels, Some(true));
+        let parsed: Options = spec.options().parse_specific();
+        assert_eq!(parsed.axis_labels, Some(true));
     }
 
     #[test]

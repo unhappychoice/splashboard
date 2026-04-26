@@ -14,6 +14,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub inner: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::PANEL_TITLE, theme::TEXT];
 
 const DEFAULT_DURATION_MS: u64 = 1600;
@@ -84,7 +91,8 @@ impl Renderer for AnimatedScanlinesRenderer {
         registry: &Registry,
     ) {
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -119,7 +127,8 @@ impl Renderer for AnimatedScanlinesRenderer {
         registry: &Registry,
     ) -> u16 {
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -173,13 +182,13 @@ fn highlight_row(buf: &mut ratatui::buffer::Buffer, area: Rect, y: u16, theme: &
 
 fn inner_options(opts: &RenderOptions) -> RenderOptions {
     RenderOptions {
-        inner: None,
-        effect: None,
         duration_ms: None,
-        boot_lines: None,
-        font_sequence: None,
         ..opts.clone()
     }
+    .without_extra("inner")
+    .without_extra("effect")
+    .without_extra("boot_lines")
+    .without_extra("font_sequence")
 }
 
 fn elapsed_since_start_ms() -> u32 {
@@ -201,13 +210,14 @@ mod tests {
     #[test]
     fn inner_options_strips_wrapper_fields() {
         let opts = RenderOptions {
-            inner: Some("text_ascii".into()),
             duration_ms: Some(1500),
             style: Some("figlet".into()),
             ..RenderOptions::default()
-        };
+        }
+        .with_extra("inner", "text_ascii");
         let inner = inner_options(&opts);
-        assert!(inner.inner.is_none());
+        let parsed: Options = inner.parse_specific();
+        assert!(parsed.inner.is_none());
         assert!(inner.duration_ms.is_none());
         assert_eq!(inner.style.as_deref(), Some("figlet"));
     }
@@ -223,11 +233,11 @@ mod tests {
         let spec = RenderSpec::Full {
             type_name: "animated_scanlines".into(),
             options: RenderOptions {
-                inner: Some("text_ascii".into()),
                 style: Some("figlet".into()),
                 duration_ms: Some(400),
                 ..RenderOptions::default()
-            },
+            }
+            .with_extra("inner", "text_ascii"),
         };
         let registry = super::super::Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 40, 10);

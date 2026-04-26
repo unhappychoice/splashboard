@@ -10,6 +10,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub font_sequence: Option<Vec<String>>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT, theme::PANEL_TITLE];
 
 const DEFAULT_DURATION_MS: u64 = 1800;
@@ -97,7 +104,7 @@ impl Renderer for AnimatedFigletMorphRenderer {
         sequence(opts)
             .iter()
             .map(|font| {
-                let forwarded = text_ascii_opts(opts, font);
+                let forwarded = text_ascii_opts(opts, font.as_str());
                 text_ascii.natural_height(body, &forwarded, max_width, registry)
             })
             .max()
@@ -120,7 +127,7 @@ fn render_morph(
     let total = opts.duration_ms.unwrap_or(DEFAULT_DURATION_MS).max(1) as u32;
     let elapsed = elapsed_since_start_ms();
     let (phase, phase_elapsed, phase_len) = phase_for(elapsed, total, seq.len());
-    let font = seq[phase];
+    let font = seq[phase].as_str();
     let forwarded = text_ascii_opts(opts, font);
     text_ascii.render(frame, area, body, &forwarded, theme, registry);
 
@@ -150,10 +157,11 @@ fn apply(frame: &mut Frame, area: Rect, effect: &mut Effect, elapsed_ms: u32) {
     frame.render_effect(effect, area, FxDuration::from_millis(elapsed_ms));
 }
 
-fn sequence(opts: &RenderOptions) -> Vec<&str> {
-    match opts.font_sequence.as_ref() {
-        Some(list) if !list.is_empty() => list.iter().map(|s| s.as_str()).collect(),
-        _ => DEFAULT_SEQUENCE.to_vec(),
+fn sequence(opts: &RenderOptions) -> Vec<String> {
+    let specific: Options = opts.parse_specific();
+    match specific.font_sequence {
+        Some(list) if !list.is_empty() => list,
+        _ => DEFAULT_SEQUENCE.iter().map(|s| (*s).to_string()).collect(),
     }
 }
 
@@ -172,11 +180,11 @@ fn phase_for(elapsed: u32, total: u32, phase_count: usize) -> (usize, u32, u32) 
 fn text_ascii_opts(opts: &RenderOptions, font: &str) -> RenderOptions {
     RenderOptions {
         style: Some("figlet".into()),
-        font: Some(font.to_string()),
         color: opts.color.clone(),
         align: opts.align.clone(),
         ..RenderOptions::default()
     }
+    .with_extra("font", font)
 }
 
 fn elapsed_since_start_ms() -> u32 {
@@ -217,11 +225,9 @@ mod tests {
 
     #[test]
     fn sequence_falls_back_to_default_when_empty() {
-        let opts = RenderOptions {
-            font_sequence: Some(vec![]),
-            ..RenderOptions::default()
-        };
-        assert_eq!(sequence(&opts), DEFAULT_SEQUENCE.to_vec());
+        let opts = RenderOptions::default().with_extra("font_sequence", Vec::<String>::new());
+        let want: Vec<String> = DEFAULT_SEQUENCE.iter().map(|s| (*s).to_string()).collect();
+        assert_eq!(sequence(&opts), want);
     }
 
     #[test]

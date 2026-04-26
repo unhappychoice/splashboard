@@ -12,6 +12,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub segments: Option<u16>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[
     theme::TEXT,
     theme::TEXT_DIM,
@@ -98,10 +105,11 @@ fn render_segment(
     if area.width == 0 || area.height == 0 {
         return;
     }
+    let specific: Options = opts.parse_specific();
     let ratio = data.value.clamp(0.0, 1.0);
     let prefix = resolve_prefix(opts, data);
     let suffix = format_value(ratio, data.denominator, opts.value_format.as_deref());
-    let segments = resolve_segment_count(opts.segments);
+    let segments = resolve_segment_count(specific.segments);
     let filled = (f64::from(segments) * ratio).round() as u16;
     let fill = tone_color(ratio, opts.tone.as_deref(), theme);
     let row = Rect::new(area.x, area.y + area.height / 2, area.width, 1);

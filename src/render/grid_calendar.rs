@@ -17,6 +17,18 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+/// Reserved forward-compat fields. Currently unused by the Monthly widget but accepted in
+/// config so users can stage option values ahead of feature work.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct Options {
+    #[serde(default)]
+    pub week_start: Option<String>,
+    #[serde(default)]
+    pub marker: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::ACCENT_TODAY, theme::ACCENT_EVENT, theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -64,6 +76,9 @@ impl Renderer for GridCalendarRenderer {
         _registry: &Registry,
     ) {
         if let Body::Calendar(d) = body {
+            // Parse extras so unknown keys still fail per `deny_unknown_fields`; values are
+            // ignored until the underlying widget supports them.
+            let _: Options = opts.parse_specific();
             render_calendar(frame, area, d, opts, theme);
         }
     }
@@ -122,15 +137,16 @@ fn render_calendar(
     // whether to draw each week row, so any non-zero viewport origin (subsequent inline
     // renders after the cursor has scrolled down) skips the date grid entirely. Render into
     // an origin-anchored off-screen buffer first, then blit into the frame.
-    if let Ok(off) = render_offscreen(target.width, target.height, widget) {
-        blit(&off, frame.buffer_mut(), target);
-    }
+    let off = render_offscreen(target.width, target.height, widget);
+    blit(&off, frame.buffer_mut(), target);
 }
 
-fn render_offscreen<W: Widget>(width: u16, height: u16, widget: W) -> std::io::Result<Buffer> {
-    let mut term = Terminal::new(TestBackend::new(width.max(1), height.max(1)))?;
-    term.draw(|f| widget.render(f.area(), f.buffer_mut()))?;
-    Ok(term.backend().buffer().clone())
+fn render_offscreen<W: Widget>(width: u16, height: u16, widget: W) -> Buffer {
+    let mut term = Terminal::new(TestBackend::new(width.max(1), height.max(1)))
+        .expect("TestBackend::new is infallible");
+    term.draw(|f| widget.render(f.area(), f.buffer_mut()))
+        .expect("TestBackend draw is infallible");
+    term.backend().buffer().clone()
 }
 
 fn blit(src: &Buffer, dst: &mut Buffer, target: Rect) {

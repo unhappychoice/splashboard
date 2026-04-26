@@ -7,6 +7,15 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub legend: Option<String>,
+    #[serde(default)]
+    pub donut: Option<bool>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -61,18 +70,19 @@ impl Renderer for ChartPieRenderer {
 }
 
 fn render_pie(frame: &mut Frame, area: Rect, data: &BarsData, opts: &RenderOptions, theme: &Theme) {
+    let specific: Options = opts.parse_specific();
     let slices: Vec<PieSlice> = data
         .bars
         .iter()
         .enumerate()
         .map(|(i, b)| PieSlice::new(b.label.as_str(), b.value as f64, theme.series_color(i)))
         .collect();
-    let show_legend = !matches!(opts.legend.as_deref(), Some("none"));
+    let show_legend = !matches!(specific.legend.as_deref(), Some("none"));
     let mut chart = PieChart::new(slices)
         .show_legend(show_legend)
         .show_percentages(true)
-        .legend_position(legend_position(opts.legend.as_deref()));
-    if opts.donut.unwrap_or(false) {
+        .legend_position(legend_position(specific.legend.as_deref()));
+    if specific.donut.unwrap_or(false) {
         chart = chart.pie_char('○');
     }
     frame.render_widget(chart, area);

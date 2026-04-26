@@ -11,6 +11,17 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub fit: Option<String>,
+    #[serde(default)]
+    pub max_width: Option<u16>,
+    #[serde(default)]
+    pub max_height: Option<u16>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -104,9 +115,10 @@ fn render_image(
     path: &str,
     opts: &RenderOptions,
 ) -> Result<(), String> {
+    let specific: Options = opts.parse_specific();
     let img = load_image(path)?;
     let mut protocol = picker().new_resize_protocol(img);
-    let widget = StatefulImage::default().resize(resize_mode(opts.fit.as_deref()));
+    let widget = StatefulImage::default().resize(resize_mode(specific.fit.as_deref()));
     frame.render_stateful_widget(widget, area, &mut protocol);
     Ok(())
 }
@@ -116,9 +128,12 @@ fn render_image(
 /// as empty — then max_* caps the body, then alignment places that box inside what remains of
 /// the original area.
 fn compute_target(area: Rect, opts: &RenderOptions) -> Rect {
+    let specific: Options = opts.parse_specific();
     let padded = apply_padding(area, opts.padding.unwrap_or(0));
-    let capped_w = opts.max_width.map_or(padded.width, |m| m.min(padded.width));
-    let capped_h = opts
+    let capped_w = specific
+        .max_width
+        .map_or(padded.width, |m| m.min(padded.width));
+    let capped_h = specific
         .max_height
         .map_or(padded.height, |m| m.min(padded.height));
     let x_offset = match opts.align.as_deref() {
@@ -155,14 +170,14 @@ fn resize_mode(fit: Option<&str>) -> Resize {
 
 fn picker() -> Picker {
     static CACHED: OnceLock<Picker> = OnceLock::new();
-    *CACHED.get_or_init(detect_picker)
+    CACHED.get_or_init(detect_picker).clone()
 }
 
 fn detect_picker() -> Picker {
     if std::io::stdin().is_terminal() {
-        Picker::from_query_stdio().unwrap_or_else(|_| Picker::from_fontsize((8, 16)))
+        Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks())
     } else {
-        Picker::from_fontsize((8, 16))
+        Picker::halfblocks()
     }
 }
 
@@ -231,10 +246,10 @@ mod tests {
             height: 10,
         };
         let opts = RenderOptions {
-            max_width: Some(10),
             align: Some("center".into()),
             ..RenderOptions::default()
-        };
+        }
+        .with_extra("max_width", 10u16);
         let out = compute_target(area, &opts);
         assert_eq!(out.width, 10);
         assert_eq!(out.x, 10);
@@ -248,10 +263,7 @@ mod tests {
             width: 20,
             height: 20,
         };
-        let opts = RenderOptions {
-            max_height: Some(5),
-            ..RenderOptions::default()
-        };
+        let opts = RenderOptions::default().with_extra("max_height", 5u16);
         let out = compute_target(area, &opts);
         assert_eq!(out.height, 5);
     }
@@ -265,10 +277,10 @@ mod tests {
             height: 10,
         };
         let opts = RenderOptions {
-            max_width: Some(10),
             align: Some("right".into()),
             ..RenderOptions::default()
-        };
+        }
+        .with_extra("max_width", 10u16);
         let out = compute_target(area, &opts);
         assert_eq!(out.x, 20);
         assert_eq!(out.width, 10);

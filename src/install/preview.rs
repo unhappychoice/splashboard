@@ -185,7 +185,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_postfx" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_boot" => {
@@ -195,7 +195,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_boot" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_scanlines" => {
@@ -205,7 +205,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_scanlines" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_splitflap" => {
@@ -215,7 +215,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_splitflap" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_wave" => {
@@ -225,7 +225,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_wave" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         // animated_figlet_morph's resting frame = text_ascii with the sequence's last font.
@@ -235,32 +235,52 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             type_name: "text_ascii".into(),
             options: RenderOptions {
                 style: Some("figlet".into()),
-                font: Some("ansi_shadow".into()),
                 ..RenderOptions::default()
-            },
+            }
+            .with_extra("font", "ansi_shadow"),
         },
         RenderSpec::Full {
             ref type_name,
             ref options,
         } if type_name == "animated_figlet_morph" => {
-            let resting_font = options
-                .font_sequence
-                .as_ref()
+            let resting_font = font_sequence(options)
                 .and_then(|seq| seq.last().cloned())
                 .unwrap_or_else(|| "ansi_shadow".into());
             RenderSpec::Full {
                 type_name: "text_ascii".into(),
                 options: RenderOptions {
                     style: Some("figlet".into()),
-                    font: Some(resting_font),
                     color: options.color.clone(),
                     align: options.align.clone(),
                     ..RenderOptions::default()
-                },
+                }
+                .with_extra("font", resting_font),
             }
         }
         other => other,
     }
+}
+
+/// Pull the wrapper renderer's `inner` field out of the raw extras blob, falling back to
+/// `text_plain` so previews always have a concrete renderer to delegate to.
+fn inner_renderer_name(opts: &RenderOptions) -> String {
+    #[derive(serde::Deserialize, Default)]
+    struct Wrapper {
+        #[serde(default)]
+        inner: Option<String>,
+    }
+    let parsed: Wrapper = opts.parse_specific();
+    parsed.inner.unwrap_or_else(|| "text_plain".into())
+}
+
+fn font_sequence(opts: &RenderOptions) -> Option<Vec<String>> {
+    #[derive(serde::Deserialize, Default)]
+    struct Wrapper {
+        #[serde(default)]
+        font_sequence: Option<Vec<String>>,
+    }
+    let parsed: Wrapper = opts.parse_specific();
+    parsed.font_sequence
 }
 
 #[cfg(test)]

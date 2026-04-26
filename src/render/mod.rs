@@ -35,6 +35,7 @@ mod gauge_thermometer;
 mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
+mod list_links;
 mod list_plain;
 mod list_ranking;
 mod list_timeline;
@@ -54,6 +55,7 @@ pub mod test_utils;
 pub enum Shape {
     Text,
     TextBlock,
+    LinkedTextBlock,
     Entries,
     Ratio,
     NumberSeries,
@@ -70,6 +72,7 @@ pub fn shape_of(body: &Body) -> Shape {
     match body {
         Body::Text(_) => Shape::Text,
         Body::TextBlock(_) => Shape::TextBlock,
+        Body::LinkedTextBlock(_) => Shape::LinkedTextBlock,
         Body::Entries(_) => Shape::Entries,
         Body::Ratio(_) => Shape::Ratio,
         Body::NumberSeries(_) => Shape::NumberSeries,
@@ -90,6 +93,7 @@ impl Shape {
         match self {
             Self::Text => "text",
             Self::TextBlock => "text_block",
+            Self::LinkedTextBlock => "linked_text_block",
             Self::Entries => "entries",
             Self::Ratio => "ratio",
             Self::NumberSeries => "number_series",
@@ -104,181 +108,143 @@ impl Shape {
     }
 }
 
-/// Per-renderer configuration. Each renderer picks out the fields it cares about from this bag;
-/// others are ignored. Kept deliberately flat so config authors can write
-/// `render = { type = "text_ascii", style = "figlet" }` without nesting.
+/// Per-renderer configuration. Splits cross-cutting fields (used by ≥2 renderers across
+/// families) from per-renderer extras: shared fields are explicit on this struct; the rest
+/// land in [`RenderOptions::raw`] and each renderer parses its own typed Options struct via
+/// [`RenderOptions::parse_specific`]. Mirrors the fetcher pattern (`FetchContext.options:
+/// Option<toml::Value>` parsed into per-fetcher `Options` structs).
+///
+/// Config authors keep writing the flat form — `render = { type = "text_ascii", style =
+/// "figlet", font = "small" }` — TOML `flatten` collects unknown keys into `raw`. Typo
+/// detection on renderer-specific fields is delegated to each renderer's own
+/// `#[serde(deny_unknown_fields)]` Options struct.
 ///
 /// Renderer naming: every renderer carries a family prefix (`text_*`, `list_*`, `chart_*`,
 /// `gauge_*`, `grid_*`, `status_*`, `media_*`, `animated_*`, `clock_*`), never a suffix.
 /// Module name always matches the registered name (`chart_bar.rs` registers `"chart_bar"`).
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct RenderOptions {
     /// Visual treatment selector. Shared across renderers where "same shape, different look"
-    /// makes sense: `text_ascii` ("blocks" / "figlet"), `chart_sparkline` ("bars" / "line").
+    /// makes sense: `text_ascii` ("blocks" / "figlet"), `chart_sparkline` ("bars" / "line"),
+    /// `list_ranking` ("medal" / "number" / "none").
     #[serde(default)]
     pub style: Option<String>,
-    /// text_ascii blocks style: "full" | "quadrant" | "sextant". None = adaptive (pick by area
-    /// height). Ignored by other styles.
-    #[serde(default)]
-    pub pixel_size: Option<String>,
     /// Horizontal alignment of the rendered content within its cell: "left" (default),
     /// "center", or "right". Not every renderer honours this — text_plain and text_ascii do;
     /// structural renderers (grid_table, gauge_*, chart_*) ignore it.
     #[serde(default)]
     pub align: Option<String>,
-    /// text_ascii figlet font name. Built-ins: "standard" (default), "small", "big", "banner".
-    /// Ignored when `style != "figlet"`.
-    #[serde(default)]
-    pub font: Option<String>,
     /// Theme token name overriding the renderer's default foreground colour. Any
     /// `[theme]` key is accepted; unknown names fall back to the renderer's default.
-    /// Honoured by `text_ascii` and `status_badge`.
+    /// Honoured by `text_ascii` and `animated_figlet_morph`.
     #[serde(default)]
     pub color: Option<String>,
-    /// media_image: object fit mode. "contain" (default, preserves aspect inside box),
-    /// "cover" (fill box, crop overflow), "stretch" (legacy — warp to box).
-    #[serde(default)]
-    pub fit: Option<String>,
-    /// media_image: upper bound on the image cell width. None = no cap beyond the area.
-    #[serde(default)]
-    pub max_width: Option<u16>,
-    /// media_image: upper bound on the image cell height. None = no cap beyond the area.
-    #[serde(default)]
-    pub max_height: Option<u16>,
-    /// media_image / status_badge: inner padding in cells. `media_image` trims uniformly on
-    /// all sides; `status_badge` uses it as horizontal padding before / after the label.
-    #[serde(default)]
-    pub padding: Option<u16>,
-    /// gauge_line / chart_sparkline: inline label prefix. `gauge_line` renders as
-    /// `label: ▓▓░░ 32%`; `chart_sparkline` as `label  ▁▂▃█`.
+    /// Inline label prefix used by gauge / chart families. `gauge_line` renders as
+    /// `label: ▓▓░░ 32%`; `chart_sparkline` as `label  ▁▂▃█`; `chart_histogram` as the
+    /// chart title.
     #[serde(default)]
     pub label: Option<String>,
-    /// gauge_line: numeric formatting. "percent" (default, `32%`), "fraction"
-    /// (`118 of 365`), or "both" (`32% (118 of 365)`). "fraction" / "both" need
-    /// `RatioData.denominator` populated by the fetcher — otherwise they fall back
-    /// to percent.
+    /// Inner padding in cells. `media_image` trims uniformly on all sides; `status_badge` uses
+    /// it as horizontal padding before / after the label.
     #[serde(default)]
-    pub value_format: Option<String>,
-    /// grid_table: layout mode. "rows" (default — one row per entry) or "inline"
-    /// (single-line `key: value · key: value`).
-    #[serde(default)]
-    pub layout: Option<String>,
-    /// grid_table: per-column alignment. First entry aligns the key column, second the
-    /// value column. Valid values: "left" (default) / "center" / "right".
-    #[serde(default)]
-    pub column_align: Option<Vec<String>>,
+    pub padding: Option<u16>,
     /// list_plain / list_timeline: bullet glyph prefixed to each entry. "•", "●", "▪",
     /// "→", or "none" (omit). None leaves list_plain unbulleted, list_timeline at its
     /// default "●".
     #[serde(default)]
     pub bullet: Option<String>,
-    /// list_plain / list_timeline: cap on rendered entries. None = render all.
+    /// list_*: cap on rendered entries. None = render all.
     #[serde(default)]
     pub max_items: Option<usize>,
-    /// list_timeline: how the time prefix is formatted. "relative" (default, `2h`) or
-    /// "absolute" (`2026-04-23`).
+    /// gauge_*: how the fill colour follows `Ratio.value`. "neutral" (default) is single
+    /// `theme.text`. "fill" treats the value as how-full (low → status_error, high →
+    /// status_ok) — right for battery / quota progress. "drain" inverts (high → status_error)
+    /// — right for disk / memory / cpu where the ratio is "fraction used".
     #[serde(default)]
-    pub date_format: Option<String>,
-    /// status_badge: pill shape. "rounded" (default, `( label )`), "square" (`[ label ]`),
-    /// or "none" (bare — keeps the coloured dot prefix).
+    pub tone: Option<String>,
+    /// gauge_*: numeric formatting. "percent" (default, `32%`), "fraction" (`118 of 365`),
+    /// or "both" (`32% (118 of 365)`). "fraction" / "both" need `RatioData.denominator`
+    /// populated by the fetcher — otherwise they fall back to percent.
     #[serde(default)]
-    pub shape: Option<String>,
-    /// chart_pie: legend placement. "right" (default) / "bottom" / "none".
+    pub value_format: Option<String>,
+    /// animated_*: effect duration in milliseconds. Default per-renderer (typically 800ms,
+    /// short enough that the effect completes well within the 2s ANIMATION_WINDOW).
     #[serde(default)]
-    pub legend: Option<String>,
-    /// chart_pie: render as a donut (empty hole in the centre) instead of a full pie.
-    #[serde(default)]
-    pub donut: Option<bool>,
-    /// chart_bar: orient bars horizontally instead of the default vertical.
-    #[serde(default)]
-    pub horizontal: Option<bool>,
-    /// chart_bar: stack series on top of each other (noop for single-series data).
-    #[serde(default)]
-    pub stacked: Option<bool>,
-    /// chart_bar: cap on rendered bars (keeps the top N by value). None = render all.
-    #[serde(default)]
-    pub max_bars: Option<usize>,
-    /// chart_histogram: number of buckets the input series is binned into. None defaults to
-    /// an auto value derived from the visible width and the sample count.
-    #[serde(default)]
-    pub bins: Option<u16>,
-    /// chart_histogram: render the value range (min / max) on the bottom edge and the peak
-    /// count on the top edge. Skipped automatically when the chart area is shorter than 4
-    /// rows so the bars themselves still get usable space.
-    #[serde(default)]
-    pub axis_labels: Option<bool>,
-    /// chart_bar: thickness of each bar, in cells. Applied along the axis perpendicular to
-    /// the bar direction (bar height for vertical, bar row-height for horizontal). None
-    /// defaults to `3` for vertical and `1` for horizontal — horizontal bars read fine
-    /// single-row and wrapping several into a compact slot is usually what the user wants.
-    #[serde(default)]
-    pub bar_width: Option<u16>,
+    pub duration_ms: Option<u64>,
     /// chart_line / chart_scatter: draw a bordered axis block around the plot.
     #[serde(default)]
     pub axes: Option<bool>,
-    /// chart_scatter: scatter glyph. "dot" (default, `●`), "cross" (`✕`), "plus" (`+`),
-    /// or any single printable character (used verbatim).
-    /// grid_calendar: event marker glyph, same accepted values.
-    #[serde(default)]
-    pub marker: Option<String>,
-    /// gauge_battery / gauge_segment: how the fill colour follows `Ratio.value`. "neutral"
-    /// (default) is single `theme.text`. "fill" treats the value as how-full (low →
-    /// status_error, high → status_ok) — right for battery / quota progress. "drain" inverts
-    /// (high → status_error) — right for disk / memory / cpu where the ratio is "fraction used".
-    #[serde(default)]
-    pub tone: Option<String>,
-    /// gauge_segment: number of LED segments rendered. None defaults to 5 — the canonical
-    /// "5-LED bar" silhouette. Values are clamped to at least 1.
-    #[serde(default)]
-    pub segments: Option<u16>,
-    /// gauge_circle: thickness of the ring in cells. None keeps the block-gauge default.
-    #[serde(default)]
-    pub ring_thickness: Option<u16>,
-    /// gauge_circle: placement of the numeric label. "center" (default) or "below".
-    #[serde(default)]
-    pub label_position: Option<String>,
-    /// grid_heatmap: glyph painted at every cell. Single character (e.g. "■", "●", "▮").
-    /// None keeps the density-ramp glyph set.
-    #[serde(default)]
-    pub cell_char: Option<String>,
-    /// grid_calendar: which day starts the week. "sun" (default), "mon".
-    #[serde(default)]
-    pub week_start: Option<String>,
-    /// animated_postfx: name of the inner renderer whose output the effect is applied over.
-    /// None falls back to the shape's default renderer.
-    #[serde(default)]
-    pub inner: Option<String>,
-    /// animated_postfx: effect to apply. Names map to tachyonfx effects (`fade_in`, `fade_out`,
-    /// `dissolve`, `coalesce`, `sweep_in`, `slide_in`, `hsl_shift`, `glitch`). None defaults to
-    /// `fade_in`. Unknown names fall back to `fade_in` rather than failing the widget.
-    #[serde(default)]
-    pub effect: Option<String>,
-    /// animated_postfx: effect duration in milliseconds. None defaults to 800 — short enough
-    /// that the effect completes well within the 2s ANIMATION_WINDOW, leaving the final frame
-    /// static for the remainder.
-    #[serde(default)]
-    pub duration_ms: Option<u64>,
-    /// animated_figlet_morph: ordered list of figlet font names to step through. Each phase
-    /// takes `duration_ms / N` and crossfades into the next; the final entry is the resting
-    /// font once the animation completes. None falls back to `["small", "banner", "ansi_shadow"]`.
-    #[serde(default)]
-    pub font_sequence: Option<Vec<String>>,
-    /// animated_boot: ordered list of boot-log lines scrolled in one by one before the hero
-    /// settles. None uses a small default set; an empty list disables the boot lines and
-    /// falls straight to the inner render.
-    #[serde(default)]
-    pub boot_lines: Option<Vec<String>>,
+    /// Renderer-specific extras. Each renderer parses its own typed Options struct via
+    /// [`Self::parse_specific`]; unknown keys for that renderer surface as parse errors at
+    /// render time. Common-field typos (e.g. `aling = "center"`) also land here, then get
+    /// rejected by whichever renderer the spec routes to.
+    ///
+    /// `pub` so functional-record-update (`..RenderOptions::default()`) compiles in tests
+    /// and the `xtask` crate's preview/snapshot helpers. Mutating callers should still go
+    /// through [`Self::with_extra`] / [`Self::without_extra`] rather than touching the map
+    /// directly.
+    #[serde(flatten, default)]
+    pub raw: toml::Table,
+}
+
+impl RenderOptions {
+    /// Parse the renderer-specific subset of `raw` into the renderer's own typed Options
+    /// struct. Returns the type's `Default` on parse failure — keeps the trait sig free of
+    /// `Result` while staying lenient (matches the existing "unknown keys are warnings, not
+    /// crashes" posture). Per-renderer Options should still derive
+    /// `#[serde(deny_unknown_fields)]` so structural typos surface in tests.
+    pub fn parse_specific<T: serde::de::DeserializeOwned + Default>(&self) -> T {
+        if self.raw.is_empty() {
+            return T::default();
+        }
+        toml::Value::Table(self.raw.clone())
+            .try_into()
+            .unwrap_or_default()
+    }
+
+    /// Builder helper for tests and animation-wrapper renderers that need to forward a
+    /// modified options bag to an inner renderer. Inserts (or overwrites) a key in `raw` and
+    /// serialises the value through TOML so the field round-trips through the same path
+    /// runtime config takes.
+    pub fn with_extra<V: serde::Serialize>(mut self, key: &str, value: V) -> Self {
+        if let Ok(v) = toml::Value::try_from(value) {
+            self.raw.insert(key.to_string(), v);
+        }
+        self
+    }
+
+    /// Drops a renderer-specific key from `raw` so wrappers like `animated_postfx` can strip
+    /// their own options before forwarding to the inner renderer.
+    pub fn without_extra(mut self, key: &str) -> Self {
+        self.raw.remove(key);
+        self
+    }
+
+    /// Read a renderer-specific extra as `&str`. Convenience for the few callers that only
+    /// need a single field and don't want to spin up a typed Options struct (preview /
+    /// dashboard_snapshot peek at `inner`, for instance).
+    pub fn extra_str(&self, key: &str) -> Option<&str> {
+        self.raw.get(key).and_then(|v| v.as_str())
+    }
+
+    /// Read a renderer-specific extra as a list of strings. Mirrors [`Self::extra_str`] for
+    /// array values like `font_sequence`.
+    pub fn extra_string_array(&self, key: &str) -> Option<Vec<String>> {
+        self.raw.get(key).and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+    }
 }
 
 /// What the TOML accepts for `render`. Short form `render = "text_plain"` uses defaults; long
 /// form `render = { type = "text_ascii", pixel_size = "quadrant" }` carries options. Absence
 /// means "use the default renderer for this shape".
 ///
-/// The `Full` variant is noticeably bigger than `Short` — [`RenderOptions`] is a flat bag of
-/// per-renderer fields so a growing catalog expands it. Config-parsed objects live for one
-/// widget's draw path; boxing the variant just to shrink the enum adds an indirection without
-/// measurable win, so the size difference is intentional.
+/// The `Full` variant is bigger than `Short` because it carries the (cross-cutting fields +
+/// raw extras) [`RenderOptions`]. Config-parsed objects live for one widget's draw path;
+/// boxing the variant just to shrink the enum adds an indirection without measurable win.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -377,6 +343,7 @@ impl Registry {
         r.register(Arc::new(animated_wave::AnimatedWaveRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
+        r.register(Arc::new(list_links::ListLinksRenderer));
         r.register(Arc::new(list_ranking::ListRankingRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
         r.register(Arc::new(gauge_battery::GaugeBatteryRenderer));
@@ -417,6 +384,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "text_plain",
         Shape::TextBlock => "text_plain",
+        Shape::LinkedTextBlock => "list_links",
         Shape::Entries => "grid_table",
         Shape::Ratio => "gauge_circle",
         Shape::NumberSeries => "chart_sparkline",
@@ -486,6 +454,7 @@ pub fn is_empty_body(body: &Body) -> bool {
     match body {
         Body::Text(d) => d.value.is_empty(),
         Body::TextBlock(d) => d.lines.is_empty() || d.lines.iter().all(|l| l.is_empty()),
+        Body::LinkedTextBlock(d) => d.items.is_empty() || d.items.iter().all(|i| i.text.is_empty()),
         Body::Entries(d) => d.items.is_empty(),
         Body::NumberSeries(d) => d.values.is_empty(),
         Body::PointSeries(d) => d.series.iter().all(|s| s.points.is_empty()),
@@ -568,28 +537,32 @@ mod tests {
     fn short_form_parses_as_renderer_name() {
         let w: Wrapper = toml::from_str(r#"render = "text_plain""#).unwrap();
         assert_eq!(w.render.renderer_name(), "text_plain");
-        assert!(w.render.options().pixel_size.is_none());
+        assert!(w.render.options().align.is_none());
     }
 
     #[test]
-    fn full_form_carries_options() {
+    fn full_form_carries_common_options() {
         let w: Wrapper =
-            toml::from_str(r#"render = { type = "text_ascii", pixel_size = "quadrant" }"#).unwrap();
-        assert_eq!(w.render.renderer_name(), "text_ascii");
-        assert_eq!(w.render.options().pixel_size.as_deref(), Some("quadrant"));
+            toml::from_str(r#"render = { type = "text_plain", align = "center" }"#).unwrap();
+        assert_eq!(w.render.renderer_name(), "text_plain");
+        assert_eq!(w.render.options().align.as_deref(), Some("center"));
     }
 
     #[test]
-    fn full_form_carries_postfx_options() {
+    fn full_form_routes_specific_options_into_raw_blob() {
+        // Renderer-specific keys ride through `raw` and are decoded by each renderer's own
+        // typed Options struct via `parse_specific`. The wrapper sees `duration_ms` directly
+        // (it's common across the animated family), and `inner` / `effect` only via parse.
         let w: Wrapper = toml::from_str(
             r#"render = { type = "animated_postfx", inner = "text_ascii", effect = "dissolve", duration_ms = 1200 }"#,
         )
         .unwrap();
         let opts = w.render.options();
         assert_eq!(w.render.renderer_name(), "animated_postfx");
-        assert_eq!(opts.inner.as_deref(), Some("text_ascii"));
-        assert_eq!(opts.effect.as_deref(), Some("dissolve"));
         assert_eq!(opts.duration_ms, Some(1200));
+        let parsed: animated_postfx::Options = opts.parse_specific();
+        assert_eq!(parsed.inner.as_deref(), Some("text_ascii"));
+        assert_eq!(parsed.effect.as_deref(), Some("dissolve"));
     }
 
     #[test]
@@ -607,6 +580,7 @@ mod tests {
             "animated_wave",
             "status_badge",
             "list_plain",
+            "list_links",
             "list_ranking",
             "list_timeline",
             "grid_table",

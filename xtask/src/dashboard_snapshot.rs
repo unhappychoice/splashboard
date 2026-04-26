@@ -173,7 +173,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_postfx" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_boot" => {
@@ -183,7 +183,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_boot" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_scanlines" => {
@@ -193,7 +193,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_scanlines" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_splitflap" => {
@@ -203,7 +203,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_splitflap" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_wave" => {
@@ -213,37 +213,45 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref type_name,
             ref options,
         } if type_name == "animated_wave" => RenderSpec::Full {
-            type_name: options.inner.clone().unwrap_or_else(|| "text_plain".into()),
+            type_name: inner_renderer_name(options),
             options: options.clone(),
         },
         RenderSpec::Short(ref name) if name == "animated_figlet_morph" => RenderSpec::Full {
             type_name: "text_ascii".into(),
             options: RenderOptions {
                 style: Some("figlet".into()),
-                font: Some("ansi_shadow".into()),
                 ..RenderOptions::default()
-            },
+            }
+            .with_extra("font", "ansi_shadow"),
         },
         RenderSpec::Full {
             ref type_name,
             ref options,
         } if type_name == "animated_figlet_morph" => {
-            let resting_font = options
-                .font_sequence
-                .as_ref()
+            let resting_font = font_sequence(options)
                 .and_then(|seq| seq.last().cloned())
                 .unwrap_or_else(|| "ansi_shadow".into());
             RenderSpec::Full {
                 type_name: "text_ascii".into(),
                 options: RenderOptions {
                     style: Some("figlet".into()),
-                    font: Some(resting_font),
                     color: options.color.clone(),
                     align: options.align.clone(),
                     ..RenderOptions::default()
-                },
+                }
+                .with_extra("font", resting_font),
             }
         }
         other => other,
     }
+}
+
+fn inner_renderer_name(opts: &RenderOptions) -> String {
+    opts.extra_str("inner")
+        .map(String::from)
+        .unwrap_or_else(|| "text_plain".into())
+}
+
+fn font_sequence(opts: &RenderOptions) -> Option<Vec<String>> {
+    opts.extra_string_array("font_sequence")
 }
