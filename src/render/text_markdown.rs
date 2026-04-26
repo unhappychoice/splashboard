@@ -42,6 +42,9 @@ impl Renderer for TextMarkdownRenderer {
     fn name(&self) -> &str {
         "text_markdown"
     }
+    fn description(&self) -> &'static str {
+        "Wrapped markdown prose with themed headings, inline code, links, and blockquotes. Pick this when the source string carries Markdown syntax that should render as styled spans rather than literal characters."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::MarkdownTextBlock]
     }

@@ -201,6 +201,9 @@ mod tests {
         fn safety(&self) -> Safety {
             self.safety
         }
+        fn description(&self) -> &'static str {
+            "test fixture"
+        }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]
         }
@@ -220,6 +223,9 @@ mod tests {
         }
         fn safety(&self) -> Safety {
             self.safety
+        }
+        fn description(&self) -> &'static str {
+            "test fixture"
         }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]

@@ -48,6 +48,9 @@ impl Fetcher for GithubContributions {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "The GitHub contribution calendar (kusa) as a year-long heatmap of daily commit counts. Defaults to the authenticated viewer; pass `login` to show another user."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

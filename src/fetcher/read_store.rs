@@ -46,6 +46,9 @@ impl Fetcher for ReadStoreFetcher {
         // there's no path-traversal vector even in an untrusted local config.
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Reads a payload file the user maintains at `$HOME/.splashboard/store/<widget_id>.<ext>` (text / json / toml) and renders it as the declared shape. The escape hatch for ad-hoc widgets — populate the file from any cron, editor, or post-commit hook and splashboard surfaces whatever you wrote."
+    }
     fn shapes(&self) -> &[Shape] {
         READ_STORE_SHAPES
     }

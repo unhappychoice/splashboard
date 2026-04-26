@@ -71,6 +71,9 @@ impl Renderer for AnimatedWaveRenderer {
     fn name(&self) -> &str {
         "animated_wave"
     }
+    fn description(&self) -> &'static str {
+        "Wrapper that sweeps a bright vertical crest left-to-right across the inner renderer; columns ahead of the crest stay blank, columns behind are revealed, the crest itself is highlighted in the accent colour. Accepts every shape; reads as a wave of signal washing over the hero."
+    }
     fn accepts(&self) -> &[Shape] {
         ALL_SHAPES
     }

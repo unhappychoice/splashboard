@@ -59,6 +59,9 @@ impl Renderer for ChartHistogramRenderer {
     fn name(&self) -> &str {
         "chart_histogram"
     }
+    fn description(&self) -> &'static str {
+        "Vertical bar chart from a `NumberSeries`, binned into equal-width buckets. Optional `axis_labels` print the peak count along the top edge and the value range along the bottom; pairs with `chart_sparkline` when the same series should look bigger and shaped instead of compact."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::NumberSeries]
     }

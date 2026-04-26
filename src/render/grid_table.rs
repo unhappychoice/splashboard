@@ -62,6 +62,9 @@ impl Renderer for GridTableRenderer {
     fn name(&self) -> &str {
         "grid_table"
     }
+    fn description(&self) -> &'static str {
+        "Two-column key/value rows tinted by per-row status, with an `inline` layout that condenses the same entries into a single `key: value · key: value` line. The default look for entry-style payloads (system info, project metadata, env summaries)."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Entries]
     }

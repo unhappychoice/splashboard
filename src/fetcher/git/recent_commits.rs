@@ -25,6 +25,9 @@ impl Fetcher for GitRecentCommits {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Newest commits on HEAD, defaulting to ten (override with `format = \"N\"`). `Timeline` shows relative-ago labels; `TextBlock` is a flat `<short> <summary>` list."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -33,6 +33,9 @@ impl Fetcher for GitBlameHeatmap {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Per-file churn over the last 52 weeks: rows are the seven most-touched files, columns are weeks, cells are commit counts. Use it to spot hotspots; pair with `git_commits_activity` if you want overall cadence instead of per-file breakdown."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

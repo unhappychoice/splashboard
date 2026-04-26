@@ -71,6 +71,9 @@ impl Renderer for ListTimelineRenderer {
     fn name(&self) -> &str {
         "list_timeline"
     }
+    fn description(&self) -> &'static str {
+        "Chronological events with a left-aligned time column (relative `3h` / `2d` or absolute ISO date) separated from the title by a vertical bar, and an optional indented detail row underneath. Status colours the title; pick this for commits, releases, notifications."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Timeline]
     }

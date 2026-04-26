@@ -40,6 +40,9 @@ impl RealtimeFetcher for ClockStateFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Whether the current moment falls inside a named temporal window (business hours, weekend, night), rendered as a status badge that flips between `Ok` and `Warn`. Pick `kind` to choose which window."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -20,6 +20,9 @@ impl Fetcher for StaticText {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Renders a constant string supplied by the widget's `format` option, split into lines on `\\n` for `TextBlock` and passed through verbatim for `Text` / `MarkdownTextBlock`. Use it for greetings, project banners, or fixed welcome notes that don't need a dedicated fetcher."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text, Shape::TextBlock, Shape::MarkdownTextBlock]
     }

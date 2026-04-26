@@ -38,6 +38,9 @@ impl Renderer for ListLinksRenderer {
     fn name(&self) -> &str {
         "list_links"
     }
+    fn description(&self) -> &'static str {
+        "One row per entry, with rows that carry a URL wrapped in OSC-8 hyperlinks so modern terminals make them clickable. Use this for feed-style payloads (HN headlines, recent PRs, releases) where each row has a canonical destination."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::LinkedTextBlock]
     }

@@ -21,6 +21,9 @@ impl Fetcher for GitWorktrees {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Linked worktrees plus the main worktree, each with its checked-out branch and path. Useful when you juggle several feature branches in parallel checkouts."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -62,6 +62,9 @@ impl Fetcher for GithubActionHistory {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Recent CI workflow runs as a pass/fail sparkline or a timeline of the last N runs. Use `github_action_status` instead for just the current main-branch state."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

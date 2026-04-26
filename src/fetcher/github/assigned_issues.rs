@@ -47,6 +47,9 @@ impl Fetcher for GithubAssignedIssues {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Open issues assigned to the authenticated user across every repo. Pairs with `github_my_prs`, `github_review_requests`, and `github_notifications` to cover the personal queue."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

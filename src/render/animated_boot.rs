@@ -89,6 +89,9 @@ impl Renderer for AnimatedBootRenderer {
     fn name(&self) -> &str {
         "animated_boot"
     }
+    fn description(&self) -> &'static str {
+        "Wrapper that scrolls a fake `[ OK ]` systemd-style boot log into the cell during the first ~70% of the window, then hands off to the inner renderer for the resting frame. Accepts every shape; pair with a hero renderer (e.g. `text_ascii`) on a tall cell."
+    }
     fn accepts(&self) -> &[Shape] {
         ALL_SHAPES
     }

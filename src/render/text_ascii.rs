@@ -88,6 +88,9 @@ impl Renderer for TextAsciiRenderer {
     fn name(&self) -> &str {
         "text_ascii"
     }
+    fn description(&self) -> &'static str {
+        "Chunky multi-row big-text via half-block glyphs (`style = \"blocks\"`) or classic FIGlet ASCII art (`style = \"figlet\"`). The hero treatment for short strings like a clock or greeting; use `text_plain` for anything multi-line."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Text]
     }

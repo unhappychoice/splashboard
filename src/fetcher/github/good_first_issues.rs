@@ -67,6 +67,9 @@ impl Fetcher for GithubGoodFirstIssues {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Open issues labelled good-first-issue, either across all of GitHub or scoped to one repo via the `repo` option. Aimed at onboarding contributors and idle-browsing for something to pick up."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

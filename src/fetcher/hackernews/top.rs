@@ -85,6 +85,9 @@ impl Fetcher for HackernewsTopFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Hacker News front-page listings — `top` / `new` / `best` / `ask` / `show` / `job`. Each row shows score, comment count, and title, linked to the story URL (or the HN comment page when there isn't one)."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

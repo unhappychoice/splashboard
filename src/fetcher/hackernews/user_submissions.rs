@@ -62,6 +62,9 @@ impl Fetcher for HackernewsUserSubmissionsFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Recent stories submitted by one Hacker News account (story / show / ask / job — comments are excluded). Use `hackernews_user_comments` for that user's recent comments instead."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -61,6 +61,9 @@ impl RealtimeFetcher for ClockDerivedFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "A single value derived from today's date, picked by `kind` (time of day, moon phase, zodiac, chinese zodiac, season, Japanese seasonal term, rokuyou, ISO week, day of year, Julian day, Unix epoch). Use `clock_almanac` to show several of these together as one block."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

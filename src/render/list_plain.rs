@@ -64,6 +64,9 @@ impl Renderer for ListPlainRenderer {
     fn name(&self) -> &str {
         "list_plain"
     }
+    fn description(&self) -> &'static str {
+        "One line per entry, optionally prefixed with a bullet glyph and capped by `max_items`. Sibling to `text_plain` for `TextBlock` — pick this when you want list semantics (bullet marker, item cap) instead of a paragraph."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::TextBlock]
     }

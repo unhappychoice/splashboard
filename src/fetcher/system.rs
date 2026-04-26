@@ -97,6 +97,9 @@ impl RealtimeFetcher for SystemFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Host identity rollup combining OS, hostname, uptime, load, CPU, and memory into one block. Use the `kind` option on the `Text` shape to extract a single field (terminal, OS, hostname, shell, arch) for hero or attribution lines."
+    }
     fn shapes(&self) -> &[Shape] {
         // Listed specific-to-broad so multi-shape renderers (text_plain, animated_postfx)
         // pick `Text` by default — that's the variant where `kind = "terminal" | "os" | …`
@@ -271,6 +274,9 @@ impl RealtimeFetcher for CpuLoadFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Aggregated CPU usage across all cores, sampled every frame. Pair with a gauge renderer for a live meter or use the `Text` shape for a plain percentage."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Text]
     }
@@ -326,6 +332,9 @@ impl RealtimeFetcher for MemoryFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "RAM utilisation as a used/total ratio. `Text` formats as `\"6.4 GiB / 16 GiB\"` and `Entries` breaks it into used / total / free rows."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Text, Shape::Entries]
     }
@@ -376,6 +385,9 @@ impl RealtimeFetcher for UptimeFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Time since the host last booted, formatted as a compact `\"3d 4h\"` / `\"2h 15m\"` / `\"45m\"` string."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text]
     }
@@ -402,6 +414,9 @@ impl RealtimeFetcher for LoadAverageFetcher {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Unix 1 / 5 / 15-minute load averages. `Text` joins the three values on one line; `Entries` splits them into separate rows. Reads as `\"n/a (windows)\"` on Windows, which has no equivalent counter."
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text, Shape::Entries]
@@ -463,6 +478,9 @@ impl RealtimeFetcher for ProcessTopFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Top five processes by current CPU usage, refreshed every frame. `Entries` pairs each process name with its percentage; `TextBlock` collapses to one process per line."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Entries, Shape::TextBlock]
     }
@@ -512,6 +530,9 @@ impl Fetcher for DiskFetcher {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Local disk usage. `Ratio` and `Text` summarise the largest mounted disk (used vs total); `Bars` lists every detected mount with its used bytes."
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Text, Shape::Bars]
@@ -646,6 +667,9 @@ impl RealtimeFetcher for BatteryFetcher {
     }
     fn safety(&self) -> Safety {
         Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Charge level and state of the primary (or `index`-selected) battery. `Ratio` drives gauges, `Text` formats a summary line whose field is picked by `kind`, and `Entries` rolls up charge / state / time-left / cycles / health. Hosts without a battery render a steady `\"AC\"` placeholder."
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Text, Shape::Entries]

@@ -173,6 +173,10 @@ impl Fetcher for TodoistTasks {
         Safety::Safe
     }
 
+    fn description(&self) -> &'static str {
+        "Todoist task snapshot, sorted by due date and priority, with structured filters for due window, projects, labels, and priority. `Badge` summarises overdue/total counts; list shapes show each task with its due label and priority and link back to the Todoist app."
+    }
+
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

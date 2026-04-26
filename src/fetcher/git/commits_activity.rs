@@ -28,6 +28,9 @@ impl Fetcher for GitCommitsActivity {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "GitHub-style commit calendar for the last 52 weeks, with today's week in the rightmost column. Pick this for overall repo cadence; `git_blame_heatmap` breaks the same window down by file."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

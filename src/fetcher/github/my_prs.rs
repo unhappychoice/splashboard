@@ -48,6 +48,9 @@ impl Fetcher for GithubMyPrs {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Open pull requests authored by the authenticated user across every repo. Use `github_repo_prs` instead to list PRs against one specific repo regardless of who opened them."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -73,6 +73,9 @@ impl Fetcher for RssFetcher {
     fn safety(&self) -> Safety {
         Safety::Network
     }
+    fn description(&self) -> &'static str {
+        "Generic feed reader for any RSS 2.0 / RSS 1.0 / Atom / JSON Feed URL, parsed via `feed-rs`. Each row shows the entry's published date and title, optionally linked. Trust-gated because the URL is config-controlled."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

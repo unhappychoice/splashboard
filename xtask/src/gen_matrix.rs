@@ -101,17 +101,18 @@ fn overview(fetchers: &FetcherRegistry, renderers: &RenderRegistry) -> String {
 
 fn overview_fetcher_table(out: &mut String, fetchers: &FetcherRegistry) {
     out.push_str("## Fetchers\n\n");
-    out.push_str("| Name | Kind | Safety | Shapes |\n");
-    out.push_str("| --- | --- | --- | --- |\n");
+    out.push_str("| Name | Kind | Safety | Shapes | Description |\n");
+    out.push_str("| --- | --- | --- | --- | --- |\n");
     for f in fetchers.sorted() {
         let _ = writeln!(
             out,
-            "| [`{name}`]({link}) | {kind} | {safety} | {shapes} |",
+            "| [`{name}`]({link}) | {kind} | {safety} | {shapes} | {description} |",
             name = f.name(),
             link = rel_path("fetchers", f.name()),
             kind = kind_label(&f),
             safety = safety_label(f.safety()),
             shapes = shapes_list(&f.shapes()),
+            description = escape_pipe(f.description()),
         );
     }
     out.push('\n');
@@ -119,16 +120,17 @@ fn overview_fetcher_table(out: &mut String, fetchers: &FetcherRegistry) {
 
 fn overview_renderer_table(out: &mut String, renderers: &RenderRegistry) {
     out.push_str("## Renderers\n\n");
-    out.push_str("| Name | Accepts | Animates |\n");
-    out.push_str("| --- | --- | --- |\n");
+    out.push_str("| Name | Accepts | Animates | Description |\n");
+    out.push_str("| --- | --- | --- | --- |\n");
     for r in renderers.sorted() {
         let _ = writeln!(
             out,
-            "| [`{name}`]({link}) | {accepts} | {animates} |",
+            "| [`{name}`]({link}) | {accepts} | {animates} | {description} |",
             name = r.name(),
             link = rel_path("renderers", r.name()),
             accepts = shapes_list(r.accepts()),
             animates = if r.animates() { "yes" } else { "no" },
+            description = escape_pipe(r.description()),
         );
     }
     out.push('\n');
@@ -164,14 +166,8 @@ fn overview_shape_matrix(out: &mut String, renderers: &RenderRegistry) {
 
 fn fetcher_page(f: &RegisteredFetcher, renderers: &RenderRegistry) -> String {
     let mut out = String::new();
-    let description = format!(
-        "Fetcher `{}` — {} ({}). Emits {}.",
-        f.name(),
-        kind_label(f),
-        safety_label(f.safety()),
-        shapes_list(&f.shapes()),
-    );
-    push_frontmatter(&mut out, f.name(), &description);
+    push_frontmatter(&mut out, f.name(), f.description());
+    let _ = writeln!(out, "{}\n", f.description());
     let _ = writeln!(out, "- Kind: {}", kind_label(f));
     let _ = writeln!(out, "- Safety: {}", safety_label(f.safety()));
     let _ = writeln!(out, "- Shapes: {}\n", shapes_list(&f.shapes()));
@@ -204,12 +200,8 @@ fn render_previews(out: &mut String, fetcher: &RegisteredFetcher, renderers: &Re
 
 fn renderer_page(r: &Arc<dyn Renderer>, fetchers: &FetcherRegistry) -> String {
     let mut out = String::new();
-    let description = format!(
-        "Renderer `{}` — accepts {}.",
-        r.name(),
-        shapes_list(r.accepts()),
-    );
-    push_frontmatter(&mut out, r.name(), &description);
+    push_frontmatter(&mut out, r.name(), r.description());
+    let _ = writeln!(out, "{}\n", r.description());
     let _ = writeln!(out, "- Accepts: {}", shapes_list(r.accepts()));
     let _ = writeln!(
         out,

@@ -44,6 +44,9 @@ impl Renderer for GaugeCircleRenderer {
     fn name(&self) -> &str {
         "gauge_circle"
     }
+    fn description(&self) -> &'static str {
+        "Full-height block bar for `Ratio` built on ratatui's `Gauge`, with the optional label centred inside the fill. The chunkiest member of the `gauge_*` family — pick `gauge_line` when you need something single-row."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }

@@ -50,6 +50,9 @@ impl Renderer for ChartScatterRenderer {
     fn name(&self) -> &str {
         "chart_scatter"
     }
+    fn description(&self) -> &'static str {
+        "Canvas scatter plot of `PointSeries` — dots only, no connecting line, with per-series palette colours and a configurable marker glyph. Pick this over `chart_line` when each observation matters more than the trend between them."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::PointSeries]
     }

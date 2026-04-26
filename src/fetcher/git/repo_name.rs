@@ -21,6 +21,9 @@ impl Fetcher for GitRepoName {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Repository name as a single line, suitable for a hero header. Derived from the `origin` remote (parsed as `owner/name`); falls back to the working directory's basename when no remote is configured."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text]
     }

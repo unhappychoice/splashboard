@@ -58,6 +58,9 @@ impl RealtimeFetcher for ClockSunriseFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Today's sunrise and sunset clock times for a configured `lat` / `lon`, computed offline from a NOAA-style approximation (no network). Renders as a one-line `↑ HH:MM  ↓ HH:MM` summary or split sunrise/sunset rows."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

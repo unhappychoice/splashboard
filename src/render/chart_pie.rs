@@ -45,6 +45,9 @@ impl Renderer for ChartPieRenderer {
     fn name(&self) -> &str {
         "chart_pie"
     }
+    fn description(&self) -> &'static str {
+        "Pie chart of `Bars` slices with palette-cycled colours, percentages, and an adjacent legend. Use `donut = true` for a hollow centre, or pick `chart_bar` instead when exact comparisons between slices matter."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
     }

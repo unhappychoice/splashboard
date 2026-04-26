@@ -51,6 +51,9 @@ impl Renderer for ListRankingRenderer {
     fn name(&self) -> &str {
         "list_ranking"
     }
+    fn description(&self) -> &'static str {
+        "Top-N table sorted high-to-low: rank prefix (`1.` / `2.` numbers, 🥇/🥈/🥉 medals, or none), label, and right-aligned value column. The text-first sibling of `chart_bar` — pick this when the values matter more than their relative bar lengths."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
     }

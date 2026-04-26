@@ -42,6 +42,9 @@ impl Renderer for GaugeLineRenderer {
     fn name(&self) -> &str {
         "gauge_line"
     }
+    fn description(&self) -> &'static str {
+        "Single-row progress bar for `Ratio`: optional label, shaded fill across the available width, and a percent or fraction suffix. The lightest member of the `gauge_*` family — pick this for dense dashboards where `gauge_circle` is too tall."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }

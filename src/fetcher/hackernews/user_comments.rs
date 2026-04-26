@@ -58,6 +58,9 @@ impl Fetcher for HackernewsUserCommentsFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Recent comments by one Hacker News account, each truncated and linked to the comment page on HN. Pair with `hackernews_user_submissions` for stories by the same user, or `hackernews_user` for the profile rollup."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -40,6 +40,9 @@ impl Fetcher for GithubRepoStars {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Social counters for a repo: stargazers, forks, watchers, and open-issue count. Use `github_repo` instead for the identity fields (slug, description, license)."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

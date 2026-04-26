@@ -51,6 +51,9 @@ impl Fetcher for HackernewsUserFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Profile rollup for one Hacker News account — login, karma, join date, submission count, and bio. Use `hackernews_user_submissions` for that user's recent stories or `hackernews_user_comments` for their recent comments."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -62,6 +62,9 @@ impl Renderer for StatusBadgeRenderer {
     fn name(&self) -> &str {
         "status_badge"
     }
+    fn description(&self) -> &'static str {
+        "A coloured dot (green / yellow / red, driven by status) followed by the badge label, optionally framed as a `( … )` or `[ … ]` pill. One indicator per widget — compose rows of badges through layout, not through this renderer."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Badge]
     }

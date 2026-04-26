@@ -57,6 +57,9 @@ impl Fetcher for GithubLanguages {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Language byte-count breakdown for a repo, sorted by size, as bars or percent rows. Languages beyond `limit` collapse into a single `other` bucket so totals stay honest."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

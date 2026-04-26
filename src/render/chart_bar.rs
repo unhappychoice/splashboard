@@ -66,6 +66,9 @@ impl Renderer for ChartBarRenderer {
     fn name(&self) -> &str {
         "chart_bar"
     }
+    fn description(&self) -> &'static str {
+        "Labelled bar chart from a `Bars` shape. Defaults to vertical bars with labels underneath; flip to horizontal rows via `horizontal = true` for narrow slots."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
     }

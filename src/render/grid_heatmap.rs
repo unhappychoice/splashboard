@@ -51,6 +51,9 @@ impl Renderer for GridHeatmapRenderer {
     fn name(&self) -> &str {
         "grid_heatmap"
     }
+    fn description(&self) -> &'static str {
+        "GitHub-contribution-style 2D grid of square-ish cells bucketed into five intensity levels from the heatmap palette, with optional column labels along the top. Right-aligns when the grid is wider than the slot so the most recent columns stay visible."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Heatmap]
     }

@@ -69,6 +69,9 @@ impl Renderer for AnimatedScanlinesRenderer {
     fn name(&self) -> &str {
         "animated_scanlines"
     }
+    fn description(&self) -> &'static str {
+        "Wrapper that sweeps a bright horizontal CRT scanline from top to bottom over the inner renderer, hiding rows below the line until it passes them. Accepts every shape; reads as a vintage tube monitor warming up."
+    }
     fn accepts(&self) -> &[Shape] {
         ALL_SHAPES
     }

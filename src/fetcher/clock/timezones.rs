@@ -58,6 +58,9 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "A world-clock strip showing the current time in each of the configured IANA `timezones`, one row per zone. Use this for at-a-glance multi-region time; pick the base `clock` fetcher for a single local time."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }
