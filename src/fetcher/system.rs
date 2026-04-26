@@ -27,6 +27,7 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
         Arc::new(UptimeFetcher),
         Arc::new(LoadAverageFetcher),
         Arc::new(ProcessTopFetcher::new()),
+        Arc::new(BatteryFetcher::new()),
     ]
 }
 
@@ -552,6 +553,258 @@ impl Fetcher for DiskFetcher {
     }
 }
 
+const BATTERY_OPTION_SCHEMAS: &[OptionSchema] = &[
+    OptionSchema {
+        name: "kind",
+        type_hint: "\"summary\" | \"percent\" | \"status\" | \"time_remaining\"",
+        required: false,
+        default: Some("\"summary\""),
+        description: "Selects the format of the `Text` shape. Ignored by `Ratio` / `Entries`.",
+    },
+    OptionSchema {
+        name: "index",
+        type_hint: "integer",
+        required: false,
+        default: Some("0"),
+        description: "Index of the battery to read on multi-battery systems.",
+    },
+];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BatteryOptions {
+    #[serde(default)]
+    pub kind: Option<BatteryTextKind>,
+    #[serde(default)]
+    pub index: Option<usize>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatteryTextKind {
+    #[default]
+    Summary,
+    Percent,
+    Status,
+    TimeRemaining,
+}
+
+#[derive(Clone, Copy)]
+enum BatteryState {
+    Charging,
+    Discharging,
+    Full,
+    Empty,
+    Unknown,
+}
+
+impl BatteryState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Charging => "Charging",
+            Self::Discharging => "Discharging",
+            Self::Full => "Full",
+            Self::Empty => "Empty",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
+struct BatterySnapshot {
+    charge: f64,
+    state: BatteryState,
+    time_remaining_secs: Option<u64>,
+    cycle_count: Option<u32>,
+    health: Option<f64>,
+}
+
+/// Primary (or selected) battery state. `Ratio` pairs with `gauge_battery`; `Text` is a
+/// formatted summary (`kind` picks the field); `Entries` rolls up charge / state / time / cycles
+/// / health. Hosts without a battery (desktops, servers) render as a "full AC" stand-in so the
+/// widget doesn't disappear.
+pub struct BatteryFetcher {
+    manager: Mutex<Option<starship_battery::Manager>>,
+}
+
+impl BatteryFetcher {
+    pub fn new() -> Self {
+        Self {
+            manager: Mutex::new(starship_battery::Manager::new().ok()),
+        }
+    }
+}
+
+impl Default for BatteryFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RealtimeFetcher for BatteryFetcher {
+    fn name(&self) -> &str {
+        "system_battery"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Ratio, Shape::Text, Shape::Entries]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        BATTERY_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        Some(match shape {
+            Shape::Ratio => samples::ratio(0.87, "battery"),
+            Shape::Text => samples::text("87% • Charging • 1h 23m"),
+            Shape::Entries => samples::entries(&[
+                ("charge", "87%"),
+                ("state", "Charging"),
+                ("time_left", "1h 23m"),
+                ("cycles", "284"),
+                ("health", "97%"),
+            ]),
+            _ => return None,
+        })
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: BatteryOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let snapshot = self.read_snapshot(opts.index.unwrap_or(0));
+        let shape = ctx.shape.unwrap_or(Shape::Ratio);
+        match (snapshot, shape) {
+            (Some(snap), Shape::Text) => payload(Body::Text(TextData {
+                value: format_battery_text(&snap, opts.kind.unwrap_or_default()),
+            })),
+            (Some(snap), Shape::Entries) => payload(Body::Entries(EntriesData {
+                items: battery_entries(&snap),
+            })),
+            (Some(snap), _) => payload(Body::Ratio(RatioData {
+                value: snap.charge,
+                label: Some(format!(
+                    "{} • {}",
+                    format_percent(snap.charge),
+                    snap.state.label()
+                )),
+                denominator: None,
+            })),
+            (None, shape) => no_battery_payload(shape, opts.kind.unwrap_or_default()),
+        }
+    }
+}
+
+impl BatteryFetcher {
+    fn read_snapshot(&self, index: usize) -> Option<BatterySnapshot> {
+        let manager = self.manager.lock().expect("battery manager mutex poisoned");
+        let manager = manager.as_ref()?;
+        let battery = manager.batteries().ok()?.nth(index)?.ok()?;
+        Some(snapshot_from(&battery))
+    }
+}
+
+fn snapshot_from(battery: &starship_battery::Battery) -> BatterySnapshot {
+    BatterySnapshot {
+        charge: f64::from(battery.state_of_charge().value).clamp(0.0, 1.0),
+        state: map_battery_state(battery.state()),
+        time_remaining_secs: time_remaining_secs(battery),
+        cycle_count: battery.cycle_count(),
+        health: battery_health(battery),
+    }
+}
+
+fn map_battery_state(s: starship_battery::State) -> BatteryState {
+    use starship_battery::State as S;
+    match s {
+        S::Charging => BatteryState::Charging,
+        S::Discharging => BatteryState::Discharging,
+        S::Full => BatteryState::Full,
+        S::Empty => BatteryState::Empty,
+        _ => BatteryState::Unknown,
+    }
+}
+
+fn time_remaining_secs(battery: &starship_battery::Battery) -> Option<u64> {
+    let dur = match battery.state() {
+        starship_battery::State::Charging => battery.time_to_full(),
+        starship_battery::State::Discharging => battery.time_to_empty(),
+        _ => None,
+    }?;
+    Some(dur.value.max(0.0) as u64)
+}
+
+fn battery_health(battery: &starship_battery::Battery) -> Option<f64> {
+    let full = f64::from(battery.energy_full().value);
+    let design = f64::from(battery.energy_full_design().value);
+    if design <= 0.0 {
+        None
+    } else {
+        Some((full / design).clamp(0.0, 1.0))
+    }
+}
+
+fn format_battery_text(snap: &BatterySnapshot, kind: BatteryTextKind) -> String {
+    match kind {
+        BatteryTextKind::Percent => format_percent(snap.charge),
+        BatteryTextKind::Status => snap.state.label().into(),
+        BatteryTextKind::TimeRemaining => snap
+            .time_remaining_secs
+            .map(format_uptime)
+            .unwrap_or_else(|| "—".into()),
+        BatteryTextKind::Summary => match snap.time_remaining_secs {
+            Some(secs) => format!(
+                "{} • {} • {}",
+                format_percent(snap.charge),
+                snap.state.label(),
+                format_uptime(secs)
+            ),
+            None => format!("{} • {}", format_percent(snap.charge), snap.state.label()),
+        },
+    }
+}
+
+fn battery_entries(snap: &BatterySnapshot) -> Vec<Entry> {
+    let mut items = vec![
+        entry("charge", &format_percent(snap.charge)),
+        entry("state", snap.state.label()),
+    ];
+    if let Some(secs) = snap.time_remaining_secs {
+        items.push(entry("time_left", &format_uptime(secs)));
+    }
+    if let Some(cycles) = snap.cycle_count {
+        items.push(entry("cycles", &cycles.to_string()));
+    }
+    if let Some(h) = snap.health {
+        items.push(entry("health", &format_percent(h)));
+    }
+    items
+}
+
+fn no_battery_payload(shape: Shape, kind: BatteryTextKind) -> Payload {
+    match shape {
+        Shape::Text => payload(Body::Text(TextData {
+            value: match kind {
+                BatteryTextKind::Percent => "100%".into(),
+                BatteryTextKind::TimeRemaining => "—".into(),
+                _ => "AC".into(),
+            },
+        })),
+        Shape::Entries => payload(Body::Entries(EntriesData {
+            items: vec![entry("power", "AC")],
+        })),
+        _ => payload(Body::Ratio(RatioData {
+            value: 1.0,
+            label: Some("AC".into()),
+            denominator: None,
+        })),
+    }
+}
+
+fn format_percent(ratio: f64) -> String {
+    format!("{:.0}%", ratio.clamp(0.0, 1.0) * 100.0)
+}
+
 fn payload(body: Body) -> Payload {
     Payload {
         icon: None,
@@ -862,6 +1115,117 @@ mod tests {
             panic!("expected entries");
         };
         assert!(e.items.len() <= PROCESS_TOP_COUNT);
+    }
+
+    fn snapshot(charge: f64, state: BatteryState, secs: Option<u64>) -> BatterySnapshot {
+        BatterySnapshot {
+            charge,
+            state,
+            time_remaining_secs: secs,
+            cycle_count: Some(284),
+            health: Some(0.97),
+        }
+    }
+
+    #[test]
+    fn battery_summary_includes_time_when_available() {
+        let snap = snapshot(0.87, BatteryState::Charging, Some(83 * 60));
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::Summary),
+            "87% • Charging • 1h 23m"
+        );
+    }
+
+    #[test]
+    fn battery_summary_omits_time_when_missing() {
+        let snap = snapshot(1.0, BatteryState::Full, None);
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::Summary),
+            "100% • Full"
+        );
+    }
+
+    #[test]
+    fn battery_text_kinds_pick_distinct_fields() {
+        let snap = snapshot(0.5, BatteryState::Discharging, Some(45 * 60));
+        assert_eq!(format_battery_text(&snap, BatteryTextKind::Percent), "50%");
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::Status),
+            "Discharging"
+        );
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::TimeRemaining),
+            "45m"
+        );
+    }
+
+    #[test]
+    fn battery_time_remaining_dash_when_missing() {
+        let snap = snapshot(1.0, BatteryState::Full, None);
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::TimeRemaining),
+            "—"
+        );
+    }
+
+    #[test]
+    fn battery_entries_include_optional_fields_only_when_present() {
+        let with = snapshot(0.5, BatteryState::Charging, Some(60));
+        let mut without = snapshot(0.5, BatteryState::Charging, None);
+        without.cycle_count = None;
+        without.health = None;
+        assert_eq!(battery_entries(&with).len(), 5);
+        assert_eq!(battery_entries(&without).len(), 2);
+    }
+
+    #[test]
+    fn no_battery_ratio_is_full_ac() {
+        let p = no_battery_payload(Shape::Ratio, BatteryTextKind::Summary);
+        let Body::Ratio(r) = p.body else {
+            panic!("expected ratio")
+        };
+        assert_eq!(r.value, 1.0);
+        assert_eq!(r.label.as_deref(), Some("AC"));
+    }
+
+    #[test]
+    fn no_battery_text_varies_by_kind() {
+        let summary = no_battery_payload(Shape::Text, BatteryTextKind::Summary);
+        let percent = no_battery_payload(Shape::Text, BatteryTextKind::Percent);
+        let time = no_battery_payload(Shape::Text, BatteryTextKind::TimeRemaining);
+        let extract = |p: Payload| match p.body {
+            Body::Text(t) => t.value,
+            _ => panic!(),
+        };
+        assert_eq!(extract(summary), "AC");
+        assert_eq!(extract(percent), "100%");
+        assert_eq!(extract(time), "—");
+    }
+
+    #[test]
+    fn battery_compute_never_panics_on_any_shape() {
+        let f = BatteryFetcher::new();
+        for shape in [
+            None,
+            Some(Shape::Ratio),
+            Some(Shape::Text),
+            Some(Shape::Entries),
+        ] {
+            let p = f.compute(&ctx_with_shape(shape));
+            // Each branch must produce *some* body; on hosts without a battery we land on the
+            // AC stand-in, on laptops we get the real reading. Both are valid.
+            assert!(!matches!(p.body, Body::Image(_)));
+        }
+    }
+
+    #[test]
+    fn battery_rejects_unknown_option_to_placeholder() {
+        let f = BatteryFetcher::new();
+        let p = f.compute(&ctx_text(Some("bogus = true")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text placeholder")
+        };
+        assert!(t.value.starts_with("⚠"));
     }
 
     #[tokio::test]
