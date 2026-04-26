@@ -24,6 +24,7 @@ pub mod hackernews;
 pub mod random_fortune;
 pub mod random_quote;
 pub mod read_store;
+pub mod reddit;
 pub mod rss;
 pub mod static_text;
 pub mod system;
@@ -328,6 +329,9 @@ impl Registry {
             r.register(f);
         }
         for f in todoist::fetchers() {
+            r.register(f);
+        }
+        for f in reddit::fetchers() {
             r.register(f);
         }
         for f in wikipedia::fetchers() {
