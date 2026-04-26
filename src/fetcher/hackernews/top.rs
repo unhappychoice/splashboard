@@ -4,13 +4,11 @@
 //! the listing kind and how many stories to show, never the URL — there's no way for a config
 //! to redirect traffic off-host. No auth, no token leaves the machine.
 
-use std::sync::OnceLock;
-use std::time::Duration;
-
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::Deserialize;
 
+use crate::fetcher::github::common::{cache_key, parse_options, payload};
+use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
 use crate::payload::{
     Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload, TextBlockData,
@@ -18,12 +16,8 @@ use crate::payload::{
 use crate::render::Shape;
 use crate::samples;
 
-use super::github::common::{cache_key, parse_options, payload};
-use super::{FetchContext, FetchError, Fetcher, Safety};
+use super::client::{API_BASE, HN_ITEM_URL, get};
 
-const API_BASE: &str = "https://hacker-news.firebaseio.com/v0";
-const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_COUNT: u32 = 10;
 const MIN_COUNT: u32 = 1;
 const MAX_COUNT: u32 = 30;
@@ -150,7 +144,7 @@ impl Fetcher for HackernewsTopFetcher {
 }
 
 async fn fetch_stories(kind: Kind, count: usize) -> Result<Vec<Item>, FetchError> {
-    let ids: Vec<u64> = http_get(&format!("{API_BASE}/{}.json", kind.endpoint())).await?;
+    let ids: Vec<u64> = get(&format!("{API_BASE}/{}.json", kind.endpoint())).await?;
     let handles: Vec<_> = ids
         .into_iter()
         .take(count)
@@ -166,22 +160,7 @@ async fn fetch_stories(kind: Kind, count: usize) -> Result<Vec<Item>, FetchError
 }
 
 async fn fetch_item(id: u64) -> Result<Item, FetchError> {
-    http_get(&format!("{API_BASE}/item/{id}.json")).await
-}
-
-async fn http_get<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, FetchError> {
-    let res = http()
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| FetchError::Failed(format!("hn request failed: {e}")))?;
-    let status = res.status();
-    if !status.is_success() {
-        return Err(FetchError::Failed(format!("hn {status}")));
-    }
-    res.json()
-        .await
-        .map_err(|e| FetchError::Failed(format!("hn json parse: {e}")))
+    get(&format!("{API_BASE}/item/{id}.json")).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,8 +176,6 @@ struct Item {
     #[serde(default)]
     url: Option<String>,
 }
-
-const HN_ITEM_URL: &str = "https://news.ycombinator.com/item?id=";
 
 fn link_for(it: &Item) -> Option<String> {
     it.url
@@ -244,18 +221,6 @@ fn meta_label(it: &Item) -> String {
     let score = it.score.unwrap_or(0);
     let comments = it.descendants.unwrap_or(0);
     format!("{score}pt {comments}c")
-}
-
-fn http() -> &'static Client {
-    static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(REQUEST_TIMEOUT)
-            .gzip(true)
-            .build()
-            .expect("reqwest client should build with default config")
-    })
 }
 
 #[cfg(test)]
