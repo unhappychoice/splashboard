@@ -1,0 +1,280 @@
+# home_feed — morning briefing. Hero band (lifted on `bg = "subtle"`): figlet date as
+# masthead, "good morning" greeting, live `Day · HH:MM`, and an almanac strip
+# (moon · zodiac · day-of-year). Body: 2 cols × 3 rows of curated feeds — HN | r/programming,
+# Wired | BBC Tech, Engadget | Wikipedia on this day. Footer: a daily fortune flourish.
+#
+# Trust: this preset wires Network-class widgets (`rss`, `reddit_subreddit_posts`). When
+# installed to `$HOME/.splashboard/home.dashboard.toml` (global config) it's implicitly
+# trusted; as a per-directory `.splashboard/dashboard.toml` it needs `splashboard trust`
+# before the network panels render.
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Hero centerpiece — date in moderate text_ascii blocks (quadrant pixel size, ~3 rows tall),
+# colored with `panel_title` so it reads as the masthead.
+[[widget]]
+id = "hero_date"
+fetcher = "clock"
+format = "%a %e %b"
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
+
+# Footer flourish — daily fortune. `length = "auto"` row sizes itself to whatever cookie was
+# drawn so 1-line fortunes hug the closing line and 4-line ones get the room they need.
+[[widget]]
+id = "fortune"
+fetcher = "random_fortune"
+render = { type = "text_plain", align = "center", color = "panel_title" }
+
+# Greeting seam — "good " (right) + time-of-day (left), home_minimal pattern.
+[[widget]]
+id = "greeting_prefix"
+fetcher = "basic_static"
+format = "good "
+render = { type = "text_plain", align = "right" }
+
+[[widget]]
+id = "greeting"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "left" }
+  [widget.options]
+  kind = "time_of_day"
+
+# Subtitle — full day name + current HH:MM. Different vocabulary from the figlet
+# ("Sun 26 Apr" → abbreviated; subtitle uses "Sunday · 14:23" for the live "right now"
+# read), so the band stops feeling like a date duplication.
+[[widget]]
+id = "now"
+fetcher = "clock"
+format = "%A · %H:%M"
+render = { type = "text_plain", align = "center" }
+
+# Almanac strip — moon · zodiac · day-of-year, centred. Three `clock_derived` values joined
+# by basic_static " · " separators so today's sky reads as one decorative line.
+[[widget]]
+id = "moon"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "right" }
+  [widget.options]
+  kind = "moon_phase"
+
+[[widget]]
+id = "sep1"
+fetcher = "basic_static"
+format = "  ·  "
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "zodiac"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "center" }
+  [widget.options]
+  kind = "zodiac"
+
+[[widget]]
+id = "sep2"
+fetcher = "basic_static"
+format = "  ·  "
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "day_of_year"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "left" }
+  [widget.options]
+  kind = "day_of_year"
+
+# Row 1 — Hacker News | Reddit r/programming
+[[widget]]
+id = "hn"
+fetcher = "hackernews_top"
+render = { type = "list_links", max_items = 5 }
+
+[[widget]]
+id = "reddit"
+fetcher = "reddit_subreddit_posts"
+render = { type = "list_links", max_items = 5 }
+  [widget.options]
+  subreddit = "programming"
+  type = "top"
+  period = "day"
+
+# Row 2 — Wired (rss) | BBC Tech (rss)
+[[widget]]
+id = "wired"
+fetcher = "rss"
+render = { type = "list_links", max_items = 5 }
+  [widget.options]
+  url = "https://www.wired.com/feed/rss"
+
+[[widget]]
+id = "bbc"
+fetcher = "rss"
+render = { type = "list_links", max_items = 5 }
+  [widget.options]
+  url = "https://feeds.bbci.co.uk/news/technology/rss.xml"
+
+# Row 3 — Engadget (rss) | Wikipedia on this day
+[[widget]]
+id = "engadget"
+fetcher = "rss"
+render = { type = "list_links", max_items = 5 }
+  [widget.options]
+  url = "https://www.engadget.com/rss.xml"
+
+[[widget]]
+id = "on_this_day"
+fetcher = "wikipedia_on_this_day"
+render = { type = "list_links", max_items = 5 }
+
+# ── Layout ─────────────────────────────────────────────────────────
+#
+# Hero band sits on `bg = "subtle"` so the date masthead / greeting / almanac strip read as
+# a header surface lifted off the body feeds. Footer band mirrors the same subtle bg with
+# the fortune flourish, closing the splash in the same visual register.
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+# Hero date — text_ascii blocks @ quadrant pixel size. Needs 4 rows for the 5×6 pixel font
+# rendered as quadrants (≈3 cells of glyph + 1 cell of breathing room above/below).
+[[row]]
+height = { length = 4 }
+bg = "subtle"
+  [[row.child]]
+  widget = "hero_date"
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+# Greeting seam.
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "greeting_prefix"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "greeting"
+  width = { length = 12 }
+
+# Now — full day + live HH:MM. Complements the figlet without repeating the date.
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+  [[row.child]]
+  widget = "now"
+
+# Almanac strip — moon · zodiac · day_of_year.
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "moon"
+  width = { length = 22 }
+  [[row.child]]
+  widget = "sep1"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "zodiac"
+  width = { length = 12 }
+  [[row.child]]
+  widget = "sep2"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "day_of_year"
+  width = { length = 12 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 1 }
+
+# Body row 1 — HN | Reddit. 100-cell content band (49+gap2+49); 5 items + 1 border = 6.
+[[row]]
+height = { length = 6 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "hn"
+  width = { length = 49 }
+  border = "top"
+  title = "  HACKER NEWS  "
+  title_align = "center"
+  [[row.child]]
+  widget = "reddit"
+  width = { length = 49 }
+  border = "top"
+  title = "  R/PROGRAMMING  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Body row 2 — Wired | BBC Tech
+[[row]]
+height = { length = 6 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "wired"
+  width = { length = 49 }
+  border = "top"
+  title = "  WIRED  "
+  title_align = "center"
+  [[row.child]]
+  widget = "bbc"
+  width = { length = 49 }
+  border = "top"
+  title = "  BBC TECH  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Body row 3 — Engadget | Wikipedia on this day
+[[row]]
+height = { length = 6 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "engadget"
+  width = { length = 49 }
+  border = "top"
+  title = "  ENGADGET  "
+  title_align = "center"
+  [[row.child]]
+  widget = "on_this_day"
+  width = { length = 49 }
+  border = "top"
+  title = "  ON THIS DAY  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# ── Footer band ────────────────────────────────────────────────────
+#
+# Fortune flourish closes the splash on the default body bg — the hero alone wears the
+# subtle band, so the bottom feels like the splash settling rather than another header.
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+# Fortune cookies are capped at 3 lines in the bundled corpus. `length = "auto"` would be
+# nicer but text_plain's `natural_height` currently returns 1 regardless of TextBlock line
+# count, so a 3-line cookie gets truncated. Hard-code to 3 until the renderer is fixed.
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "fortune"
+  width = { length = 80 }
+
+[[row]]
+height = { length = 1 }

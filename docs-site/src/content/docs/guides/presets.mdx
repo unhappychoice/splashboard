@@ -1,17 +1,18 @@
 ---
 title: Presets
-description: Seven curated dashboards you can adopt verbatim — pair one home with one project.
+description: Eight curated dashboards you can adopt verbatim — pair one home with one project.
 ---
 
 import homeSplash from '../../../assets/rendered/home_splash.html?raw';
 import homeDaily from '../../../assets/rendered/home_daily.html?raw';
 import homeGithub from '../../../assets/rendered/home_github.html?raw';
 import homeMinimal from '../../../assets/rendered/home_minimal.html?raw';
+import homeFeed from '../../../assets/rendered/home_feed.html?raw';
 import projectSplash from '../../../assets/rendered/project_splash.html?raw';
 import projectGithub from '../../../assets/rendered/project_github.html?raw';
 import projectMinimal from '../../../assets/rendered/project_minimal.html?raw';
 
-Seven curated dashboards — four home, three project. Pick one of each as a
+Eight curated dashboards — five home, three project. Pick one of each as a
 starting point and edit freely.
 
 - **Home presets** apply when the shell starts outside a git repo —
@@ -96,10 +97,40 @@ taking over every shell start.
 |---|---|
 | greeting | `basic_static "good "` + `clock_derived` (kind = time_of_day) → `text_plain` |
 | date | `clock` (format `%A · %e %B %Y · %H:%M`) → `text_plain` |
-| quote | `quote_of_day` (Text) → `text_plain` |
+| quote | `random_quote` (Text) → `text_plain` |
 
 Pairs naturally with `project_minimal` if you want the same restraint
 inside a repo.
+
+### `home_feed` — morning briefing
+
+A masthead with the date in figlet, a "good morning" greeting, live
+`Day · HH:MM`, and an almanac strip (moon · zodiac · day-of-year), all
+on a subtle header band. Body is 2 cols × 3 rows of curated feeds —
+HN | r/programming, Wired | BBC Tech, Engadget | Wikipedia on this
+day. Footer closes with a daily fortune.
+
+<div class="splash-landing" set:html={homeFeed} />
+
+| role | implementation |
+|---|---|
+| hero | `clock` (format `%a %e %b`) → `text_ascii` (blocks, quadrant) |
+| greeting | `basic_static "good "` + `clock_derived` (kind = time_of_day) → `text_plain` |
+| now | `clock` (format `%A · %H:%M`) → `text_plain` |
+| almanac | `clock_derived` × 3 (moon_phase / zodiac / day_of_year) → `text_plain` |
+| hacker news | `hackernews_top` → `list_links` |
+| r/programming | `reddit_subreddit_posts` → `list_links` |
+| wired | `rss` → `list_links` |
+| bbc tech | `rss` → `list_links` |
+| engadget | `rss` → `list_links` |
+| on this day | `wikipedia_on_this_day` → `list_links` |
+| fortune | `random_fortune` → `text_plain` |
+
+Network-class widgets (`rss`, `reddit_subreddit_posts`) render as a
+`🔒 requires trust` placeholder until the config is trusted. Installed
+to `$HOME/.splashboard/home.dashboard.toml` it's implicitly trusted;
+dropped into a project's `.splashboard/dashboard.toml` it needs
+`splashboard trust` first.
 
 ## Project presets
 

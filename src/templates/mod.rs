@@ -50,6 +50,12 @@ pub const TEMPLATES: &[Template] = &[
         body: include_str!("home_minimal.toml"),
     },
     Template {
+        name: "home_feed",
+        context: TemplateContext::Home,
+        description: "Morning briefing: time-of-day figlet, Hacker News top stories, on-this-day + sky panel, and today's Wikipedia featured article as the read-more lift.",
+        body: include_str!("home_feed.toml"),
+    },
+    Template {
         name: "project_splash",
         context: TemplateContext::Project,
         description: "Repo name as a giant figlet hero with a postfx reveal, slug / description / license underneath — nothing else. For repo-shipped configs.",
