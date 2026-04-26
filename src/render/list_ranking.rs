@@ -107,7 +107,7 @@ fn sorted_rows(data: &BarsData, cap: Option<usize>) -> Vec<(String, u64)> {
         .iter()
         .map(|b| (b.label.clone(), b.value))
         .collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.1));
     if let Some(n) = cap {
         rows.truncate(n);
     }
