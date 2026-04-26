@@ -31,6 +31,7 @@ mod gauge_battery;
 mod gauge_circle;
 mod gauge_line;
 mod gauge_segment;
+mod gauge_thermometer;
 mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
@@ -382,6 +383,7 @@ impl Registry {
         r.register(Arc::new(gauge_circle::GaugeCircleRenderer));
         r.register(Arc::new(gauge_line::GaugeLineRenderer));
         r.register(Arc::new(gauge_segment::GaugeSegmentRenderer));
+        r.register(Arc::new(gauge_thermometer::GaugeThermometerRenderer));
         r.register(Arc::new(chart_sparkline::ChartSparklineRenderer));
         r.register(Arc::new(chart_line::ChartLineRenderer));
         r.register(Arc::new(chart_scatter::ChartScatterRenderer));
@@ -614,6 +616,7 @@ mod tests {
             "gauge_circle",
             "gauge_line",
             "gauge_segment",
+            "gauge_thermometer",
             "chart_sparkline",
             "chart_line",
             "chart_scatter",

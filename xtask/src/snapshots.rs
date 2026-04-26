@@ -68,6 +68,7 @@ fn renderer_dimensions(renderer: &str) -> (u16, u16) {
         "gauge_battery" => (40, 5),
         "gauge_circle" => (40, 3),
         "gauge_line" => (40, 1),
+        "gauge_thermometer" => (20, 8),
         "chart_sparkline" => (40, 3),
         "chart_line" | "chart_scatter" => (50, 10),
         "chart_bar" => (40, 8),
