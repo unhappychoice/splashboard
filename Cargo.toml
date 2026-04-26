@@ -51,6 +51,7 @@ tracing = { version = "0.1", default-features = false, features = ["std", "attri
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
 tracing-appender = "0.2"
 tui-markdown = "0.3.7"
+feed-rs = { version = "2", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
