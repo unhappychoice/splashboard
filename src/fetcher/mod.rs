@@ -18,6 +18,7 @@ use crate::samples;
 pub mod calendar;
 pub mod clock;
 pub mod code;
+pub mod fortune;
 pub mod git;
 pub mod github;
 pub mod hackernews;
@@ -336,6 +337,7 @@ impl Registry {
             r.register_realtime(f);
         }
         r.register_realtime(Arc::new(quote_of_day::QuoteOfDayFetcher));
+        r.register_realtime(Arc::new(fortune::FortuneFetcher));
         for f in system::realtime_fetchers() {
             r.register_realtime(f);
         }

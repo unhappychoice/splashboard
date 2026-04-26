@@ -1,0 +1,898 @@
+Help! I'm trapped in a fortune cookie factory!
+%
+You will be hungry again in one hour.
+%
+Today is the first day of the rest of your life.
+%
+A closed mouth gathers no foot.
+%
+The early bird gets the worm, but the second mouse gets the cheese.
+%
+A bug in the hand is better than one as yet undetected.
+%
+A computer scientist is someone who, when told to "go to hell", sees the "go to" rather than the destination as harmful.
+%
+A computer without COBOL and FORTRAN is like a piece of chocolate cake without ketchup or mustard.
+%
+A debugged program is one for which you have not yet found the conditions that make it fail.
+%
+A failure will not appear until a unit has passed final inspection.
+%
+A great many people think they are thinking when they are merely rearranging their prejudices.
+%
+A language that doesn't have everything is actually easier to program in than some that do.
+%
+A list is only as strong as its weakest link.
+%
+A meeting is an event at which the minutes are kept and the hours are lost.
+%
+A printer consists of three main parts: the case, the jammed paper tray, and the blinking red light.
+%
+A program is a poem: you cannot write a poem without writing it.
+%
+A programmer is a machine for turning coffee into code.
+%
+A society grows great when old men plant trees in whose shade they shall never sit.
+%
+A user interface is like a joke. If you have to explain it, it's not that good.
+%
+A verbal contract isn't worth the paper it's printed on.
+%
+After all is said and done, more is said than done.
+%
+After Monday and Tuesday even the calendar says W T F.
+%
+All generalizations are false, including this one.
+%
+All I want is a little more than I'll ever get.
+%
+All progress depends on the unreasonable man.
+%
+All the world's a stage, and most of us are desperately unrehearsed.
+%
+Always borrow money from a pessimist; he doesn't expect to be paid back.
+%
+Always do right. This will gratify some people and astonish the rest.
+%
+Always proofread carefully to see if you any words out.
+%
+An empty stomach is not a good political adviser.
+%
+An expert is one who knows more and more about less and less.
+%
+Anything that can go wrong, will — at the worst possible moment.
+%
+Anything worth doing is worth doing slowly.
+%
+Anything worth taking seriously is worth making fun of.
+%
+Atomic batteries to power. Turbines to speed.
+%
+Avoid clichés like the plague.
+%
+Bad command or filename. Go stand in the corner.
+%
+Be careful of reading health books. You may die of a misprint.
+%
+Be courteous to all, but intimate with few; and let those few be well tried before you give them your confidence.
+%
+Behind every successful man is a woman, behind her is his wife.
+%
+Being a programmer is the only job where you can blame the customer for misuse.
+%
+Better late than ever.
+%
+Beware of programmers carrying screwdrivers.
+%
+Beware of the man who works hard to learn something, learns it, and finds himself no wiser than before.
+%
+Black holes are where God divided by zero.
+%
+Bug? That's not a bug, that's a feature.
+%
+Computers are like bikinis. They save people a lot of guesswork.
+%
+Computers can never replace human stupidity.
+%
+Computers will not be perfected until they can compute how much more than the estimate the job will cost.
+%
+Confidence is the feeling you have before you understand the situation.
+%
+Confucius say: man who run in front of car get tired; man who run behind car get exhausted.
+%
+Don't be irreplaceable — if you can't be replaced, you can't be promoted.
+%
+Don't believe everything you think.
+%
+Don't get suckered in by the comments — they can be terribly misleading. Debug only the code.
+%
+Don't let yesterday take up too much of today.
+%
+Don't read everything you believe.
+%
+Don't sweat the petty things and don't pet the sweaty things.
+%
+Don't take life too seriously. You won't get out alive.
+%
+Each new day is a blank page in the diary of your life.
+%
+Easy come, easy go, easy git push --force.
+%
+Eat right, exercise regularly, die anyway.
+%
+Egotist: a person more interested in himself than in me.
+%
+Even a stopped clock is right twice a day.
+%
+Even your computer needs an attitude adjustment from time to time.
+%
+Every solution breeds new problems.
+%
+Everyone is entitled to my opinion.
+%
+Everything is funny, as long as it's happening to somebody else.
+%
+Excellent time to become a missing person.
+%
+Experience is something you don't get until just after you need it.
+%
+Experts are people who know more and more about less and less, until they know everything about nothing.
+%
+Failure is not an option — it comes bundled with your software.
+%
+Failure is the path of least persistence.
+%
+Faith may be defined briefly as an illogical belief in the occurrence of the improbable.
+%
+Far back in the mists of ancient time, in the great and glorious days of the former Galactic Empire, life was wild, rich, and on the whole tax-free.
+%
+Fast, cheap, good. Pick two.
+%
+Few things are harder to put up with than the annoyance of a good example.
+%
+Flattery will get you nowhere — but it can get you arrested.
+%
+Flushed with pleasure, the dragon awaits its next encounter.
+%
+For every action, there is an equal and opposite criticism.
+%
+Friends help you move. Real friends help you move bodies.
+%
+Functionality breeds contempt.
+%
+Get your facts first, then you can distort them as you please.
+%
+Give a man a fish and he eats for a day. Teach him to fish and he buys an ugly hat. Talk about fish to a starving man and you're a consultant.
+%
+God is real, unless declared integer.
+%
+Good advice is something a man gives when he is too old to set a bad example.
+%
+Good day for a change of scene. Repaper the bedroom wall.
+%
+Good day to deal with people in high places; particularly hummingbirds and skywriters.
+%
+Good day to let down old friends who need help.
+%
+Hardware: the parts of a computer that can be kicked.
+%
+Have you noticed that even the busiest people are never too busy to take time to tell you how busy they are?
+%
+He who hesitates is sometimes saved.
+%
+He who hesitates is sometimes wise.
+%
+He who laughs last didn't get the joke.
+%
+He who lives by the sword shall die by the sword. He who lives by the keyboard? RSI.
+%
+He who throws dirt loses ground.
+%
+Honesty is the best policy, but insanity is a better defense.
+%
+Hope for the best, but prepare for the worst.
+%
+How can I miss you if you won't go away?
+%
+I before E except when your foreign neighbor Keith receives eight counterfeit beige sleighs from feisty caffeinated weightlifters.
+%
+I haven't lost my mind; I have a tape backup somewhere.
+%
+I have nothing to declare except my genius.
+%
+I'm not a complete idiot — some parts are missing.
+%
+I'm not arguing, I'm just explaining why I'm right.
+%
+I'm not lazy, I'm on energy-saving mode.
+%
+If a tree falls in the forest and no one is around to hear it, the spec says it makes a sound.
+%
+If at first you don't succeed, redefine success.
+%
+If at first you don't succeed, skydiving probably isn't for you.
+%
+If everything seems to be going well, you have obviously overlooked something.
+%
+If God is dead, who will save the queen?
+%
+If life gives you lemons, sell them and buy an espresso machine.
+%
+If you can't be a good example, you'll just have to be a horrible warning.
+%
+If you can't convince them, confuse them.
+%
+If you don't know where you're going, any road will get you there.
+%
+If you find yourself in a hole, the first thing to do is stop digging.
+%
+If you have to ask, you can't afford it.
+%
+If you have something good, don't keep it; share it.
+%
+If you keep your eyes open, you might see something.
+%
+If you laid all programmers end to end, they'd never finish anything.
+%
+If you lend someone $20 and never see that person again, it was probably worth it.
+%
+If you're not part of the solution, you're part of the precipitate.
+%
+Imagination was given to man to compensate him for what he is not; a sense of humor to console him for what he is.
+%
+In a hierarchy, every employee tends to rise to his level of incompetence.
+%
+In every fat book there is a thin book trying to get out.
+%
+In just seven days, I can make you a man.
+%
+In nature there are neither rewards nor punishments — there are consequences.
+%
+In the long run, we are all dead.
+%
+Indecision is the key to flexibility.
+%
+It is better to be silent and be thought a fool than to type and remove all doubt.
+%
+It is better to keep your mouth closed and let people think you are a fool than to open it and remove all doubt.
+%
+It is impossible to make anything foolproof because fools are so ingenious.
+%
+It is not the strongest of the species that survive, nor the most intelligent, but the one most responsive to change.
+%
+It works on my machine.
+%
+It's a damn poor mind that can only think of one way to spell a word.
+%
+It's better to burn out than to fade away — unless you're a star, in which case do neither.
+%
+It's not the despair, I can stand the despair. It's the hope.
+%
+Just because you're paranoid doesn't mean they aren't after you.
+%
+Just remember — when you go to court, you are trusting your fate to twelve people who weren't smart enough to get out of jury duty.
+%
+Keep cool, but don't freeze.
+%
+Knowledge is power. Power corrupts. Study hard. Be evil.
+%
+Laughter is the closest distance between two people.
+%
+Laughter is the shortest distance between two people.
+%
+Laziness is the mother of invention.
+%
+Learn from the mistakes of others. You can't live long enough to make them all yourself.
+%
+Lend money to a bad debtor and he will hate you.
+%
+Life is a sexually transmitted disease with 100% mortality rate.
+%
+Life is short. Use a faster shell.
+%
+Light a man a fire, and he will be warm for a day. Light a man on fire, and he will be warm for the rest of his life.
+%
+Linux: the choice of a GNU generation.
+%
+Make haste slowly.
+%
+Make it idiot-proof and someone will make a better idiot.
+%
+Many open source advocates have eyes like fanatic preachers.
+%
+May the source be with you.
+%
+Money can't buy happiness, but it can rent it for an evening.
+%
+Money is the root of all wealth.
+%
+Most people would rather die than think; many do.
+%
+My computer beat me at chess, but I beat it at kickboxing.
+%
+My karma ran over my dogma.
+%
+Nature is what we are put in this world to rise above.
+%
+Never argue with a fool, onlookers may not be able to tell the difference.
+%
+Never attribute to malice that which can be adequately explained by stupidity.
+%
+Never let the truth get in the way of a good story.
+%
+Never put off until tomorrow what you can avoid altogether.
+%
+Never put off until tomorrow what you can do the day after tomorrow.
+%
+Never trust a programmer who says "it works."
+%
+No matter where you go, there you are.
+%
+Nostalgia isn't what it used to be.
+%
+Nothing is foolproof to a sufficiently talented fool.
+%
+Nothing is impossible for the man who doesn't have to do it himself.
+%
+Of all the things I've lost, I miss my mind the most.
+%
+Old programmers never die — they just branch to a new address.
+%
+On the keyboard of life, always keep one finger on the escape key.
+%
+Once you have their hardware, their minds and hearts will follow.
+%
+One day at a time — this is enough.
+%
+One man's constant is another man's variable.
+%
+One man's poison is another man's lunch.
+%
+One nice thing about egotists: they don't talk about other people.
+%
+Only those who attempt the absurd can achieve the impossible.
+%
+Optimist: a person who, instead of feeling sorry he cannot pay his bills, is glad he is not one of his creditors.
+%
+Patience is something you admire in the driver behind you and scorn in the one ahead.
+%
+People who think they know everything are a great annoyance to those of us who do.
+%
+Perseverance is what makes you stick to the same software for ten years.
+%
+Pi r squared. No, pies are round, cornbread are squared.
+%
+Power tends to corrupt; absolute power is kind of neat.
+%
+Predestination was doomed from the start.
+%
+Procrastination is the art of keeping up with yesterday.
+%
+Programmer's block: a thing exists.
+%
+Programming is like sex: one mistake and you have to support it for the rest of your life.
+%
+Programming today is a race between software engineers striving to build bigger and better idiot-proof programs, and the universe trying to produce bigger and better idiots.
+%
+Promises are like babies: easy to make, hard to deliver.
+%
+Quit work and play for once!
+%
+RAM disk is not an installation procedure.
+%
+Real programmers don't comment their code. If it was hard to write, it should be hard to read.
+%
+Real programmers don't document. If it was hard to write, it should be hard to understand.
+%
+Real users find the one combination of bizarre input values that shuts down the system for hours.
+%
+Recursion: see Recursion.
+%
+Reduce, reuse, recycle, refuse, refactor.
+%
+Remember: there are no stupid questions, only stupid people.
+%
+Resentment is letting someone live rent-free in your head.
+%
+Save energy: be apathetic.
+%
+Save the whales. Trade them in for valuable prizes.
+%
+Save water — shower with a friend.
+%
+Saving is a fine thing. Especially when your parents have done it for you.
+%
+Some cause happiness wherever they go; others, whenever they go.
+%
+Some people are like clouds — when they disappear, it's a beautiful day.
+%
+Some people are wise; some are otherwise.
+%
+Sometimes the only way out is through.
+%
+Stop! Whoever crosseth the bridge of Death, must answer first these questions three.
+%
+Strange women lying in ponds distributing swords is no basis for a system of government.
+%
+Stupidity, like virtue, is its own reward.
+%
+Success is relative — the more success, the more relatives.
+%
+Tact is the art of making a point without making an enemy.
+%
+Take my advice; I don't use it anyway.
+%
+The best way to accelerate a Macintosh is at 9.8 m/s².
+%
+The cheapest, fastest and most reliable components of a computer system are those that aren't there.
+%
+The fact that no one understands you doesn't mean you're an artist.
+%
+The first 90 percent of the code accounts for the first 90 percent of the development time. The remaining 10 percent of the code accounts for the other 90 percent of the development time.
+%
+The generation of random numbers is too important to be left to chance.
+%
+The good thing about standards is that there are so many to choose from.
+%
+The greatest of faults, I should say, is to be conscious of none.
+%
+The greatest pleasure in life is doing what people say you cannot do.
+%
+The hardest thing to learn in life is which bridge to cross and which to burn.
+%
+The internet is a great way to get on the net.
+%
+The journey of a thousand sites begins with a single click.
+%
+The light at the end of the tunnel is the headlight of an oncoming train.
+%
+The longest journey begins with a single step, not with a turn of the ignition key.
+%
+The major difference between a thing that might go wrong and a thing that cannot possibly go wrong is that when a thing that cannot possibly go wrong goes wrong it usually turns out to be impossible to get at or repair.
+%
+The nice thing about being a celebrity is that, if you bore people, they think it's their fault.
+%
+The number of UNIX installations has grown to 10, with more expected.
+%
+The only difference between me and a madman is that I'm not mad.
+%
+The only intuitive interface is the nipple. After that, it's all learned.
+%
+The only people who find what they are looking for in life are the fault-finders.
+%
+The only stupid question is the one you don't ask.
+%
+The only thing more dangerous than a programmer is a programmer with a baseball bat.
+%
+The only way to learn a new programming language is by writing programs in it.
+%
+The path to enlightenment is rocky and twisted.
+%
+The race is not always to the swift, nor the battle to the strong, but that's the way to bet.
+%
+The road to hell is paved with melting snowballs.
+%
+The shortest distance between two points is under construction.
+%
+The trouble with the world is that the stupid are cocksure and the intelligent are full of doubt.
+%
+The two most common elements in the universe are hydrogen and stupidity.
+%
+The world is a stage, but the play is badly cast.
+%
+The world is full of willing people: some willing to work, the rest willing to let them.
+%
+There are 10 types of people in the world: those who understand binary and those who don't.
+%
+There are 10 types of people in this world: those who understand binary, those who don't, and those who weren't expecting a base-3 joke.
+%
+There are no answers, only cross-references.
+%
+There are no facts, only interpretations and tooltips.
+%
+There is no problem so big it cannot be run away from.
+%
+There's no point in being grown up if you can't be childish sometimes.
+%
+This sentence no verb.
+%
+Those who can, do. Those who can't, simulate.
+%
+Those who do not understand UNIX are condemned to reinvent it, poorly.
+%
+Time flies like an arrow; fruit flies like a banana.
+%
+Time is an illusion. Lunchtime, doubly so.
+%
+Time is the best teacher; unfortunately it kills all its students.
+%
+Time is what keeps everything from happening at once.
+%
+To be is to do — Socrates. To do is to be — Sartre. Do be do be do — Sinatra.
+%
+To err is human; to forgive, divine.
+%
+To err is human; to forgive, beyond the scope of the operating system.
+%
+To iterate is human, to recurse, divine.
+%
+To love and to be loved is to feel the sun from both sides.
+%
+To remain young one must change.
+%
+To steal ideas from one person is plagiarism; to steal from many is research.
+%
+Today is the tomorrow you worried about yesterday.
+%
+Two heads are better than one — unless they're on the same body.
+%
+UNIX is user-friendly. It's just very particular about who its friends are.
+%
+Unhappy as you may have been, somewhere, sometime, you have known happiness.
+%
+Use the force, Luke.
+%
+War doesn't determine who's right — only who's left.
+%
+We are all in the gutter, but some of us are looking at the stars.
+%
+We have just enough religion to make us hate, but not enough to make us love one another.
+%
+What goes up must come down. Ask any system administrator.
+%
+What I cannot create, I do not understand.
+%
+When all else fails, follow the instructions.
+%
+When in doubt, mumble; when in trouble, delegate.
+%
+When you do something noble and beautiful and nobody noticed, do not be sad. The sun every morning is a beautiful spectacle, and yet most of the audience still sleeps.
+%
+When you don't know what you are doing, do it neatly.
+%
+Whenever I feel like exercise, I lie down until the feeling passes.
+%
+Where there's a will, there's a way — and a lawyer to write it.
+%
+Why do programmers prefer dark mode? Because light attracts bugs.
+%
+Why do you sit there looking like an envelope without any address on it?
+%
+Wisdom is knowing what to do next; virtue is doing it.
+%
+Wisdom is the reward you get for a lifetime of listening when you would rather have talked.
+%
+You are about to have a new and exciting experience.
+%
+You are confused; but this is your normal state.
+%
+You are going to have a new love affair.
+%
+You are not the contents of your wallet.
+%
+You are the kind of person who eats popcorn for breakfast.
+%
+You can't have everything. Where would you put it?
+%
+You can't make a silk purse out of a sow's ear, but you can make a fine living writing about it.
+%
+You don't have to be crazy to work here, but it helps.
+%
+You have a strong desire for a home, which is in keeping with your mortgage.
+%
+You have an unusual magnetic personality. Try not to attract any more lawsuits.
+%
+You laugh now. Wait till you get home.
+%
+You may be recognized soon. Hide.
+%
+You teach best what you most need to learn.
+%
+You will be advanced socially, without any special effort on your part.
+%
+You will be married within a year, and divorced within two.
+%
+You will inherit some money, or a small piece of land.
+%
+You will inherit some money or a small piece of cabbage.
+%
+You will live a long, healthy life — at considerable expense.
+%
+You will overcome the attacks of jealous associates.
+%
+You will pass away very quickly. Sorry.
+%
+You're not drunk if you can lie on the floor without holding on.
+%
+Your aim is high and to the right.
+%
+Your computer is currently on. You may relax.
+%
+Your code is your friend. Your code is broken.
+%
+Your day will be... no different from any other day.
+%
+Your life would be very empty if you had nothing to regret.
+%
+Your lover will never wish to leave you.
+%
+Your lucky color has faded.
+%
+Your true value depends entirely on what you are compared with.
+%
+Zen is not easy. It takes effort to attain nothingness. And then what do you have? Bupkis.
+%
+A man with one watch knows what time it is. A man with two watches is never sure.
+%
+A pessimist is never disappointed.
+%
+Beware of low-flying butterflies.
+%
+Bus error: passengers dumped.
+%
+Caution: this fortune is sharper than it appears.
+%
+Code never lies. Comments sometimes do.
+%
+Don't tell me to relax — I'm relaxed enough already.
+%
+Eagles may soar, but weasels don't get sucked into jet engines.
+%
+Expect the worst, it's the least you can do.
+%
+First law of socio-genetics: celibacy is not hereditary.
+%
+Free advice is worth what it costs.
+%
+Garbage in, gospel out.
+%
+He who laughs at himself never runs out of material.
+%
+I haven't been wrong since 1987, when I thought I had made an error.
+%
+I plan on living forever. So far, so good.
+%
+If you can read this, I have lost my trailer.
+%
+If you can't beat them, arrange to have them beaten.
+%
+It is easier to ask forgiveness than permission.
+%
+It works on my machine — ship it.
+%
+Just because you're not paranoid doesn't mean nobody's after you.
+%
+Linux is only free if your time has no value.
+%
+Money is the root of all envy.
+%
+Never let the facts get in the way of a good story.
+%
+Never test for a bug you don't know how to fix.
+%
+No matter how cynical you become, it's never enough to keep up.
+%
+Nothing is impossible to the person who doesn't have to do it.
+%
+Nothing risked, nothing gained.
+%
+Old MacDonald had an agile farm: e-i-e-i-o.
+%
+Once a job is fouled up, anything done to improve it makes it worse.
+%
+One picture is worth 128K words.
+%
+Reality is a crutch for those who can't handle simulation.
+%
+Save the trees. Wipe your bottom with an owl.
+%
+Sometimes you eat the bear; sometimes the bear eats you.
+%
+Stress is when you wake up screaming and you realize you haven't fallen asleep yet.
+%
+Suburbia: where they tear out the trees and then name streets after them.
+%
+The best things in life are free, plus tax.
+%
+The early worm gets eaten.
+%
+The most overlooked advantage of being a computer is that you don't have to type to be understood.
+%
+The trouble with doing something right the first time is that nobody appreciates how difficult it was.
+%
+The trouble with the world is that the stupid are confident and the intelligent are full of doubt.
+%
+There is no gravity. The earth sucks.
+%
+There's no place like ~.
+%
+This is the kind of arrant pedantry up with which I will not put.
+%
+Time wounds all heels.
+%
+To define recursion, see recursion.
+%
+To generalize is to be an idiot.
+%
+Today's subliminal thought is:
+%
+Trust the computer industry to shorten "Year 2000" to Y2K. It was this kind of thinking that caused the problem in the first place.
+%
+We don't know what we want, but we want it now.
+%
+What if there were no hypothetical questions?
+%
+When I die I want to go peacefully like my grandfather did, in his sleep — not screaming, like the passengers in his car.
+%
+When in doubt, predict that the present trend will continue.
+%
+When the going gets weird, the weird turn pro.
+%
+Why is it that we rejoice at a birth and grieve at a funeral? It is because we are not the person involved.
+%
+You are an insult to my intelligence!
+That is all.
+%
+You are next in line for promotion in your firm.
+%
+You can lead a horse to water, but a pencil must be lead.
+%
+You can't have your kayak and heat it too.
+%
+Your mode of life will be changed for the better because of new developments in your field.
+%
+Your wig may be unfastened.
+%
+A bird in the hand is safer than one overhead.
+%
+Always remember to pillage before you burn.
+%
+Be wary of strong drink. It can make you shoot at tax collectors — and miss.
+%
+Beware of bugs in the above program; I have only proved it correct, not tried it.
+%
+Computers make excellent and efficient servants, but I have no wish to serve under them.
+%
+Don't let your mind wander — it's far too small to be left out alone.
+%
+Earth: love it or leave it.
+%
+Even if you're on the right track, you'll get run over if you just sit there.
+%
+Genius is one percent inspiration and ninety-nine percent perspiration. Plus a good IDE.
+%
+Give me a fish and I will eat for a day. Give me an internet connection and I will not eat for a week.
+%
+Hospitality: making your guests feel like they're at home, even if you wish they were.
+%
+I do not feel obliged to believe that the same God who has endowed us with sense, reason, and intellect has intended us to forgo their use.
+%
+If everyone knew what was really going on, no one would ever do anything.
+%
+If God had wanted you to walk, He would have given you feet. He did. Therefore He wanted you to walk.
+%
+Imagination is the one weapon in the war against reality.
+%
+In the kingdom of the blind, the one-eyed man is king. In the kingdom of one-eyed men, the blind man is king.
+%
+It is dangerous to be right when the government is wrong.
+%
+It is well that war is so terrible — otherwise we would grow too fond of it.
+%
+Light tomorrow with today.
+%
+Many a small thing has been made large by the right kind of advertising.
+%
+No man is an island, but some are peninsulas.
+%
+Old age and treachery will always overcome youth and skill.
+%
+Reality is whatever refuses to go away when I stop believing in it.
+%
+The biggest difference between time and space is that you can't reuse time.
+%
+The first 90% of the project takes 90% of the time. The last 10% takes the other 90%.
+%
+The lottery: a tax on people who are bad at math.
+%
+The road to wisdom is plain and simple to express:
+err and err and err again,
+but less and less and less.
+%
+There are three kinds of lies: lies, damned lies, and statistics.
+%
+We are all worms, but I do believe I am a glow-worm.
+%
+We have nothing to fear but fear itself — and clowns. Clowns are pretty terrifying.
+%
+What is research but a blind date with knowledge.
+%
+When choosing between two evils, I always like to try the one I've never tried before.
+%
+Whoever said money can't buy happiness didn't know where to shop.
+%
+Wisdom doesn't always come with age. Sometimes age shows up alone.
+%
+You can lead a man up to the university, but you can't make him think.
+%
+You will be successful in your work.
+%
+A day without sunshine is like, well, night.
+%
+Always remember: you are absolutely unique. Just like everyone else.
+%
+Behind every successful program is a programmer with a deadline.
+%
+Carry on, my wayward son.
+%
+Drink wet cement. Get really stoned.
+%
+Even bad coffee is better than no coffee at all.
+%
+Half the lies they tell about me aren't true.
+%
+I am not young enough to know everything.
+%
+I'm not arguing, I'm just telling you why I'm right.
+%
+If a man is in too big a hurry to give a damn about an old joke, he's no fortune-cookie material.
+%
+Just because nobody complains doesn't mean all parachutes are perfect.
+%
+Knowing exactly how the camel feels does not relieve the pain of the straw.
+%
+Lead me not into temptation; I can find the way myself.
+%
+Most people work just hard enough not to get fired and get paid just enough money not to quit.
+%
+Murphy was an optimist.
+%
+Never argue with a fool — onlookers may not be able to tell the difference.
+%
+On the eighth day, God created caffeine. And it was good.
+%
+Procrastinators of the world unite — tomorrow!
+%
+Reality is for people who can't handle science fiction.
+%
+Some people see things as they are and ask why; I dream of things that never were and ask why not; I'm getting paid by the hour.
+%
+The bigger they are, the harder they fall on you.
+%
+The cure for boredom is curiosity. There is no cure for curiosity.
+%
+The early worm deserves the bird.
+%
+The future is here, it's just not very evenly distributed.
+%
+Those who do not study history are doomed to be quoted by those who do.
+%
+Wisdom comes from experience. Experience is often a result of lack of wisdom.
+%
+You can't run away from your problems. They have GPS.
+%
+Your motto for today: it's amazing what you can accomplish when you don't care who gets the credit.
+%
+Quoth the server,
+"five hundred and three" —
+the load is too high.
+%
+Empty function —
+the cursor blinks, awaiting
+syntax of intent.
+%
+Old pond, new commit:
+the merge conflict resolved
+in silent splash.
+%
+Cherry blossoms fall —
+but the build pipeline runs
+green for the moment.
+%
+The lone semicolon
+forgotten at line's end —
+deploy at midnight.
+%
+git push origin main
+fingers crossed, eyes closed, no tests —
+production is fire.

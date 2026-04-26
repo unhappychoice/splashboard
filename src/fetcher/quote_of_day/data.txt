@@ -1,0 +1,1673 @@
+The only way to do great work is to love what you do.
+— Steve Jobs
+%
+Make it work, make it right, make it fast.
+— Kent Beck
+%
+Simplicity is the ultimate sophistication.
+— Leonardo da Vinci
+%
+The best way to predict the future is to invent it.
+— Alan Kay
+%
+Any fool can know. The point is to understand.
+— Albert Einstein
+%
+Stay hungry, stay foolish.
+— Stewart Brand
+%
+Talk is cheap. Show me the code.
+— Linus Torvalds
+%
+The pessimist complains about the wind; the optimist expects it to change; the realist adjusts the sails.
+— William Arthur Ward
+%
+First, solve the problem. Then, write the code.
+— John Johnson
+%
+Code is like humor. When you have to explain it, it's bad.
+— Cory House
+%
+Experience is the name everyone gives to their mistakes.
+— Oscar Wilde
+%
+A journey of a thousand miles begins with a single step.
+— Lao Tzu
+%
+The unexamined life is not worth living.
+— Socrates
+%
+Life is what happens when you're busy making other plans.
+— John Lennon
+%
+Action is the foundational key to all success.
+— Pablo Picasso
+%
+It always seems impossible until it's done.
+— Nelson Mandela
+%
+The best error message is the one that never shows up.
+— Thomas Fuchs
+%
+Perfection is achieved, not when there is nothing more to add, but when there is nothing left to take away.
+— Antoine de Saint-Exupéry
+%
+Premature optimization is the root of all evil.
+— Donald Knuth
+%
+Walking on water and developing software from a specification are easy if both are frozen.
+— Edward V. Berard
+%
+Computers are useless. They can only give you answers.
+— Pablo Picasso
+%
+The best thing about a boolean is even if you are wrong, you are only off by a bit.
+— Anonymous
+%
+Programs must be written for people to read, and only incidentally for machines to execute.
+— Harold Abelson
+%
+Good code is its own best documentation.
+— Steve McConnell
+%
+Fall seven times, stand up eight.
+— Japanese proverb
+%
+Be yourself; everyone else is already taken.
+— Oscar Wilde
+%
+Don't count the days, make the days count.
+— Muhammad Ali
+%
+What you do speaks so loudly that I cannot hear what you say.
+— Ralph Waldo Emerson
+%
+The secret of getting ahead is getting started.
+— Mark Twain
+%
+Whether you think you can or you think you can't, you're right.
+— Henry Ford
+%
+It's not a bug — it's an undocumented feature.
+— Anonymous
+%
+In theory, there is no difference between theory and practice. In practice, there is.
+— Yogi Berra
+%
+The way to get started is to quit talking and begin doing.
+— Walt Disney
+%
+Your time is limited, so don't waste it living someone else's life.
+— Steve Jobs
+%
+Everything should be made as simple as possible, but not simpler.
+— Albert Einstein
+%
+The function of good software is to make the complex appear to be simple.
+— Grady Booch
+%
+Debugging is twice as hard as writing the code in the first place.
+— Brian Kernighan
+%
+Deleted code is debugged code.
+— Jeff Sickel
+%
+There are only two hard things in computer science: cache invalidation and naming things.
+— Phil Karlton
+%
+We are what we repeatedly do. Excellence, then, is not an act, but a habit.
+— Aristotle
+%
+You miss 100% of the shots you don't take.
+— Wayne Gretzky
+%
+The only impossible journey is the one you never begin.
+— Tony Robbins
+%
+Happiness is not something ready made. It comes from your own actions.
+— Dalai Lama
+%
+Measure twice, cut once.
+— Carpenter's proverb
+%
+If you can't explain it simply, you don't understand it well enough.
+— Albert Einstein
+%
+The only limit to our realization of tomorrow is our doubts of today.
+— Franklin D. Roosevelt
+%
+Rest when you're weary. Refresh and renew yourself.
+— Ralph Marston
+%
+Imagination is more important than knowledge.
+— Albert Einstein
+%
+In the middle of difficulty lies opportunity.
+— Albert Einstein
+%
+To iterate is human, to recurse divine.
+— L. Peter Deutsch
+%
+Knowing yourself is the beginning of all wisdom.
+— Aristotle
+%
+The journey of a thousand sites begins with a single click.
+— Anonymous
+%
+Premature abstraction is the second-root of all evil.
+— Anonymous
+%
+The best code is no code at all.
+— Jeff Atwood
+%
+Controlling complexity is the essence of computer programming.
+— Brian Kernighan
+%
+Software is a great combination between artistry and engineering.
+— Bill Gates
+%
+The most damaging phrase in the language is "we've always done it this way."
+— Grace Hopper
+%
+A ship in port is safe, but that's not what ships are built for.
+— Grace Hopper
+%
+Beware of bugs in the above code; I have only proved it correct, not tried it.
+— Donald Knuth
+%
+The competent programmer is fully aware of the limited size of his own skull.
+— Edsger W. Dijkstra
+%
+Simplicity is prerequisite for reliability.
+— Edsger W. Dijkstra
+%
+Perfecting oneself is as much unlearning as it is learning.
+— Edsger W. Dijkstra
+%
+The question of whether a computer can think is no more interesting than the question of whether a submarine can swim.
+— Edsger W. Dijkstra
+%
+Program testing can be used to show the presence of bugs, but never to show their absence.
+— Edsger W. Dijkstra
+%
+There are two ways of constructing a software design. One way is to make it so simple that there are obviously no deficiencies. And the other way is to make it so complicated that there are no obvious deficiencies.
+— C. A. R. Hoare
+%
+Premature optimization is the root of all evil — but missed optimization is the root of all latency.
+— Anonymous
+%
+A language that doesn't affect the way you think about programming is not worth knowing.
+— Alan Perlis
+%
+Fools ignore complexity. Pragmatists suffer it. Some can avoid it. Geniuses remove it.
+— Alan Perlis
+%
+When in doubt, use brute force.
+— Ken Thompson
+%
+One of my most productive days was throwing away 1,000 lines of code.
+— Ken Thompson
+%
+Beauty is more important in computing than anywhere else in technology.
+— Donald Knuth
+%
+Java is to JavaScript what car is to carpet.
+— Chris Heilmann
+%
+The cheapest, fastest, and most reliable components are those that aren't there.
+— Gordon Bell
+%
+Make it correct, make it clear, make it concise, make it fast — in that order.
+— Wes Dyer
+%
+A clever person solves a problem. A wise person avoids it.
+— Albert Einstein
+%
+Logic will get you from A to B. Imagination will take you everywhere.
+— Albert Einstein
+%
+Pure mathematics is, in its way, the poetry of logical ideas.
+— Albert Einstein
+%
+The important thing is not to stop questioning.
+— Albert Einstein
+%
+Try not to become a man of success. Rather become a man of value.
+— Albert Einstein
+%
+Look deep into nature, and then you will understand everything better.
+— Albert Einstein
+%
+A person who never made a mistake never tried anything new.
+— Albert Einstein
+%
+Insanity is doing the same thing over and over and expecting different results.
+— Often attributed to Einstein
+%
+The true sign of intelligence is not knowledge but imagination.
+— Albert Einstein
+%
+The most beautiful thing we can experience is the mysterious.
+— Albert Einstein
+%
+Anyone who has never made a mistake has never tried anything new.
+— Albert Einstein
+%
+The mind is everything. What you think, you become.
+— Buddha
+%
+Three things cannot be long hidden: the sun, the moon, and the truth.
+— Buddha
+%
+Better than a thousand hollow words is one word that brings peace.
+— Buddha
+%
+Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment.
+— Buddha
+%
+Holding on to anger is like grasping a hot coal with the intent of throwing it at someone else; you are the one who gets burned.
+— Buddha
+%
+There is no path to happiness. Happiness is the path.
+— Buddha
+%
+Knowing others is intelligence; knowing yourself is true wisdom.
+— Lao Tzu
+%
+When I let go of what I am, I become what I might be.
+— Lao Tzu
+%
+The wise man does not lay up his own treasures. The more he gives to others, the more he has for his own.
+— Lao Tzu
+%
+Nature does not hurry, yet everything is accomplished.
+— Lao Tzu
+%
+Care about what other people think and you will always be their prisoner.
+— Lao Tzu
+%
+At the center of your being you have the answer; you know who you are and you know what you want.
+— Lao Tzu
+%
+Silence is a source of great strength.
+— Lao Tzu
+%
+The supreme art of war is to subdue the enemy without fighting.
+— Sun Tzu
+%
+In the midst of chaos, there is also opportunity.
+— Sun Tzu
+%
+If you know the enemy and know yourself, you need not fear the result of a hundred battles.
+— Sun Tzu
+%
+Appear weak when you are strong, and strong when you are weak.
+— Sun Tzu
+%
+Opportunities multiply as they are seized.
+— Sun Tzu
+%
+It does not matter how slowly you go as long as you do not stop.
+— Confucius
+%
+Real knowledge is to know the extent of one's ignorance.
+— Confucius
+%
+Choose a job you love, and you will never have to work a day in your life.
+— Confucius
+%
+The man who moves a mountain begins by carrying away small stones.
+— Confucius
+%
+When it is obvious that the goals cannot be reached, don't adjust the goals, adjust the action steps.
+— Confucius
+%
+Our greatest glory is not in never falling, but in rising every time we fall.
+— Confucius
+%
+Wherever you go, go with all your heart.
+— Confucius
+%
+Study the past if you would define the future.
+— Confucius
+%
+Education is the most powerful weapon which you can use to change the world.
+— Nelson Mandela
+%
+A winner is a dreamer who never gives up.
+— Nelson Mandela
+%
+There is no passion to be found playing small — in settling for a life that is less than the one you are capable of living.
+— Nelson Mandela
+%
+Resentment is like drinking poison and then hoping it will kill your enemies.
+— Nelson Mandela
+%
+For to be free is not merely to cast off one's chains, but to live in a way that respects and enhances the freedom of others.
+— Nelson Mandela
+%
+The greatest glory in living lies not in never falling, but in rising every time we fall.
+— Nelson Mandela
+%
+Difficulties break some men but make others.
+— Nelson Mandela
+%
+You must be the change you wish to see in the world.
+— Mahatma Gandhi
+%
+Live as if you were to die tomorrow. Learn as if you were to live forever.
+— Mahatma Gandhi
+%
+The weak can never forgive. Forgiveness is the attribute of the strong.
+— Mahatma Gandhi
+%
+First they ignore you, then they laugh at you, then they fight you, then you win.
+— Mahatma Gandhi
+%
+An eye for an eye only ends up making the whole world blind.
+— Mahatma Gandhi
+%
+Strength does not come from physical capacity. It comes from an indomitable will.
+— Mahatma Gandhi
+%
+The future depends on what you do today.
+— Mahatma Gandhi
+%
+Happiness is when what you think, what you say, and what you do are in harmony.
+— Mahatma Gandhi
+%
+Darkness cannot drive out darkness; only light can do that. Hate cannot drive out hate; only love can do that.
+— Martin Luther King Jr.
+%
+The time is always right to do what is right.
+— Martin Luther King Jr.
+%
+Faith is taking the first step even when you don't see the whole staircase.
+— Martin Luther King Jr.
+%
+The ultimate measure of a man is not where he stands in moments of comfort and convenience, but where he stands at times of challenge and controversy.
+— Martin Luther King Jr.
+%
+Injustice anywhere is a threat to justice everywhere.
+— Martin Luther King Jr.
+%
+Our lives begin to end the day we become silent about things that matter.
+— Martin Luther King Jr.
+%
+Success is not final, failure is not fatal: it is the courage to continue that counts.
+— Winston Churchill
+%
+If you're going through hell, keep going.
+— Winston Churchill
+%
+We make a living by what we get, but we make a life by what we give.
+— Winston Churchill
+%
+The pessimist sees difficulty in every opportunity. The optimist sees opportunity in every difficulty.
+— Winston Churchill
+%
+A pessimist is a person who has had to listen to too many optimists.
+— Don Marquis
+%
+Attitude is a little thing that makes a big difference.
+— Winston Churchill
+%
+Never, never, never give up.
+— Winston Churchill
+%
+Courage is what it takes to stand up and speak; courage is also what it takes to sit down and listen.
+— Winston Churchill
+%
+Do what you can, with what you have, where you are.
+— Theodore Roosevelt
+%
+Believe you can and you're halfway there.
+— Theodore Roosevelt
+%
+The only thing we have to fear is fear itself.
+— Franklin D. Roosevelt
+%
+When you reach the end of your rope, tie a knot in it and hang on.
+— Franklin D. Roosevelt
+%
+Twenty years from now you will be more disappointed by the things you didn't do than by the ones you did do.
+— H. Jackson Brown Jr.
+%
+The future belongs to those who believe in the beauty of their dreams.
+— Eleanor Roosevelt
+%
+Great minds discuss ideas; average minds discuss events; small minds discuss people.
+— Eleanor Roosevelt
+%
+You gain strength, courage, and confidence by every experience in which you really stop to look fear in the face.
+— Eleanor Roosevelt
+%
+No one can make you feel inferior without your consent.
+— Eleanor Roosevelt
+%
+Failure is simply the opportunity to begin again, this time more intelligently.
+— Henry Ford
+%
+Coming together is a beginning; keeping together is progress; working together is success.
+— Henry Ford
+%
+Quality means doing it right when no one is looking.
+— Henry Ford
+%
+Anyone who stops learning is old, whether at twenty or eighty.
+— Henry Ford
+%
+Don't find fault, find a remedy.
+— Henry Ford
+%
+The man who thinks he can and the man who thinks he can't are both right.
+— Henry Ford
+%
+Nothing in life is to be feared, it is only to be understood.
+— Marie Curie
+%
+Be less curious about people and more curious about ideas.
+— Marie Curie
+%
+You cannot hope to build a better world without improving the individuals.
+— Marie Curie
+%
+I was taught that the way of progress was neither swift nor easy.
+— Marie Curie
+%
+Have no fear of perfection — you'll never reach it.
+— Salvador Dalí
+%
+Every child is an artist. The problem is how to remain an artist once we grow up.
+— Pablo Picasso
+%
+Inspiration exists, but it has to find you working.
+— Pablo Picasso
+%
+The two most important days in your life are the day you are born and the day you find out why.
+— Mark Twain
+%
+The man who does not read has no advantage over the man who cannot read.
+— Mark Twain
+%
+Whenever you find yourself on the side of the majority, it is time to pause and reflect.
+— Mark Twain
+%
+Kindness is the language which the deaf can hear and the blind can see.
+— Mark Twain
+%
+Continuous improvement is better than delayed perfection.
+— Mark Twain
+%
+Don't let schooling interfere with your education.
+— Mark Twain
+%
+Travel is fatal to prejudice, bigotry, and narrow-mindedness.
+— Mark Twain
+%
+The reports of my death have been greatly exaggerated.
+— Mark Twain
+%
+We are all in the gutter, but some of us are looking at the stars.
+— Oscar Wilde
+%
+To live is the rarest thing in the world. Most people exist, that is all.
+— Oscar Wilde
+%
+I can resist everything except temptation.
+— Oscar Wilde
+%
+The truth is rarely pure and never simple.
+— Oscar Wilde
+%
+Always forgive your enemies; nothing annoys them so much.
+— Oscar Wilde
+%
+Imitation is the sincerest form of flattery that mediocrity can pay to greatness.
+— Oscar Wilde
+%
+The only thing worse than being talked about is not being talked about.
+— Oscar Wilde
+%
+The whole secret of a successful life is to find out what is one's destiny to do, and then do it.
+— Henry Ford
+%
+Two roads diverged in a wood, and I — I took the one less traveled by, and that has made all the difference.
+— Robert Frost
+%
+In three words I can sum up everything I've learned about life: it goes on.
+— Robert Frost
+%
+The best way out is always through.
+— Robert Frost
+%
+The afternoon knows what the morning never suspected.
+— Robert Frost
+%
+Knowing trees, I understand the meaning of patience. Knowing grass, I can appreciate persistence.
+— Hal Borland
+%
+Adopt the pace of nature: her secret is patience.
+— Ralph Waldo Emerson
+%
+What lies behind us and what lies before us are tiny matters compared to what lies within us.
+— Ralph Waldo Emerson
+%
+Do not go where the path may lead, go instead where there is no path and leave a trail.
+— Ralph Waldo Emerson
+%
+Once you make a decision, the universe conspires to make it happen.
+— Ralph Waldo Emerson
+%
+The only person you are destined to become is the person you decide to be.
+— Ralph Waldo Emerson
+%
+Finish each day and be done with it. You have done what you could.
+— Ralph Waldo Emerson
+%
+For every minute you are angry you lose sixty seconds of happiness.
+— Ralph Waldo Emerson
+%
+To be yourself in a world that is constantly trying to make you something else is the greatest accomplishment.
+— Ralph Waldo Emerson
+%
+The reward of a thing well done is to have done it.
+— Ralph Waldo Emerson
+%
+Go confidently in the direction of your dreams. Live the life you have imagined.
+— Henry David Thoreau
+%
+Not until we are lost do we begin to understand ourselves.
+— Henry David Thoreau
+%
+Things do not change; we change.
+— Henry David Thoreau
+%
+The price of anything is the amount of life you exchange for it.
+— Henry David Thoreau
+%
+What you get by achieving your goals is not as important as what you become by achieving your goals.
+— Henry David Thoreau
+%
+Most men lead lives of quiet desperation and go to the grave with the song still in them.
+— Henry David Thoreau
+%
+Live your beliefs and you can turn the world around.
+— Henry David Thoreau
+%
+Let men be wise by instinct if they can, but when this fails, be wise by common sense.
+— Sophocles
+%
+Quietly endure, silently suffer, and patiently wait.
+— Anonymous
+%
+He who has a why to live for can bear almost any how.
+— Friedrich Nietzsche
+%
+That which does not kill us makes us stronger.
+— Friedrich Nietzsche
+%
+Without music, life would be a mistake.
+— Friedrich Nietzsche
+%
+You have your way. I have my way. As for the right way, the correct way, and the only way, it does not exist.
+— Friedrich Nietzsche
+%
+He who fights with monsters might take care lest he thereby become a monster.
+— Friedrich Nietzsche
+%
+There are no facts, only interpretations.
+— Friedrich Nietzsche
+%
+The man of knowledge must be able not only to love his enemies but also to hate his friends.
+— Friedrich Nietzsche
+%
+Cogito, ergo sum. (I think, therefore I am.)
+— René Descartes
+%
+It is not enough to have a good mind; the main thing is to use it well.
+— René Descartes
+%
+Doubt is the origin of wisdom.
+— René Descartes
+%
+The reading of all good books is like a conversation with the finest minds of past centuries.
+— René Descartes
+%
+Each problem that I solved became a rule, which served afterwards to solve other problems.
+— René Descartes
+%
+Know thyself.
+— Inscription at the Temple of Apollo at Delphi
+%
+The only true wisdom is in knowing you know nothing.
+— Socrates
+%
+An unexamined life is not worth living.
+— Socrates
+%
+There is only one good, knowledge, and one evil, ignorance.
+— Socrates
+%
+The secret of happiness, you see, is not found in seeking more, but in developing the capacity to enjoy less.
+— Socrates
+%
+Strong minds discuss ideas, average minds discuss events, weak minds discuss people.
+— Socrates
+%
+He who is not a good servant will not be a good master.
+— Plato
+%
+The beginning is the most important part of the work.
+— Plato
+%
+Wise men speak because they have something to say; fools because they have to say something.
+— Plato
+%
+Courage is knowing what not to fear.
+— Plato
+%
+The greatest wealth is to live content with little.
+— Plato
+%
+Patience is bitter, but its fruit is sweet.
+— Aristotle
+%
+The whole is greater than the sum of its parts.
+— Aristotle
+%
+Educating the mind without educating the heart is no education at all.
+— Aristotle
+%
+Happiness depends upon ourselves.
+— Aristotle
+%
+Pleasure in the job puts perfection in the work.
+— Aristotle
+%
+The roots of education are bitter, but the fruit is sweet.
+— Aristotle
+%
+Quality is not an act, it is a habit.
+— Aristotle
+%
+You will never do anything in this world without courage.
+— Aristotle
+%
+Hope is a waking dream.
+— Aristotle
+%
+Waste no more time arguing about what a good man should be. Be one.
+— Marcus Aurelius
+%
+The happiness of your life depends upon the quality of your thoughts.
+— Marcus Aurelius
+%
+You have power over your mind — not outside events. Realize this, and you will find strength.
+— Marcus Aurelius
+%
+The best revenge is to be unlike him who performed the injury.
+— Marcus Aurelius
+%
+If it is not right, do not do it; if it is not true, do not say it.
+— Marcus Aurelius
+%
+The object of life is not to be on the side of the majority, but to escape finding oneself in the ranks of the insane.
+— Marcus Aurelius
+%
+Confine yourself to the present.
+— Marcus Aurelius
+%
+Look well into thyself; there is a source of strength which will always spring up if thou wilt always look.
+— Marcus Aurelius
+%
+Difficulties strengthen the mind, as labor does the body.
+— Seneca
+%
+Luck is what happens when preparation meets opportunity.
+— Seneca
+%
+We suffer more often in imagination than in reality.
+— Seneca
+%
+Every new beginning comes from some other beginning's end.
+— Seneca
+%
+While we wait for life, life passes.
+— Seneca
+%
+He who is brave is free.
+— Seneca
+%
+Begin at once to live, and count each separate day as a separate life.
+— Seneca
+%
+It is not the man who has too little, but the man who craves more, that is poor.
+— Seneca
+%
+Time discovers truth.
+— Seneca
+%
+Carpe diem. Seize the day, and put as little trust as you can in tomorrow.
+— Horace
+%
+He who has begun has half done.
+— Horace
+%
+Adversity has the effect of eliciting talents which in prosperous circumstances would have lain dormant.
+— Horace
+%
+Whatever advice you give, be brief.
+— Horace
+%
+Mix a little foolishness with your serious plans. It is lovely to be silly at the right moment.
+— Horace
+%
+Knowledge of the disease is half the cure.
+— Old proverb
+%
+Better late than never.
+— Roman proverb
+%
+Fortune favors the bold.
+— Virgil
+%
+Mind moves matter.
+— Virgil
+%
+Trust not too much to appearances.
+— Virgil
+%
+While I breathe, I hope.
+— Latin proverb
+%
+There is no ghost so difficult to lay as the ghost of an injury.
+— Alexandre Dumas
+%
+All for one and one for all.
+— Alexandre Dumas
+%
+There is neither happiness nor unhappiness in this world; there is only the comparison of one state with another.
+— Alexandre Dumas
+%
+The merit of all things lies in their difficulty.
+— Alexandre Dumas
+%
+Wait and hope.
+— Alexandre Dumas
+%
+The only thing necessary for the triumph of evil is for good men to do nothing.
+— Edmund Burke
+%
+Never doubt that a small group of thoughtful, committed citizens can change the world.
+— Margaret Mead
+%
+The greatest enemy of knowledge is not ignorance, it is the illusion of knowledge.
+— Daniel J. Boorstin
+%
+A house divided against itself cannot stand.
+— Abraham Lincoln
+%
+Whatever you are, be a good one.
+— Abraham Lincoln
+%
+The best way to predict your future is to create it.
+— Abraham Lincoln
+%
+I am a slow walker, but I never walk back.
+— Abraham Lincoln
+%
+You cannot escape the responsibility of tomorrow by evading it today.
+— Abraham Lincoln
+%
+Better to remain silent and be thought a fool than to speak and remove all doubt.
+— Abraham Lincoln
+%
+Folks are usually about as happy as they make their minds up to be.
+— Abraham Lincoln
+%
+And in the end, it's not the years in your life that count. It's the life in your years.
+— Abraham Lincoln
+%
+We the people are the rightful masters of both Congress and the courts.
+— Abraham Lincoln
+%
+He who has overcome his fears will truly be free.
+— Aristotle
+%
+Tell me and I forget. Teach me and I remember. Involve me and I learn.
+— Benjamin Franklin
+%
+By failing to prepare, you are preparing to fail.
+— Benjamin Franklin
+%
+Lost time is never found again.
+— Benjamin Franklin
+%
+Either write something worth reading or do something worth writing.
+— Benjamin Franklin
+%
+An investment in knowledge pays the best interest.
+— Benjamin Franklin
+%
+Well done is better than well said.
+— Benjamin Franklin
+%
+Honesty is the best policy.
+— Benjamin Franklin
+%
+Energy and persistence conquer all things.
+— Benjamin Franklin
+%
+Early to bed and early to rise, makes a man healthy, wealthy, and wise.
+— Benjamin Franklin
+%
+Three may keep a secret, if two of them are dead.
+— Benjamin Franklin
+%
+Do not anticipate trouble or worry about what may never happen. Keep in the sunlight.
+— Benjamin Franklin
+%
+Work as if you were to live a hundred years; pray as if you were to die tomorrow.
+— Benjamin Franklin
+%
+Don't put off until tomorrow what you can do today.
+— Benjamin Franklin
+%
+Whatever you can do or dream you can, begin it. Boldness has genius, power and magic in it.
+— Goethe
+%
+Knowing is not enough; we must apply. Willing is not enough; we must do.
+— Goethe
+%
+He who moves not forward, goes backward.
+— Goethe
+%
+A man sees in the world what he carries in his heart.
+— Goethe
+%
+Treat people as if they were what they ought to be, and you help them become what they are capable of being.
+— Goethe
+%
+Beware of him who hates the laugh of a child.
+— Lavater
+%
+Hope is the thing with feathers that perches in the soul.
+— Emily Dickinson
+%
+That love is all there is, is all we know of love.
+— Emily Dickinson
+%
+A wounded deer leaps the highest.
+— Emily Dickinson
+%
+Forever is composed of nows.
+— Emily Dickinson
+%
+Two things are infinite: the universe and human stupidity; and I'm not sure about the universe.
+— Often attributed to Einstein
+%
+The mediocre teacher tells. The good teacher explains. The superior teacher demonstrates. The great teacher inspires.
+— William Arthur Ward
+%
+If you want to lift yourself up, lift up someone else.
+— Booker T. Washington
+%
+Excellence is to do a common thing in an uncommon way.
+— Booker T. Washington
+%
+Character, not circumstances, makes the man.
+— Booker T. Washington
+%
+Success is not measured by what you accomplish, but by the opposition you have encountered, and the courage with which you have maintained the struggle against overwhelming odds.
+— Orison Swett Marden
+%
+A bend in the road is not the end of the road... unless you fail to make the turn.
+— Helen Keller
+%
+Although the world is full of suffering, it is also full of the overcoming of it.
+— Helen Keller
+%
+Walking with a friend in the dark is better than walking alone in the light.
+— Helen Keller
+%
+The best and most beautiful things in the world cannot be seen or even touched — they must be felt with the heart.
+— Helen Keller
+%
+Optimism is the faith that leads to achievement. Nothing can be done without hope and confidence.
+— Helen Keller
+%
+What we have once enjoyed deeply we can never lose. All that we love deeply becomes a part of us.
+— Helen Keller
+%
+Keep your face to the sunshine and you cannot see the shadow.
+— Helen Keller
+%
+Life is either a daring adventure or nothing at all.
+— Helen Keller
+%
+Spread love everywhere you go. Let no one ever come to you without leaving happier.
+— Mother Teresa
+%
+Not all of us can do great things. But we can do small things with great love.
+— Mother Teresa
+%
+Peace begins with a smile.
+— Mother Teresa
+%
+If you judge people, you have no time to love them.
+— Mother Teresa
+%
+Be faithful in small things because it is in them that your strength lies.
+— Mother Teresa
+%
+The most terrible poverty is loneliness, and the feeling of being unloved.
+— Mother Teresa
+%
+The longest journey of any person is the journey inward.
+— Dag Hammarskjöld
+%
+For all that has been, thanks. For all that will be, yes.
+— Dag Hammarskjöld
+%
+We are not human beings having a spiritual experience. We are spiritual beings having a human experience.
+— Pierre Teilhard de Chardin
+%
+The day will come when, after harnessing the winds, the tides, and gravitation, we shall harness the energies of love.
+— Pierre Teilhard de Chardin
+%
+Try to be a rainbow in someone's cloud.
+— Maya Angelou
+%
+You may not control all the events that happen to you, but you can decide not to be reduced by them.
+— Maya Angelou
+%
+There is no greater agony than bearing an untold story inside you.
+— Maya Angelou
+%
+I've learned that people will forget what you said, people will forget what you did, but people will never forget how you made them feel.
+— Maya Angelou
+%
+We may encounter many defeats but we must not be defeated.
+— Maya Angelou
+%
+Do the best you can until you know better. Then when you know better, do better.
+— Maya Angelou
+%
+The desire to reach for the stars is ambitious. The desire to reach hearts is wise.
+— Maya Angelou
+%
+Love recognizes no barriers. It jumps hurdles, leaps fences, penetrates walls to arrive at its destination full of hope.
+— Maya Angelou
+%
+The mind is its own place, and in itself can make a heaven of hell, a hell of heaven.
+— John Milton
+%
+Better to reign in hell than serve in heaven.
+— John Milton
+%
+A good book is the precious life-blood of a master spirit.
+— John Milton
+%
+Solitude sometimes is best society.
+— John Milton
+%
+The best way to find out if you can trust somebody is to trust them.
+— Ernest Hemingway
+%
+There is nothing noble in being superior to your fellow man; true nobility is being superior to your former self.
+— Ernest Hemingway
+%
+Courage is grace under pressure.
+— Ernest Hemingway
+%
+Write hard and clear about what hurts.
+— Ernest Hemingway
+%
+The world breaks every one and afterward many are strong at the broken places.
+— Ernest Hemingway
+%
+The first draft of anything is shit.
+— Ernest Hemingway
+%
+There is no friend as loyal as a book.
+— Ernest Hemingway
+%
+Never mistake motion for action.
+— Ernest Hemingway
+%
+The shortest answer is doing the thing.
+— Ernest Hemingway
+%
+Believe nothing of what you hear, and only half of what you see.
+— Edgar Allan Poe
+%
+All that we see or seem is but a dream within a dream.
+— Edgar Allan Poe
+%
+Years of love have been forgot in the hatred of a minute.
+— Edgar Allan Poe
+%
+The best things in life are unexpected — because there were no expectations.
+— Eli Khamarov
+%
+Life isn't about waiting for the storm to pass; it's about learning to dance in the rain.
+— Vivian Greene
+%
+The future starts today, not tomorrow.
+— Pope John Paul II
+%
+Yesterday is history, tomorrow is a mystery, today is a gift of God, which is why we call it the present.
+— Bil Keane
+%
+Sometimes the right path is not the easiest one.
+— Grandmother Willow
+%
+A goal without a plan is just a wish.
+— Antoine de Saint-Exupéry
+%
+He who has never learned to obey cannot be a good commander.
+— Aristotle
+%
+Bad excuses are worse than no excuses.
+— Italian proverb
+%
+Honest disagreement is often a good sign of progress.
+— Mahatma Gandhi
+%
+Do small things with great love.
+— Mother Teresa
+%
+The greatest discovery of any generation is that a human can alter his life by altering his attitude.
+— William James
+%
+Action may not always bring happiness, but there is no happiness without action.
+— William James
+%
+Believe that life is worth living and your belief will help create the fact.
+— William James
+%
+The greatest weapon against stress is our ability to choose one thought over another.
+— William James
+%
+We don't see things as they are, we see them as we are.
+— Anaïs Nin
+%
+Life shrinks or expands in proportion to one's courage.
+— Anaïs Nin
+%
+And the day came when the risk to remain tight in a bud was more painful than the risk it took to blossom.
+— Anaïs Nin
+%
+We do not grow absolutely, chronologically. We grow sometimes in one dimension, and not in another; unevenly.
+— Anaïs Nin
+%
+You cannot save people, you can only love them.
+— Anaïs Nin
+%
+The unreal is more powerful than the real.
+— Chuck Palahniuk
+%
+We're so trained to be judgmental about everything, that we forget how powerful it is to love.
+— Chuck Palahniuk
+%
+The first step to eternal life is you have to die.
+— Chuck Palahniuk
+%
+Find what you love and let it kill you.
+— Charles Bukowski
+%
+What matters most is how well you walk through the fire.
+— Charles Bukowski
+%
+The free soul is rare, but you know it when you see it.
+— Charles Bukowski
+%
+We're all going to die, all of us, what a circus! That alone should make us love each other but it doesn't.
+— Charles Bukowski
+%
+Don't try.
+— Charles Bukowski
+%
+The problem with the world is that the intelligent people are full of doubts, while the stupid ones are full of confidence.
+— Charles Bukowski
+%
+What's done is done. What's gone is gone. One of life's lessons is always moving on.
+— Anonymous
+%
+A real friend is one who walks in when the rest of the world walks out.
+— Walter Winchell
+%
+Friendship is born at that moment when one person says to another: "What! You too? I thought I was the only one."
+— C. S. Lewis
+%
+You can't go back and change the beginning, but you can start where you are and change the ending.
+— C. S. Lewis
+%
+Integrity is doing the right thing, even when no one is watching.
+— C. S. Lewis
+%
+We are what we believe we are.
+— C. S. Lewis
+%
+You are never too old to set another goal or to dream a new dream.
+— C. S. Lewis
+%
+Hardships often prepare ordinary people for an extraordinary destiny.
+— C. S. Lewis
+%
+Stories of imagination tend to upset those without one.
+— Terry Pratchett
+%
+It's not worth doing something unless you were doing something that someone, somewhere, would much rather you weren't doing.
+— Terry Pratchett
+%
+The trouble with having an open mind, of course, is that people will insist on coming along and trying to put things in it.
+— Terry Pratchett
+%
+Real stupidity beats artificial intelligence every time.
+— Terry Pratchett
+%
+Wisdom comes from experience. Experience is often a result of lack of wisdom.
+— Terry Pratchett
+%
+In the beginning the Universe was created. This has made a lot of people very angry and been widely regarded as a bad move.
+— Douglas Adams
+%
+I love deadlines. I love the whooshing noise they make as they go by.
+— Douglas Adams
+%
+Don't Panic.
+— Douglas Adams
+%
+The ships hung in the sky in much the same way that bricks don't.
+— Douglas Adams
+%
+Time is an illusion. Lunchtime doubly so.
+— Douglas Adams
+%
+Anyone who is capable of getting themselves made President should on no account be allowed to do the job.
+— Douglas Adams
+%
+A common mistake that people make when trying to design something completely foolproof is to underestimate the ingenuity of complete fools.
+— Douglas Adams
+%
+The first rule of programming: it's always your fault.
+— Anonymous
+%
+Software and cathedrals are much the same: first we build them, then we pray.
+— Anonymous
+%
+Programming is the art of telling another human being what one wants the computer to do.
+— Donald Knuth
+%
+Premature optimization is the root of all evil — but missed opportunities are the root of latency.
+— Anonymous
+%
+The most important property of a program is whether it accomplishes the intention of its user.
+— C. A. R. Hoare
+%
+Inside every large program, there is a small program trying to get out.
+— Tony Hoare
+%
+The cost of adding a feature isn't just the time it takes to code it. The cost includes the addition of an obstacle to future expansion.
+— Bret Victor
+%
+Most software today is very much like an Egyptian pyramid with millions of bricks piled on top of each other, with no structural integrity, but just done by brute force and thousands of slaves.
+— Alan Kay
+%
+Simple things should be simple, complex things should be possible.
+— Alan Kay
+%
+The best way to have a good idea is to have lots of ideas.
+— Linus Pauling
+%
+Satisfaction lies in the effort, not in the attainment. Full effort is full victory.
+— Mahatma Gandhi
+%
+The journey is the reward.
+— Steve Jobs
+%
+Great things in business are never done by one person; they're done by a team of people.
+— Steve Jobs
+%
+The people who are crazy enough to think they can change the world are the ones who do.
+— Steve Jobs
+%
+Innovation distinguishes between a leader and a follower.
+— Steve Jobs
+%
+Design is not just what it looks like and feels like. Design is how it works.
+— Steve Jobs
+%
+Quality is more important than quantity. One home run is much better than two doubles.
+— Steve Jobs
+%
+Have the courage to follow your heart and intuition.
+— Steve Jobs
+%
+The only way to do great work is to love what you do. If you haven't found it yet, keep looking. Don't settle.
+— Steve Jobs
+%
+Ideas are commodity. Execution of them is not.
+— Michael Dell
+%
+The best customer service is if the customer doesn't need to call you, doesn't need to talk to you. It just works.
+— Jeff Bezos
+%
+If you don't understand the details of your business, you are going to fail.
+— Jeff Bezos
+%
+What's dangerous is not to evolve.
+— Jeff Bezos
+%
+Your brand is what other people say about you when you're not in the room.
+— Jeff Bezos
+%
+Life's too short to hang out with people who aren't resourceful.
+— Jeff Bezos
+%
+A brand for a company is like a reputation for a person.
+— Jeff Bezos
+%
+We all need people who will give us feedback. That's how we improve.
+— Bill Gates
+%
+Success is a lousy teacher. It seduces smart people into thinking they can't lose.
+— Bill Gates
+%
+Patience is a key element of success.
+— Bill Gates
+%
+Don't compare yourself with anyone in this world. If you do so, you are insulting yourself.
+— Bill Gates
+%
+If you can't make it good, at least make it look good.
+— Bill Gates
+%
+The greatest danger for most of us is not that our aim is too high and we miss it, but that it is too low and we reach it.
+— Michelangelo
+%
+Genius is one percent inspiration, ninety-nine percent perspiration.
+— Thomas Edison
+%
+I have not failed. I've just found 10,000 ways that won't work.
+— Thomas Edison
+%
+The three great essentials to achieve anything worthwhile are: hard work, stick-to-itiveness, and common sense.
+— Thomas Edison
+%
+There is no substitute for hard work.
+— Thomas Edison
+%
+Many of life's failures are people who did not realize how close they were to success when they gave up.
+— Thomas Edison
+%
+If we did all the things we are capable of, we would literally astound ourselves.
+— Thomas Edison
+%
+Curiosity is the wick in the candle of learning.
+— William Arthur Ward
+%
+Real generosity toward the future lies in giving all to the present.
+— Albert Camus
+%
+In the depth of winter, I finally learned that within me there lay an invincible summer.
+— Albert Camus
+%
+You cannot create experience. You must undergo it.
+— Albert Camus
+%
+Don't walk in front of me… I may not follow. Don't walk behind me… I may not lead. Walk beside me… just be my friend.
+— Albert Camus
+%
+The struggle itself toward the heights is enough to fill a man's heart.
+— Albert Camus
+%
+Always go too far, because that's where you'll find the truth.
+— Albert Camus
+%
+We are all special cases.
+— Albert Camus
+%
+The only way to deal with an unfree world is to become so absolutely free that your very existence is an act of rebellion.
+— Albert Camus
+%
+But in the end one needs more courage to live than to kill himself.
+— Albert Camus
+%
+A friend is someone who knows all about you and still loves you.
+— Elbert Hubbard
+%
+Do not take life too seriously. You will never get out of it alive.
+— Elbert Hubbard
+%
+The greatest mistake you can make in life is to be continually fearing you will make one.
+— Elbert Hubbard
+%
+A little more persistence, a little more effort, and what seemed hopeless failure may turn to glorious success.
+— Elbert Hubbard
+%
+One machine can do the work of fifty ordinary men. No machine can do the work of one extraordinary man.
+— Elbert Hubbard
+%
+The reasonable man adapts himself to the world; the unreasonable one persists in trying to adapt the world to himself.
+— George Bernard Shaw
+%
+Life isn't about finding yourself. Life is about creating yourself.
+— George Bernard Shaw
+%
+The single biggest problem in communication is the illusion that it has taken place.
+— George Bernard Shaw
+%
+We don't stop playing because we grow old; we grow old because we stop playing.
+— George Bernard Shaw
+%
+A happy family is but an earlier heaven.
+— George Bernard Shaw
+%
+You see things; and you say "Why?" But I dream things that never were; and I say "Why not?"
+— George Bernard Shaw
+%
+Progress is impossible without change, and those who cannot change their minds cannot change anything.
+— George Bernard Shaw
+%
+The future cannot be predicted, but futures can be invented.
+— Dennis Gabor
+%
+The best preparation for tomorrow is doing your best today.
+— H. Jackson Brown Jr.
+%
+Don't say you don't have enough time. You have exactly the same number of hours per day that were given to Helen Keller, Pasteur, Michelangelo, Mother Teresa, Leonardo da Vinci, Thomas Jefferson, and Albert Einstein.
+— H. Jackson Brown Jr.
+%
+Sometimes the questions are complicated and the answers are simple.
+— Dr. Seuss
+%
+Today you are You, that is truer than true. There is no one alive who is Youer than You.
+— Dr. Seuss
+%
+Don't cry because it's over, smile because it happened.
+— Dr. Seuss
+%
+You have brains in your head. You have feet in your shoes. You can steer yourself any direction you choose.
+— Dr. Seuss
+%
+The more that you read, the more things you will know. The more that you learn, the more places you'll go.
+— Dr. Seuss
+%
+Why fit in when you were born to stand out?
+— Dr. Seuss
+%
+Sometimes you will never know the value of a moment until it becomes a memory.
+— Dr. Seuss
+%
+Unless someone like you cares a whole awful lot, nothing is going to get better. It's not.
+— Dr. Seuss
+%
+The only person who is educated is the one who has learned how to learn and change.
+— Carl Rogers
+%
+The good life is a process, not a state of being. It is a direction, not a destination.
+— Carl Rogers
+%
+What I am is good enough if I would only be it openly.
+— Carl Rogers
+%
+We cannot change, we cannot move away from what we are, until we thoroughly accept what we are.
+— Carl Rogers
+%
+Whenever I climb I am followed by a dog called Ego.
+— Friedrich Nietzsche
+%
+A casual stroll through the lunatic asylum shows that faith does not prove anything.
+— Friedrich Nietzsche
+%
+Become who you are.
+— Friedrich Nietzsche
+%
+There is more wisdom in your body than in your deepest philosophy.
+— Friedrich Nietzsche
+%
+He who has a why to live for can bear with almost any how.
+— Friedrich Nietzsche
+%
+And those who were seen dancing were thought to be insane by those who could not hear the music.
+— Friedrich Nietzsche
+%
+You need chaos in your soul to give birth to a dancing star.
+— Friedrich Nietzsche
+%
+Whoever fights monsters should see to it that in the process he does not become a monster.
+— Friedrich Nietzsche
+%
+What does not kill me makes me stronger.
+— Friedrich Nietzsche
+%
+We need to teach our children that struggle isn't a sign of weakness, but rather the strength it takes to overcome.
+— Anonymous
+%
+Sometimes you win, sometimes you learn.
+— John C. Maxwell
+%
+A leader is one who knows the way, goes the way, and shows the way.
+— John C. Maxwell
+%
+People may hear your words, but they feel your attitude.
+— John C. Maxwell
+%
+The pessimist sees the difficulty in every opportunity. The optimist sees opportunity in every difficulty.
+— Winston Churchill
+%
+Continuous effort, not strength or intelligence, is the key to unlocking our potential.
+— Winston Churchill
+%
+History will be kind to me for I intend to write it.
+— Winston Churchill
+%
+Now this is not the end. It is not even the beginning of the end. But it is, perhaps, the end of the beginning.
+— Winston Churchill
+%
+We are masters of the unsaid words, but slaves of those we let slip out.
+— Winston Churchill
+%
+You will never reach your destination if you stop and throw stones at every dog that barks.
+— Winston Churchill
+%
+The price of greatness is responsibility.
+— Winston Churchill
+%
+The empires of the future are the empires of the mind.
+— Winston Churchill
+%
+However beautiful the strategy, you should occasionally look at the results.
+— Winston Churchill
+%
+Make each day your masterpiece.
+— John Wooden
+%
+It's not so important who starts the game but who finishes it.
+— John Wooden
+%
+Talent is God-given. Be humble. Fame is man-given. Be grateful. Conceit is self-given. Be careful.
+— John Wooden
+%
+Be quick, but don't hurry.
+— John Wooden
+%
+Things turn out best for the people who make the best of the way things turn out.
+— John Wooden
+%
+Failure is not fatal, but failure to change might be.
+— John Wooden
+%
+Don't measure yourself by what you have accomplished, but by what you should have accomplished with your ability.
+— John Wooden
+%
+The most important thing in life is to learn how to give out love, and to let it come in.
+— Morrie Schwartz
+%
+Once you learn how to die, you learn how to live.
+— Morrie Schwartz
+%
+When you learn how to die, you learn how to live.
+— Morrie Schwartz
+%
+Don't wait for the perfect moment, take the moment and make it perfect.
+— Anonymous
+%
+The harder I work, the luckier I get.
+— Samuel Goldwyn
+%
+A goal properly set is halfway reached.
+— Zig Ziglar
+%
+You don't have to be great to start, but you have to start to be great.
+— Zig Ziglar
+%
+You will get all you want in life, if you help enough other people get what they want.
+— Zig Ziglar
+%
+Your attitude, not your aptitude, will determine your altitude.
+— Zig Ziglar
+%
+Of course there is no formula for success except, perhaps, an unconditional acceptance of life and what it brings.
+— Arthur Rubinstein
+%
+A wise man can learn more from a foolish question than a fool can learn from a wise answer.
+— Bruce Lee
+%
+Mistakes are always forgivable, if one has the courage to admit them.
+— Bruce Lee
+%
+The successful warrior is the average man, with laser-like focus.
+— Bruce Lee
+%
+Be water, my friend.
+— Bruce Lee
+%
+If you spend too much time thinking about a thing, you'll never get it done.
+— Bruce Lee
+%
+Adapt what is useful, reject what is useless, and add what is specifically your own.
+— Bruce Lee
+%
+Notice that the stiffest tree is most easily cracked, while the bamboo or willow survives by bending with the wind.
+— Bruce Lee
+%
+Don't fear failure. Not failure, but low aim, is the crime.
+— Bruce Lee
+%
+Don't pray for an easy life, pray for the strength to endure a difficult one.
+— Bruce Lee
+%
+Empty your cup so that it may be filled; become devoid to gain totality.
+— Bruce Lee
+%
+A goal is not always meant to be reached, it often serves simply as something to aim at.
+— Bruce Lee
+%
+The clearer you are when visualizing your dreams, the more vivid they will come to life.
+— Gail Lynne Goodwin
+%
+What we plant in the soil of contemplation, we shall reap in the harvest of action.
+— Meister Eckhart
+%
+The eye through which I see God is the same eye through which God sees me.
+— Meister Eckhart
+%
+If the only prayer you ever say in your entire life is thank you, it will be enough.
+— Meister Eckhart
+%
+The price of inaction is far greater than the cost of making a mistake.
+— Meister Eckhart
+%
+Build a better mousetrap and the world will beat a path to your door.
+— Ralph Waldo Emerson
+%
+Self-trust is the first secret of success.
+— Ralph Waldo Emerson
+%
+Nothing astonishes men so much as common sense and plain dealing.
+— Ralph Waldo Emerson
+%
+Make your work to be in keeping with your purpose.
+— Leonardo da Vinci
+%
+Learning never exhausts the mind.
+— Leonardo da Vinci
+%
+He who loves practice without theory is like the sailor who boards ship without a rudder.
+— Leonardo da Vinci
+%
+Iron rusts from disuse; water loses its purity from stagnation.
+— Leonardo da Vinci
+%
+Time stays long enough for anyone who will use it.
+— Leonardo da Vinci
+%
+The noblest pleasure is the joy of understanding.
+— Leonardo da Vinci
+%
+There are three classes of people: those who see, those who see when they are shown, those who do not see.
+— Leonardo da Vinci
+%
+Once you have tasted flight, you will forever walk the earth with your eyes turned skyward.
+— Leonardo da Vinci
+%
+Art is never finished, only abandoned.
+— Leonardo da Vinci
+%
+The smallest feline is a masterpiece.
+— Leonardo da Vinci
+%
+Patience serves as a protection against wrongs as clothes do against cold.
+— Leonardo da Vinci
+%
+Tears come from the heart and not from the brain.
+— Leonardo da Vinci
+%
+Where the spirit does not work with the hand, there is no art.
+— Leonardo da Vinci
+%
+Obstacles cannot crush me. Every obstacle yields to stern resolve.
+— Leonardo da Vinci
+%
+He who thinks little, errs much.
+— Leonardo da Vinci
+%
+Anyone who conducts an argument by appealing to authority is not using his intelligence; he is just using his memory.
+— Leonardo da Vinci
+%
+Wisdom is the daughter of experience.
+— Leonardo da Vinci
+%
+The truth is, you don't know what is going to happen tomorrow. Life is a crazy ride, and nothing is guaranteed.
+— Eminem
+%
+Be the change you wish to see in the world.
+— Mahatma Gandhi
+%
+Strength does not come from winning. Your struggles develop your strengths.
+— Arnold Schwarzenegger
+%
+The mind is the limit. As long as the mind can envision the fact that you can do something, you can do it.
+— Arnold Schwarzenegger
+%
+What we fear of doing most is usually what we most need to do.
+— Tim Ferriss
+%
+A person's success in life can usually be measured by the number of uncomfortable conversations he or she is willing to have.
+— Tim Ferriss
+%
+Conditions are never perfect. Someday is a disease that will take your dreams to the grave with you.
+— Tim Ferriss
+%
+Focus on being productive instead of busy.
+— Tim Ferriss
+%
+The Holy Grail is to focus on doing fewer things — better.
+— Tim Ferriss
+%
+Action without thought is mindless. Thought without action is fruitless.
+— Anonymous
