@@ -80,11 +80,26 @@ fn derive_shape(
     fetchers.get(&w.fetcher).map(|f| f.default_shape())
 }
 
+/// Partitions widgets into (known-fetcher, unknown-fetcher). Unknown fetcher names — typo,
+/// renamed widget, or a config newer than the installed binary — would otherwise drop silently
+/// in the realtime/cached dispatch and leave the slot blank. Diverting them at the runtime
+/// boundary mirrors the renderer side of the contract: an unknown name renders an in-band
+/// `⚠ unknown fetcher: <name>` placeholder so the user can see what to fix.
+fn partition_by_known_fetcher(
+    widgets: &[WidgetConfig],
+    registry: &Registry,
+) -> (Vec<WidgetConfig>, Vec<WidgetConfig>) {
+    widgets
+        .iter()
+        .cloned()
+        .partition(|w| registry.get(&w.fetcher).is_some())
+}
+
 /// Partitions widgets into (shape-valid, shape-invalid-with-reason). A widget whose renderer-
 /// derived shape isn't in the fetcher's `shapes()` is diverted to a placeholder rather than
 /// being dispatched — protects the same "never crash the splash" invariant as unknown-renderer
-/// handling in [`render::render_payload`]. Unknown fetcher names pass through; the fetch
-/// dispatch drops them separately.
+/// handling in [`render::render_payload`]. Unknown fetcher names are filtered out before this
+/// runs, so the unknown-fetcher branch is a defensive no-op.
 fn partition_by_shape_support(
     widgets: &[WidgetConfig],
     shapes: &HashMap<WidgetId, Shape>,
@@ -230,6 +245,9 @@ pub async fn run(
     // what needs unlocking.
     let decision = TrustStore::load().decide(config_ident);
     let (fetchable, gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
+    // Unknown fetcher names get diverted here so the silent-drop sites downstream
+    // (compute_realtime_payloads / fetch_all / load_entries) only ever see registered names.
+    let (fetchable, unknown) = partition_by_known_fetcher(&fetchable, &registry);
     // Derive the renderer-implied shape for each widget once, then reuse it in every downstream
     // step (validation, cache key, fetch, realtime compute) so the fetcher sees a single
     // consistent answer.
@@ -252,6 +270,12 @@ pub async fn run(
     ));
     for w in &gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
+    for w in &unknown {
+        payloads.insert(
+            w.id.clone(),
+            fetcher::unknown_fetcher_placeholder(&w.fetcher),
+        );
     }
     for (w, err) in &shape_invalid {
         payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
@@ -337,6 +361,7 @@ pub async fn run(
             let buckets = WidgetBuckets {
                 cached: &cached_widgets,
                 gated: &gated,
+                unknown: &unknown,
                 shape_invalid: &shape_invalid,
             };
             let start = std::time::Instant::now();
@@ -456,6 +481,9 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
     let render_registry = render::Registry::with_builtins();
     let decision = TrustStore::load().decide(config_ident);
     let (fetchable, _gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
+    // Unknown fetcher names are surfaced by the main process as placeholders; the daemon has
+    // nothing to fetch for them.
+    let (fetchable, _unknown) = partition_by_known_fetcher(&fetchable, &registry);
     let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
     // Shape-invalid widgets are rendered as placeholders by the main process; there's no value
     // in the daemon hitting their fetchers just to have the result discarded.
@@ -480,6 +508,7 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
 struct WidgetBuckets<'a> {
     cached: &'a [WidgetConfig],
     gated: &'a [WidgetConfig],
+    unknown: &'a [WidgetConfig],
     shape_invalid: &'a [(WidgetConfig, ShapeMismatch)],
 }
 
@@ -501,6 +530,12 @@ fn refresh_payloads(
     }
     for w in buckets.gated {
         payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
+    for w in buckets.unknown {
+        payloads.insert(
+            w.id.clone(),
+            fetcher::unknown_fetcher_placeholder(&w.fetcher),
+        );
     }
     for (w, err) in buckets.shape_invalid {
         payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
@@ -1635,6 +1670,46 @@ mod tests {
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 1);
         assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn partition_by_known_fetcher_separates_unknown_names() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![
+            widget("ok", "clock"),
+            widget("typo", "no_such_fetcher"),
+            widget("static", "basic_static"),
+        ];
+        let (known, unknown) = partition_by_known_fetcher(&widgets, &registry);
+        let known_ids: Vec<_> = known.iter().map(|w| w.id.clone()).collect();
+        let unknown_ids: Vec<_> = unknown.iter().map(|w| w.id.clone()).collect();
+        assert_eq!(known_ids, vec!["ok".to_string(), "static".to_string()]);
+        assert_eq!(unknown_ids, vec!["typo".to_string()]);
+    }
+
+    #[test]
+    fn refresh_payloads_surfaces_unknown_fetcher_placeholder() {
+        // Regression for #121: a typo'd or stale fetcher name used to drop the widget silently.
+        // After the fix, the widget keeps its slot and shows `⚠ unknown fetcher: <name>`.
+        let registry = Registry::with_builtins();
+        let unknown_widgets = vec![widget("typo", "no_such_fetcher")];
+        let buckets = WidgetBuckets {
+            cached: &[],
+            gated: &[],
+            unknown: &unknown_widgets,
+            shape_invalid: &[],
+        };
+        let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
+        let _ = refresh_payloads(&None, &registry, &buckets, &HashMap::new(), &mut payloads);
+        let payload = payloads.get("typo").expect("unknown fetcher must surface");
+        match &payload.body {
+            Body::TextBlock(t) => assert!(
+                t.lines.iter().any(|l| l.contains("no_such_fetcher")),
+                "placeholder must mention the unknown fetcher name: {:?}",
+                t.lines
+            ),
+            other => panic!("expected TextBlock placeholder, got {other:?}"),
+        }
     }
 
     #[test]
