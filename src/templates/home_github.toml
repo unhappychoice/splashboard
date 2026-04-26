@@ -31,17 +31,17 @@ render = { type = "grid_heatmap", align = "center" }
 [[widget]]
 id = "my_prs"
 fetcher = "github_my_prs"
-render = { type = "list_plain", bullet = "•", max_items = 4 }
+render = { type = "list_links", max_items = 4 }
 
 [[widget]]
 id = "review_queue"
 fetcher = "github_review_requests"
-render = { type = "list_plain", bullet = "•", max_items = 4 }
+render = { type = "list_links", max_items = 4 }
 
 [[widget]]
 id = "notifications"
 fetcher = "github_notifications"
-render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 5 }
+render = { type = "list_links", max_items = 5 }
 
 # ── Layout ─────────────────────────────────────────────────────────
 
