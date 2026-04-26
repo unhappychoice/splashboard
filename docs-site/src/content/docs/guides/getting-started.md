@@ -54,8 +54,8 @@ pickers — each with a live preview rendered from the shipped templates and
 your chosen theme — followed by a final confirmation page:
 
 1. **Home dashboard** — one of `home_splash` / `home_daily` / `home_github` /
-   `home_minimal`. Shown on new shells and when `cd`-ing anywhere outside a
-   git repo root.
+   `home_minimal` / `home_feed`. Shown on new shells and when `cd`-ing
+   anywhere outside a git repo root.
 2. **Project dashboard** — one of `project_splash` / `project_github` /
    `project_minimal`. Shown when `cd`-ing into the top of any git repo that
    doesn't ship its own `./.splashboard/`.
@@ -111,7 +111,7 @@ Flag reference:
 
 Available templates:
 
-- **home**: `home_splash`, `home_daily`, `home_github`, `home_minimal`
+- **home**: `home_splash`, `home_daily`, `home_github`, `home_minimal`, `home_feed`
 - **project**: `project_splash`, `project_github`, `project_minimal`
 
 See [Presets](/guides/presets/) for a rendered preview of each,

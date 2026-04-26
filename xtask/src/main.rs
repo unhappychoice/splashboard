@@ -46,6 +46,7 @@ const DASHBOARD_SNAPSHOTS: &[(&str, &str)] = &[
     ("src/templates/home_daily.toml", "home_daily.html"),
     ("src/templates/home_github.toml", "home_github.html"),
     ("src/templates/home_minimal.toml", "home_minimal.html"),
+    ("src/templates/home_feed.toml", "home_feed.html"),
     ("src/templates/project_splash.toml", "project_splash.html"),
     ("src/templates/project_github.toml", "project_github.html"),
     ("src/templates/project_minimal.toml", "project_minimal.html"),
