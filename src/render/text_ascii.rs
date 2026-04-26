@@ -1,4 +1,4 @@
-use figlet_rs::FIGfont;
+use figlet_rs::FIGlet;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -273,7 +273,7 @@ fn parse_alignment(s: Option<&str>) -> ratatui::layout::Alignment {
     }
 }
 
-fn load_font(name: Option<&str>) -> FIGfont {
+fn load_font(name: Option<&str>) -> FIGlet {
     let source = match name.unwrap_or("standard") {
         "small" => FONT_SMALL,
         "big" => FONT_BIG,
@@ -284,7 +284,7 @@ fn load_font(name: Option<&str>) -> FIGfont {
         "doom" => FONT_DOOM,
         _ => FONT_STANDARD,
     };
-    FIGfont::from_content(source).unwrap_or_else(|_| FIGfont::standard().expect("standard font"))
+    FIGlet::from_content(source).unwrap_or_else(|_| FIGlet::standard().expect("standard font"))
 }
 
 fn parse_pixel_size(s: &str) -> Option<PixelSize> {
