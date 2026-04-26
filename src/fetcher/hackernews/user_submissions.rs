@@ -264,4 +264,83 @@ mod tests {
             Some("https://news.ycombinator.com/item?id=1")
         );
     }
+
+    #[test]
+    fn linked_text_block_prefers_explicit_story_url() {
+        let it = Item {
+            id: Some(1),
+            item_type: Some("story".into()),
+            title: Some("hi".into()),
+            score: Some(1),
+            descendants: Some(0),
+            url: Some("https://example.com/x".into()),
+        };
+        let body = render_body(&[it], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/x"));
+    }
+
+    #[test]
+    fn text_block_shape_includes_meta_and_title() {
+        let body = render_body(&[item("story", Some("hello"))], Shape::TextBlock);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text block");
+        };
+        assert_eq!(t.lines[0], "10pt 2c  hello");
+    }
+
+    #[test]
+    fn entries_shape_uses_title_as_key_and_meta_as_value() {
+        let body = render_body(&[item("story", Some("hello"))], Shape::Entries);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items[0].key, "hello");
+        assert_eq!(e.items[0].value.as_deref(), Some("10pt 2c"));
+    }
+
+    #[test]
+    fn missing_title_falls_back_to_placeholder() {
+        let body = render_body(&[item("story", None)], Shape::TextBlock);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text block");
+        };
+        assert!(t.lines[0].contains("(no title)"));
+    }
+
+    #[test]
+    fn empty_items_renders_empty_body() {
+        let body = render_body(&[], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert!(b.items.is_empty());
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("user = \"pg\"\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn item_deserializes_real_story_payload() {
+        let raw = r#"{"id":42,"type":"story","title":"hi","score":99,"descendants":12,"url":"https://example.com"}"#;
+        let it: Item = serde_json::from_str(raw).unwrap();
+        assert_eq!(it.id, Some(42));
+        assert_eq!(it.item_type.as_deref(), Some("story"));
+        assert_eq!(it.title.as_deref(), Some("hi"));
+        assert_eq!(it.score, Some(99));
+        assert_eq!(it.descendants, Some(12));
+        assert_eq!(it.url.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn user_stub_deserializes_partial_payload() {
+        let raw = r#"{"id":"pg","submitted":[1,2,3]}"#;
+        let stub: UserStub = serde_json::from_str(raw).unwrap();
+        assert_eq!(stub.submitted, vec![1, 2, 3]);
+    }
 }

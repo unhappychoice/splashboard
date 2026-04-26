@@ -359,6 +359,71 @@ mod tests {
         assert!(t.lines.is_empty());
     }
 
+    #[test]
+    fn empty_items_renders_empty_linked_text_block() {
+        let body = render_body(&[], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert!(b.items.is_empty());
+    }
+
+    #[test]
+    fn linked_text_block_drops_url_when_id_and_story_url_both_missing() {
+        let it = Item {
+            id: None,
+            title: Some("orphan".into()),
+            score: Some(1),
+            descendants: Some(0),
+            url: None,
+        };
+        let body = render_body(&[it], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert!(b.items[0].url.is_none());
+    }
+
+    #[test]
+    fn missing_score_and_comments_default_to_zero() {
+        let body = render_body(&[item(Some("x"), None, None)], Shape::TextBlock);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text block");
+        };
+        assert_eq!(t.lines[0], "0pt 0c  x");
+    }
+
+    #[test]
+    fn kind_default_is_top_in_options_and_endpoint() {
+        let opts = Options::default();
+        assert!(opts.kind.is_none());
+        assert_eq!(Kind::default().endpoint(), "topstories");
+    }
+
+    #[test]
+    fn renders_each_kind_via_options() {
+        for raw in [
+            "kind = \"top\"",
+            "kind = \"new\"",
+            "kind = \"best\"",
+            "kind = \"ask\"",
+            "kind = \"show\"",
+            "kind = \"job\"",
+        ] {
+            let v: toml::Value = toml::from_str(raw).unwrap();
+            let _: Options = v.try_into().expect("kind variant should parse");
+        }
+    }
+
+    #[test]
+    fn count_clamps_extremes() {
+        // Fetch path uses `.clamp(MIN_COUNT, MAX_COUNT)` directly; verifying clamp semantics
+        // here means a future tweak to either bound stays consistent.
+        assert_eq!(0u32.clamp(MIN_COUNT, MAX_COUNT), MIN_COUNT);
+        assert_eq!(999u32.clamp(MIN_COUNT, MAX_COUNT), MAX_COUNT);
+        assert_eq!(DEFAULT_COUNT.clamp(MIN_COUNT, MAX_COUNT), DEFAULT_COUNT);
+    }
+
     /// Live smoke test — hits HN's Firebase API. `#[ignore]` keeps CI offline-safe; run with
     /// `cargo test -- --ignored fetcher::hackernews_top::tests::live` to verify real shape.
     #[tokio::test]

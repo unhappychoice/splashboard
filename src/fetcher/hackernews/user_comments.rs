@@ -256,4 +256,78 @@ mod tests {
         );
         assert_eq!(b.items[0].text, "hello");
     }
+
+    #[test]
+    fn text_block_shape_emits_snippet_per_comment() {
+        let body = render_body(
+            &[comment(1, "<p>first</p>"), comment(2, "<p>second</p>")],
+            Shape::TextBlock,
+        );
+        let Body::TextBlock(t) = body else {
+            panic!("expected text block");
+        };
+        assert_eq!(t.lines, vec!["first".to_string(), "second".to_string()]);
+    }
+
+    #[test]
+    fn missing_text_emits_empty_snippet() {
+        let it = Item {
+            id: Some(1),
+            item_type: Some("comment".into()),
+            text: None,
+        };
+        let body = render_body(&[it], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(b.items[0].text, "");
+    }
+
+    #[test]
+    fn missing_id_drops_url() {
+        let it = Item {
+            id: None,
+            item_type: Some("comment".into()),
+            text: Some("orphan".into()),
+        };
+        let body = render_body(&[it], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert!(b.items[0].url.is_none());
+    }
+
+    #[test]
+    fn truncate_preserves_short_input() {
+        assert_eq!(truncate("short", 100), "short");
+        assert_eq!(truncate("", 10), "");
+    }
+
+    #[test]
+    fn snippet_handles_nested_tags_and_entities() {
+        let it = comment(1, "<p>this is <a href=\"/x\"><i>fine</i></a> &amp; ok</p>");
+        assert_eq!(snippet(&it), "this is fine & ok");
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("user = \"pg\"\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn empty_items_renders_empty_linked_text_block() {
+        let body = render_body(&[], Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert!(b.items.is_empty());
+    }
+
+    #[test]
+    fn unaccepted_shape_falls_through_to_text_block() {
+        // Entries isn't in SHAPES; render_body should default to the TextBlock branch.
+        let body = render_body(&[comment(1, "hi")], Shape::Entries);
+        assert!(matches!(body, Body::TextBlock(_)));
+    }
 }

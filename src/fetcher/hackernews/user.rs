@@ -274,8 +274,74 @@ mod tests {
     }
 
     #[test]
+    fn iso_date_falls_back_to_empty_for_invalid_timestamp() {
+        assert_eq!(iso_date(i64::MAX), "");
+    }
+
+    #[test]
     fn strip_tags_drops_html_and_decodes_entities() {
         let out = strip_tags("<p>Hello &amp; <a href=\"/x\">world</a></p>");
         assert_eq!(out, "Hello & world");
+    }
+
+    #[test]
+    fn strip_tags_collapses_whitespace_runs() {
+        // <p> becomes a single space, multiple internal spaces get folded by split_whitespace.
+        assert_eq!(strip_tags("a<p><p><p>b"), "a b");
+        assert_eq!(strip_tags("a    b\n\nc"), "a b c");
+    }
+
+    #[test]
+    fn decode_entities_handles_canonical_set() {
+        assert_eq!(
+            decode_entities("&amp;&lt;&gt;&quot;&#x27;&#x2F;&#39;"),
+            "&<>\"'/'"
+        );
+    }
+
+    #[test]
+    fn text_block_lines_omit_about_when_blank() {
+        let lines = text_block_lines(&info(None));
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "@pg");
+        assert!(lines[1].contains("156000pt"));
+        assert!(lines[2].starts_with("joined "));
+    }
+
+    #[test]
+    fn text_block_lines_append_about_when_present() {
+        let lines = text_block_lines(&info(Some("<p>Founder</p>")));
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[3], "Founder");
+    }
+
+    #[test]
+    fn entries_uses_submission_count_not_full_array() {
+        let body = render_body(&info(None), Shape::Entries);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        let submissions = e.items.iter().find(|x| x.key == "submissions").unwrap();
+        assert_eq!(submissions.value.as_deref(), Some("5"));
+    }
+
+    #[test]
+    fn empty_about_is_treated_as_missing() {
+        let body = render_body(&info(Some("")), Shape::Entries);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert!(e.items.iter().all(|x| x.key != "about"));
+    }
+
+    #[test]
+    fn user_info_deserializes_minimal_payload() {
+        let raw = r#"{"id":"pg"}"#;
+        let info: UserInfo = serde_json::from_str(raw).unwrap();
+        assert_eq!(info.id, "pg");
+        assert_eq!(info.karma, 0);
+        assert_eq!(info.created, 0);
+        assert!(info.about.is_none());
+        assert!(info.submitted.is_empty());
     }
 }

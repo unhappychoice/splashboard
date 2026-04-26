@@ -221,4 +221,92 @@ mod tests {
         assert!(cells_concat(&buf, 0).contains("first"));
         assert!(!cells_concat(&buf, 1).contains("second"));
     }
+
+    #[test]
+    fn multiple_linked_rows_each_get_independent_osc_8() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_links".into());
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![
+                line("first", Some("https://example.com/a")),
+                line("second", Some("https://example.com/b")),
+            ]),
+            Some(&spec),
+            &registry,
+            20,
+            2,
+        );
+        let row0 = cells_concat(&buf, 0);
+        let row1 = cells_concat(&buf, 1);
+        assert!(row0.contains("https://example.com/a"), "row0: {row0:?}");
+        assert!(row1.contains("https://example.com/b"), "row1: {row1:?}");
+    }
+
+    #[test]
+    fn mixed_linked_and_unlinked_rows_only_wrap_linked() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_links".into());
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![
+                line("linked", Some("https://example.com")),
+                line("plain", None),
+            ]),
+            Some(&spec),
+            &registry,
+            20,
+            2,
+        );
+        let row0 = cells_concat(&buf, 0);
+        let row1 = cells_concat(&buf, 1);
+        assert!(row0.contains("\x1b]8;;"), "row0 should be linked: {row0:?}");
+        assert!(!row1.contains("\x1b]8;;"), "row1 should be plain: {row1:?}");
+        assert!(row1.contains("plain"));
+    }
+
+    #[test]
+    fn area_height_caps_rendered_rows() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_links".into());
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![
+                line("a", None),
+                line("b", None),
+                line("c", None),
+                line("d", None),
+            ]),
+            Some(&spec),
+            &registry,
+            20,
+            2,
+        );
+        assert!(cells_concat(&buf, 0).contains("a"));
+        assert!(cells_concat(&buf, 1).contains("b"));
+        // Buffer is only 2 rows tall — c and d simply have no place to render.
+    }
+
+    #[test]
+    fn unicode_text_in_linked_row_keeps_osc_8_wrapper() {
+        // Wide-grapheme inputs (CJK) get a per-grapheme trailing-cell reset from `set_stringn`,
+        // so a literal `"こんにちは"` substring search on the cell concat won't work. We just
+        // assert the OSC 8 wrapper survives intact and each visible char shows up somewhere.
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_links".into());
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![line("こんにちは world", Some("https://example.com"))]),
+            Some(&spec),
+            &registry,
+            30,
+            1,
+        );
+        let row = cells_concat(&buf, 0);
+        assert!(
+            row.starts_with("\x1b]8;;https://example.com\x1b\\"),
+            "missing OSC open: {row:?}",
+        );
+        assert!(row.contains("\x1b]8;;\x1b\\"), "missing OSC close: {row:?}");
+        for ch in ['こ', 'ん', 'に', 'ち', 'は'] {
+            assert!(row.contains(ch), "missing {ch}: {row:?}");
+        }
+        assert!(row.contains("world"));
+    }
 }

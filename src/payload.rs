@@ -270,6 +270,49 @@ mod tests {
     }
 
     #[test]
+    fn linked_text_block_round_trips() {
+        let p = bare(Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![
+                LinkedLine {
+                    text: "234pt 56c  Show HN: x".into(),
+                    url: Some("https://example.com/x".into()),
+                },
+                LinkedLine {
+                    text: "no link here".into(),
+                    url: None,
+                },
+            ],
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn linked_text_block_serializes_with_expected_shape_tag() {
+        let p = bare(Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![LinkedLine {
+                text: "hello".into(),
+                url: Some("https://example.com".into()),
+            }],
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "linked_text_block");
+        assert_eq!(v["data"]["items"][0]["text"], "hello");
+        assert_eq!(v["data"]["items"][0]["url"], "https://example.com");
+    }
+
+    #[test]
+    fn linked_text_block_omits_url_when_none() {
+        let p = bare(Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![LinkedLine {
+                text: "hello".into(),
+                url: None,
+            }],
+        }));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("\"url\""), "json: {json:?}");
+    }
+
+    #[test]
     fn entries_round_trips() {
         let p = bare(Body::Entries(EntriesData {
             items: vec![Entry {
