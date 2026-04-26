@@ -8,7 +8,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, Payload, TextBlockData};
+use crate::payload::{
+    Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, MarkdownTextBlockData, Payload,
+    TextBlockData, TextData,
+};
 use crate::render::Shape;
 use crate::samples;
 
@@ -19,6 +22,7 @@ pub mod github;
 pub mod hackernews;
 pub mod quote_of_day;
 pub mod read_store;
+pub mod rss;
 pub mod static_text;
 pub mod system;
 pub mod todoist;
@@ -135,18 +139,58 @@ pub struct ShapeMismatch {
     pub requested: Shape,
 }
 
+/// Build a placeholder body of the given shape from a list of message lines. Every text-shaped
+/// renderer can carry a 2-line hint, so trust / error / timeout / unknown-fetcher placeholders
+/// stay legible regardless of which renderer is configured. Non-text shapes fall back to
+/// `TextBlock` — the renderer will still reject it, but at least the message text shows up
+/// inside the resulting shape-mismatch warning rather than vanishing.
+pub fn placeholder_body(shape: Shape, lines: &[&str]) -> Body {
+    match shape {
+        Shape::Text => Body::Text(TextData {
+            value: lines.join(" — "),
+        }),
+        Shape::TextBlock => Body::TextBlock(TextBlockData {
+            lines: lines.iter().map(|s| (*s).to_string()).collect(),
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: lines.join("\n\n"),
+        }),
+        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
+            items: lines
+                .iter()
+                .map(|s| LinkedLine {
+                    text: (*s).to_string(),
+                    url: None,
+                })
+                .collect(),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: lines
+                .iter()
+                .map(|s| Entry {
+                    key: (*s).to_string(),
+                    value: None,
+                    status: None,
+                })
+                .collect(),
+        }),
+        _ => Body::TextBlock(TextBlockData {
+            lines: lines.iter().map(|s| (*s).to_string()).collect(),
+        }),
+    }
+}
+
 /// Structure mirrors [`crate::trust::requires_trust_placeholder`] — a two-line hint so the user
-/// can tell what's wrong without opening logs.
+/// can tell what's wrong without opening logs. The body matches the renderer's expected shape so
+/// the message renders inline rather than triggering a second-order shape-mismatch error.
 pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
-    let lines = vec![
-        format!("⚠ {} can't emit {}", err.fetcher, err.requested.as_str()),
-        "check `render` in config".into(),
-    ];
+    let line1 = format!("⚠ {} can't emit {}", err.fetcher, err.requested.as_str());
+    let lines = [line1.as_str(), "check `render` in config"];
     Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::TextBlock(TextBlockData { lines }),
+        body: placeholder_body(err.requested, &lines),
     }
 }
 
@@ -154,44 +198,37 @@ pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
 /// the renderer side of the contract (`render_payload` draws `unknown renderer: <name>` for the
 /// same situation): the typical trigger is an installed binary older than the config it's reading,
 /// so the second line points at upgrading rather than the log file.
-pub fn unknown_fetcher_placeholder(name: &str) -> Payload {
+pub fn unknown_fetcher_placeholder(shape: Shape, name: &str) -> Payload {
+    let line1 = format!("⚠ unknown fetcher: {name}");
     Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::TextBlock(TextBlockData {
-            lines: vec![
-                format!("⚠ unknown fetcher: {name}"),
-                "upgrade splashboard?".into(),
-            ],
-        }),
+        body: placeholder_body(shape, &[line1.as_str(), "upgrade splashboard?"]),
     }
 }
 
 /// Payload rendered in place of a widget whose fetch returned `Err`. One-line `⚠ <msg>`, with a
 /// follow-up pointer to the log file so the user can track structured details (error chain,
 /// cache key, fetcher name) without forcing a second line into the splash for every error.
-pub fn error_placeholder(msg: &str) -> Payload {
+pub fn error_placeholder(shape: Shape, msg: &str) -> Payload {
+    let line1 = format!("⚠ {msg}");
     Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::TextBlock(TextBlockData {
-            lines: vec![format!("⚠ {msg}"), "see $HOME/.splashboard/logs".into()],
-        }),
+        body: placeholder_body(shape, &[line1.as_str(), "see $HOME/.splashboard/logs"]),
     }
 }
 
 /// Payload rendered in place of a widget whose fetch exceeded the runtime deadline. Kept
 /// separate from [`error_placeholder`] so users can tell "slow" from "broken" at a glance.
-pub fn timeout_placeholder() -> Payload {
+pub fn timeout_placeholder(shape: Shape) -> Payload {
     Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::TextBlock(TextBlockData {
-            lines: vec!["⏱ timed out".into(), "see $HOME/.splashboard/logs".into()],
-        }),
+        body: placeholder_body(shape, &["⏱ timed out", "see $HOME/.splashboard/logs"]),
     }
 }
 
@@ -280,6 +317,7 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
+        r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
         for f in hackernews::fetchers() {
             r.register(f);
@@ -533,7 +571,7 @@ mod tests {
 
     #[test]
     fn unknown_fetcher_placeholder_mentions_name_and_upgrade_hint() {
-        let p = unknown_fetcher_placeholder("system_battery");
+        let p = unknown_fetcher_placeholder(Shape::TextBlock, "system_battery");
         match p.body {
             Body::TextBlock(t) => {
                 assert!(
@@ -550,5 +588,54 @@ mod tests {
             }
             other => panic!("expected TextBlock body, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn placeholder_body_adapts_to_shape() {
+        // TextBlock — straight passthrough.
+        let body = placeholder_body(Shape::TextBlock, &["hello", "world"]);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text block");
+        };
+        assert_eq!(t.lines, vec!["hello".to_string(), "world".to_string()]);
+
+        // LinkedTextBlock — text without URL so list_links can render the message.
+        let body = placeholder_body(Shape::LinkedTextBlock, &["hello", "world"]);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(b.items.len(), 2);
+        assert!(b.items.iter().all(|i| i.url.is_none()));
+
+        // Text — joined into one string so single-line renderers (`text_plain`) get a hint.
+        let body = placeholder_body(Shape::Text, &["hello", "world"]);
+        let Body::Text(t) = body else {
+            panic!("expected text");
+        };
+        assert!(t.value.contains("hello") && t.value.contains("world"));
+
+        // Entries — each line becomes a key with no value, so grid_table renders rows.
+        let body = placeholder_body(Shape::Entries, &["hello"]);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items[0].key, "hello");
+        assert!(e.items[0].value.is_none());
+
+        // Non-text shape — falls back to TextBlock; the renderer will still warn but the
+        // message text is preserved rather than vanishing.
+        let body = placeholder_body(Shape::Ratio, &["x"]);
+        assert!(matches!(body, Body::TextBlock(_)));
+    }
+
+    #[test]
+    fn requires_trust_placeholder_via_fetcher_module_emits_link_shape() {
+        // Cross-module sanity: trust gate routes through `placeholder_body`, so a
+        // `LinkedTextBlock`-expecting renderer must see a `LinkedTextBlock` body.
+        let body = placeholder_body(
+            Shape::LinkedTextBlock,
+            &["🔒 requires trust", "run `splashboard trust`"],
+        );
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
     }
 }
