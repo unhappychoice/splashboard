@@ -889,4 +889,94 @@ mod tests {
         assert_eq!(first.num_comments, Some(7));
         assert_eq!(first.subreddit.as_deref(), Some("rust"));
     }
+
+    #[test]
+    fn normalized_count_clamps_to_bounds() {
+        assert_eq!(normalized_count(None), DEFAULT_COUNT as usize);
+        assert_eq!(normalized_count(Some(0)), MIN_COUNT as usize);
+        assert_eq!(normalized_count(Some(999)), MAX_COUNT as usize);
+    }
+
+    #[test]
+    fn listing_type_controls_period_usage() {
+        assert!(SubredditListingType::Top.needs_period());
+        assert!(!SubredditListingType::Hot.needs_period());
+        assert!(!SubredditListingType::New.needs_period());
+        assert!(!SubredditListingType::Rising.needs_period());
+        assert_eq!(SubredditListingType::Top.path(), "top");
+        assert_eq!(SubredditListingType::Hot.path(), "hot");
+        assert_eq!(SubredditListingType::New.path(), "new");
+        assert_eq!(SubredditListingType::Rising.path(), "rising");
+    }
+
+    #[test]
+    fn period_query_covers_all_variants() {
+        assert_eq!(Period::Hour.as_query(), "hour");
+        assert_eq!(Period::Day.as_query(), "day");
+        assert_eq!(Period::Week.as_query(), "week");
+        assert_eq!(Period::Month.as_query(), "month");
+        assert_eq!(Period::Year.as_query(), "year");
+        assert_eq!(Period::All.as_query(), "all");
+    }
+
+    #[test]
+    fn network_unavailable_body_matches_requested_shape() {
+        let linked = network_unavailable_body(Shape::LinkedTextBlock, "reddit 403 Forbidden");
+        let Body::LinkedTextBlock(linked) = linked else {
+            panic!("expected linked_text_block");
+        };
+        assert_eq!(linked.items.len(), 1);
+        assert!(linked.items[0].text.contains("reddit 403 Forbidden"));
+
+        let entries = network_unavailable_body(Shape::Entries, "reddit timeout");
+        let Body::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].key, "reddit unavailable");
+        assert_eq!(entries.items[0].value.as_deref(), Some("reddit timeout"));
+    }
+
+    #[test]
+    fn post_link_prefers_external_url_then_permalink() {
+        let external = Post {
+            title: Some("t".into()),
+            score: Some(1),
+            num_comments: Some(1),
+            subreddit: Some("rust".into()),
+            permalink: Some("/r/rust/comments/abc/t/".into()),
+            url: Some("https://example.com/post".into()),
+        };
+        assert_eq!(post_link(&external).as_deref(), Some("https://example.com/post"));
+
+        let permalink_only = Post {
+            title: Some("t".into()),
+            score: Some(1),
+            num_comments: Some(1),
+            subreddit: Some("rust".into()),
+            permalink: Some("/r/rust/comments/abc/t/".into()),
+            url: Some("not-a-http-url".into()),
+        };
+        assert_eq!(
+            post_link(&permalink_only).as_deref(),
+            Some("https://www.reddit.com/r/rust/comments/abc/t/")
+        );
+    }
+
+    #[test]
+    fn comment_meta_handles_missing_subreddit() {
+        let comment = Comment {
+            body: Some("hello".into()),
+            score: Some(7),
+            subreddit: None,
+            permalink: None,
+        };
+        assert_eq!(comment_meta(&comment), "7↑");
+    }
+
+    #[test]
+    fn normalize_subreddit_rejects_overlength() {
+        let long = "a".repeat(22);
+        let err = normalize_subreddit(&long).unwrap_err();
+        assert!(format!("{err}").contains("too long"));
+    }
 }
