@@ -57,7 +57,7 @@ jobs:
         run: cargo llvm-cov --package splashboard --lcov --output-path lcov.info
       - name: Upload to Codecov
         if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: lcov.info
           fail_ci_if_error: false
