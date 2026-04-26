@@ -27,6 +27,12 @@ pub enum Body {
     /// Zero or more lines of text. Used by anything intrinsically multi-line: recent commits,
     /// worktrees, welcome notes, todo items.
     TextBlock(TextBlockData),
+    /// A blob of Markdown source. Distinct shape (not a flavour of `Text` / `TextBlock`)
+    /// because the contract is "this string MUST be parsed as Markdown" — a fetcher emitting
+    /// it is committing to that semantic, and the matching renderer (`text_markdown`)
+    /// refuses anything else. Keeps random `Text` payloads from being rendered as Markdown
+    /// by mistake, and keeps `text_plain` from being asked to render Markdown source verbatim.
+    MarkdownTextBlock(MarkdownTextBlockData),
     /// Zero or more lines of text where each line carries an optional URL. Renderers that
     /// understand hyperlinks (`list_links`) wrap rows whose `url` is `Some(_)` in OSC 8 escape
     /// sequences so modern terminals surface them as clickable. Renderers that don't honour
@@ -77,6 +83,11 @@ pub struct TextData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TextBlockData {
     pub lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MarkdownTextBlockData {
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -267,6 +278,24 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&p).unwrap();
         assert_eq!(v["shape"], "text_block");
         assert_eq!(v["data"]["lines"][0], "a");
+    }
+
+    #[test]
+    fn markdown_text_block_round_trips() {
+        let p = bare(Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: "# heading\n\n- a\n- b".into(),
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn markdown_text_block_serializes_with_expected_shape_tag() {
+        let p = bare(Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: "# x".into(),
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "markdown_text_block");
+        assert_eq!(v["data"]["value"], "# x");
     }
 
     #[test]
