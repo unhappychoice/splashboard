@@ -58,6 +58,22 @@ impl Renderer for TextPlainRenderer {
             .alignment(parse_align(opts.align.as_deref()));
         frame.render_widget(p, area);
     }
+    fn natural_height(
+        &self,
+        body: &Body,
+        _opts: &RenderOptions,
+        _max_width: u16,
+        _registry: &Registry,
+    ) -> u16 {
+        // text_plain doesn't wrap, so each `\n`-separated line takes exactly one row. Empty
+        // bodies still deserve a row of height so `length = "auto"` callers don't collapse.
+        let lines = match body {
+            Body::Text(d) => d.value.lines().count().max(1),
+            Body::TextBlock(d) => d.lines.len().max(1),
+            _ => 1,
+        };
+        u16::try_from(lines).unwrap_or(u16::MAX)
+    }
 }
 
 fn parse_align(s: Option<&str>) -> Alignment {
@@ -107,5 +123,55 @@ mod tests {
         let buf = render_to_buffer(&block_payload(&["first", "second"]), 30, 5);
         assert!(line_text(&buf, 0).contains("first"));
         assert!(line_text(&buf, 1).contains("second"));
+    }
+
+    #[test]
+    fn natural_height_text_counts_embedded_newlines() {
+        let r = TextPlainRenderer;
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default();
+        assert_eq!(
+            r.natural_height(&text_payload("hello world").body, &opts, 30, &registry),
+            1
+        );
+        assert_eq!(
+            r.natural_height(&text_payload("a\nb\nc").body, &opts, 30, &registry),
+            3
+        );
+    }
+
+    #[test]
+    fn natural_height_textblock_uses_line_count() {
+        let r = TextPlainRenderer;
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default();
+        assert_eq!(
+            r.natural_height(&block_payload(&["one"]).body, &opts, 30, &registry),
+            1
+        );
+        assert_eq!(
+            r.natural_height(
+                &block_payload(&["one", "two", "three"]).body,
+                &opts,
+                30,
+                &registry
+            ),
+            3
+        );
+    }
+
+    #[test]
+    fn natural_height_floors_at_one_for_empty_bodies() {
+        let r = TextPlainRenderer;
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default();
+        assert_eq!(
+            r.natural_height(&text_payload("").body, &opts, 30, &registry),
+            1
+        );
+        assert_eq!(
+            r.natural_height(&block_payload(&[]).body, &opts, 30, &registry),
+            1
+        );
     }
 }
