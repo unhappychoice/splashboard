@@ -78,6 +78,9 @@ impl Renderer for AnimatedPostfxRenderer {
     fn name(&self) -> &str {
         "animated_postfx"
     }
+    fn description(&self) -> &'static str {
+        "Wrapper that draws the inner renderer and overlays a tachyonfx pixel-level effect (fade, dissolve, sweep, glitch, matrix rain, neon flash, and more — pick via `effect`) for the duration of the animation window. Accepts every shape; the resting frame is the unmodified inner render."
+    }
     fn accepts(&self) -> &[Shape] {
         ALL_SHAPES
     }

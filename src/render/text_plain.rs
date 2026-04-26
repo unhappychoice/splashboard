@@ -30,6 +30,9 @@ impl Renderer for TextPlainRenderer {
     fn name(&self) -> &str {
         "text_plain"
     }
+    fn description(&self) -> &'static str {
+        "Single-line or multi-line body text in the theme text colour, no decoration. The quiet default for any string payload — pick `text_ascii` when you want a hero block instead."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Text, Shape::TextBlock]
     }

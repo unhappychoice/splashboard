@@ -80,6 +80,9 @@ impl Fetcher for RedditUserCommentsFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Recent comments by a single Reddit user, each prefixed with subreddit and score and linked to the comment's permalink. Use `reddit_user_posts` for that user's submissions or `reddit_subreddit_posts` for a subreddit's listing."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

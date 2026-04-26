@@ -39,6 +39,9 @@ impl RealtimeFetcher for ClockAlmanacFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "A multi-row rollup of date-derived facts (moon phase, season, zodiac, chinese zodiac, ISO week, day of year). Use this when you want every almanac value at once; pick `clock_derived` instead to surface a single value on its own line."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

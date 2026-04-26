@@ -72,6 +72,9 @@ impl Renderer for AnimatedSplitflapRenderer {
     fn name(&self) -> &str {
         "animated_splitflap"
     }
+    fn description(&self) -> &'static str {
+        "Wrapper that flips each cell through random A-Z / 0-9 / punctuation glyphs before settling on the inner renderer's final character, like a train station departures board. Columns settle left-to-right so the text resolves in reading order. Accepts every shape."
+    }
     fn accepts(&self) -> &[Shape] {
         ALL_SHAPES
     }

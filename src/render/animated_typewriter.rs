@@ -40,6 +40,9 @@ impl Renderer for AnimatedTypewriterRenderer {
     fn name(&self) -> &str {
         "animated_typewriter"
     }
+    fn description(&self) -> &'static str {
+        "Reveals the text one character at a time at roughly 40 chars/sec, as if someone is typing it live. Accepts `Text` only; best for short single-line greetings rather than multi-line blocks."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Text]
     }

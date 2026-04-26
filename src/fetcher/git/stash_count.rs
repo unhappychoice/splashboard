@@ -21,6 +21,9 @@ impl Fetcher for GitStashCount {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Number of entries in the stash reflog, as a quiet reminder of work parked aside. `Text` collapses to empty when there are zero stashes; `Entries` always reports the count."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

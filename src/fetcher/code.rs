@@ -90,6 +90,9 @@ impl Fetcher for CodeTodos {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Greps tracked source files in the discovered git repo for `TODO:` / `FIXME:` style markers (trailing colon required, vendored / generated dirs skipped). `Text` summarises `\"N TODOs in M files\"`, `TextBlock` lists `path:line: snippet`, and `Entries` / `Bars` rank files by hit count."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

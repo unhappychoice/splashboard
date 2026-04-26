@@ -29,6 +29,9 @@ impl RealtimeFetcher for RandomFortuneFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Picks one bundled Unix-style fortune cookie, advancing once per calendar day. Distinct from `random_quote`: cookies are anonymous and irreverent and may span multiple lines (haikus, short verses), with no attribution line."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

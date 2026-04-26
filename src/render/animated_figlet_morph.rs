@@ -66,6 +66,9 @@ impl Renderer for AnimatedFigletMorphRenderer {
     fn name(&self) -> &str {
         "animated_figlet_morph"
     }
+    fn description(&self) -> &'static str {
+        "Hero text rendered through a sequence of figlet fonts, crossfading from one to the next so the typography visibly reshapes itself before settling on the final font. Accepts `Text` only; the resting frame matches a static `text_ascii` render in the last font of the sequence."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Text]
     }

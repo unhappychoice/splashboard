@@ -93,6 +93,9 @@ impl Fetcher for WikipediaOnThisDayFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Events that happened on today's calendar date in history, sourced from Wikipedia's on-this-day feed (selected highlights, events, births, deaths, holidays, or all). Use `wikipedia_featured` for today's featured article or `wikipedia_random` for an arbitrary page."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

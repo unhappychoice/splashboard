@@ -280,6 +280,12 @@ impl RenderSpec {
 
 pub trait Renderer: Send + Sync {
     fn name(&self) -> &str;
+    /// One- or two-sentence summary surfaced in the generated reference docs. Should describe
+    /// the visual character (a hero block, a sparkline, a status pill) and, where multiple
+    /// siblings exist within the same family (`text_plain` vs `text_ascii`, `gauge_circle` vs
+    /// `gauge_segment`), what makes this one different. Read by config authors browsing the
+    /// catalog for the right look.
+    fn description(&self) -> &'static str;
     fn accepts(&self) -> &[Shape];
     /// Whether this renderer produces different output on repeated calls within one draw
     /// cycle. The runtime consults this: any true answer upgrades the draw phase from a single

@@ -78,6 +78,12 @@ pub struct FetchContext {
 pub trait Fetcher: Send + Sync {
     fn name(&self) -> &str;
     fn safety(&self) -> Safety;
+    /// One- or two-sentence summary surfaced in the generated reference docs. Should explain
+    /// what the fetcher shows and, where multiple siblings exist within the same family,
+    /// what makes this one different (`clock_almanac` vs `clock_sunrise`, `git_status` vs
+    /// `git_stash_count`). No leading verb tense convention; just write so a config author
+    /// scanning the catalog can decide whether this is the one they want.
+    fn description(&self) -> &'static str;
     /// Shapes this fetcher can emit. Single-shape fetchers (static_text, disk) return one
     /// variant; fetchers whose one physical read can be reshaped for different widgets (clock,
     /// read_store) list every variant they accept. Validated against the renderer-derived
@@ -119,6 +125,8 @@ pub trait Fetcher: Send + Sync {
 pub trait RealtimeFetcher: Send + Sync {
     fn name(&self) -> &str;
     fn safety(&self) -> Safety;
+    /// See [`Fetcher::description`] — same purpose for the realtime side of the registry.
+    fn description(&self) -> &'static str;
     fn shapes(&self) -> &[Shape];
     fn default_shape(&self) -> Shape {
         self.shapes()[0]
@@ -272,6 +280,12 @@ impl RegisteredFetcher {
             Self::Realtime(f) => f.safety(),
         }
     }
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Cached(f) => f.description(),
+            Self::Realtime(f) => f.description(),
+        }
+    }
     pub fn shapes(&self) -> Vec<Shape> {
         match self {
             Self::Cached(f) => f.shapes().to_vec(),
@@ -409,6 +423,9 @@ mod tests {
         fn safety(&self) -> Safety {
             self.1
         }
+        fn description(&self) -> &'static str {
+            "test fixture"
+        }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]
         }
@@ -432,6 +449,9 @@ mod tests {
         }
         fn safety(&self) -> Safety {
             self.1
+        }
+        fn description(&self) -> &'static str {
+            "test fixture"
         }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]

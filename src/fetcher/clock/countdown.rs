@@ -75,6 +75,9 @@ impl RealtimeFetcher for ClockCountdownFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Time remaining until one configured `target` date or a list of labelled `targets`, formatted as `Nd Nh` / `Nh Nm` / `Nm`. Past targets keep rendering as `passed` so the widget survives the event boundary."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

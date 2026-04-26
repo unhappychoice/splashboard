@@ -37,6 +37,9 @@ impl Renderer for ChartLineRenderer {
     fn name(&self) -> &str {
         "chart_line"
     }
+    fn description(&self) -> &'static str {
+        "Braille line plot of one or more `PointSeries` against shared x/y axes, with each series coloured from the palette. Pick this over `chart_scatter` when the trend between samples matters more than the individual points."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::PointSeries]
     }

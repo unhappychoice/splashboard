@@ -57,6 +57,9 @@ impl Renderer for GridCalendarRenderer {
     fn name(&self) -> &str {
         "grid_calendar"
     }
+    fn description(&self) -> &'static str {
+        "Month-view grid with a centred month-name header, dim weekday labels, and date cells. The focused day is bolded in the today-accent colour; event days are tinted in the event-accent colour."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Calendar]
     }

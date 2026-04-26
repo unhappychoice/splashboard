@@ -59,6 +59,9 @@ impl Fetcher for GithubRecentReleases {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Latest published releases for a repo with their tags and dates. Good for the cd-into-project view of what shipped recently."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

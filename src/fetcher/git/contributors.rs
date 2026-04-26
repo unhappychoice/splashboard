@@ -29,6 +29,9 @@ impl Fetcher for GitContributors {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Top commit authors over the last N days (default 30, override with `format = \"N\"`), ranked by commit count and capped at ten. Useful for surfacing who's been active recently."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

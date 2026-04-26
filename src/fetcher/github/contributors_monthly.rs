@@ -66,6 +66,9 @@ impl Fetcher for GithubContributorsMonthly {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Top contributors to a repo over the last N days, ranked by commit count, as bars or a list. Useful for the maintainer view of who has been shipping recently."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

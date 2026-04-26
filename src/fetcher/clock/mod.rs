@@ -77,6 +77,9 @@ impl RealtimeFetcher for ClockFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Current local time. Renders as a formatted clock string, a key/value breakdown of year/month/day/hour/minute/second, or a month calendar grid with optional highlighted days."
+    }
     fn shapes(&self) -> &[Shape] {
         BASE_SHAPES
     }

@@ -44,6 +44,9 @@ impl Renderer for ChartSparklineRenderer {
     fn name(&self) -> &str {
         "chart_sparkline"
     }
+    fn description(&self) -> &'static str {
+        "Compact in-line trend strip from a `NumberSeries`, showing only the most recent values that fit the slot. Defaults to block-glyph bars; switch to `style = \"line\"` for a single-row Braille line, and zero-value columns get a baseline tick so sparse stretches read as data instead of padding."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::NumberSeries]
     }

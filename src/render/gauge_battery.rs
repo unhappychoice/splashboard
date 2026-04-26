@@ -50,6 +50,9 @@ impl Renderer for GaugeBatteryRenderer {
     fn name(&self) -> &str {
         "gauge_battery"
     }
+    fn description(&self) -> &'static str {
+        "Battery silhouette for `Ratio`: framed cell with internal fill bars, a tip cap on the right, and a percent label. Renders as a single-line pill in short slots and as a boxed three-row icon when the slot is tall enough."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }

@@ -47,6 +47,9 @@ impl Fetcher for GithubReviewRequests {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Open pull requests where the authenticated user is a requested reviewer, across every repo. The other side of `github_my_prs` for the personal queue."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -44,6 +44,9 @@ impl Fetcher for WikipediaRandomFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "An arbitrary Wikipedia page summary (title, extract, link), drawn from the language edition's random endpoint. Refresh interval controls how often a new article is picked. Use `wikipedia_featured` for the curated daily article or `wikipedia_on_this_day` for date-anchored history."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

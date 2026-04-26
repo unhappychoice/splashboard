@@ -71,6 +71,9 @@ impl Renderer for GaugeSegmentRenderer {
     fn name(&self) -> &str {
         "gauge_segment"
     }
+    fn description(&self) -> &'static str {
+        "Discrete LED-style bar for `Ratio`: by default five chunky pip blocks that light up in steps rather than a continuous fill. Pick this over `gauge_line` when you want a retro hardware look or coarser readability at a glance."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }

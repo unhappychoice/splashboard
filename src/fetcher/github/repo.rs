@@ -25,6 +25,9 @@ impl Fetcher for GithubRepo {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Repo identity for the current directory: slug, description, and SPDX license. Use `github_repo_stars` instead for the social counters (stars, forks, watchers)."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Entries, Shape::TextBlock, Shape::Text]
     }

@@ -1466,6 +1466,9 @@ mod tests {
             fn safety(&self) -> fetcher::Safety {
                 fetcher::Safety::Safe
             }
+            fn description(&self) -> &'static str {
+                "test fixture"
+            }
             fn shapes(&self) -> &[Shape] {
                 &[Shape::Text]
             }
@@ -1525,6 +1528,9 @@ mod tests {
             }
             fn safety(&self) -> fetcher::Safety {
                 fetcher::Safety::Safe
+            }
+            fn description(&self) -> &'static str {
+                "test fixture"
             }
             fn shapes(&self) -> &[Shape] {
                 &[Shape::Text]

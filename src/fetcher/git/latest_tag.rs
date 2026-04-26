@@ -22,6 +22,9 @@ impl Fetcher for GitLatestTag {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Most recent git tag by committer time, suitable as a \"latest release\" line. `Text` shows just the tag name; `Entries` adds the short commit hash and ISO date."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

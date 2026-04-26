@@ -62,6 +62,9 @@ impl RealtimeFetcher for ClockRatioFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Fraction of the current period elapsed so far, as a `0..=1` value for gauge and progress-bar renderers. `period` selects which period (day, hour, week, month, quarter, year)."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

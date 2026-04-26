@@ -62,6 +62,9 @@ impl Fetcher for GithubAvatar {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "A GitHub user's avatar PNG, downloaded once per week and rendered as an image. Useful as the visual hero next to a `github_user` text block."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Image]
     }

@@ -74,6 +74,9 @@ impl Fetcher for WeatherFetcher {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "Current-conditions forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` shows condition / temperature / wind / humidity rows; `Text` collapses them into a single line. Metric or imperial units, no API key required."
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Entries, Shape::Text]
     }

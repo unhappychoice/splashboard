@@ -68,6 +68,9 @@ impl Renderer for MediaImageRenderer {
     fn name(&self) -> &str {
         "media_image"
     }
+    fn description(&self) -> &'static str {
+        "Embeds a raster image using the best protocol the terminal advertises (kitty, sixel, iTerm2) and falls back to half-block ASCII elsewhere. Honours `fit` (contain / cover / stretch) plus `max_width` / `max_height` / `padding` for placement."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Image]
     }

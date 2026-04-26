@@ -46,6 +46,9 @@ impl Fetcher for GithubUser {
     fn safety(&self) -> Safety {
         Safety::Safe
     }
+    fn description(&self) -> &'static str {
+        "GitHub profile data for a user (display name, bio, location, join year, follower counts), aimed at the hero / subtitle band of a home preset. Pair with `github_avatar` for the matching image."
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

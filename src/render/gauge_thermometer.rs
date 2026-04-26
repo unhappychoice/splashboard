@@ -59,6 +59,9 @@ impl Renderer for GaugeThermometerRenderer {
     fn name(&self) -> &str {
         "gauge_thermometer"
     }
+    fn description(&self) -> &'static str {
+        "Vertical mercury tube for `Ratio`: rounded glass walls with a bulb at the bottom and a mercury column rising from it, with the label and percent on the mid row. The vertical sibling of `gauge_line` — pick this for tall, narrow slots where height carries the meaning."
+    }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Ratio]
     }
