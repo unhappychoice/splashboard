@@ -201,6 +201,11 @@ pub struct RenderOptions {
     /// an auto value derived from the visible width and the sample count.
     #[serde(default)]
     pub bins: Option<u16>,
+    /// chart_histogram: render the value range (min / max) on the bottom edge and the peak
+    /// count on the top edge. Skipped automatically when the chart area is shorter than 4
+    /// rows so the bars themselves still get usable space.
+    #[serde(default)]
+    pub axis_labels: Option<bool>,
     /// chart_bar: thickness of each bar, in cells. Applied along the axis perpendicular to
     /// the bar direction (bar height for vertical, bar row-height for horizontal). None
     /// defaults to `3` for vertical and `1` for horizontal — horizontal bars read fine

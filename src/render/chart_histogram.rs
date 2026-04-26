@@ -12,9 +12,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
+const COLOR_KEYS: &[ColorKey] = &[theme::TEXT, theme::TEXT_DIM];
 
 const MIN_AUTO_BINS: u16 = 5;
+
+/// Minimum chart-area height that still leaves a usable row of bars (≥ 2) when both axis-label
+/// rows are reserved. Below this we drop the labels rather than the bars.
+const MIN_HEIGHT_FOR_AXIS_LABELS: u16 = 4;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -30,6 +34,13 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         required: false,
         default: Some("auto"),
         description: "Number of buckets the input is binned into. Auto picks `ceil(sqrt(n))` clamped to `[5, area width]`; explicit values clamp to `[1, area width]`.",
+    },
+    OptionSchema {
+        name: "axis_labels",
+        type_hint: "bool",
+        required: false,
+        default: Some("false"),
+        description: "Render the value range (min / max) along the bottom edge and the peak bucket count along the top edge. Auto-skipped when the chart area is shorter than 4 rows so bars keep usable space.",
     },
 ];
 
@@ -80,7 +91,9 @@ fn render_histogram(
     if chart_area.width == 0 || chart_area.height == 0 || data.values.is_empty() {
         return;
     }
-    let bins = resolve_bins(opts.bins, data.values.len(), chart_area.width);
+    let want_axes = opts.axis_labels.unwrap_or(false);
+    let (top_label_area, bars_area, bottom_label_area) = split_axis_areas(chart_area, want_axes);
+    let bins = resolve_bins(opts.bins, data.values.len(), bars_area.width);
     let counts = bucket_counts(&data.values, bins);
     let bars: Vec<Bar> = counts
         .iter()
@@ -92,8 +105,52 @@ fn render_histogram(
             .bar_width(1)
             .bar_gap(0)
             .bar_style(Style::default().fg(theme.text)),
-        chart_area,
+        bars_area,
     );
+    if let (Some(top), Some(bottom)) = (top_label_area, bottom_label_area) {
+        let peak = counts.iter().copied().max().unwrap_or(0);
+        let (min, max) = (
+            *data.values.iter().min().unwrap(),
+            *data.values.iter().max().unwrap(),
+        );
+        draw_axis_labels(frame, top, bottom, peak, min, max, theme);
+    }
+}
+
+/// Splits the chart area into (optional top label row, bars row, optional bottom label row). Top
+/// and bottom rows are reserved only when `want_axes` is true and the area can spare the height;
+/// otherwise the bars expand to the full area.
+fn split_axis_areas(area: Rect, want_axes: bool) -> (Option<Rect>, Rect, Option<Rect>) {
+    if !want_axes || area.height < MIN_HEIGHT_FOR_AXIS_LABELS {
+        return (None, area, None);
+    }
+    let [top, mid, bot] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+    (Some(top), mid, Some(bot))
+}
+
+fn draw_axis_labels(
+    frame: &mut Frame,
+    top: Rect,
+    bottom: Rect,
+    peak: u64,
+    min: u64,
+    max: u64,
+    theme: &Theme,
+) {
+    let dim = Style::default().fg(theme.text_dim);
+    frame.render_widget(Paragraph::new(format!("{peak}")).style(dim), top);
+    let min_str = format!("{min}");
+    let max_str = format!("{max}");
+    let pad = bottom
+        .width
+        .saturating_sub((min_str.chars().count() + max_str.chars().count()) as u16);
+    let bottom_text = format!("{min_str}{}{max_str}", " ".repeat(pad as usize));
+    frame.render_widget(Paragraph::new(bottom_text).style(dim), bottom);
 }
 
 fn split_for_label(area: Rect, label: Option<&str>) -> (Rect, Rect) {
@@ -254,5 +311,75 @@ mod tests {
     fn explicit_bins_option_parses() {
         let spec = histogram_spec(r#"{ type = "chart_histogram", bins = 12 }"#);
         assert_eq!(spec.options().bins, Some(12));
+    }
+
+    #[test]
+    fn axis_labels_option_parses() {
+        let spec = histogram_spec(r#"{ type = "chart_histogram", axis_labels = true }"#);
+        assert_eq!(spec.options().axis_labels, Some(true));
+    }
+
+    #[test]
+    fn axis_labels_renders_min_max_and_peak() {
+        let registry = Registry::with_builtins();
+        let spec = histogram_spec(r#"{ type = "chart_histogram", axis_labels = true, bins = 5 }"#);
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![10, 20, 30, 40, 50, 50, 50, 80, 90, 100]),
+            Some(&spec),
+            &registry,
+            30,
+            6,
+        );
+        let top = line_text(&buf, 0);
+        let bottom = line_text(&buf, 5);
+        assert!(
+            top.trim_end().starts_with('3'),
+            "expected peak count on top: {top:?}"
+        );
+        assert!(
+            bottom.trim_start().starts_with("10"),
+            "expected min on bottom-left: {bottom:?}"
+        );
+        assert!(
+            bottom.trim_end().ends_with("100"),
+            "expected max on bottom-right: {bottom:?}"
+        );
+    }
+
+    #[test]
+    fn axis_labels_skipped_when_height_too_small() {
+        let registry = Registry::with_builtins();
+        let spec = histogram_spec(r#"{ type = "chart_histogram", axis_labels = true }"#);
+        // height=3 < MIN_HEIGHT_FOR_AXIS_LABELS=4 → bars take the full area, no label rows.
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![1, 2, 3, 4, 5, 6, 7, 8]),
+            Some(&spec),
+            &registry,
+            20,
+            3,
+        );
+        let bottom = line_text(&buf, 2);
+        assert!(
+            !bottom.trim_start().starts_with('1') || bottom.contains('█'),
+            "labels should be suppressed and bars present: {bottom:?}"
+        );
+    }
+
+    #[test]
+    fn split_axis_areas_reserves_label_rows_when_tall_enough() {
+        let area = Rect::new(0, 0, 30, 6);
+        let (top, mid, bot) = split_axis_areas(area, true);
+        assert!(top.is_some());
+        assert!(bot.is_some());
+        assert_eq!(mid.height, 4);
+    }
+
+    #[test]
+    fn split_axis_areas_collapses_when_disabled() {
+        let area = Rect::new(0, 0, 30, 10);
+        let (top, mid, bot) = split_axis_areas(area, false);
+        assert!(top.is_none());
+        assert!(bot.is_none());
+        assert_eq!(mid.height, 10);
     }
 }
