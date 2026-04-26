@@ -1,6 +1,6 @@
-//! `fortune` — bundled Unix-style fortune cookies. One entry per day, deterministic by
-//! epoch days so the cookie advances at midnight and drifts through the calendar year
-//! over year. Distinct from `quote_of_day`: cookies are anonymous, irreverent, and may
+//! `random_fortune` — bundled Unix-style fortune cookies. One entry per day, deterministic
+//! by epoch days so the cookie advances at midnight and drifts through the calendar year
+//! over year. Distinct from `random_quote`: cookies are anonymous, irreverent, and may
 //! span multiple lines (haikus, short verses, multi-line aphorisms). Zero-config, zero
 //! I/O, infallible.
 
@@ -20,11 +20,11 @@ const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Text];
 /// preserved verbatim — `Text` shape keeps them, `TextBlock` splits on them.
 static COOKIES: LazyLock<Vec<String>> = LazyLock::new(|| parse(include_str!("data.txt")));
 
-pub struct FortuneFetcher;
+pub struct RandomFortuneFetcher;
 
-impl RealtimeFetcher for FortuneFetcher {
+impl RealtimeFetcher for RandomFortuneFetcher {
     fn name(&self) -> &str {
-        "fortune"
+        "random_fortune"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn default_shape_is_text_block() {
-        let p = FortuneFetcher.compute(&ctx(None));
+        let p = RandomFortuneFetcher.compute(&ctx(None));
         let Body::TextBlock(d) = p.body else {
             panic!("expected text_block");
         };
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn text_shape_returns_single_string() {
-        let p = FortuneFetcher.compute(&ctx(Some(Shape::Text)));
+        let p = RandomFortuneFetcher.compute(&ctx(Some(Shape::Text)));
         let Body::Text(d) = p.body else {
             panic!("expected text");
         };

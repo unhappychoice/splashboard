@@ -1,4 +1,4 @@
-//! `quote_of_day` — a bundled daily quote. Selection is deterministic per calendar day
+//! `random_quote` — a bundled daily quote. Selection is deterministic per calendar day
 //! (epoch days modulo the built-in quote count), so every `splashboard` invocation on
 //! the same day sees the same line and the quote advances automatically at midnight.
 //! Indexing by epoch days (not day-of-year) means the cycle drifts year over year, so
@@ -20,11 +20,11 @@ const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Text];
 /// Entries with no `—` line are treated as anonymous (author = "Anonymous").
 static QUOTES: LazyLock<Vec<(String, String)>> = LazyLock::new(|| parse(include_str!("data.txt")));
 
-pub struct QuoteOfDayFetcher;
+pub struct RandomQuoteFetcher;
 
-impl RealtimeFetcher for QuoteOfDayFetcher {
+impl RealtimeFetcher for RandomQuoteFetcher {
     fn name(&self) -> &str {
-        "quote_of_day"
+        "random_quote"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn default_shape_is_text_block() {
-        let p = QuoteOfDayFetcher.compute(&ctx(None));
+        let p = RandomQuoteFetcher.compute(&ctx(None));
         let Body::TextBlock(d) = p.body else {
             panic!("expected text_block");
         };
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn text_shape_joins_with_dash() {
-        let p = QuoteOfDayFetcher.compute(&ctx(Some(Shape::Text)));
+        let p = RandomQuoteFetcher.compute(&ctx(Some(Shape::Text)));
         let Body::Text(d) = p.body else {
             panic!("expected text");
         };

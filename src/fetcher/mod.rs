@@ -18,11 +18,11 @@ use crate::samples;
 pub mod calendar;
 pub mod clock;
 pub mod code;
-pub mod fortune;
 pub mod git;
 pub mod github;
 pub mod hackernews;
-pub mod quote_of_day;
+pub mod random_fortune;
+pub mod random_quote;
 pub mod read_store;
 pub mod rss;
 pub mod static_text;
@@ -336,8 +336,8 @@ impl Registry {
         for f in clock::realtime_fetchers() {
             r.register_realtime(f);
         }
-        r.register_realtime(Arc::new(quote_of_day::QuoteOfDayFetcher));
-        r.register_realtime(Arc::new(fortune::FortuneFetcher));
+        r.register_realtime(Arc::new(random_quote::RandomQuoteFetcher));
+        r.register_realtime(Arc::new(random_fortune::RandomFortuneFetcher));
         for f in system::realtime_fetchers() {
             r.register_realtime(f);
         }

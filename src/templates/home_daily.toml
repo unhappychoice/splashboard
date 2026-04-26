@@ -12,7 +12,7 @@
 
 [[widget]]
 id = "quote"
-fetcher = "quote_of_day"
+fetcher = "random_quote"
 render = { type = "text_plain", align = "center" }
 
 [[widget]]
