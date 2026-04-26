@@ -14,6 +14,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub inner: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::PANEL_TITLE, theme::TEXT];
 
 const DEFAULT_DURATION_MS: u64 = 1600;
@@ -87,7 +94,8 @@ impl Renderer for AnimatedSplitflapRenderer {
         registry: &Registry,
     ) {
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -122,7 +130,8 @@ impl Renderer for AnimatedSplitflapRenderer {
         registry: &Registry,
     ) -> u16 {
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -184,13 +193,13 @@ fn flap_glyph(x: u16, y: u16, elapsed_ms: u32) -> char {
 
 fn inner_options(opts: &RenderOptions) -> RenderOptions {
     RenderOptions {
-        inner: None,
-        effect: None,
         duration_ms: None,
-        boot_lines: None,
-        font_sequence: None,
         ..opts.clone()
     }
+    .without_extra("inner")
+    .without_extra("effect")
+    .without_extra("boot_lines")
+    .without_extra("font_sequence")
 }
 
 fn elapsed_since_start_ms() -> u32 {
@@ -235,11 +244,11 @@ mod tests {
         let spec = RenderSpec::Full {
             type_name: "animated_splitflap".into(),
             options: RenderOptions {
-                inner: Some("text_ascii".into()),
                 style: Some("figlet".into()),
                 duration_ms: Some(400),
                 ..RenderOptions::default()
-            },
+            }
+            .with_extra("inner", "text_ascii"),
         };
         let registry = super::super::Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 40, 10);

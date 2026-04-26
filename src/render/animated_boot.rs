@@ -15,6 +15,15 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub inner: Option<String>,
+    #[serde(default)]
+    pub boot_lines: Option<Vec<String>>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT, theme::TEXT_SECONDARY, theme::STATUS_OK];
 
 const DEFAULT_DURATION_MS: u64 = 1800;
@@ -102,7 +111,8 @@ impl Renderer for AnimatedBootRenderer {
         registry: &Registry,
     ) {
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -126,7 +136,7 @@ impl Renderer for AnimatedBootRenderer {
         let total = opts.duration_ms.unwrap_or(DEFAULT_DURATION_MS).max(1) as u32;
         let elapsed = elapsed_since_start_ms();
         let boot_ms = (total as f32 * BOOT_SHARE) as u32;
-        let lines = boot_lines(opts);
+        let lines = boot_lines(&specific);
         if elapsed >= boot_ms || lines.is_empty() {
             inner.render(frame, area, body, &inner_options(opts), theme, registry);
             return;
@@ -141,7 +151,8 @@ impl Renderer for AnimatedBootRenderer {
         registry: &Registry,
     ) -> u16 {
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -191,8 +202,8 @@ fn draw_boot_log(
     frame.render_widget(p, chunks[1]);
 }
 
-fn boot_lines(opts: &RenderOptions) -> Vec<String> {
-    match opts.boot_lines.as_ref() {
+fn boot_lines(specific: &Options) -> Vec<String> {
+    match specific.boot_lines.as_ref() {
         Some(list) => list.clone(),
         None => DEFAULT_LINES.iter().map(|s| s.to_string()).collect(),
     }
@@ -200,13 +211,13 @@ fn boot_lines(opts: &RenderOptions) -> Vec<String> {
 
 fn inner_options(opts: &RenderOptions) -> RenderOptions {
     RenderOptions {
-        inner: None,
-        effect: None,
         duration_ms: None,
-        boot_lines: None,
-        font_sequence: None,
         ..opts.clone()
     }
+    .without_extra("inner")
+    .without_extra("effect")
+    .without_extra("boot_lines")
+    .without_extra("font_sequence")
 }
 
 fn draw_inline_error(frame: &mut Frame, area: Rect, msg: &str) {
@@ -231,36 +242,35 @@ mod tests {
 
     #[test]
     fn boot_lines_falls_back_to_default_when_none() {
-        let opts = RenderOptions::default();
-        assert_eq!(boot_lines(&opts).len(), DEFAULT_LINES.len());
+        let specific = Options::default();
+        assert_eq!(boot_lines(&specific).len(), DEFAULT_LINES.len());
     }
 
     #[test]
     fn boot_lines_respects_empty_override() {
-        let opts = RenderOptions {
+        let specific = Options {
             boot_lines: Some(vec![]),
-            ..RenderOptions::default()
+            ..Options::default()
         };
-        assert!(boot_lines(&opts).is_empty());
+        assert!(boot_lines(&specific).is_empty());
     }
 
     #[test]
     fn inner_options_strips_boot_fields() {
         let opts = RenderOptions {
-            inner: Some("text_ascii".into()),
-            effect: Some("fade_in".into()),
             duration_ms: Some(1500),
-            boot_lines: Some(vec!["a".into()]),
-            font_sequence: Some(vec!["small".into()]),
             style: Some("figlet".into()),
             ..RenderOptions::default()
-        };
+        }
+        .with_extra("inner", "text_ascii")
+        .with_extra("effect", "fade_in")
+        .with_extra("boot_lines", vec!["a".to_string()])
+        .with_extra("font_sequence", vec!["small".to_string()]);
         let inner = inner_options(&opts);
-        assert!(inner.inner.is_none());
-        assert!(inner.effect.is_none());
+        let parsed: Options = inner.parse_specific();
+        assert!(parsed.inner.is_none());
+        assert!(parsed.boot_lines.is_none());
         assert!(inner.duration_ms.is_none());
-        assert!(inner.boot_lines.is_none());
-        assert!(inner.font_sequence.is_none());
         assert_eq!(inner.style.as_deref(), Some("figlet"));
     }
 
@@ -277,12 +287,12 @@ mod tests {
         let spec = RenderSpec::Full {
             type_name: "animated_boot".into(),
             options: RenderOptions {
-                inner: Some("text_ascii".into()),
                 style: Some("figlet".into()),
-                font: Some("standard".into()),
                 duration_ms: Some(400),
                 ..RenderOptions::default()
-            },
+            }
+            .with_extra("inner", "text_ascii")
+            .with_extra("font", "standard"),
         };
         let registry = super::super::Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 60, 12);

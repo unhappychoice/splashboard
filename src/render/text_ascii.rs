@@ -13,6 +13,15 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Options {
+    #[serde(default)]
+    pub font: Option<String>,
+    #[serde(default)]
+    pub pixel_size: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT, theme::PANEL_TITLE];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -98,9 +107,10 @@ impl Renderer for TextAsciiRenderer {
         _registry: &Registry,
     ) {
         if let Body::Text(d) = body {
+            let specific: Options = opts.parse_specific();
             match opts.style.as_deref() {
-                Some("figlet") => render_figlet(frame, area, d, opts, theme),
-                _ => render_blocks(frame, area, d, opts, theme),
+                Some("figlet") => render_figlet(frame, area, d, opts, &specific, theme),
+                _ => render_blocks(frame, area, d, opts, &specific, theme),
             }
         }
     }
@@ -114,14 +124,16 @@ impl Renderer for TextAsciiRenderer {
         let Body::Text(d) = body else {
             return 1;
         };
+        let specific: Options = opts.parse_specific();
         match opts.style.as_deref() {
             Some("figlet") => {
                 // u16::MAX lets wrap always succeed — we want the true row count
                 // given the width, not the height-gated one render() uses.
-                let rendered = figlet_wrapped(&d.value, opts.font.as_deref(), max_width, u16::MAX);
+                let rendered =
+                    figlet_wrapped(&d.value, specific.font.as_deref(), max_width, u16::MAX);
                 rendered.lines().count().clamp(1, u16::MAX as usize) as u16
             }
-            _ => blocks_height(opts.pixel_size.as_deref()),
+            _ => blocks_height(specific.pixel_size.as_deref()),
         }
     }
 }
@@ -140,9 +152,10 @@ fn render_blocks(
     area: Rect,
     data: &TextData,
     opts: &RenderOptions,
+    specific: &Options,
     theme: &Theme,
 ) {
-    let pixel_size = opts
+    let pixel_size = specific
         .pixel_size
         .as_deref()
         .and_then(parse_pixel_size)
@@ -162,9 +175,15 @@ fn render_figlet(
     area: Rect,
     data: &TextData,
     opts: &RenderOptions,
+    specific: &Options,
     theme: &Theme,
 ) {
-    let rendered = figlet_wrapped(&data.value, opts.font.as_deref(), area.width, area.height);
+    let rendered = figlet_wrapped(
+        &data.value,
+        specific.font.as_deref(),
+        area.width,
+        area.height,
+    );
     let p = Paragraph::new(rendered)
         .style(Style::default().fg(resolve_color(opts, theme)))
         .alignment(parse_alignment(opts.align.as_deref()));

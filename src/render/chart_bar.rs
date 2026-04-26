@@ -11,6 +11,22 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub horizontal: Option<bool>,
+    /// Reserved — `BarsData` is single-series today, so stacking is a no-op until the
+    /// shape grows series support. Kept on the struct so configs stay forward-compatible.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub stacked: Option<bool>,
+    #[serde(default)]
+    pub max_bars: Option<usize>,
+    #[serde(default)]
+    pub bar_width: Option<u16>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -81,15 +97,16 @@ fn render_bars(
     opts: &RenderOptions,
     theme: &Theme,
 ) {
-    let capped = capped_bars(data, opts.max_bars);
+    let specific: Options = opts.parse_specific();
+    let capped = capped_bars(data, specific.max_bars);
     let bars: Vec<(&str, u64)> = capped.iter().map(|b| (b.0.as_str(), b.1)).collect();
-    let horizontal = opts.horizontal.unwrap_or(false);
+    let horizontal = specific.horizontal.unwrap_or(false);
     let direction = if horizontal {
         Direction::Horizontal
     } else {
         Direction::Vertical
     };
-    let bar_width = opts.bar_width.unwrap_or(if horizontal { 1 } else { 3 });
+    let bar_width = specific.bar_width.unwrap_or(if horizontal { 1 } else { 3 });
     frame.render_widget(
         BarChart::default()
             .data(&bars)
