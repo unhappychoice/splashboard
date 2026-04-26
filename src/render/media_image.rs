@@ -155,14 +155,14 @@ fn resize_mode(fit: Option<&str>) -> Resize {
 
 fn picker() -> Picker {
     static CACHED: OnceLock<Picker> = OnceLock::new();
-    *CACHED.get_or_init(detect_picker)
+    CACHED.get_or_init(detect_picker).clone()
 }
 
 fn detect_picker() -> Picker {
     if std::io::stdin().is_terminal() {
-        Picker::from_query_stdio().unwrap_or_else(|_| Picker::from_fontsize((8, 16)))
+        Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks())
     } else {
-        Picker::from_fontsize((8, 16))
+        Picker::halfblocks()
     }
 }
 
