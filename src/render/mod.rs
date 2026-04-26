@@ -35,6 +35,7 @@ mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
 mod list_plain;
+mod list_ranking;
 mod list_timeline;
 pub mod loading;
 mod media_image;
@@ -375,6 +376,7 @@ impl Registry {
         r.register(Arc::new(animated_wave::AnimatedWaveRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
+        r.register(Arc::new(list_ranking::ListRankingRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
         r.register(Arc::new(gauge_battery::GaugeBatteryRenderer));
         r.register(Arc::new(gauge_circle::GaugeCircleRenderer));
@@ -603,6 +605,7 @@ mod tests {
             "animated_wave",
             "status_badge",
             "list_plain",
+            "list_ranking",
             "list_timeline",
             "grid_table",
             "grid_heatmap",
