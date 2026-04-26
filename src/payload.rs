@@ -27,6 +27,12 @@ pub enum Body {
     /// Zero or more lines of text. Used by anything intrinsically multi-line: recent commits,
     /// worktrees, welcome notes, todo items.
     TextBlock(TextBlockData),
+    /// Zero or more lines of text where each line carries an optional URL. Renderers that
+    /// understand hyperlinks (`list_links`) wrap rows whose `url` is `Some(_)` in OSC 8 escape
+    /// sequences so modern terminals surface them as clickable. Renderers that don't honour
+    /// links can ignore the urls and render the text only. Right for feeds — HN top, GitHub
+    /// PRs/issues/releases — where each row has a canonical "open this" target.
+    LinkedTextBlock(LinkedTextBlockData),
     /// Key/value rows. Used by system info, env dumps, anything label:value shaped.
     Entries(EntriesData),
     /// A single 0..=1 value with an optional display label. Gauges, progress bars, donuts.
@@ -71,6 +77,18 @@ pub struct TextData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TextBlockData {
     pub lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkedTextBlockData {
+    pub items: Vec<LinkedLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkedLine {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
