@@ -168,9 +168,15 @@ fn fetcher_page(f: &RegisteredFetcher, renderers: &RenderRegistry) -> String {
     let mut out = String::new();
     push_frontmatter(&mut out, f.name(), f.description());
     let _ = writeln!(out, "{}\n", f.description());
-    let _ = writeln!(out, "- Kind: {}", kind_label(f));
-    let _ = writeln!(out, "- Safety: {}", safety_label(f.safety()));
-    let _ = writeln!(out, "- Shapes: {}\n", shapes_list(&f.shapes()));
+    out.push_str("| Kind | Safety | Shapes |\n");
+    out.push_str("| --- | --- | --- |\n");
+    let _ = writeln!(
+        out,
+        "| {kind} | {safety} | {shapes} |\n",
+        kind = kind_label(f),
+        safety = safety_label(f.safety()),
+        shapes = shapes_list(&f.shapes()),
+    );
     render_option_section(
         &mut out,
         f.option_schemas(),
@@ -202,11 +208,13 @@ fn renderer_page(r: &Arc<dyn Renderer>, fetchers: &FetcherRegistry) -> String {
     let mut out = String::new();
     push_frontmatter(&mut out, r.name(), r.description());
     let _ = writeln!(out, "{}\n", r.description());
-    let _ = writeln!(out, "- Accepts: {}", shapes_list(r.accepts()));
+    out.push_str("| Accepts | Animates |\n");
+    out.push_str("| --- | --- |\n");
     let _ = writeln!(
         out,
-        "- Animates: {}\n",
-        if r.animates() { "yes" } else { "no" }
+        "| {accepts} | {animates} |\n",
+        accepts = shapes_list(r.accepts()),
+        animates = if r.animates() { "yes" } else { "no" },
     );
     render_option_section(
         &mut out,
