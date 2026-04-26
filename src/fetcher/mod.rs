@@ -20,6 +20,7 @@ pub mod quote_of_day;
 pub mod read_store;
 pub mod static_text;
 pub mod system;
+pub mod todoist;
 pub mod weather;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,6 +272,9 @@ impl Registry {
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
+        for f in todoist::fetchers() {
+            r.register(f);
+        }
         for f in clock::realtime_fetchers() {
             r.register_realtime(f);
         }
