@@ -147,6 +147,24 @@ pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
     }
 }
 
+/// Payload rendered in place of a widget whose configured fetcher name isn't registered. Mirrors
+/// the renderer side of the contract (`render_payload` draws `unknown renderer: <name>` for the
+/// same situation): the typical trigger is an installed binary older than the config it's reading,
+/// so the second line points at upgrading rather than the log file.
+pub fn unknown_fetcher_placeholder(name: &str) -> Payload {
+    Payload {
+        icon: None,
+        status: None,
+        format: None,
+        body: Body::TextBlock(TextBlockData {
+            lines: vec![
+                format!("⚠ unknown fetcher: {name}"),
+                "upgrade splashboard?".into(),
+            ],
+        }),
+    }
+}
+
 /// Payload rendered in place of a widget whose fetch returned `Err`. One-line `⚠ <msg>`, with a
 /// follow-up pointer to the log file so the user can track structured details (error chain,
 /// cache key, fetcher name) without forcing a second line into the splash for every error.
@@ -477,5 +495,26 @@ mod tests {
     fn cache_key_is_prefixed_with_fetcher_name() {
         let k = default_cache_key("basic_static", &ctx_with(None));
         assert!(k.starts_with("basic_static-"));
+    }
+
+    #[test]
+    fn unknown_fetcher_placeholder_mentions_name_and_upgrade_hint() {
+        let p = unknown_fetcher_placeholder("system_battery");
+        match p.body {
+            Body::TextBlock(t) => {
+                assert!(
+                    t.lines[0].contains("system_battery"),
+                    "lines: {:?}",
+                    t.lines
+                );
+                assert!(t.lines[0].starts_with("⚠"), "lines: {:?}", t.lines);
+                assert!(
+                    t.lines.iter().any(|l| l.contains("upgrade")),
+                    "expected upgrade hint: {:?}",
+                    t.lines
+                );
+            }
+            other => panic!("expected TextBlock body, got {other:?}"),
+        }
     }
 }
