@@ -39,7 +39,7 @@ ratatui-image = "4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process"] }
 async-trait = "0.1"
-sha2 = "0.10"
+sha2 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 chrono-tz = { version = "0.10", default-features = false }
 sysinfo = "0.38.4"
