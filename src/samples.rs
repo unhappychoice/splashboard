@@ -11,9 +11,9 @@
 //! any future CLI that wants to preview what a fetcher emits without hitting I/O.
 
 use crate::payload::{
-    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData,
-    NumberSeriesData, PointSeries, PointSeriesData, RatioData, Status, TextBlockData, TextData,
-    TimelineData, TimelineEvent,
+    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, LinkedLine,
+    LinkedTextBlockData, NumberSeriesData, PointSeries, PointSeriesData, RatioData, Status,
+    TextBlockData, TextData, TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 
@@ -24,6 +24,10 @@ pub fn canonical_sample(shape: Shape) -> Option<Body> {
     Some(match shape {
         Shape::Text => text("splashboard"),
         Shape::TextBlock => text_block(&["splashboard", "greetings on cd"]),
+        Shape::LinkedTextBlock => linked_text_block(&[
+            ("splashboard greets on cd", Some("https://example.com/")),
+            ("recent commit landed", None),
+        ]),
         Shape::Entries => entries(&[("key", "value"), ("foo", "bar"), ("baz", "qux")]),
         Shape::Ratio => ratio(0.67, "used"),
         Shape::NumberSeries => {
@@ -52,6 +56,18 @@ pub fn text(s: &str) -> Body {
 pub fn text_block(ss: &[&str]) -> Body {
     Body::TextBlock(TextBlockData {
         lines: ss.iter().map(|s| (*s).to_string()).collect(),
+    })
+}
+
+pub fn linked_text_block(rows: &[(&str, Option<&str>)]) -> Body {
+    Body::LinkedTextBlock(LinkedTextBlockData {
+        items: rows
+            .iter()
+            .map(|(text, url)| LinkedLine {
+                text: (*text).to_string(),
+                url: url.map(String::from),
+            })
+            .collect(),
     })
 }
 

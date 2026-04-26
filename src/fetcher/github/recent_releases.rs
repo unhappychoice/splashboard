@@ -5,7 +5,8 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Body, EntriesData, Entry, Payload, TextBlockData, TimelineData, TimelineEvent,
+    Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload, TextBlockData,
+    TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -14,7 +15,12 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, parse_timestamp, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::TextBlock,
+    Shape::Entries,
+    Shape::Timeline,
+];
 const DEFAULT_LIMIT: u32 = 5;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -87,7 +93,7 @@ impl Fetcher for GithubRecentReleases {
         let items: Vec<Release> = rest_get(&path).await?;
         Ok(payload(render_body(
             &items,
-            ctx.shape.unwrap_or(Shape::TextBlock),
+            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
         )))
     }
 }
@@ -99,6 +105,8 @@ struct Release {
     name: Option<String>,
     #[serde(default)]
     published_at: Option<String>,
+    #[serde(default)]
+    html_url: String,
 }
 
 fn render_body(items: &[Release], shape: Shape) -> Body {
@@ -118,6 +126,15 @@ fn render_body(items: &[Release], shape: Shape) -> Body {
                             .into(),
                     ),
                     status: None,
+                })
+                .collect(),
+        }),
+        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
+            items: items
+                .iter()
+                .map(|r| LinkedLine {
+                    text: format!("{}  {}", r.tag_name, release_date(r)),
+                    url: link_for(r),
                 })
                 .collect(),
         }),
@@ -145,6 +162,22 @@ fn render_body(items: &[Release], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
+    }
+}
+
+fn release_date(r: &Release) -> String {
+    r.published_at
+        .as_deref()
+        .and_then(|d| d.split('T').next())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn link_for(r: &Release) -> Option<String> {
+    if r.html_url.is_empty() {
+        None
+    } else {
+        Some(r.html_url.clone())
     }
 }
 

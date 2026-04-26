@@ -15,7 +15,12 @@ use super::client::rest_get;
 use super::common::{cache_key, parse_options, payload};
 use super::items::{SearchResult, render_items};
 
-const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::TextBlock,
+    Shape::Entries,
+    Shape::Timeline,
+];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
@@ -86,7 +91,7 @@ impl Fetcher for GithubMyPrs {
         let res: SearchResult = rest_get(&path).await?;
         Ok(payload(render_items(
             &res.items,
-            ctx.shape.unwrap_or(Shape::TextBlock),
+            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
             true,
         )))
     }

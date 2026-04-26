@@ -27,6 +27,12 @@ pub enum Body {
     /// Zero or more lines of text. Used by anything intrinsically multi-line: recent commits,
     /// worktrees, welcome notes, todo items.
     TextBlock(TextBlockData),
+    /// Zero or more lines of text where each line carries an optional URL. Renderers that
+    /// understand hyperlinks (`list_links`) wrap rows whose `url` is `Some(_)` in OSC 8 escape
+    /// sequences so modern terminals surface them as clickable. Renderers that don't honour
+    /// links can ignore the urls and render the text only. Right for feeds — HN top, GitHub
+    /// PRs/issues/releases — where each row has a canonical "open this" target.
+    LinkedTextBlock(LinkedTextBlockData),
     /// Key/value rows. Used by system info, env dumps, anything label:value shaped.
     Entries(EntriesData),
     /// A single 0..=1 value with an optional display label. Gauges, progress bars, donuts.
@@ -71,6 +77,18 @@ pub struct TextData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TextBlockData {
     pub lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkedTextBlockData {
+    pub items: Vec<LinkedLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkedLine {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -249,6 +267,49 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&p).unwrap();
         assert_eq!(v["shape"], "text_block");
         assert_eq!(v["data"]["lines"][0], "a");
+    }
+
+    #[test]
+    fn linked_text_block_round_trips() {
+        let p = bare(Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![
+                LinkedLine {
+                    text: "234pt 56c  Show HN: x".into(),
+                    url: Some("https://example.com/x".into()),
+                },
+                LinkedLine {
+                    text: "no link here".into(),
+                    url: None,
+                },
+            ],
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn linked_text_block_serializes_with_expected_shape_tag() {
+        let p = bare(Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![LinkedLine {
+                text: "hello".into(),
+                url: Some("https://example.com".into()),
+            }],
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "linked_text_block");
+        assert_eq!(v["data"]["items"][0]["text"], "hello");
+        assert_eq!(v["data"]["items"][0]["url"], "https://example.com");
+    }
+
+    #[test]
+    fn linked_text_block_omits_url_when_none() {
+        let p = bare(Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![LinkedLine {
+                text: "hello".into(),
+                url: None,
+            }],
+        }));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("\"url\""), "json: {json:?}");
     }
 
     #[test]

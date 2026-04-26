@@ -6,7 +6,8 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Body, EntriesData, Entry, Payload, TextBlockData, TimelineData, TimelineEvent,
+    Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload, TextBlockData,
+    TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -15,7 +16,12 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{cache_key, parse_options, parse_timestamp, payload};
 
-const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Entries, Shape::Timeline];
+const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::TextBlock,
+    Shape::Entries,
+    Shape::Timeline,
+];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -92,7 +98,7 @@ impl Fetcher for GithubNotifications {
         let items: Vec<Notification> = rest_get(&path).await?;
         Ok(payload(render_body(
             &items,
-            ctx.shape.unwrap_or(Shape::TextBlock),
+            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
         )))
     }
 }
@@ -108,6 +114,8 @@ struct Notification {
 #[derive(Debug, Deserialize)]
 struct Subject {
     title: String,
+    #[serde(default)]
+    url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +132,18 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
                     key: short_repo(&n.repository.full_name),
                     value: Some(format!("{}: {}", n.reason, n.subject.title)),
                     status: None,
+                })
+                .collect(),
+        }),
+        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
+            items: items
+                .iter()
+                .map(|n| LinkedLine {
+                    text: format!(
+                        "{} {}: {}",
+                        n.repository.full_name, n.reason, n.subject.title
+                    ),
+                    url: subject_html_url(n),
                 })
                 .collect(),
         }),
@@ -158,6 +178,15 @@ fn short_repo(full: &str) -> String {
         .unwrap_or_else(|| full.to_string())
 }
 
+/// Converts a notification's subject API URL (`api.github.com/repos/.../pulls/N`) to the
+/// browser-friendly HTML URL (`github.com/.../pulls/N`). Returns `None` when the URL is missing
+/// or doesn't match the expected prefix; callers fall back to leaving the row unlinked.
+fn subject_html_url(n: &Notification) -> Option<String> {
+    let url = n.subject.url.as_deref()?;
+    let rest = url.strip_prefix("https://api.github.com/repos/")?;
+    Some(format!("https://github.com/{rest}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +197,7 @@ mod tests {
             updated_at: "2026-04-22T10:15:30Z".into(),
             subject: Subject {
                 title: "feat: heatmap".into(),
+                url: Some("https://api.github.com/repos/unhappychoice/splashboard/pulls/1".into()),
             },
             repository: Repo {
                 full_name: "unhappychoice/splashboard".into(),

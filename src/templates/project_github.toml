@@ -32,12 +32,12 @@ render = { type = "grid_table", layout = "inline", align = "center" }
 [[widget]]
 id = "repo_prs"
 fetcher = "github_repo_prs"
-render = { type = "list_plain", bullet = "•", max_items = 5 }
+render = { type = "list_links", max_items = 5 }
 
 [[widget]]
 id = "repo_issues"
 fetcher = "github_repo_issues"
-render = { type = "list_plain", bullet = "•", max_items = 5 }
+render = { type = "list_links", max_items = 5 }
 
 [[widget]]
 id = "commits_heatmap"
@@ -57,7 +57,7 @@ render = { type = "chart_bar", horizontal = true }
 [[widget]]
 id = "releases"
 fetcher = "github_recent_releases"
-render = { type = "list_timeline", bullet = "●", date_format = "relative", max_items = 3 }
+render = { type = "list_links", max_items = 3 }
 
 # ── Layout ──────────────────────────────────────────────────────────
 
