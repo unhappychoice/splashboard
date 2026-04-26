@@ -227,10 +227,17 @@ fn collapse_whitespace(s: &str) -> String {
 }
 
 fn link_for(entry: &Entry) -> Option<String> {
-    entry
+    // Atom entries can carry multiple <link> with `rel` discriminators (`alternate`, `self`,
+    // `enclosure`, `via`, …). Per RFC 4287 the article URL is `rel="alternate"`, which is also
+    // the default when `rel` is absent — matching RSS 2.0's single-link case. Picking the first
+    // non-empty href would otherwise grab `rel="self"` (a self-pointer back into the feed) on
+    // common Atom shapes.
+    let alternate = entry
         .links
         .iter()
-        .find(|l| !l.href.is_empty())
+        .find(|l| !l.href.is_empty() && matches!(l.rel.as_deref(), None | Some("alternate")));
+    alternate
+        .or_else(|| entry.links.iter().find(|l| !l.href.is_empty()))
         .map(|l| l.href.clone())
 }
 
@@ -467,6 +474,36 @@ mod tests {
     #[test]
     fn announces_network_safety() {
         assert_eq!(RssFetcher.safety(), Safety::Network);
+    }
+
+    /// Atom feeds frequently carry both `rel="self"` (feed-internal permalink) and
+    /// `rel="alternate"` (the article URL). Picking the first non-empty link would surface the
+    /// self-pointer; readers want the alternate.
+    const ATOM_MULTI_REL_FIXTURE: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>multi rel</title>
+  <id>urn:atom:m</id>
+  <updated>2026-04-26T10:00:00Z</updated>
+  <entry>
+    <title>Pick the article URL</title>
+    <id>urn:atom:m:1</id>
+    <link rel="self" href="https://feed.example.com/entries/1"/>
+    <link rel="alternate" href="https://example.com/articles/1"/>
+    <updated>2026-04-26T10:00:00Z</updated>
+  </entry>
+</feed>"#;
+
+    #[test]
+    fn link_prefers_alternate_over_self_in_atom() {
+        let feed = parse(ATOM_MULTI_REL_FIXTURE);
+        let body = render_body(&feed, 5, Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(b) = body else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(
+            b.items[0].url.as_deref(),
+            Some("https://example.com/articles/1")
+        );
     }
 
     /// Live smoke test — hits the Rust blog's feed. `#[ignore]` keeps CI offline-safe; run with
