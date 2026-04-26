@@ -267,10 +267,9 @@ height = { length = 1 }
 height = { length = 1 }
 
 [[row]]
-# Fortune cookies are capped at 3 lines in the bundled corpus. `length = "auto"` would be
-# nicer but text_plain's `natural_height` currently returns 1 regardless of TextBlock line
-# count, so a 3-line cookie gets truncated. Hard-code to 3 until the renderer is fixed.
-height = { length = 3 }
+# `height = "auto"` — text_plain's `natural_height` returns the TextBlock line count, so
+# 1-line fortunes hug the closing line and multi-line cookies get the room they need.
+height = "auto"
 flex = "center"
   [[row.child]]
   widget = "fortune"
