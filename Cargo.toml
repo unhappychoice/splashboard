@@ -35,7 +35,7 @@ clap = { version = "4", features = ["derive"] }
 tui-big-text = "0.7"
 tui-piechart = "=0.2.8"
 tachyonfx = { version = "0.21", default-features = false, features = ["std"] }
-ratatui-image = "4"
+ratatui-image = "10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process"] }
 async-trait = "0.1"
