@@ -665,6 +665,9 @@ mod tests {
             panic!("expected linked_text_block");
         };
         assert_eq!(b.items.len(), 1);
-        assert_eq!(b.items[0].url.as_deref(), Some("https://app.todoist.com/app/task/42"));
+        assert_eq!(
+            b.items[0].url.as_deref(),
+            Some("https://app.todoist.com/app/task/42")
+        );
     }
 }
