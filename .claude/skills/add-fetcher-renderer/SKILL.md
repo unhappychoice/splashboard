@@ -13,18 +13,29 @@ Implements one fetcher *or* one renderer (not the whole `Fetcher × Renderer × 
 
 Skip this phase only if the user named a specific candidate ("add `system_battery`", "implement `gauge_segment`"). Otherwise — including any open-ended ask ("add some renderer", "implement a fetcher") — work through this phase before Phase 1.
 
-1. **Survey the full catalog.** Don't pick from memory; read the actual issue bodies. The candidates live as checkboxes on the meta issues, and they churn — yesterday's open box may already be checked.
-   - Renderers: `gh issue view 61 --json body -q .body`
-   - Fetchers: `gh issue view 62 --json body -q .body` for Local/System; `63` VCS/Forge; `64` Coding & Build; `65` Cloud/Infra/Ops; `66` Communication & PM; `67` Social & Media; `68` Life & Ambient.
-   - Index / rubric: `gh issue view 41 --json body -q .body`.
-2. **Filter to the open boxes** in whichever issue matches the user's intent. If the user didn't narrow, scan every relevant sub-issue (renderer ask → only #61; fetcher ask → all of #62–#68).
-3. **Rank by the prioritization rubric** from #41:
-   1. Renderer primitives that unlock many fetchers → highest leverage.
-   2. Daily-driver coverage (a fresh install looks satisfying without secrets).
-   3. Per-dir killer feature (cd into a project shows more than without splashboard).
-   4. Dedicated built-ins beat ReadStore for curated UX; ReadStore is the ad-hoc escape hatch.
-   Demote anything needing secrets / a network token to render anything (`Network`-class with required user setup loses to a Safe sibling).
-4. **Present a shortlist of 3–5 candidates**, one line each, with: catalog box being ticked, family, why it ranks where it does (one phrase — "unlocks N existing fetchers", "fills `Ratio` family gap", "no new deps", "needs `battery` crate"). Lead with your top pick and note the runner-up so the user has a real choice.
+1. **Survey ALL relevant catalog issues in parallel.** Don't pick from memory; the boxes churn — yesterday's open box may already be checked.
+   - Renderer ask → `#61` only.
+   - Fetcher ask → **all of `#62` through `#68`**, dispatched as a single batch of parallel `gh issue view` calls. No partial surveys "starting with Local/System and seeing what fits". The biggest daily-driver classes (task tools in `#66`, coding-time in `#64`, music in `#67`) sit exactly where a partial survey would stop early.
+   - Cross-cutting context (composition model, ReadStore recipes, rejected designs): `gh issue view 41 --json body -q .body`.
+2. **Filter to the open boxes** in the surveyed issues.
+3. **Score candidates with these four filters** (these supersede #41's looser rubric for ranking — keep #41 for cross-cutting context, do scoring here):
+
+   **A. Renderer primitive leverage (renderer asks).** Counts only if you can name **≥2 specific consumer fetchers** from the current catalog — shipped or in an open box, by name. Vague "could be useful for some Ratio fetcher" doesn't count. `text_big_number` clears it (wakatime_today, github_repo_stars, oss_followers_delta, deploy_error_budget, package downloads). `chart_funnel` doesn't (no roadmap fetcher emits funnel-shaped Bars yet) — defer until a consumer lands.
+
+   **B. Recurring-change × repeated-look-value** (the real "daily-driver" test, replacing #41's vague rubric ②). Both sub-tests must pass for a high rank:
+   - *Recurring-change*: does displayed content change ≥1×/day?
+   - *Repeated-look-value*: would the user still want to see it after 100 splash opens? **Novelty traps fail here** — `iss_position` (fun once, ignored after), `f1_next_race` (fan-only then forgotten), `random_cat`, `fortune`. `todoist_today` / `linear_assigned` / `wakatime_today` / `slack_unread` pass — people *check these on purpose every day*.
+
+   **C. Persona name test.** Name in one phrase the user who'd open splash and benefit **every day**. "Anyone with a Todoist account" ✅. "Devs at modern startups using Linear" ✅. "Kids learning about space" ❌ (not a regular shell user). "People who like weather data" ❌ (they check phones). If you can't name a concrete recurring user, demote to ambient/novelty tier.
+
+   **D. Setup-cost is an amortized tiebreaker, not a gate.** Distinguish:
+   - *Zero-config* (drop-in TOML works) → no penalty.
+   - *One-time setup* (token / lat-lon / country code) → amortized over years of daily glances. Negligible penalty when B+C are strong. `todoist_today`'s token is paid back in week 1 of daily use.
+   - *Per-use friction* (OAuth re-auth, custom URL each invocation) → real penalty.
+
+   The old "Network class with required setup loses to a Safe sibling" rule was too coarse. A `Safe` widget no one looks at loses to a `Network` widget actively checked daily. Gate on whether the persona will pay the setup cost, not on Safety class itself.
+
+4. **Present a 3–5 candidate shortlist**, one line each: catalog box being ticked, family, and **which of A/B/C/D scored it where** — not vague phrases like "fills a gap". Lead with the top pick, note a runner-up. Include candidates from at least 2 different scoring profiles (e.g., one A-strong renderer primitive, one B+C-strong daily-driver fetcher, optionally one ambient for contrast) so the user sees the real trade-off space, not just one cluster.
 5. **Ask the user which to implement.** Stop. Do not start Phase 1 on a guess. Auto mode does not override this — the candidate decision is the user's, not yours.
 
 ## Phase 1 — Spec-out (要件確認)
