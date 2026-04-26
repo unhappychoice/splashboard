@@ -946,7 +946,10 @@ mod tests {
             permalink: Some("/r/rust/comments/abc/t/".into()),
             url: Some("https://example.com/post".into()),
         };
-        assert_eq!(post_link(&external).as_deref(), Some("https://example.com/post"));
+        assert_eq!(
+            post_link(&external).as_deref(),
+            Some("https://example.com/post")
+        );
 
         let permalink_only = Post {
             title: Some("t".into()),
