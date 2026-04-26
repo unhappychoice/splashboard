@@ -85,8 +85,12 @@ fn single_line(quote: &str, author: &str) -> String {
 
 /// Parse `%`-separated entries. Each entry's last line starting with `— ` is the author;
 /// everything before it (joined by spaces, trimmed) is the quote. Empty entries dropped.
+/// Normalises CRLF → LF first so Windows checkouts (autocrlf) parse identically.
 fn parse(raw: &str) -> Vec<(String, String)> {
-    raw.split("\n%\n").filter_map(parse_entry).collect()
+    raw.replace("\r\n", "\n")
+        .split("\n%\n")
+        .filter_map(parse_entry)
+        .collect()
 }
 
 fn parse_entry(chunk: &str) -> Option<(String, String)> {
@@ -223,5 +227,17 @@ mod tests {
     #[test]
     fn parse_drops_empty_chunks() {
         assert!(parse("\n%\n\n%\n").is_empty());
+    }
+
+    #[test]
+    fn parse_handles_crlf_line_endings() {
+        // Windows checkouts under git autocrlf convert LF to CRLF; the parser must
+        // still recover the same entry count, otherwise size-floor and rotation
+        // tests fail on Windows runners.
+        let lf = "First.\n— A\n%\nSecond.\n— B\n";
+        let crlf = lf.replace('\n', "\r\n");
+        assert_eq!(parse(lf).len(), 2);
+        assert_eq!(parse(&crlf).len(), 2);
+        assert_eq!(parse(lf), parse(&crlf));
     }
 }

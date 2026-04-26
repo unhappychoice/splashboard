@@ -77,8 +77,10 @@ fn first_cookie() -> Option<&'static str> {
 
 /// Parse `%`-separated entries. Trims surrounding whitespace per entry, drops empties.
 /// Internal newlines are preserved so multi-line cookies render as multiple lines.
+/// Normalises CRLF → LF first so Windows checkouts (autocrlf) parse identically.
 fn parse(raw: &str) -> Vec<String> {
-    raw.split("\n%\n")
+    raw.replace("\r\n", "\n")
+        .split("\n%\n")
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
@@ -162,6 +164,17 @@ mod tests {
     #[test]
     fn parse_drops_empty_chunks() {
         assert!(parse("\n%\n\n%\n").is_empty());
+    }
+
+    #[test]
+    fn parse_handles_crlf_line_endings() {
+        // Windows checkouts under git autocrlf convert LF to CRLF; without
+        // normalisation the entire data file collapses to a single entry on Windows.
+        let lf = "First.\n%\nSecond.\n";
+        let crlf = lf.replace('\n', "\r\n");
+        assert_eq!(parse(lf).len(), 2);
+        assert_eq!(parse(&crlf).len(), 2);
+        assert_eq!(parse(lf), parse(&crlf));
     }
 
     #[test]
