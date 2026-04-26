@@ -15,6 +15,7 @@ use crate::payload::{
 use crate::render::Shape;
 use crate::samples;
 
+pub mod calendar;
 pub mod clock;
 pub mod code;
 pub mod git;
@@ -319,6 +320,9 @@ impl Registry {
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
+        for f in calendar::fetchers() {
+            r.register(f);
+        }
         for f in hackernews::fetchers() {
             r.register(f);
         }
