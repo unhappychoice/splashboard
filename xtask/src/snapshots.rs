@@ -71,6 +71,7 @@ fn renderer_dimensions(renderer: &str) -> (u16, u16) {
         "chart_sparkline" => (40, 3),
         "chart_line" | "chart_scatter" => (50, 10),
         "chart_bar" => (40, 8),
+        "chart_histogram" => (40, 6),
         "chart_pie" => (40, 10),
         "media_image" => (40, 5),
         "grid_calendar" => (28, 10),

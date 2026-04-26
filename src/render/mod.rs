@@ -22,6 +22,7 @@ mod animated_splitflap;
 mod animated_typewriter;
 mod animated_wave;
 mod chart_bar;
+mod chart_histogram;
 mod chart_line;
 mod chart_pie;
 mod chart_scatter;
@@ -196,6 +197,10 @@ pub struct RenderOptions {
     /// chart_bar: cap on rendered bars (keeps the top N by value). None = render all.
     #[serde(default)]
     pub max_bars: Option<usize>,
+    /// chart_histogram: number of buckets the input series is binned into. None defaults to
+    /// an auto value derived from the visible width and the sample count.
+    #[serde(default)]
+    pub bins: Option<u16>,
     /// chart_bar: thickness of each bar, in cells. Applied along the axis perpendicular to
     /// the bar direction (bar height for vertical, bar row-height for horizontal). None
     /// defaults to `3` for vertical and `1` for horizontal — horizontal bars read fine
@@ -374,6 +379,7 @@ impl Registry {
         r.register(Arc::new(chart_line::ChartLineRenderer));
         r.register(Arc::new(chart_scatter::ChartScatterRenderer));
         r.register(Arc::new(chart_bar::ChartBarRenderer));
+        r.register(Arc::new(chart_histogram::ChartHistogramRenderer));
         r.register(Arc::new(chart_pie::ChartPieRenderer));
         r.register(Arc::new(media_image::MediaImageRenderer));
         r.register(Arc::new(grid_calendar::GridCalendarRenderer));
@@ -604,6 +610,7 @@ mod tests {
             "chart_line",
             "chart_scatter",
             "chart_bar",
+            "chart_histogram",
             "chart_pie",
             "media_image",
         ] {
