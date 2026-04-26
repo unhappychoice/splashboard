@@ -30,7 +30,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
 /// Renders a `LinkedTextBlock` body one row per line, wrapping rows whose `url` is `Some(_)` in
 /// an OSC 8 hyperlink so modern terminals (iTerm2, kitty, WezTerm, recent Windows Terminal, etc.)
 /// surface the row as a clickable link. Rows without a url render as plain text. Pairs with feed
-/// fetchers (`hn_top`, `github_my_prs`, `github_recent_releases`, …) where each row has a
+/// fetchers (`hackernews_top`, `github_my_prs`, `github_recent_releases`, …) where each row has a
 /// canonical "open this" target.
 pub struct ListLinksRenderer;
 

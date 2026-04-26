@@ -1,4 +1,4 @@
-//! `hn_top` — Hacker News stories (top / new / best / ask / show / job).
+//! `hackernews_top` — Hacker News stories (top / new / best / ask / show / job).
 //!
 //! Safety::Safe because the host is hardcoded (HN's read-only Firebase backend). Config picks
 //! the listing kind and how many stories to show, never the URL — there's no way for a config
@@ -47,7 +47,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
 ];
 
-pub struct HnTopFetcher;
+pub struct HackernewsTopFetcher;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -84,9 +84,9 @@ impl Kind {
 }
 
 #[async_trait]
-impl Fetcher for HnTopFetcher {
+impl Fetcher for HackernewsTopFetcher {
     fn name(&self) -> &str {
-        "hn_top"
+        "hackernews_top"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -395,7 +395,7 @@ mod tests {
     }
 
     /// Live smoke test — hits HN's Firebase API. `#[ignore]` keeps CI offline-safe; run with
-    /// `cargo test -- --ignored fetcher::hn_top::tests::live` to verify real shape.
+    /// `cargo test -- --ignored fetcher::hackernews_top::tests::live` to verify real shape.
     #[tokio::test]
     #[ignore]
     async fn live_top_returns_at_least_one_story() {
