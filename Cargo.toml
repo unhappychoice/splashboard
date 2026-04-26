@@ -32,7 +32,7 @@ serde_json = "1"
 toml = "1.1"
 dirs = "6"
 clap = { version = "4", features = ["derive"] }
-tui-big-text = "0.7"
+tui-big-text = "0.8"
 tui-piechart = "=0.2.8"
 tachyonfx = { version = "0.21", default-features = false, features = ["std"] }
 ratatui-image = "4"
