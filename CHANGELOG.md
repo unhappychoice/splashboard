@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-26
+
+### ✨ Features
+
+- feat(reference): add description() to Fetcher and Renderer traits ([87a7f22](https://github.com/unhappychoice/splashboard/commit/87a7f22))
+- feat(templates): add home_feed preset — morning briefing ([536425c](https://github.com/unhappychoice/splashboard/commit/536425c))
+- feat(fetcher): add fortune cookie fetcher ([ad2422f](https://github.com/unhappychoice/splashboard/commit/ad2422f))
+- feat(fetcher): externalize quote_of_day data and expand to 567 entries ([1ff2aef](https://github.com/unhappychoice/splashboard/commit/1ff2aef))
+- feat(fetcher): add reddit public listing fetchers ([d018165](https://github.com/unhappychoice/splashboard/commit/d018165))
+- feat(fetcher): add calendar_holidays — public-holiday data via Nager.Date ([43aafe6](https://github.com/unhappychoice/splashboard/commit/43aafe6))
+- feat(fetcher): add rss feed reader (RSS 2.0 / Atom / JSON Feed) ([1dd82c7](https://github.com/unhappychoice/splashboard/commit/1dd82c7))
+- feat(fetcher): add wikipedia_on_this_day, wikipedia_featured, wikipedia_random ([9743585](https://github.com/unhappychoice/splashboard/commit/9743585))
+- feat(render): add text_markdown renderer + MarkdownTextBlock shape ([3cfb197](https://github.com/unhappychoice/splashboard/commit/3cfb197))
+- feat(fetcher): add hackernews_user, _user_submissions, _user_comments ([1d676af](https://github.com/unhappychoice/splashboard/commit/1d676af))
+- feat(fetcher): add todoist_tasks with structured filters ([9dfa7ce](https://github.com/unhappychoice/splashboard/commit/9dfa7ce))
+- feat(template): switch github_* widgets to list_links ([37bacf9](https://github.com/unhappychoice/splashboard/commit/37bacf9))
+- feat(fetcher): emit LinkedTextBlock from github_* feed fetchers ([760813c](https://github.com/unhappychoice/splashboard/commit/760813c))
+- feat(fetcher): add hn_top fetcher ([e0673d6](https://github.com/unhappychoice/splashboard/commit/e0673d6))
+- feat(render): add LinkedTextBlock shape and list_links renderer ([214dedb](https://github.com/unhappychoice/splashboard/commit/214dedb))
+- feat(render): add gauge_thermometer vertical mercury-tube renderer ([edfce20](https://github.com/unhappychoice/splashboard/commit/edfce20))
+- feat(render): list_ranking renderer for Bars shape ([f432bac](https://github.com/unhappychoice/splashboard/commit/f432bac))
+- feat(render): chart_histogram fills width and shows long-tail bins ([9db60bf](https://github.com/unhappychoice/splashboard/commit/9db60bf))
+- feat(render): chart_histogram axis labels ([3f121aa](https://github.com/unhappychoice/splashboard/commit/3f121aa))
+- feat(fetcher): add system_battery realtime fetcher ([c57408a](https://github.com/unhappychoice/splashboard/commit/c57408a))
+- feat(render): add `chart_histogram` ([db3f15c](https://github.com/unhappychoice/splashboard/commit/db3f15c))
+
+### 🐛 Bug Fixes
+
+- fix(render): honour TextBlock line count in text_plain natural_height ([0016d0e](https://github.com/unhappychoice/splashboard/commit/0016d0e))
+- fix(fetcher): dedupe quote_of_day and fortune entries; assert no duplicates ([f94c937](https://github.com/unhappychoice/splashboard/commit/f94c937))
+- fix(fetcher): normalise CRLF in fortune / quote_of_day data parsers ([9b2c3dd](https://github.com/unhappychoice/splashboard/commit/9b2c3dd))
+- fix(fetcher): prefer Atom rel="alternate" over self for article URL ([cf33ee8](https://github.com/unhappychoice/splashboard/commit/cf33ee8))
+- fix(runtime): make trust/error placeholders shape-aware ([85f33cd](https://github.com/unhappychoice/splashboard/commit/85f33cd))
+- fix(render): rename FIGfont to FIGlet for figlet-rs 1.0 ([5c76566](https://github.com/unhappychoice/splashboard/commit/5c76566))
+- fix(render): use sort_by_key + Reverse to satisfy clippy ([8fda1cd](https://github.com/unhappychoice/splashboard/commit/8fda1cd))
+- fix(runtime): surface unknown fetcher names as in-band placeholders ([7a6fdd8](https://github.com/unhappychoice/splashboard/commit/7a6fdd8))
+
+### 📝 Other Changes
+
+- chore: bump version to v0.4.0 ([af115bd](https://github.com/unhappychoice/splashboard/commit/af115bd))
+- refactor(reference): render fetcher/renderer meta as a table ([a71920c](https://github.com/unhappychoice/splashboard/commit/a71920c))
+- refactor(templates): use height = "auto" for home_feed fortune footer ([0ac7f5a](https://github.com/unhappychoice/splashboard/commit/0ac7f5a))
+- refactor(fetcher): rename fortune / quote_of_day to random_* family ([30d93fa](https://github.com/unhappychoice/splashboard/commit/30d93fa))
+- test(fetcher): expand reddit unit coverage ([4357206](https://github.com/unhappychoice/splashboard/commit/4357206))
+- refactor(fetcher): split reddit family into per-fetcher modules ([7e61e65](https://github.com/unhappychoice/splashboard/commit/7e61e65))
+- refactor(fetcher): simplify reddit fetcher names ([ea5de76](https://github.com/unhappychoice/splashboard/commit/ea5de76))
+- style(fetcher): apply rustfmt to reddit tests ([abababb](https://github.com/unhappychoice/splashboard/commit/abababb))
+- test(fetcher): expand reddit unit coverage ([85e42d7](https://github.com/unhappychoice/splashboard/commit/85e42d7))
+- style(fetcher): format reddit fetcher ([29cb209](https://github.com/unhappychoice/splashboard/commit/29cb209))
+- style: cargo fmt ([7bcd0db](https://github.com/unhappychoice/splashboard/commit/7bcd0db))
+- style(fetcher): format todoist tests ([4992aa7](https://github.com/unhappychoice/splashboard/commit/4992aa7))
+- test: beef up coverage for LinkedTextBlock + hackernews fetchers ([15ec674](https://github.com/unhappychoice/splashboard/commit/15ec674))
+- refactor(fetcher): move hackernews into family directory with shared client ([7941bce](https://github.com/unhappychoice/splashboard/commit/7941bce))
+- refactor(fetcher): rename hn_top to hackernews_top ([2311316](https://github.com/unhappychoice/splashboard/commit/2311316))
+- refactor(render): split RenderOptions into common + per-renderer specific structs ([3f84f4c](https://github.com/unhappychoice/splashboard/commit/3f84f4c))
+- chore(deps): bump ratatui ecosystem to 0.30 ([0dbbeb6](https://github.com/unhappychoice/splashboard/commit/0dbbeb6))
+- chore(deps)(deps): bump figlet-rs from 0.1.5 to 1.0.0 ([18ac8b2](https://github.com/unhappychoice/splashboard/commit/18ac8b2))
+- chore(deps)(deps): bump toml from 0.8.23 to 1.1.2+spec-1.1.0 ([e3d6521](https://github.com/unhappychoice/splashboard/commit/e3d6521))
+- chore(deps)(deps): bump dirs from 5.0.1 to 6.0.0 ([8ca48ad](https://github.com/unhappychoice/splashboard/commit/8ca48ad))
+- chore(deps)(deps): bump sha2 from 0.10.9 to 0.11.0 ([5e45ec0](https://github.com/unhappychoice/splashboard/commit/5e45ec0))
+- chore(ci)(deps): bump actions/configure-pages from 5 to 6 ([4971372](https://github.com/unhappychoice/splashboard/commit/4971372))
+- chore(ci)(deps): bump actions/checkout from 4 to 6 ([438c56d](https://github.com/unhappychoice/splashboard/commit/438c56d))
+- chore(ci)(deps): bump codecov/codecov-action from 4 to 6 ([9499f83](https://github.com/unhappychoice/splashboard/commit/9499f83))
+- chore(ci)(deps): bump actions/upload-pages-artifact from 3 to 5 ([965e2c2](https://github.com/unhappychoice/splashboard/commit/965e2c2))
+- chore(ci)(deps): bump softprops/action-gh-release from 2 to 3 ([156a21e](https://github.com/unhappychoice/splashboard/commit/156a21e))
+- chore(ci)(deps): bump actions/deploy-pages from 4 to 5 ([4088389](https://github.com/unhappychoice/splashboard/commit/4088389))
+- chore(ci)(deps): bump cachix/install-nix-action from 27 to 31 ([b53dff4](https://github.com/unhappychoice/splashboard/commit/b53dff4))
+- chore(ci)(deps): bump actions/setup-node from 4 to 6 ([9e4fb6f](https://github.com/unhappychoice/splashboard/commit/9e4fb6f))
+- chore(ci)(deps): bump mlugg/setup-zig from 1 to 2 ([8cf4ff3](https://github.com/unhappychoice/splashboard/commit/8cf4ff3))
+- chore(ci): raise dependabot open-pr limits ([342acd9](https://github.com/unhappychoice/splashboard/commit/342acd9))
+- chore(ci): add dependabot config and CODEOWNERS ([6819040](https://github.com/unhappychoice/splashboard/commit/6819040))
+- chore(skill): tighten add-fetcher-renderer Phase 0 ranking criteria ([7332af3](https://github.com/unhappychoice/splashboard/commit/7332af3))
+- chore(skill): document post-merge issue checkbox update ([0e5f8de](https://github.com/unhappychoice/splashboard/commit/0e5f8de))
+- chore: update flake.nix hashes for v0.3.0 ([7e6d795](https://github.com/unhappychoice/splashboard/commit/7e6d795))
+
+
 ## [0.3.0] - 2026-04-25
 
 ### ✨ Features
@@ -23,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v0.3.0 ([b8d96e4](https://github.com/unhappychoice/splashboard/commit/b8d96e4))
+- chore: bump version to v0.3.0 ([baed209](https://github.com/unhappychoice/splashboard/commit/baed209))
 - chore(skill): require Phase 0 candidate selection in add-fetcher-renderer ([7c6751c](https://github.com/unhappychoice/splashboard/commit/7c6751c))
 - refactor(fetcher): rename project_todo_in_code to code_todos and exclude vendored dirs ([bdcf1d1](https://github.com/unhappychoice/splashboard/commit/bdcf1d1))
 - refactor(project_todo_in_code): require trailing colon on markers ([352ba04](https://github.com/unhappychoice/splashboard/commit/352ba04))
