@@ -12,6 +12,7 @@ use crate::payload::{Body, Payload, TextBlockData};
 use crate::render::Shape;
 use crate::samples;
 
+pub mod calendar;
 pub mod clock;
 pub mod code;
 pub mod git;
@@ -281,6 +282,9 @@ impl Registry {
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
+        for f in calendar::fetchers() {
+            r.register(f);
+        }
         for f in hackernews::fetchers() {
             r.register(f);
         }
