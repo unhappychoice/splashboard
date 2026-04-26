@@ -102,6 +102,7 @@ The CLI requires a real tty, so you can't visually verify colours yourself. Hand
   - Tick the relevant `#41` sub-issue checkbox in the PR description, not in code.
 - **PR description** mirrors the auto-generated reference page so reviewers see what `/reference/...` will show after the docs site rebuilds. Run `cargo xtask` locally; copy the relevant block from `docs-site/src/content/docs/reference/{renderers,fetchers}/<family>/<name>.md` (untracked — `.gitignore`'d). Strip the frontmatter, keep `Accepts` / `Animates` / `Options` / `Theme tokens` / `Compatible fetchers` (or `Compatible renderers` for fetchers), and rewrite the relative `../../...md` links to absolute `https://splashboard.unhappychoice.com/reference/...` URLs.
 - **Merge strategy** is `--merge` (merge commit). Never rebase or squash — captured project preference.
+- **Tick the catalog checkbox after merge.** Once the PR lands, edit the relevant sub-issue (`#61` for renderers, `#62`–`#68` for fetchers) and flip the candidate's `[ ]` to `[x]`. Replace the planned blurb with a one-line "Shipped in #NNN" note plus any non-obvious behaviour decisions worth recording (auto-fit, opt-in options, threshold quirks). The PR description alone isn't enough — the issue body is the catalog index everyone scans for what's still open. Use `gh issue view <N> --json body -q .body` to dump it, edit, then `gh issue edit <N> --body-file <path>` to apply.
 
 ## Out of scope
 
