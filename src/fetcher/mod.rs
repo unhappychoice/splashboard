@@ -16,6 +16,7 @@ pub mod clock;
 pub mod code;
 pub mod git;
 pub mod github;
+pub mod hn_top;
 pub mod quote_of_day;
 pub mod read_store;
 pub mod static_text;
@@ -271,6 +272,7 @@ impl Registry {
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
+        r.register(Arc::new(hn_top::HnTopFetcher));
         for f in clock::realtime_fetchers() {
             r.register_realtime(f);
         }
