@@ -202,12 +202,7 @@ pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
     // new shape variant to a fetcher silently poisons every existing cache entry until it
     // expires (last seen with `basic_static` + `text_markdown`).
     let shape = ctx.shape.map(|s| s.as_str()).unwrap_or("");
-    let raw = format!(
-        "{}|{}|{}",
-        name,
-        shape,
-        ctx.format.as_deref().unwrap_or("")
-    );
+    let raw = format!("{}|{}|{}", name, shape, ctx.format.as_deref().unwrap_or(""));
     let digest = Sha256::digest(raw.as_bytes());
     let hex: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
     format!("{name}-{hex}")
