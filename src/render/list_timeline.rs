@@ -13,6 +13,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub date_format: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
     theme::STATUS_WARN,
@@ -96,12 +103,13 @@ fn render_timeline_at(
     now: i64,
     theme: &Theme,
 ) {
+    let specific: Options = opts.parse_specific();
     let events: Vec<&TimelineEvent> = data
         .events
         .iter()
         .take(opts.max_items.unwrap_or(usize::MAX))
         .collect();
-    let use_absolute = matches!(opts.date_format.as_deref(), Some("absolute"));
+    let use_absolute = matches!(specific.date_format.as_deref(), Some("absolute"));
     let prefixes: Vec<String> = events
         .iter()
         .map(|e| format_prefix(e.timestamp, now, use_absolute))
@@ -499,10 +507,7 @@ mod tests {
         let backend = TestBackend::new(40, 1);
         let mut terminal = Terminal::new(backend).unwrap();
         let theme = Theme::default();
-        let opts = RenderOptions {
-            date_format: Some("absolute".into()),
-            ..RenderOptions::default()
-        };
+        let opts = RenderOptions::default().with_extra("date_format", "absolute");
         terminal
             .draw(|f| render_timeline_at(f, f.area(), &data, &opts, ts + 86_400, &theme))
             .unwrap();

@@ -17,6 +17,18 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+/// Reserved forward-compat fields. Currently unused by the Monthly widget but accepted in
+/// config so users can stage option values ahead of feature work.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct Options {
+    #[serde(default)]
+    pub week_start: Option<String>,
+    #[serde(default)]
+    pub marker: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::ACCENT_TODAY, theme::ACCENT_EVENT, theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -64,6 +76,9 @@ impl Renderer for GridCalendarRenderer {
         _registry: &Registry,
     ) {
         if let Body::Calendar(d) = body {
+            // Parse extras so unknown keys still fail per `deny_unknown_fields`; values are
+            // ignored until the underlying widget supports them.
+            let _: Options = opts.parse_specific();
             render_calendar(frame, area, d, opts, theme);
         }
     }

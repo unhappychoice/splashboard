@@ -12,6 +12,15 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub layout: Option<String>,
+    #[serde(default)]
+    pub column_align: Option<Vec<String>>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
     theme::STATUS_WARN,
@@ -72,9 +81,10 @@ impl Renderer for GridTableRenderer {
         _registry: &Registry,
     ) {
         if let Body::Entries(d) = body {
-            match opts.layout.as_deref() {
+            let specific: Options = opts.parse_specific();
+            match specific.layout.as_deref() {
                 Some("inline") => render_inline(frame, area, d, opts, theme),
-                _ => render_rows(frame, area, d, opts, theme),
+                _ => render_rows(frame, area, d, &specific, theme),
             }
         }
     }
@@ -84,10 +94,10 @@ fn render_rows(
     frame: &mut Frame,
     area: Rect,
     data: &EntriesData,
-    opts: &RenderOptions,
+    specific: &Options,
     theme: &Theme,
 ) {
-    let column_align = column_alignments(opts.column_align.as_deref());
+    let column_align = column_alignments(specific.column_align.as_deref());
     let rows = data.items.iter().map(|e| to_row(e, column_align, theme));
     let widths = [Constraint::Percentage(40), Constraint::Percentage(60)];
     frame.render_widget(

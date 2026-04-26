@@ -12,6 +12,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub shape: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[
     theme::STATUS_OK,
     theme::STATUS_WARN,
@@ -88,7 +95,8 @@ fn render_badge(
 ) {
     let label_style = Style::default().fg(theme.text);
     let dot_style = Style::default().fg(status_color(data.status, theme));
-    let (open, close) = frame_glyphs(opts.shape.as_deref());
+    let specific: Options = opts.parse_specific();
+    let (open, close) = frame_glyphs(specific.shape.as_deref());
     let pad = opts.padding.unwrap_or(0) as usize;
     let spacer: String = " ".repeat(pad);
     let mut spans: Vec<Span> = Vec::with_capacity(7);

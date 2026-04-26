@@ -6,6 +6,13 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Options {
+    #[serde(default)]
+    pub cell_char: Option<String>,
+}
+
 const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_HEATMAP, theme::TEXT];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -117,6 +124,7 @@ fn render_heatmap(
             theme,
         );
     }
+    let specific: Options = opts.parse_specific();
     paint_cells(
         frame.buffer_mut(),
         shifted,
@@ -125,7 +133,7 @@ fn render_heatmap(
         visible_cols,
         col_offset,
         theme,
-        &cell_glyph(opts.cell_char.as_deref()),
+        &cell_glyph(specific.cell_char.as_deref()),
     );
 }
 

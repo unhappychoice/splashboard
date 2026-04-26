@@ -14,6 +14,15 @@ use crate::theme::Theme;
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Options {
+    #[serde(default)]
+    pub inner: Option<String>,
+    #[serde(default)]
+    pub effect: Option<String>,
+}
+
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
         name: "inner",
@@ -100,7 +109,8 @@ impl Renderer for AnimatedPostfxRenderer {
         // doesn't add rows. Delegate so `height = "auto"` on a hero wrapped in
         // animated_postfx still picks up the inner's wrap height.
         let shape = shape_of(body);
-        let inner_name = opts
+        let specific: Options = opts.parse_specific();
+        let inner_name = specific
             .inner
             .as_deref()
             .unwrap_or_else(|| default_renderer_for(shape));
@@ -121,7 +131,8 @@ fn render_postfx(
     registry: &Registry,
 ) {
     let shape = shape_of(body);
-    let inner_name = opts
+    let specific: Options = opts.parse_specific();
+    let inner_name = specific
         .inner
         .as_deref()
         .unwrap_or_else(|| default_renderer_for(shape));
@@ -150,20 +161,20 @@ fn render_postfx(
     if elapsed_ms >= duration_ms {
         return;
     }
-    let effect_name = opts.effect.as_deref().unwrap_or(DEFAULT_EFFECT);
+    let effect_name = specific.effect.as_deref().unwrap_or(DEFAULT_EFFECT);
     let mut effect = build_effect(effect_name, duration_ms);
     frame.render_effect(&mut effect, area, FxDuration::from_millis(elapsed_ms));
 }
 
 /// Strip the postfx-specific options before handing off to the inner renderer so it only
-/// sees the fields it understands (style / pixel_size / align).
-fn inner_options(opts: &RenderOptions) -> RenderOptions {
+/// sees the fields the inner renderer understands.
+pub(super) fn inner_options(opts: &RenderOptions) -> RenderOptions {
     RenderOptions {
-        inner: None,
-        effect: None,
         duration_ms: None,
         ..opts.clone()
     }
+    .without_extra("inner")
+    .without_extra("effect")
 }
 
 /// Map an effect name to a tachyonfx `Effect`. Unknown names fall back to `fade_in` so a typo
@@ -322,11 +333,11 @@ mod tests {
         let spec = RenderSpec::Full {
             type_name: "animated_postfx".into(),
             options: RenderOptions {
-                inner: Some("text_ascii".into()),
-                effect: Some("dissolve".into()),
                 duration_ms: Some(400),
                 ..Default::default()
-            },
+            }
+            .with_extra("inner", "text_ascii")
+            .with_extra("effect", "dissolve"),
         };
         let registry = super::super::Registry::with_builtins();
         // Draws through the inner renderer + applies the effect. The assertion is just "doesn't
@@ -345,10 +356,7 @@ mod tests {
         };
         let spec = RenderSpec::Full {
             type_name: "animated_postfx".into(),
-            options: RenderOptions {
-                inner: Some("does_not_exist".into()),
-                ..Default::default()
-            },
+            options: RenderOptions::default().with_extra("inner", "does_not_exist"),
         };
         let registry = super::super::Registry::with_builtins();
         let buf = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 40, 2);
@@ -365,19 +373,23 @@ mod tests {
     fn inner_options_drops_postfx_fields() {
         let opts = RenderOptions {
             style: Some("figlet".into()),
-            pixel_size: Some("quadrant".into()),
             align: Some("center".into()),
-            inner: Some("text_ascii".into()),
-            effect: Some("dissolve".into()),
             duration_ms: Some(1200),
             ..RenderOptions::default()
-        };
+        }
+        .with_extra("pixel_size", "quadrant")
+        .with_extra("inner", "text_ascii")
+        .with_extra("effect", "dissolve");
         let inner = inner_options(&opts);
         assert_eq!(inner.style.as_deref(), Some("figlet"));
-        assert_eq!(inner.pixel_size.as_deref(), Some("quadrant"));
         assert_eq!(inner.align.as_deref(), Some("center"));
-        assert!(inner.inner.is_none());
-        assert!(inner.effect.is_none());
+        // postfx-specific keys are stripped from the forwarded raw blob…
+        let parsed_inner: Options = inner.parse_specific();
+        assert!(parsed_inner.inner.is_none());
+        assert!(parsed_inner.effect.is_none());
+        // …but the inner renderer still sees its own keys (e.g. text_ascii's pixel_size).
+        let parsed_text: crate::render::text_ascii::Options = inner.parse_specific();
+        assert_eq!(parsed_text.pixel_size.as_deref(), Some("quadrant"));
         assert!(inner.duration_ms.is_none());
     }
 }
