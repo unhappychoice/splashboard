@@ -426,8 +426,6 @@ The best way to accelerate a Macintosh is at 9.8 m/s².
 %
 The cheapest, fastest and most reliable components of a computer system are those that aren't there.
 %
-The early bird may get the worm, but the second mouse gets the cheese.
-%
 The fact that no one understands you doesn't mean you're an artist.
 %
 The first 90 percent of the code accounts for the first 90 percent of the development time. The remaining 10 percent of the code accounts for the other 90 percent of the development time.
@@ -525,8 +523,6 @@ To remain young one must change.
 To steal ideas from one person is plagiarism; to steal from many is research.
 %
 Today is the tomorrow you worried about yesterday.
-%
-Today is the tomorrow you procrastinated yesterday.
 %
 Two heads are better than one — unless they're on the same body.
 %
@@ -870,8 +866,6 @@ The early worm deserves the bird.
 The future is here, it's just not very evenly distributed.
 %
 Those who do not study history are doomed to be quoted by those who do.
-%
-Today is the tomorrow you didn't worry about yesterday.
 %
 Wisdom comes from experience. Experience is often a result of lack of wisdom.
 %

@@ -167,6 +167,19 @@ mod tests {
     }
 
     #[test]
+    fn cookie_list_has_no_duplicates() {
+        use std::collections::HashSet;
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut dups: Vec<&str> = Vec::new();
+        for c in COOKIES.iter() {
+            if !seen.insert(c.as_str()) {
+                dups.push(c.as_str());
+            }
+        }
+        assert!(dups.is_empty(), "duplicate cookies found: {:?}", dups);
+    }
+
+    #[test]
     fn parse_handles_crlf_line_endings() {
         // Windows checkouts under git autocrlf convert LF to CRLF; without
         // normalisation the entire data file collapses to a single entry on Windows.

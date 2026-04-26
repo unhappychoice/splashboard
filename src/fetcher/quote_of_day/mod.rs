@@ -230,6 +230,22 @@ mod tests {
     }
 
     #[test]
+    fn quote_list_has_no_duplicates() {
+        // Catch exact-text duplicates regardless of author so reordering or
+        // adding-without-checking doesn't quietly inflate the count past
+        // entries that already exist.
+        use std::collections::HashSet;
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut dups: Vec<&str> = Vec::new();
+        for (q, _) in QUOTES.iter() {
+            if !seen.insert(q.as_str()) {
+                dups.push(q.as_str());
+            }
+        }
+        assert!(dups.is_empty(), "duplicate quotes found: {:?}", dups);
+    }
+
+    #[test]
     fn parse_handles_crlf_line_endings() {
         // Windows checkouts under git autocrlf convert LF to CRLF; the parser must
         // still recover the same entry count, otherwise size-floor and rotation

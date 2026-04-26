@@ -445,9 +445,6 @@ You gain strength, courage, and confidence by every experience in which you real
 No one can make you feel inferior without your consent.
 — Eleanor Roosevelt
 %
-Whether you think you can or you think you can't — you're right.
-— Henry Ford
-%
 Failure is simply the opportunity to begin again, this time more intelligently.
 — Henry Ford
 %
@@ -487,9 +484,6 @@ Every child is an artist. The problem is how to remain an artist once we grow up
 Inspiration exists, but it has to find you working.
 — Pablo Picasso
 %
-Action is the foundational key to all success.
-— Pablo Picasso
-%
 The two most important days in your life are the day you are born and the day you find out why.
 — Mark Twain
 %
@@ -500,9 +494,6 @@ Whenever you find yourself on the side of the majority, it is time to pause and 
 — Mark Twain
 %
 Kindness is the language which the deaf can hear and the blind can see.
-— Mark Twain
-%
-Twenty years from now you will be more disappointed by the things that you didn't do than by the ones you did do.
 — Mark Twain
 %
 Continuous improvement is better than delayed perfection.
@@ -533,9 +524,6 @@ Always forgive your enemies; nothing annoys them so much.
 — Oscar Wilde
 %
 Imitation is the sincerest form of flattery that mediocrity can pay to greatness.
-— Oscar Wilde
-%
-Be yourself; everyone else is already taken.
 — Oscar Wilde
 %
 The only thing worse than being talked about is not being talked about.
@@ -885,9 +873,6 @@ Work as if you were to live a hundred years; pray as if you were to die tomorrow
 %
 Don't put off until tomorrow what you can do today.
 — Benjamin Franklin
-%
-The only person you are destined to become is the person you decide to be.
-— Ralph Waldo Emerson
 %
 Whatever you can do or dream you can, begin it. Boldness has genius, power and magic in it.
 — Goethe
@@ -1252,9 +1237,6 @@ The people who are crazy enough to think they can change the world are the ones 
 Innovation distinguishes between a leader and a follower.
 — Steve Jobs
 %
-Stay foolish, stay hungry.
-— Steve Jobs
-%
 Design is not just what it looks like and feels like. Design is how it works.
 — Steve Jobs
 %
@@ -1435,9 +1417,6 @@ What I am is good enough if I would only be it openly.
 We cannot change, we cannot move away from what we are, until we thoroughly accept what we are.
 — Carl Rogers
 %
-The only person who is educated is the one who has learned how to learn… and change.
-— Carl Rogers
-%
 Whenever I climb I am followed by a dog called Ego.
 — Friedrich Nietzsche
 %
@@ -1445,9 +1424,6 @@ A casual stroll through the lunatic asylum shows that faith does not prove anyth
 — Friedrich Nietzsche
 %
 Become who you are.
-— Friedrich Nietzsche
-%
-The man of knowledge must be able not only to love his enemies but also to hate his friends.
 — Friedrich Nietzsche
 %
 There is more wisdom in your body than in your deepest philosophy.
@@ -1571,9 +1547,6 @@ Be water, my friend.
 — Bruce Lee
 %
 If you spend too much time thinking about a thing, you'll never get it done.
-— Bruce Lee
-%
-Knowing is not enough; we must apply. Willing is not enough; we must do.
 — Bruce Lee
 %
 Adapt what is useful, reject what is useless, and add what is specifically your own.
