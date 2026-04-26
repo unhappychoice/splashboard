@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use crate::cache::tmp_path_for;
 use crate::config::{DashboardConfig, WidgetConfig};
 use crate::fetcher::{Registry, Safety};
-use crate::payload::{Body, Payload, TextBlockData};
+use crate::payload::Payload;
 
 const TRUST_ALL_ENV: &str = "SPLASHBOARD_TRUST_ALL";
 
@@ -153,14 +153,15 @@ pub fn partition_by_trust(
         })
 }
 
-pub fn requires_trust_placeholder() -> Payload {
+pub fn requires_trust_placeholder(shape: crate::render::Shape) -> Payload {
     Payload {
         icon: None,
         status: None,
         format: None,
-        body: Body::TextBlock(TextBlockData {
-            lines: vec!["🔒 requires trust".into(), "run `splashboard trust`".into()],
-        }),
+        body: crate::fetcher::placeholder_body(
+            shape,
+            &["🔒 requires trust", "run `splashboard trust`"],
+        ),
     }
 }
 
@@ -415,13 +416,29 @@ mod tests {
 
     #[test]
     fn placeholder_has_lock_icon_in_first_line() {
-        let p = requires_trust_placeholder();
+        let p = requires_trust_placeholder(crate::render::Shape::TextBlock);
         match p.body {
-            Body::TextBlock(t) => {
+            crate::payload::Body::TextBlock(t) => {
                 assert!(t.lines[0].contains("🔒"));
                 assert!(t.lines[1].contains("splashboard trust"));
             }
             _ => panic!("expected text_block body"),
+        }
+    }
+
+    /// `list_links`-equipped widgets (the canonical home_feed / hackernews_top pair) need a
+    /// `LinkedTextBlock`-shaped placeholder; otherwise the trust gate's TextBlock body trips
+    /// the renderer's shape check and the user sees "renderer list_links cannot display
+    /// TextBlock" instead of the actual "🔒 requires trust" message.
+    #[test]
+    fn placeholder_emits_linked_text_block_for_link_renderer() {
+        let p = requires_trust_placeholder(crate::render::Shape::LinkedTextBlock);
+        match p.body {
+            crate::payload::Body::LinkedTextBlock(d) => {
+                assert!(d.items[0].text.contains("🔒"));
+                assert!(d.items.iter().all(|i| i.url.is_none()));
+            }
+            _ => panic!("expected linked_text_block body"),
         }
     }
 }

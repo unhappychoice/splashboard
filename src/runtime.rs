@@ -269,12 +269,14 @@ pub async fn run(
         &shapes,
     ));
     for w in &gated {
-        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder(shape));
     }
     for w in &unknown {
+        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
         payloads.insert(
             w.id.clone(),
-            fetcher::unknown_fetcher_placeholder(&w.fetcher),
+            fetcher::unknown_fetcher_placeholder(shape, &w.fetcher),
         );
     }
     for (w, err) in &shape_invalid {
@@ -529,12 +531,14 @@ fn refresh_payloads(
         payloads.insert(id, payload);
     }
     for w in buckets.gated {
-        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder(shape));
     }
     for w in buckets.unknown {
+        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
         payloads.insert(
             w.id.clone(),
-            fetcher::unknown_fetcher_placeholder(&w.fetcher),
+            fetcher::unknown_fetcher_placeholder(shape, &w.fetcher),
         );
     }
     for (w, err) in buckets.shape_invalid {
@@ -631,7 +635,10 @@ async fn fetch_all(
                         cache_key,
                         ERROR_CACHE_TTL_SECS,
                         CacheEntryKind::Err,
-                        fetcher::error_placeholder(&e.to_string()),
+                        fetcher::error_placeholder(
+                            ctx.shape.unwrap_or(Shape::TextBlock),
+                            &e.to_string(),
+                        ),
                     )
                 }
                 Err(_) => {
@@ -647,7 +654,7 @@ async fn fetch_all(
                         cache_key,
                         ERROR_CACHE_TTL_SECS,
                         CacheEntryKind::Timeout,
-                        fetcher::timeout_placeholder(),
+                        fetcher::timeout_placeholder(ctx.shape.unwrap_or(Shape::TextBlock)),
                     )
                 }
             }
