@@ -43,6 +43,7 @@ sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 chrono-tz = { version = "0.10", default-features = false }
 sysinfo = "0.38.4"
+starship-battery = "0.11"
 gix = { version = "0.82", default-features = false, features = ["revision", "status", "blob-diff", "max-performance-safe", "comfort", "sha1"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
 url = "2"
