@@ -23,6 +23,7 @@ pub mod static_text;
 pub mod system;
 pub mod todoist;
 pub mod weather;
+pub mod wikipedia;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Safety {
@@ -284,6 +285,9 @@ impl Registry {
             r.register(f);
         }
         for f in todoist::fetchers() {
+            r.register(f);
+        }
+        for f in wikipedia::fetchers() {
             r.register(f);
         }
         for f in clock::realtime_fetchers() {
