@@ -111,14 +111,12 @@ const USER_COMMENTS_OPTION_SCHEMAS: &[OptionSchema] = &[
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![
         Arc::new(RedditSubredditPostsFetcher),
-        Arc::new(RedditSubredditTopFetcher),
         Arc::new(RedditUserSubmittedFetcher),
         Arc::new(RedditUserCommentsFetcher),
     ]
 }
 
 pub struct RedditSubredditPostsFetcher;
-pub struct RedditSubredditTopFetcher;
 pub struct RedditUserSubmittedFetcher;
 pub struct RedditUserCommentsFetcher;
 
@@ -237,40 +235,9 @@ impl Fetcher for RedditSubredditPostsFetcher {
 }
 
 #[async_trait]
-impl Fetcher for RedditSubredditTopFetcher {
-    fn name(&self) -> &str {
-        "reddit_subreddit_top"
-    }
-
-    fn safety(&self) -> Safety {
-        Safety::Safe
-    }
-
-    fn shapes(&self) -> &[Shape] {
-        SHAPES
-    }
-
-    fn option_schemas(&self) -> &[OptionSchema] {
-        SUBREDDIT_POSTS_OPTION_SCHEMAS
-    }
-
-    fn cache_key(&self, ctx: &FetchContext) -> String {
-        cache_key_for(self.name(), ctx)
-    }
-
-    fn sample_body(&self, shape: Shape) -> Option<Body> {
-        sample_post_body(shape)
-    }
-
-    async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        fetch_subreddit_posts_payload(ctx).await
-    }
-}
-
-#[async_trait]
 impl Fetcher for RedditUserSubmittedFetcher {
     fn name(&self) -> &str {
-        "reddit_user_submitted"
+        "reddit_user_posts"
     }
 
     fn safety(&self) -> Safety {
