@@ -12,8 +12,8 @@
 
 use crate::payload::{
     BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, LinkedLine,
-    LinkedTextBlockData, NumberSeriesData, PointSeries, PointSeriesData, RatioData, Status,
-    TextBlockData, TextData, TimelineData, TimelineEvent,
+    LinkedTextBlockData, MarkdownTextBlockData, NumberSeriesData, PointSeries, PointSeriesData,
+    RatioData, Status, TextBlockData, TextData, TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 
@@ -24,6 +24,9 @@ pub fn canonical_sample(shape: Shape) -> Option<Body> {
     Some(match shape {
         Shape::Text => text("splashboard"),
         Shape::TextBlock => text_block(&["splashboard", "greetings on cd"]),
+        Shape::MarkdownTextBlock => markdown(
+            "# splashboard\n\nMarkdown body with **bold**, *italic*, and `code`.\n\n- item one\n- item two",
+        ),
         Shape::LinkedTextBlock => linked_text_block(&[
             ("splashboard greets on cd", Some("https://example.com/")),
             ("recent commit landed", None),
@@ -56,6 +59,12 @@ pub fn text(s: &str) -> Body {
 pub fn text_block(ss: &[&str]) -> Body {
     Body::TextBlock(TextBlockData {
         lines: ss.iter().map(|s| (*s).to_string()).collect(),
+    })
+}
+
+pub fn markdown(s: &str) -> Body {
+    Body::MarkdownTextBlock(MarkdownTextBlockData {
+        value: s.to_string(),
     })
 }
 

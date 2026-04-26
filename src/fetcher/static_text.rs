@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::payload::{Body, Payload, TextBlockData, TextData};
+use crate::payload::{Body, MarkdownTextBlockData, Payload, TextBlockData, TextData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -21,7 +21,7 @@ impl Fetcher for StaticText {
         Safety::Safe
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Text, Shape::TextBlock]
+        &[Shape::Text, Shape::TextBlock, Shape::MarkdownTextBlock]
     }
     fn default_shape(&self) -> Shape {
         Shape::TextBlock
@@ -30,6 +30,9 @@ impl Fetcher for StaticText {
         match shape {
             Shape::Text => Some(samples::text("Hello, splashboard!")),
             Shape::TextBlock => Some(samples::text_block(&["Hello, splashboard!"])),
+            Shape::MarkdownTextBlock => Some(samples::markdown(
+                "# Hello, splashboard!\n\nMarkdown body with **bold** and `code`.",
+            )),
             _ => None,
         }
     }
@@ -37,6 +40,9 @@ impl Fetcher for StaticText {
         let source = ctx.format.as_deref().unwrap_or("");
         let body = match ctx.shape.unwrap_or(Shape::TextBlock) {
             Shape::Text => Body::Text(TextData {
+                value: source.to_string(),
+            }),
+            Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
                 value: source.to_string(),
             }),
             _ => {

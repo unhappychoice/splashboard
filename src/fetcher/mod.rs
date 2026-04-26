@@ -21,6 +21,7 @@ pub mod quote_of_day;
 pub mod read_store;
 pub mod static_text;
 pub mod system;
+pub mod todoist;
 pub mod weather;
 pub mod wikipedia;
 
@@ -196,7 +197,14 @@ pub fn timeout_placeholder() -> Payload {
 
 pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
     use sha2::{Digest, Sha256};
-    let raw = format!("{}|{}", name, ctx.format.as_deref().unwrap_or(""));
+    // Shape is part of the key because multi-shape fetchers branch their `fetch` body on
+    // `ctx.shape` — the cached payload's body variant must round-trip with the next read,
+    // or the renderer will reject the wrong shape. Single-shape fetchers also include it
+    // (constant), so the digest stays the same shape across them. Without this, adding a
+    // new shape variant to a fetcher silently poisons every existing cache entry until it
+    // expires (last seen with `basic_static` + `text_markdown`).
+    let shape = ctx.shape.map(|s| s.as_str()).unwrap_or("");
+    let raw = format!("{}|{}|{}", name, shape, ctx.format.as_deref().unwrap_or(""));
     let digest = Sha256::digest(raw.as_bytes());
     let hex: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
     format!("{name}-{hex}")
@@ -274,6 +282,9 @@ impl Registry {
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
         for f in hackernews::fetchers() {
+            r.register(f);
+        }
+        for f in todoist::fetchers() {
             r.register(f);
         }
         for f in wikipedia::fetchers() {
@@ -482,6 +493,21 @@ mod tests {
         let a = default_cache_key("basic_static", &ctx_with(Some("Hi!")));
         let b = default_cache_key("basic_static", &ctx_with(Some("Bye!")));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_key_differs_when_shape_differs() {
+        // Multi-shape fetchers (basic_static, system, clock, …) branch on ctx.shape inside
+        // fetch — the cached body must be keyed by shape or the renderer will reject the
+        // wrong-shape payload after the first cache write.
+        let mut a = ctx_with(Some("x"));
+        let mut b = ctx_with(Some("x"));
+        a.shape = Some(crate::render::Shape::Text);
+        b.shape = Some(crate::render::Shape::TextBlock);
+        assert_ne!(
+            default_cache_key("basic_static", &a),
+            default_cache_key("basic_static", &b)
+        );
     }
 
     #[test]

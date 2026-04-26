@@ -43,6 +43,7 @@ pub mod loading;
 mod media_image;
 mod status_badge;
 mod text_ascii;
+mod text_markdown;
 mod text_plain;
 
 #[cfg(test)]
@@ -55,6 +56,7 @@ pub mod test_utils;
 pub enum Shape {
     Text,
     TextBlock,
+    MarkdownTextBlock,
     LinkedTextBlock,
     Entries,
     Ratio,
@@ -72,6 +74,7 @@ pub fn shape_of(body: &Body) -> Shape {
     match body {
         Body::Text(_) => Shape::Text,
         Body::TextBlock(_) => Shape::TextBlock,
+        Body::MarkdownTextBlock(_) => Shape::MarkdownTextBlock,
         Body::LinkedTextBlock(_) => Shape::LinkedTextBlock,
         Body::Entries(_) => Shape::Entries,
         Body::Ratio(_) => Shape::Ratio,
@@ -93,6 +96,7 @@ impl Shape {
         match self {
             Self::Text => "text",
             Self::TextBlock => "text_block",
+            Self::MarkdownTextBlock => "markdown_text_block",
             Self::LinkedTextBlock => "linked_text_block",
             Self::Entries => "entries",
             Self::Ratio => "ratio",
@@ -334,6 +338,7 @@ impl Registry {
         let mut r = Self::default();
         r.register(Arc::new(text_plain::TextPlainRenderer));
         r.register(Arc::new(text_ascii::TextAsciiRenderer));
+        r.register(Arc::new(text_markdown::TextMarkdownRenderer));
         r.register(Arc::new(animated_typewriter::AnimatedTypewriterRenderer));
         r.register(Arc::new(animated_postfx::AnimatedPostfxRenderer));
         r.register(Arc::new(animated_figlet_morph::AnimatedFigletMorphRenderer));
@@ -384,6 +389,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "text_plain",
         Shape::TextBlock => "text_plain",
+        Shape::MarkdownTextBlock => "text_markdown",
         Shape::LinkedTextBlock => "list_links",
         Shape::Entries => "grid_table",
         Shape::Ratio => "gauge_circle",
@@ -454,6 +460,7 @@ pub fn is_empty_body(body: &Body) -> bool {
     match body {
         Body::Text(d) => d.value.is_empty(),
         Body::TextBlock(d) => d.lines.is_empty() || d.lines.iter().all(|l| l.is_empty()),
+        Body::MarkdownTextBlock(d) => d.value.is_empty(),
         Body::LinkedTextBlock(d) => d.items.is_empty() || d.items.iter().all(|i| i.text.is_empty()),
         Body::Entries(d) => d.items.is_empty(),
         Body::NumberSeries(d) => d.values.is_empty(),
@@ -571,6 +578,7 @@ mod tests {
         for name in [
             "text_plain",
             "text_ascii",
+            "text_markdown",
             "animated_typewriter",
             "animated_postfx",
             "animated_figlet_morph",
@@ -608,6 +616,7 @@ mod tests {
         for s in [
             Shape::Text,
             Shape::TextBlock,
+            Shape::MarkdownTextBlock,
             Shape::Entries,
             Shape::Ratio,
             Shape::NumberSeries,
