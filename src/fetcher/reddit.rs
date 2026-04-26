@@ -889,5 +889,4 @@ mod tests {
         assert_eq!(first.num_comments, Some(7));
         assert_eq!(first.subreddit.as_deref(), Some("rust"));
     }
-
 }
