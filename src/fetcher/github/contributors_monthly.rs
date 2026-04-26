@@ -8,7 +8,9 @@ use chrono::{Duration, Utc};
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload};
+use crate::payload::{
+    Bar, BarsData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload,
+};
 use crate::render::Shape;
 use crate::samples;
 
@@ -16,7 +18,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::{http, resolve_token};
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Bars, Shape::Entries];
+const SHAPES: &[Shape] = &[Shape::Bars, Shape::LinkedTextBlock, Shape::Entries];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -189,6 +191,15 @@ fn render_body(rows: &[(String, u64)], shape: Shape) -> Body {
                     key: n.clone(),
                     value: Some(c.to_string()),
                     status: None,
+                })
+                .collect(),
+        }),
+        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
+            items: rows
+                .iter()
+                .map(|(n, c)| LinkedLine {
+                    text: format!("{n}  {c}"),
+                    url: Some(format!("https://github.com/{n}")),
                 })
                 .collect(),
         }),
