@@ -65,6 +65,35 @@ pub const EXCLUDED_FILENAMES: &[&str] = &[
     "Podfile.lock",
 ];
 
+/// Visit each tracked path in the repo's index, applying the same exclusion / regular-file
+/// filters as [`for_each_tracked_file`] but **without** reading file contents. Right for
+/// fetchers that only need extension-level classification (`code_language_logo` picks the
+/// dominant language by file count alone — no need to read every blob to count its lines).
+pub fn for_each_tracked_path<F>(repo: &gix::Repository, mut visit: F) -> Result<(), FetchError>
+where
+    F: FnMut(&str),
+{
+    let index = repo.index_or_load_from_head_or_empty().map_err(fail)?;
+    let mut scanned = 0usize;
+    for entry in index.entries() {
+        if scanned >= MAX_FILES_SCANNED {
+            break;
+        }
+        if !is_regular_file(entry.mode) {
+            continue;
+        }
+        let Ok(path_str) = std::str::from_utf8(entry.path(&index)) else {
+            continue;
+        };
+        if is_in_excluded_dir(path_str) || is_excluded_filename(path_str) {
+            continue;
+        }
+        scanned += 1;
+        visit(path_str);
+    }
+    Ok(())
+}
+
 /// Visit each tracked, regular, non-binary, in-bounds file in the repo's index. Stops after
 /// [`MAX_FILES_SCANNED`] files; skips files larger than [`FILE_SIZE_CAP`]; skips paths whose
 /// any segment matches [`EXCLUDED_DIRS`].

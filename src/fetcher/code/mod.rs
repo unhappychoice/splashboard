@@ -9,14 +9,21 @@ use std::sync::Arc;
 
 use super::Fetcher;
 
+mod language_logo;
 mod languages;
 mod loc;
+mod logo_assets;
 mod scan;
 mod todos;
 
+pub use language_logo::CodeLanguageLogo;
 pub use loc::CodeLoc;
 pub use todos::CodeTodos;
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![Arc::new(CodeTodos), Arc::new(CodeLoc)]
+    vec![
+        Arc::new(CodeTodos),
+        Arc::new(CodeLoc),
+        Arc::new(CodeLanguageLogo),
+    ]
 }
