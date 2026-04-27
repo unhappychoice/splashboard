@@ -24,6 +24,9 @@ const SHAPES: &[Shape] = &[
     Shape::Badge,
 ];
 const DEFAULT_LIMIT: u32 = 10;
+/// `/notifications` `per_page` ceiling — also the page size used for the `Badge` shape so the
+/// reported count is exact up to 50 and explicitly capped (`"50+"`) past it.
+const BADGE_PAGE: u32 = 50;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -97,14 +100,19 @@ impl Fetcher for GithubNotifications {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
-        let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 50);
+        let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
+        // Badge needs the inbox total, not a list slice — bypass `limit` and request the API
+        // max so 0..=50 is exact. List shapes still honour the user's `limit` for display.
+        let per_page = if shape == Shape::Badge {
+            BADGE_PAGE
+        } else {
+            opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, BADGE_PAGE)
+        };
         let all = opts.all.unwrap_or(false);
-        let path = format!("/notifications?per_page={limit}&all={all}");
+        let path = format!("/notifications?per_page={per_page}&all={all}");
         let items: Vec<Notification> = rest_get(&path).await?;
-        Ok(payload(render_body(
-            &items,
-            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
-        )))
+        let capped = items.len() as u32 >= per_page;
+        Ok(payload(render_body(&items, shape, capped)))
     }
 }
 
@@ -128,7 +136,7 @@ struct Repo {
     full_name: String,
 }
 
-fn render_body(items: &[Notification], shape: Shape) -> Body {
+fn render_body(items: &[Notification], shape: Shape, capped: bool) -> Body {
     match shape {
         Shape::Entries => Body::Entries(EntriesData {
             items: items
@@ -163,7 +171,7 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
-        Shape::Badge => Body::Badge(notifications_badge(items.len())),
+        Shape::Badge => Body::Badge(notifications_badge(items.len(), capped)),
         _ => Body::TextBlock(TextBlockData {
             lines: items
                 .iter()
@@ -178,13 +186,14 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
     }
 }
 
-fn notifications_badge(count: usize) -> BadgeData {
+fn notifications_badge(count: usize, capped: bool) -> BadgeData {
     BadgeData {
         status: if count == 0 { Status::Ok } else { Status::Warn },
-        label: match count {
-            0 => "inbox zero".into(),
-            1 => "1 notification".into(),
-            n => format!("{n} notifications"),
+        label: match (count, capped) {
+            (0, _) => "inbox zero".into(),
+            (1, false) => "1 notification".into(),
+            (n, true) => format!("{n}+ notifications"),
+            (n, false) => format!("{n} notifications"),
         },
     }
 }
@@ -230,13 +239,13 @@ mod tests {
 
     #[test]
     fn badge_body_collapses_to_count_pill() {
-        let body = render_body(&[sample(), sample()], Shape::Badge);
+        let body = render_body(&[sample(), sample()], Shape::Badge, false);
         let Body::Badge(b) = body else {
             panic!("expected badge")
         };
         assert_eq!(b.status, Status::Warn);
         assert_eq!(b.label, "2 notifications");
-        let body = render_body(&[], Shape::Badge);
+        let body = render_body(&[], Shape::Badge, false);
         let Body::Badge(b) = body else {
             panic!("expected badge")
         };
@@ -245,8 +254,20 @@ mod tests {
     }
 
     #[test]
+    fn badge_label_marks_capped_count_with_plus() {
+        // Simulate a full BADGE_PAGE response — the page is exhausted, so the true total may be
+        // higher and the label has to admit that with `"50+"`.
+        let items: Vec<Notification> = (0..BADGE_PAGE).map(|_| sample()).collect();
+        let body = render_body(&items, Shape::Badge, true);
+        let Body::Badge(b) = body else {
+            panic!("expected badge")
+        };
+        assert_eq!(b.label, format!("{BADGE_PAGE}+ notifications"));
+    }
+
+    #[test]
     fn text_block_body_composes_repo_reason_title() {
-        let body = render_body(&[sample()], Shape::TextBlock);
+        let body = render_body(&[sample()], Shape::TextBlock, false);
         let Body::TextBlock(l) = body else {
             panic!("expected text_block");
         };

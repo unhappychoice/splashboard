@@ -158,6 +158,18 @@ mod tests {
         }
     }
 
+    /// Locks the fetcher's `now` to UTC so date-based assertions don't drift in CI hosts on
+    /// JST/PST etc. where local-vs-UTC straddle midnight.
+    fn ctx_utc(shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "a".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options: Some(toml::from_str("timezone = \"UTC\"").unwrap()),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn default_shape_entries_has_six_rows() {
         let p = ClockAlmanacFetcher.compute(&ctx(None));
@@ -178,7 +190,9 @@ mod tests {
 
     #[test]
     fn calendar_shape_pins_today() {
-        let p = ClockAlmanacFetcher.compute(&ctx(Some(Shape::Calendar)));
+        // Pin both sides to UTC — without this the test was flaky on hosts whose local date
+        // differs from UTC at the moment of execution (e.g. JST evening near year-end).
+        let p = ClockAlmanacFetcher.compute(&ctx_utc(Some(Shape::Calendar)));
         let Body::Calendar(d) = p.body else {
             panic!("expected calendar");
         };

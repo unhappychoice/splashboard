@@ -86,9 +86,7 @@ impl Fetcher for GithubLanguages {
         Some(match shape {
             Shape::Bars => samples::bars(&[("Rust", 87_000), ("TOML", 8_000), ("Shell", 5_000)]),
             Shape::Entries => samples::entries(&[("Rust", "87%"), ("TOML", "8%"), ("Shell", "5%")]),
-            Shape::TextBlock => {
-                samples::text_block(&["Rust    87.0%", "TOML     8.0%", "Shell    5.0%"])
-            }
+            Shape::TextBlock => samples::text_block(&["Rust  87.0%", "TOML  8.0%", "Shell  5.0%"]),
             Shape::MarkdownTextBlock => {
                 samples::markdown("- **Rust** — 87.0%\n- **TOML** — 8.0%\n- **Shell** — 5.0%")
             }

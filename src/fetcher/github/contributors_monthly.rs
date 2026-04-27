@@ -101,7 +101,7 @@ impl Fetcher for GithubContributorsMonthly {
                 ("bob  27", Some("https://github.com/bob")),
                 ("charlie  11", Some("https://github.com/charlie")),
             ]),
-            Shape::TextBlock => samples::text_block(&["alice    42", "bob      27", "charlie  11"]),
+            Shape::TextBlock => samples::text_block(&["alice  42", "bob  27", "charlie  11"]),
             Shape::MarkdownTextBlock => {
                 samples::markdown("1. **@alice** — 42\n2. **@bob** — 27\n3. **@charlie** — 11")
             }

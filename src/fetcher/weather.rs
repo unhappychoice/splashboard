@@ -79,7 +79,7 @@ impl Fetcher for WeatherFetcher {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` / `Text` summarise current conditions; `PointSeries` / `NumberSeries` / `Bars` expose the next 24h of hourly temperature or precipitation; `Badge` flags severe weather codes (thunderstorm = error, freezing / snow / heavy rain = warn). Metric or imperial units, no API key required."
+        "Forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` / `Text` summarise current conditions; `PointSeries` carries the next 24h of hourly temperature (signed °C / °F); `NumberSeries` / `Bars` carry hourly precipitation in tenths of mm/inch; `Badge` flags severe weather codes (thunderstorm = error, freezing / snow / heavy rain = warn). Metric or imperial units, no API key required."
     }
     fn shapes(&self) -> &[Shape] {
         &[
@@ -297,11 +297,15 @@ fn point_series(hourly: &[HourPoint], units: Units) -> Body {
     })
 }
 
+/// Hourly precipitation as `NumberSeries`. Temperature can go negative and would silently
+/// clamp to 0 in `u64`, so the curve lives on `PointSeries` instead. Precipitation is
+/// non-negative by definition; values are tenths of a millimetre (or an inch on imperial)
+/// so one decimal of precision survives the integer round-trip.
 fn number_series(hourly: &[HourPoint]) -> Body {
     Body::NumberSeries(NumberSeriesData {
         values: hourly
             .iter()
-            .map(|h| h.temperature.round().clamp(0.0, u64::MAX as f64) as u64)
+            .map(|h| (h.precipitation.max(0.0) * 10.0).round() as u64)
             .collect(),
     })
 }
@@ -501,12 +505,54 @@ mod tests {
     }
 
     #[test]
-    fn number_series_rounds_temperatures_to_u64() {
-        let body = number_series(&Sample::default().hourly);
+    fn number_series_carries_precipitation_in_tenths() {
+        let hourly = vec![
+            HourPoint {
+                offset_hours: 0,
+                temperature: -3.0, // negative temp must NOT clamp the precip slot to 0
+                precipitation: 0.6,
+            },
+            HourPoint {
+                offset_hours: 1,
+                temperature: -1.0,
+                precipitation: 0.0,
+            },
+            HourPoint {
+                offset_hours: 2,
+                temperature: 1.0,
+                precipitation: 1.25,
+            },
+        ];
+        let body = number_series(&hourly);
         let Body::NumberSeries(d) = body else {
             panic!("expected number series");
         };
-        assert_eq!(d.values.len(), HOURLY_HOURS);
+        // 0.6 mm → 6 tenths, 0.0 → 0, 1.25 → 13 (rounded).
+        assert_eq!(d.values, vec![6, 0, 13]);
+    }
+
+    #[test]
+    fn point_series_temperature_preserves_negative_readings() {
+        // PointSeries is f64 — make sure sub-zero temps survive end-to-end (the bug fixed by
+        // moving temperature off `NumberSeries`, which would have clamped these to 0).
+        let hourly = vec![
+            HourPoint {
+                offset_hours: 0,
+                temperature: -5.0,
+                precipitation: 0.0,
+            },
+            HourPoint {
+                offset_hours: 1,
+                temperature: -2.5,
+                precipitation: 0.0,
+            },
+        ];
+        let body = point_series(&hourly, Units::Metric);
+        let Body::PointSeries(d) = body else {
+            panic!("expected point series");
+        };
+        assert_eq!(d.series[0].points[0].1, -5.0);
+        assert_eq!(d.series[0].points[1].1, -2.5);
     }
 
     #[test]

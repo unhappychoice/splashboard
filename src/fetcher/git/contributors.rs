@@ -62,7 +62,7 @@ impl Fetcher for GitContributors {
                 ("dave", "9"),
             ]),
             Shape::TextBlock => {
-                samples::text_block(&["alice    42", "bob      28", "charlie  17", "dave      9"])
+                samples::text_block(&["alice  42", "bob  28", "charlie  17", "dave  9"])
             }
             Shape::MarkdownTextBlock => samples::markdown(
                 "1. **alice** — 42\n2. **bob** — 28\n3. **charlie** — 17\n4. **dave** — 9",
