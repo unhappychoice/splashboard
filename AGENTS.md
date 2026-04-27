@@ -78,7 +78,7 @@ Key invariants:
 Consumes a `Payload` + `RenderOptions` and draws into a ratatui `Frame`. Each renderer declares:
 
 - `name()` — used in config (`render = "grid_heatmap"` or `render = { type = "grid_heatmap", align = "center" }`). Names follow a `family_variant` convention (`text_plain`, `text_ascii`, `gauge_circle`, `gauge_line`, `chart_sparkline`, `grid_table`, `list_timeline`, …) so siblings sort together in the catalog.
-- `accepts()` — list of `Shape` it can render. A renderer can accept multiple shapes if it makes sense (rare).
+- `accepts()` — list of `Shape` it can render. **Each primary renderer accepts exactly one shape.** If you find yourself wanting two, register two renderers that share helpers — `text_plain` (Text) vs `list_plain` (TextBlock) is the canonical pair. Animated post-process wrappers (`animated_postfx`, `animated_boot`, `animated_scanlines`, `animated_splitflap`, `animated_wave`) are the only `ALL_SHAPES` exception, because they delegate to an inner renderer and don't draw payload data themselves.
 - `animates()` — `true` if it produces different output on repeated calls within a single draw cycle. Affects whether the runtime extends the 2-second animation window to let the motion play.
 - `render(frame, area, body, opts)` — do the drawing.
 
