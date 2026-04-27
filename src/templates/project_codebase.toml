@@ -1,0 +1,224 @@
+# project_codebase — code analytics dashboard arranged as a frame around a
+# centred identity block. The project title sits dead-centre with analytics
+# blocks surrounding it on every side: a top row of LOC-by-language,
+# age-breakdown, and comment-density tiles; files-by-dir and largest-files
+# panels flanking the title left and right; then a churn / TODOs strip at
+# the bottom. Top/bottom `fill` paddings push the title block toward the
+# vertical centre so the whole dashboard breathes around it.
+#
+# Sister to `project_github` (operational forge view) on a different value
+# axis — "what is this codebase" rather than "what's open right now". Skips
+# commits-heatmap and contributors panels because `project_github` already
+# covers them; this preset focuses on local code structure analytics that
+# work offline with no auth.
+
+# ── Widgets ──────────────────────────────────────────────────────
+
+# Project name in compact big-text. `style = "blocks"` + `pixel_size = "quadrant"`
+# is the universally-supported dense tier (sextant uses Unicode 13 glyphs that
+# many terminal fonts still miss).
+[[widget]]
+id = "name"
+fetcher = "git_repo_name"
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
+
+# `git_age` Text with `format = "full"` → "2y 3m · since 2024-01-15".
+[[widget]]
+id = "age"
+fetcher = "git_age"
+shape = "text"
+format = "full"
+render = { type = "text_plain", align = "center" }
+
+# `code_loc` Text → "73,202 lines across 6 languages".
+[[widget]]
+id = "loc_total"
+fetcher = "code_loc"
+shape = "text"
+render = { type = "text_plain", align = "center" }
+
+# Top analytics blocks — three tiles capped at 4 rows. Lines of code and
+# comment density are language rankings so they use `list_ranking` (Bars);
+# Project age is a year/month/day breakdown (not a ranking) so it stays
+# `grid_table` (Entries).
+[[widget]]
+id = "loc_by_lang"
+fetcher = "code_loc"
+shape = "bars"
+render = { type = "list_ranking", style = "number" }
+options = { limit = 4 }
+
+[[widget]]
+id = "age_breakdown"
+fetcher = "git_age"
+shape = "entries"
+render = "grid_table"
+
+[[widget]]
+id = "comment_density"
+fetcher = "code_comments"
+shape = "bars"
+render = { type = "list_ranking", style = "number" }
+options = { limit = 4, unit = "loc" }
+
+# Side panels directly flanking the title.
+[[widget]]
+id = "files_by_dir"
+fetcher = "code_files"
+shape = "bars"
+render = { type = "list_ranking", style = "number" }
+
+[[widget]]
+id = "largest_files"
+fetcher = "code_largest_files"
+shape = "bars"
+render = { type = "list_ranking", style = "number" }
+
+# Bottom strip.
+[[widget]]
+id = "churn"
+fetcher = "git_churn"
+shape = "bars"
+render = { type = "list_ranking", style = "number" }
+
+# Actual TODO comment locations (line-by-line listing).
+[[widget]]
+id = "todos"
+fetcher = "code_todos"
+shape = "text_block"
+render = { type = "list_plain", bullet = "·" }
+
+# TODO hotspots — files with the most TODO/FIXME markers, ranked by count.
+[[widget]]
+id = "todo_hotspots"
+fetcher = "code_todos"
+shape = "bars"
+render = { type = "list_ranking", style = "number" }
+
+# ── Layout ───────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Top analytics row — three bordered Entries blocks. Height 5 = 1 border
+# + 4 content rows, matching git_age's fixed 4-entry breakdown. Length(1)
+# spacers on the outer edges keep a 1-cell gutter against the terminal sides.
+[[row]]
+height = { length = 5 }
+gap = 2
+  [[row.child]]
+  width = { length = 1 }
+  [[row.child]]
+  widget = "loc_by_lang"
+  width = { fill = 1 }
+  border = "top"
+  title = "  Lines of code  "
+  title_align = "center"
+  [[row.child]]
+  widget = "age_breakdown"
+  width = { fill = 1 }
+  border = "top"
+  title = "  Project age  "
+  title_align = "center"
+  [[row.child]]
+  widget = "comment_density"
+  width = { fill = 1 }
+  border = "top"
+  title = "  Comment density  "
+  title_align = "center"
+  [[row.child]]
+  width = { length = 1 }
+
+# Top fill — pushes the title block toward the vertical centre.
+[[row]]
+height = { fill = 1 }
+
+# Title row — figlet flanked by `files_by_dir` (left) and `largest_files`
+# (right). 4 rows tall = exact figlet height; the side panels show their
+# top 4 entries alongside. Length(1) outer spacers match the other rows.
+[[row]]
+height = { length = 4 }
+gap = 2
+  [[row.child]]
+  width = { length = 1 }
+  [[row.child]]
+  widget = "files_by_dir"
+  width = { fill = 1 }
+  border = "top"
+  title = "  Files by dir  "
+  title_align = "center"
+  [[row.child]]
+  widget = "name"
+  width = { fill = 2 }
+  [[row.child]]
+  widget = "largest_files"
+  width = { fill = 1 }
+  border = "top"
+  title = "  Largest files  "
+  title_align = "center"
+  [[row.child]]
+  width = { length = 1 }
+
+# Subtitle stack — only the centre column carries text. Same 1:2:1 fills
+# as the title row so the centre column reads as a single continuous
+# title block.
+[[row]]
+height = { length = 1 }
+gap = 2
+  [[row.child]]
+  width = { fill = 1 }
+  [[row.child]]
+  widget = "age"
+  width = { fill = 2 }
+  [[row.child]]
+  width = { fill = 1 }
+
+[[row]]
+height = { length = 1 }
+gap = 2
+  [[row.child]]
+  width = { fill = 1 }
+  [[row.child]]
+  widget = "loc_total"
+  width = { fill = 2 }
+  [[row.child]]
+  width = { fill = 1 }
+
+# Bottom fill — mirrors the top fill so the title sits at the vertical
+# centre.
+[[row]]
+height = { fill = 1 }
+
+# Bottom analytics row — Churn (1/4) | TODOs (2/4 wider, location list
+# needs the room) | TODO hotspots (1/4). Side tiles share the same
+# `list_ranking` style; the middle TODO list uses `list_plain` because
+# it's a `<file>:<line>: <text>` paragraph, not a ranking. Length(1)
+# outer spacers match the rest of the dashboard.
+[[row]]
+height = { length = 8 }
+gap = 2
+  [[row.child]]
+  width = { length = 1 }
+  [[row.child]]
+  widget = "churn"
+  width = { fill = 1 }
+  border = "top"
+  title = "  Most churned  "
+  title_align = "center"
+  [[row.child]]
+  widget = "todos"
+  width = { fill = 2 }
+  border = "top"
+  title = "  TODO comments  "
+  title_align = "center"
+  [[row.child]]
+  widget = "todo_hotspots"
+  width = { fill = 1 }
+  border = "top"
+  title = "  TODO hotspots  "
+  title_align = "center"
+  [[row.child]]
+  width = { length = 1 }
+
+[[row]]
+height = { length = 1 }

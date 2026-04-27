@@ -73,6 +73,12 @@ pub const TEMPLATES: &[Template] = &[
         description: "Quiet preset: repo name, latest tag, and the last three commits. Fully offline (no GitHub calls) — acknowledges the repo without taking over the screen.",
         body: include_str!("project_minimal.toml"),
     },
+    Template {
+        name: "project_codebase",
+        context: TemplateContext::Project,
+        description: "Repo personality dashboard: dominant-language logo, age, LOC ranking + table, file map, commit heatmap, contributors / churn, and largest files / TODOs. Local-only — no network or auth.",
+        body: include_str!("project_codebase.toml"),
+    },
 ];
 
 /// Lookup by name. Returns `None` for unknown templates so callers can surface a
