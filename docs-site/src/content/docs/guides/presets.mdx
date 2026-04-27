@@ -1,6 +1,6 @@
 ---
 title: Presets
-description: Eight curated dashboards you can adopt verbatim — pair one home with one project.
+description: Nine curated dashboards you can adopt verbatim — pair one home with one project.
 ---
 
 import homeSplash from '../../../assets/rendered/home_splash.html?raw';
@@ -11,8 +11,9 @@ import homeFeed from '../../../assets/rendered/home_feed.html?raw';
 import projectSplash from '../../../assets/rendered/project_splash.html?raw';
 import projectGithub from '../../../assets/rendered/project_github.html?raw';
 import projectMinimal from '../../../assets/rendered/project_minimal.html?raw';
+import projectCodebase from '../../../assets/rendered/project_codebase.html?raw';
 
-Eight curated dashboards — five home, three project. Pick one of each as a
+Nine curated dashboards — five home, four project. Pick one of each as a
 starting point and edit freely.
 
 - **Home presets** apply when the shell starts outside a git repo —
@@ -195,3 +196,31 @@ than the default noise.
 Fully offline — every widget reads local git, so the preset renders the
 same whether you're online, behind a firewall, or haven't run
 `gh auth login`.
+
+### `project_codebase` — repo personality at a glance
+
+Frame layout with the project title figlet at the centre, surrounded by
+analytics tiles: LOC by language, project age breakdown, comment density
+on the top row; files-by-dir on the left and largest-files on the right
+flanking the title; most-churned files, TODO comment list, and TODO
+hotspots on the bottom row.
+
+<div class="splash-landing" set:html={projectCodebase} />
+
+| role | implementation |
+|---|---|
+| title | `git_repo_name` → `text_ascii` (blocks, quadrant) |
+| age | `git_age` (Text, `format = "full"`) → `text_plain` |
+| LOC summary | `code_loc` (Text) → `text_plain` |
+| LOC by language | `code_loc` (Bars) → `list_ranking` |
+| project age | `git_age` (Entries) → `grid_table` |
+| comment density | `code_comments` (Bars, `unit = "loc"`) → `list_ranking` |
+| files by dir | `code_files` (Bars) → `list_ranking` |
+| largest files | `code_largest_files` (Bars) → `list_ranking` |
+| most churned | `git_churn` (Bars) → `list_ranking` |
+| TODO comments | `code_todos` (TextBlock) → `list_plain` |
+| TODO hotspots | `code_todos` (Bars) → `list_ranking` |
+
+Local-only — every widget reads git2 / the working tree, no network or
+auth. Sister to `project_github` (operational forge view) on the
+"what's the shape of this repo" axis.

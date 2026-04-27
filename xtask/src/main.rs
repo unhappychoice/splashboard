@@ -50,6 +50,10 @@ const DASHBOARD_SNAPSHOTS: &[(&str, &str)] = &[
     ("src/templates/project_splash.toml", "project_splash.html"),
     ("src/templates/project_github.toml", "project_github.html"),
     ("src/templates/project_minimal.toml", "project_minimal.html"),
+    (
+        "src/templates/project_codebase.toml",
+        "project_codebase.html",
+    ),
 ];
 
 fn main() -> Result<()> {
