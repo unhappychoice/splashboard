@@ -1,12 +1,4 @@
-//! Code-internal metric fetchers — grep / parse the source tree of the discovered git repo.
-//! All `Safety::Safe` (local file reads only).
-//!
-//! Distinct from the future `project_*` family in #62, which is for project-level operational
-//! state (test coverage, bundle size, dependency alerts, license check). `code_*` is "what's
-//! inside the source files".
-
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
@@ -16,35 +8,15 @@ use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload, TextBlock
 use crate::render::Shape;
 use crate::samples;
 
-use super::git::{fail, open_repo, payload, repo_cache_key};
-use super::{FetchContext, FetchError, Fetcher, Safety};
-
-pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![Arc::new(CodeTodos)]
-}
+use super::super::git::{open_repo, payload, repo_cache_key};
+use super::super::{FetchContext, FetchError, Fetcher, Safety};
+use super::scan::for_each_tracked_file;
 
 const SHAPES: &[Shape] = &[Shape::Text, Shape::TextBlock, Shape::Entries, Shape::Bars];
 const DEFAULT_MARKERS: &[&str] = &["TODO", "FIXME"];
 const DEFAULT_LIMIT: usize = 20;
-const FILE_SIZE_CAP: u64 = 1024 * 1024;
-const MAX_FILES_SCANNED: usize = 5_000;
 const INTERNAL_HIT_CAP: usize = 500;
 const SNIPPET_CHARS: usize = 100;
-
-/// Path-segment prefixes that get skipped even when they're tracked. Covers the common case
-/// of vendored / generated trees that some projects commit (Go monorepos with `vendor/`,
-/// repos that ship a `dist/` build, accidental `node_modules/`). `.gitignore`-d trees are
-/// already filtered out by walking the index — this list is the second line of defense for
-/// committed-vendored code that would otherwise inflate hit counts with library `TODO`s.
-const EXCLUDED_DIRS: &[&str] = &[
-    "node_modules",
-    "vendor",
-    "third_party",
-    "target",
-    "dist",
-    "build",
-    ".git",
-];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -69,8 +41,8 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
 /// lists `path:line: snippet`; `Entries` / `Bars` rank files by hit count. Walks the index
 /// of the repo discovered from CWD so untracked and `.gitignore`-d files are skipped
 /// automatically; vendored / generated trees that happen to be committed (`node_modules/`,
-/// `vendor/`, `dist/`, `target/`, …) are skipped via [`EXCLUDED_DIRS`] so library TODOs
-/// don't bleed into the count.
+/// `vendor/`, `dist/`, `target/`, …) are skipped via the shared scan helper so library
+/// TODOs don't bleed into the count.
 pub struct CodeTodos;
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -200,47 +172,13 @@ fn scan_cwd(markers: &[String]) -> Result<ScanResult, FetchError> {
 }
 
 fn scan_repo(repo: &gix::Repository, markers: &[String]) -> Result<ScanResult, FetchError> {
-    let Some(workdir) = repo.workdir().map(|p| p.to_path_buf()) else {
-        return Ok(ScanResult::default());
-    };
-    let index = match repo.index_or_load_from_head_or_empty() {
-        Ok(i) => i,
-        Err(e) => return Err(fail(e)),
-    };
     let needles: Vec<&str> = markers.iter().map(String::as_str).collect();
     let mut hits = Vec::new();
     let mut counts: HashMap<String, u64> = HashMap::new();
     let mut total = 0usize;
-    let mut scanned = 0usize;
-    for entry in index.entries() {
-        if scanned >= MAX_FILES_SCANNED {
-            break;
-        }
-        if !is_regular_file(entry.mode) {
-            continue;
-        }
-        scanned += 1;
-        let Ok(path_str) = std::str::from_utf8(entry.path(&index)) else {
-            continue;
-        };
-        if is_in_excluded_dir(path_str) {
-            continue;
-        }
-        let abs = workdir.join(path_str);
-        let Ok(metadata) = std::fs::metadata(&abs) else {
-            continue;
-        };
-        if !metadata.is_file() || metadata.len() > FILE_SIZE_CAP {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&abs) else {
-            continue;
-        };
-        if looks_binary(&bytes) {
-            continue;
-        }
-        let Ok(text) = std::str::from_utf8(&bytes) else {
-            continue;
+    for_each_tracked_file(repo, |path_str, bytes| {
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            return;
         };
         for (idx, line) in text.lines().enumerate() {
             if let Some(snippet) = match_marker(line, &needles) {
@@ -255,7 +193,7 @@ fn scan_repo(repo: &gix::Repository, markers: &[String]) -> Result<ScanResult, F
                 }
             }
         }
-    }
+    })?;
     let files_with_hits = counts.len();
     let mut file_counts: Vec<_> = counts.into_iter().collect();
     file_counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -265,23 +203,6 @@ fn scan_repo(repo: &gix::Repository, markers: &[String]) -> Result<ScanResult, F
         files_with_hits,
         file_counts,
     })
-}
-
-fn is_regular_file(mode: gix::index::entry::Mode) -> bool {
-    use gix::index::entry::Mode;
-    matches!(mode, Mode::FILE | Mode::FILE_EXECUTABLE)
-}
-
-/// True iff any segment of `path` (slash-separated, as the index always stores it) matches a
-/// directory name in [`EXCLUDED_DIRS`]. Skips committed-vendored trees so library TODOs don't
-/// inflate the count.
-fn is_in_excluded_dir(path: &str) -> bool {
-    path.split('/').any(|seg| EXCLUDED_DIRS.contains(&seg))
-}
-
-fn looks_binary(bytes: &[u8]) -> bool {
-    let head = &bytes[..bytes.len().min(8192)];
-    head.contains(&0)
 }
 
 fn match_marker(line: &str, markers: &[&str]) -> Option<String> {
@@ -395,7 +316,7 @@ fn text_summary(total: usize, files: usize) -> Body {
 
 #[cfg(test)]
 mod tests {
-    use super::super::git::test_support::{commit_touching, make_repo};
+    use super::super::super::git::test_support::{commit_touching, make_repo};
     use super::*;
 
     fn defaults() -> Vec<String> {
@@ -520,17 +441,6 @@ mod tests {
         let scan = scan_repo(&repo, &defaults()).unwrap();
         assert_eq!(scan.total, 1);
         assert_eq!(scan.hits[0].path, "src/main.rs");
-    }
-
-    #[test]
-    fn excluded_dir_check_only_matches_segments() {
-        // `vendor/x.go` excluded; `myvendor/x.go` and `vendor.go` are regular files.
-        assert!(is_in_excluded_dir("vendor/foo.go"));
-        assert!(is_in_excluded_dir("src/vendor/foo.go"));
-        assert!(is_in_excluded_dir("a/b/node_modules/c"));
-        assert!(!is_in_excluded_dir("myvendor/foo.go"));
-        assert!(!is_in_excluded_dir("src/vendor.go"));
-        assert!(!is_in_excluded_dir("README.md"));
     }
 
     #[test]
