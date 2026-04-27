@@ -17,6 +17,7 @@ use super::{FetchContext, FetchError, Fetcher};
 
 mod age;
 mod blame_heatmap;
+mod churn;
 mod commits_activity;
 mod contributors;
 mod latest_tag;
@@ -41,6 +42,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(blame_heatmap::GitBlameHeatmap),
         Arc::new(repo_name::GitRepoName),
         Arc::new(age::GitAge),
+        Arc::new(churn::GitChurn),
     ]
 }
 
