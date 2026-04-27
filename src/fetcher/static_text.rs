@@ -21,7 +21,7 @@ impl Fetcher for StaticText {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Renders a constant string supplied by the widget's `format` option, split into lines on `\\n` for `TextBlock` and passed through verbatim for `Text` / `MarkdownTextBlock`. Use it for greetings, project banners, or fixed welcome notes that don't need a dedicated fetcher."
+        "Renders a constant string supplied by the widget's `format` option, split into lines on `\\n` for `TextBlock`, collapsed to single-spaces for `Text`, and passed through verbatim for `MarkdownTextBlock`. Use it for greetings, project banners, or fixed welcome notes that don't need a dedicated fetcher."
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text, Shape::TextBlock, Shape::MarkdownTextBlock]
@@ -43,7 +43,7 @@ impl Fetcher for StaticText {
         let source = ctx.format.as_deref().unwrap_or("");
         let body = match ctx.shape.unwrap_or(Shape::TextBlock) {
             Shape::Text => Body::Text(TextData {
-                value: source.to_string(),
+                value: source.lines().collect::<Vec<_>>().join(" "),
             }),
             Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
                 value: source.to_string(),
@@ -129,12 +129,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn text_shape_emits_whole_string() {
+    async fn text_shape_collapses_newlines_to_spaces() {
         let mut c = ctx(Some("line one\nline two"));
         c.shape = Some(Shape::Text);
         let p = StaticText.fetch(&c).await.unwrap();
         match p.body {
-            Body::Text(t) => assert_eq!(t.value, "line one\nline two"),
+            Body::Text(t) => assert_eq!(t.value, "line one line two"),
             _ => panic!("expected text body"),
         }
     }

@@ -137,7 +137,7 @@ fn load_body(path: &std::path::Path, file_format: &str, shape: Shape) -> Result<
 fn parse_body(text: &str, file_format: &str, shape: Shape) -> Result<Body, FetchError> {
     match (file_format, shape) {
         ("text", Shape::Text) => Ok(Body::Text(TextData {
-            value: text.to_string(),
+            value: text.lines().collect::<Vec<_>>().join(" "),
         })),
         ("text", Shape::TextBlock) => Ok(Body::TextBlock(TextBlockData {
             lines: text.lines().map(str::to_string).collect(),
