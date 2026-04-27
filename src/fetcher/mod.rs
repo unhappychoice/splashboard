@@ -18,6 +18,7 @@ use crate::samples;
 pub mod calendar;
 pub mod clock;
 pub mod code;
+pub mod deariary;
 pub mod git;
 pub mod github;
 pub mod hackernews;
@@ -150,11 +151,12 @@ pub struct ShapeMismatch {
     pub requested: Shape,
 }
 
-/// Build a placeholder body of the given shape from a list of message lines. Every text-shaped
-/// renderer can carry a 2-line hint, so trust / error / timeout / unknown-fetcher placeholders
-/// stay legible regardless of which renderer is configured. Non-text shapes fall back to
-/// `TextBlock` — the renderer will still reject it, but at least the message text shows up
-/// inside the resulting shape-mismatch warning rather than vanishing.
+/// Build a placeholder body of the given shape from a list of message lines. Text-bearing
+/// shapes get a natural-shape body so their renderers display the message inline. Other
+/// shapes (Badge, Timeline, Bars, Ratio, NumberSeries, PointSeries, Image, Heatmap,
+/// Calendar) fall through to `TextBlock` — `render_payload` detects the shape mismatch and
+/// routes the body's text through `render_error`, so users see "⚠ deariary 429" rather than
+/// an empty chart or a generic "cannot display" warning.
 pub fn placeholder_body(shape: Shape, lines: &[&str]) -> Body {
     match shape {
         Shape::Text => Body::Text(TextData {
@@ -337,6 +339,9 @@ impl Registry {
         r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
         for f in calendar::fetchers() {
+            r.register(f);
+        }
+        for f in deariary::fetchers() {
             r.register(f);
         }
         for f in hackernews::fetchers() {
@@ -652,10 +657,26 @@ mod tests {
         assert_eq!(e.items[0].key, "hello");
         assert!(e.items[0].value.is_none());
 
-        // Non-text shape — falls back to TextBlock; the renderer will still warn but the
-        // message text is preserved rather than vanishing.
-        let body = placeholder_body(Shape::Ratio, &["x"]);
-        assert!(matches!(body, Body::TextBlock(_)));
+        // Non-text-bearing shapes fall through to TextBlock; render_payload's mismatch path
+        // surfaces the body's text via render_error so the user sees the error message
+        // instead of an empty chart or generic warning.
+        for shape in [
+            Shape::Badge,
+            Shape::Timeline,
+            Shape::Bars,
+            Shape::Ratio,
+            Shape::NumberSeries,
+            Shape::PointSeries,
+            Shape::Image,
+            Shape::Heatmap,
+            Shape::Calendar,
+        ] {
+            let body = placeholder_body(shape, &["⚠ rate limited", "see logs"]);
+            let Body::TextBlock(t) = body else {
+                panic!("expected TextBlock for {shape:?}");
+            };
+            assert_eq!(t.lines, vec!["⚠ rate limited", "see logs"]);
+        }
     }
 
     #[test]

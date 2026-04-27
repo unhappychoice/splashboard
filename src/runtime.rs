@@ -871,12 +871,20 @@ fn render_full_into_buffer(
     let mut inner = Terminal::new(backend).expect("TestBackend::new is infallible");
     inner
         .draw(|frame| {
-            let area = frame.area();
-            paint_viewport_bg(frame, area, theme);
-            let content = shrink(area, padding);
-            layout::draw(
-                frame, content, root, payloads, specs, registry, theme, loading,
-            );
+            // `TestBackend` stores cell symbols verbatim and never interprets escape
+            // sequences, so the OSC 8 wrap that `list_links` adds for clickable hyperlinks
+            // would only pollute this off-screen buffer (the diff drops the wrapped row's
+            // skip cells, leaving them empty in the captured scrollback). Suppress the wrap
+            // for this draw — the user-facing on-screen frame still goes through
+            // `CrosstermBackend` without suppression and keeps the clickable links.
+            render::list_links::without_osc8(|| {
+                let area = frame.area();
+                paint_viewport_bg(frame, area, theme);
+                let content = shrink(area, padding);
+                layout::draw(
+                    frame, content, root, payloads, specs, registry, theme, loading,
+                );
+            });
         })
         .expect("TestBackend draw is infallible");
     inner.backend().buffer().clone()

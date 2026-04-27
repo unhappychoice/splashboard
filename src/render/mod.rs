@@ -35,7 +35,7 @@ mod gauge_thermometer;
 mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
-mod list_links;
+pub mod list_links;
 mod list_plain;
 mod list_ranking;
 mod list_timeline;
@@ -443,15 +443,30 @@ pub fn render_payload(
         return;
     };
     if !renderer.accepts().contains(&shape) {
-        render_error(
-            frame,
-            area,
-            &format!("renderer {name} cannot display {shape:?}"),
-            theme,
-        );
+        // Mismatch usually means the user's config picked an incompatible renderer, but it
+        // also fires when an error / timeout / trust placeholder lands here as a TextBlock
+        // body en route to a non-text renderer (status_badge, chart_*, grid_*, …). In that
+        // case we'd rather surface the placeholder's own message than the generic
+        // "cannot display" warning, since the placeholder text *is* the actionable signal.
+        let msg = body_as_text(&payload.body)
+            .unwrap_or_else(|| format!("renderer {name} cannot display {shape:?}"));
+        render_error(frame, area, &msg, theme);
         return;
     }
     renderer.render(frame, area, &payload.body, &options, theme, registry);
+}
+
+/// Extracts the placeholder text from a `TextBlock` body. Returns `None` for everything
+/// else so misconfigured user payloads (a fetcher whose actual `Text` / `Markdown` body
+/// landed at the wrong renderer) still trip the explicit "cannot display" warning rather
+/// than being silently rendered as plain text. `placeholder_body` always falls through to
+/// `TextBlock` for non-text shapes, so error / trust / timeout messages on chart and grid
+/// renderers reach this function with the right body type to be surfaced.
+fn body_as_text(body: &Body) -> Option<String> {
+    match body {
+        Body::TextBlock(d) => Some(d.lines.join("\n")),
+        _ => None,
+    }
 }
 
 /// `true` when the body has no meaningful data to render. Callers (most usefully

@@ -8,6 +8,15 @@
 //! atomic in the byte stream (no `MoveTo` interruption), and dodges `Buffer::diff`'s width
 //! calculation, which would otherwise count the printable characters inside the escape sequence
 //! as visible columns and incorrectly skip the cells immediately after the link.
+//!
+//! The `skip = true` trick only buys real-terminal correctness: `TestBackend` doesn't
+//! simulate the terminal's char-rendering of the OSC 8 visible portion, so the skipped cells
+//! stay at their default empty state in its buffer. The runtime's off-screen scrollback
+//! capture (`render_full_into_buffer`) targets `TestBackend` and would inherit that broken
+//! state — we wrap that draw in [`without_osc8`] so the renderer emits plain text for the
+//! capture, while the on-screen `CrosstermBackend` pass keeps the OSC 8 wrap.
+
+use std::cell::Cell as StdCell;
 
 use ratatui::{Frame, buffer::Buffer, layout::Rect, style::Style};
 
@@ -95,9 +104,38 @@ fn write_row(buf: &mut Buffer, x: u16, y: u16, max_width: u16, line: &LinkedLine
     if drawn == 0 {
         return;
     }
+    if osc8_suppressed() {
+        return;
+    }
     if let Some(url) = line.url.as_deref() {
         wrap_link(buf, x, y, end_x, url, style);
     }
+}
+
+thread_local! {
+    /// Suppresses the OSC 8 wrap inside the closure passed to [`without_osc8`]. The runtime's
+    /// off-screen capture path (`render_full_into_buffer`) targets `TestBackend`, which holds
+    /// raw cell symbols verbatim and doesn't interpret escape sequences — putting the OSC 8
+    /// wrap there would only pollute the buffer that later gets sliced into the inline
+    /// scrollback. The on-screen `CrosstermBackend` pass runs without this flag so user-facing
+    /// frames keep the clickable hyperlinks.
+    static OSC8_SUPPRESSED: StdCell<bool> = const { StdCell::new(false) };
+}
+
+/// Run `f` with OSC 8 hyperlink wrapping disabled. Idempotent and re-entrant: nested calls
+/// stack the suppression and restore the prior value on exit.
+pub fn without_osc8<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let prior = OSC8_SUPPRESSED.with(|cell| cell.replace(true));
+    let result = f();
+    OSC8_SUPPRESSED.with(|cell| cell.set(prior));
+    result
+}
+
+fn osc8_suppressed() -> bool {
+    OSC8_SUPPRESSED.with(StdCell::get)
 }
 
 fn wrap_link(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Style) {
