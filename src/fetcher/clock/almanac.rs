@@ -10,14 +10,14 @@ use chrono::{DateTime, Datelike, FixedOffset};
 use serde::Deserialize;
 
 use crate::fetcher::{FetchContext, RealtimeFetcher, Safety};
-use crate::payload::{Body, EntriesData, Entry, Payload};
+use crate::payload::{Body, CalendarData, EntriesData, Entry, Payload};
 use crate::render::Shape;
 use crate::samples;
 
 use super::common;
 use super::derived::{self, Hemisphere, Kind};
 
-const SHAPES: &[Shape] = &[Shape::Entries, Shape::TextBlock];
+const SHAPES: &[Shape] = &[Shape::Entries, Shape::TextBlock, Shape::Calendar];
 
 pub struct ClockAlmanacFetcher;
 
@@ -40,7 +40,7 @@ impl RealtimeFetcher for ClockAlmanacFetcher {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "A multi-row rollup of date-derived facts (moon phase, season, zodiac, chinese zodiac, ISO week, day of year). Use this when you want every almanac value at once; pick `clock_derived` instead to surface a single value on its own line."
+        "A multi-row rollup of date-derived facts (moon phase, season, zodiac, chinese zodiac, ISO week, day of year). Use this when you want every almanac value at once; pick `clock_derived` instead to surface a single value on its own line. `Calendar` highlights today within the current month so the same fetcher can drive a `grid_calendar` widget."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -63,6 +63,12 @@ impl RealtimeFetcher for ClockAlmanacFetcher {
                 "iso week:    2026-W17",
                 "day of year: 114 of 365",
             ]),
+            Shape::Calendar => Body::Calendar(CalendarData {
+                year: 2026,
+                month: 4,
+                day: Some(24),
+                events: Vec::new(),
+            }),
             _ => return None,
         })
     }
@@ -76,6 +82,12 @@ impl RealtimeFetcher for ClockAlmanacFetcher {
         let body = match ctx.shape.unwrap_or(Shape::Entries) {
             Shape::TextBlock => Body::TextBlock(crate::payload::TextBlockData {
                 lines: rows.iter().map(|(k, v)| format!("{k}: {v}")).collect(),
+            }),
+            Shape::Calendar => Body::Calendar(CalendarData {
+                year: now.year(),
+                month: now.month() as u8,
+                day: Some(now.day() as u8),
+                events: Vec::new(),
             }),
             _ => Body::Entries(EntriesData {
                 items: rows
@@ -146,6 +158,18 @@ mod tests {
         }
     }
 
+    /// Locks the fetcher's `now` to UTC so date-based assertions don't drift in CI hosts on
+    /// JST/PST etc. where local-vs-UTC straddle midnight.
+    fn ctx_utc(shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "a".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options: Some(toml::from_str("timezone = \"UTC\"").unwrap()),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn default_shape_entries_has_six_rows() {
         let p = ClockAlmanacFetcher.compute(&ctx(None));
@@ -162,6 +186,20 @@ mod tests {
         let rows = rollup(&at(2026, 4, 15), Hemisphere::South);
         let season = rows.iter().find(|(k, _)| *k == "season").unwrap();
         assert_eq!(season.1, "Autumn");
+    }
+
+    #[test]
+    fn calendar_shape_pins_today() {
+        // Pin both sides to UTC — without this the test was flaky on hosts whose local date
+        // differs from UTC at the moment of execution (e.g. JST evening near year-end).
+        let p = ClockAlmanacFetcher.compute(&ctx_utc(Some(Shape::Calendar)));
+        let Body::Calendar(d) = p.body else {
+            panic!("expected calendar");
+        };
+        let now = Utc::now();
+        assert_eq!(d.year, now.year());
+        assert_eq!(d.month, now.month() as u8);
+        assert_eq!(d.day, Some(now.day() as u8));
     }
 
     #[test]

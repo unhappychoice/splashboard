@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
 use crate::options::OptionSchema;
-use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload, TextBlockData, TextData};
+use crate::payload::{
+    Bar, BarsData, Body, EntriesData, Entry, MarkdownTextBlockData, Payload, TextBlockData,
+    TextData,
+};
 use crate::render::Shape;
 use crate::samples;
 
@@ -12,7 +15,13 @@ use super::super::git::{open_repo, payload, repo_cache_key};
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::scan::for_each_tracked_file;
 
-const SHAPES: &[Shape] = &[Shape::Text, Shape::TextBlock, Shape::Entries, Shape::Bars];
+const SHAPES: &[Shape] = &[
+    Shape::Text,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Entries,
+    Shape::Bars,
+];
 const DEFAULT_MARKERS: &[&str] = &["TODO", "FIXME"];
 const DEFAULT_LIMIT: usize = 20;
 const INTERNAL_HIT_CAP: usize = 500;
@@ -63,7 +72,7 @@ impl Fetcher for CodeTodos {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Greps tracked source files in the discovered git repo for `TODO:` / `FIXME:` style markers (trailing colon required, vendored / generated dirs skipped). `Text` summarises `\"N TODOs in M files\"`, `TextBlock` lists `path:line: snippet`, and `Entries` / `Bars` rank files by hit count."
+        "Greps tracked source files in the discovered git repo for `TODO:` / `FIXME:` style markers (trailing colon required, vendored / generated dirs skipped). `Text` summarises `\"N TODOs in M files\"`, `TextBlock` and `MarkdownTextBlock` list `path:line: snippet` (markdown variant uses inline-code formatting), and `Entries` / `Bars` rank files by hit count."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -99,6 +108,9 @@ impl Fetcher for CodeTodos {
                 "src/fetcher/git.rs:88: FIXME: don't panic on detached head",
                 "src/main.rs:14: TODO: load config from $HOME",
             ]),
+            Shape::MarkdownTextBlock => samples::markdown(
+                "- `src/render/mod.rs:120` — TODO: handle empty body\n- `src/fetcher/git.rs:88` — FIXME: don't panic on detached head\n- `src/main.rs:14` — TODO: load config from $HOME",
+            ),
             Shape::Entries => samples::entries(&[
                 ("src/render/mod.rs", "5"),
                 ("src/fetcher/git.rs", "3"),
@@ -276,6 +288,15 @@ fn render_body(scan: ScanResult, shape: Shape, limit: usize) -> Body {
                 .take(limit)
                 .map(|h| format!("{}:{}: {}", h.path, h.line, h.text))
                 .collect(),
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: scan
+                .hits
+                .into_iter()
+                .take(limit)
+                .map(|h| format!("- `{}:{}` — {}", h.path, h.line, h.text))
+                .collect::<Vec<_>>()
+                .join("\n"),
         }),
         Shape::Entries => Body::Entries(EntriesData {
             items: scan
@@ -516,6 +537,30 @@ mod tests {
         );
         match body {
             Body::TextBlock(d) => assert_eq!(d.lines, vec!["src/main.rs:12: TODO: x"]),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn markdown_text_block_emits_path_line_snippet_as_list() {
+        let body = render_body(
+            ScanResult {
+                hits: vec![Hit {
+                    path: "src/main.rs".into(),
+                    line: 12,
+                    text: "TODO: x".into(),
+                }],
+                total: 1,
+                files_with_hits: 1,
+                file_counts: vec![("src/main.rs".into(), 1)],
+            },
+            Shape::MarkdownTextBlock,
+            10,
+        );
+        match body {
+            Body::MarkdownTextBlock(d) => {
+                assert!(d.value.contains("- `src/main.rs:12` — TODO: x"));
+            }
             _ => panic!(),
         }
     }

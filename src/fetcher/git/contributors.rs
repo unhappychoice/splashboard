@@ -4,21 +4,30 @@ use async_trait::async_trait;
 use gix::revision::walk::Sorting;
 use gix::traverse::commit::simple::CommitTimeOrder;
 
-use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload};
+use crate::payload::{
+    Bar, BarsData, Body, EntriesData, Entry, MarkdownTextBlockData, Payload, TextBlockData,
+};
 use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, open_repo, payload, repo_cache_key, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Bars, Shape::Entries, Shape::Text];
+const SHAPES: &[Shape] = &[
+    Shape::Bars,
+    Shape::Entries,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Text,
+];
 const DEFAULT_DAYS: u64 = 30;
 const MAX_ENTRIES: usize = 10;
 
 /// Commit authors over the last N days (default 30, configurable via `format = "N"`). Ranked
 /// by commit count, truncated to the top 10 so a busy repo doesn't blow up the widget. `Bars`
-/// is the default (visual ranking); `Entries` emits `name: count` rows; `Text` collapses to
-/// `"alice (23), bob (11)"` style.
+/// is the default (visual ranking); `Entries` emits `name: count` rows; `TextBlock` lists
+/// `"alice  42"` per line; `MarkdownTextBlock` renders the same ranking as a markdown list;
+/// `Text` collapses to `"alice (23), bob (11)"` style.
 pub struct GitContributors;
 
 #[async_trait]
@@ -30,7 +39,7 @@ impl Fetcher for GitContributors {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Top commit authors over the last N days (default 30, override with `format = \"N\"`), ranked by commit count and capped at ten. Useful for surfacing who's been active recently."
+        "Top commit authors over the last N days (default 30, override with `format = \"N\"`), ranked by commit count and capped at ten. Bars/Entries/TextBlock/MarkdownTextBlock all carry the ranking; Text is the headline summary."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -52,6 +61,12 @@ impl Fetcher for GitContributors {
                 ("charlie", "17"),
                 ("dave", "9"),
             ]),
+            Shape::TextBlock => {
+                samples::text_block(&["alice  42", "bob  28", "charlie  17", "dave  9"])
+            }
+            Shape::MarkdownTextBlock => samples::markdown(
+                "1. **alice** — 42\n2. **bob** — 28\n3. **charlie** — 17\n4. **dave** — 9",
+            ),
             Shape::Text => samples::text("alice (42), bob (28), charlie (17), dave (9)"),
             _ => return None,
         })
@@ -116,6 +131,20 @@ fn render_body(ranked: Vec<(String, u64)>, shape: Shape) -> Body {
                     status: None,
                 })
                 .collect(),
+        }),
+        Shape::TextBlock => Body::TextBlock(TextBlockData {
+            lines: ranked
+                .into_iter()
+                .map(|(name, count)| format!("{name}  {count}"))
+                .collect(),
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: ranked
+                .into_iter()
+                .enumerate()
+                .map(|(i, (name, count))| format!("{}. **{name}** — {count}", i + 1))
+                .collect::<Vec<_>>()
+                .join("\n"),
         }),
         Shape::Text => {
             if ranked.is_empty() {
@@ -190,6 +219,37 @@ mod tests {
         let body = render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Text);
         match body {
             Body::Text(d) => assert_eq!(d.value, "alice (3), bob (1)"),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn text_block_lists_one_row_per_contributor() {
+        let body = render_body(
+            vec![("alice".into(), 3), ("bob".into(), 1)],
+            Shape::TextBlock,
+        );
+        match body {
+            Body::TextBlock(d) => {
+                assert_eq!(d.lines.len(), 2);
+                assert!(d.lines[0].starts_with("alice"));
+                assert!(d.lines[0].ends_with("3"));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn markdown_text_block_emits_numbered_ranking() {
+        let body = render_body(
+            vec![("alice".into(), 3), ("bob".into(), 1)],
+            Shape::MarkdownTextBlock,
+        );
+        match body {
+            Body::MarkdownTextBlock(d) => {
+                assert!(d.value.contains("1. **alice** — 3"));
+                assert!(d.value.contains("2. **bob** — 1"));
+            }
             _ => panic!(),
         }
     }
