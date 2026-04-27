@@ -76,7 +76,7 @@ pub const TEMPLATES: &[Template] = &[
     Template {
         name: "project_codebase",
         context: TemplateContext::Project,
-        description: "Repo personality dashboard: dominant-language logo, age, LOC ranking + table, file map, commit heatmap, contributors / churn, and largest files / TODOs. Local-only — no network or auth.",
+        description: "Repo analytics dashboard: project-name figlet at the centre flanked by files-by-dir and largest-files rankings, with LOC / age / comment-density tiles above and churn / TODO list / TODO hotspots below. Local-only — no network or auth.",
         body: include_str!("project_codebase.toml"),
     },
 ];
