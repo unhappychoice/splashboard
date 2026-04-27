@@ -12,7 +12,10 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, Payload, TextData};
+use crate::payload::{
+    BadgeData, Bar, BarsData, Body, EntriesData, Entry, NumberSeriesData, Payload, PointSeries,
+    PointSeriesData, Status, TextData,
+};
 use crate::render::Shape;
 
 use super::github::common::cache_key;
@@ -21,6 +24,7 @@ use super::{FetchContext, FetchError, Fetcher, Safety};
 const API_BASE: &str = "https://api.open-meteo.com/v1/forecast";
 const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const HOURLY_HOURS: usize = 24;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -75,10 +79,17 @@ impl Fetcher for WeatherFetcher {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Current-conditions forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` shows condition / temperature / wind / humidity rows; `Text` collapses them into a single line. Metric or imperial units, no API key required."
+        "Forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` / `Text` summarise current conditions; `PointSeries` / `NumberSeries` / `Bars` expose the next 24h of hourly temperature or precipitation; `Badge` flags severe weather codes (thunderstorm = error, freezing / snow / heavy rain = warn). Metric or imperial units, no API key required."
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Entries, Shape::Text]
+        &[
+            Shape::Entries,
+            Shape::Text,
+            Shape::PointSeries,
+            Shape::NumberSeries,
+            Shape::Bars,
+            Shape::Badge,
+        ]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -92,11 +103,16 @@ impl Fetcher for WeatherFetcher {
         cache_key(self.name(), ctx, &extra)
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
+        let sample = Sample::default();
         Some(match shape {
-            Shape::Entries => entries(&Sample::default()),
+            Shape::Entries => entries(&sample),
             Shape::Text => Body::Text(TextData {
-                value: Sample::default().as_text(),
+                value: sample.as_text(),
             }),
+            Shape::PointSeries => point_series(&sample.hourly, sample.units),
+            Shape::NumberSeries => number_series(&sample.hourly),
+            Shape::Bars => precipitation_bars(&sample.hourly),
+            Shape::Badge => Body::Badge(weather_badge(sample.code)),
             _ => return None,
         })
     }
@@ -109,6 +125,10 @@ impl Fetcher for WeatherFetcher {
             Shape::Text => Body::Text(TextData {
                 value: report.as_text(),
             }),
+            Shape::PointSeries => point_series(&report.hourly, report.units),
+            Shape::NumberSeries => number_series(&report.hourly),
+            Shape::Bars => precipitation_bars(&report.hourly),
+            Shape::Badge => Body::Badge(weather_badge(report.code)),
             _ => entries(&report),
         };
         Ok(payload(body))
@@ -135,13 +155,36 @@ async fn fetch_report(lat: f64, lon: f64, units: Units) -> Result<Sample, FetchE
         temperature: raw.current.temperature_2m,
         wind_speed: raw.current.wind_speed_10m,
         humidity: raw.current.relative_humidity_2m,
+        hourly: hourly_from(&raw.hourly),
         units,
     })
 }
 
+fn hourly_from(raw: &Hourly) -> Vec<HourPoint> {
+    let temps = raw.temperature_2m.iter().copied();
+    let precs = raw
+        .precipitation
+        .iter()
+        .copied()
+        .chain(std::iter::repeat(0.0));
+    temps
+        .zip(precs)
+        .take(HOURLY_HOURS)
+        .enumerate()
+        .map(|(i, (temp, precip))| HourPoint {
+            offset_hours: i as u32,
+            temperature: temp,
+            precipitation: precip,
+        })
+        .collect()
+}
+
 fn build_url(lat: f64, lon: f64, units: Units) -> String {
     let base = format!(
-        "{API_BASE}?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m"
+        "{API_BASE}?latitude={lat}&longitude={lon}\
+         &current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m\
+         &hourly=temperature_2m,precipitation\
+         &forecast_days=2"
     );
     match units {
         Units::Metric => format!("{base}&wind_speed_unit=ms"),
@@ -152,6 +195,8 @@ fn build_url(lat: f64, lon: f64, units: Units) -> String {
 #[derive(Debug, Deserialize)]
 struct ApiResponse {
     current: Current,
+    #[serde(default)]
+    hourly: Hourly,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,21 +207,46 @@ struct Current {
     relative_humidity_2m: u8,
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct Hourly {
+    #[serde(default)]
+    temperature_2m: Vec<f64>,
+    #[serde(default)]
+    precipitation: Vec<f64>,
+}
+
 struct Sample {
     code: u16,
     temperature: f64,
     wind_speed: f64,
     humidity: u8,
+    hourly: Vec<HourPoint>,
     units: Units,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HourPoint {
+    offset_hours: u32,
+    temperature: f64,
+    /// Precipitation in mm for metric, inches for imperial.
+    precipitation: f64,
 }
 
 impl Default for Sample {
     fn default() -> Self {
+        let hourly = (0..HOURLY_HOURS as u32)
+            .map(|i| HourPoint {
+                offset_hours: i,
+                temperature: 16.0 + ((i as f64) * 0.4 - (i as f64 / 8.0).sin() * 4.0),
+                precipitation: if (10..=14).contains(&i) { 0.6 } else { 0.0 },
+            })
+            .collect();
         Self {
             code: 3,
             temperature: 18.0,
             wind_speed: 4.0,
             humidity: 67,
+            hourly,
             units: Units::Metric,
         }
     }
@@ -208,6 +278,62 @@ impl Sample {
             self.wind_label(),
             self.humidity_label(),
         )
+    }
+}
+
+fn point_series(hourly: &[HourPoint], units: Units) -> Body {
+    let unit_label = match units {
+        Units::Metric => "°C",
+        Units::Imperial => "°F",
+    };
+    Body::PointSeries(PointSeriesData {
+        series: vec![PointSeries {
+            name: format!("temperature ({unit_label})"),
+            points: hourly
+                .iter()
+                .map(|h| (f64::from(h.offset_hours), h.temperature))
+                .collect(),
+        }],
+    })
+}
+
+fn number_series(hourly: &[HourPoint]) -> Body {
+    Body::NumberSeries(NumberSeriesData {
+        values: hourly
+            .iter()
+            .map(|h| h.temperature.round().clamp(0.0, u64::MAX as f64) as u64)
+            .collect(),
+    })
+}
+
+fn precipitation_bars(hourly: &[HourPoint]) -> Body {
+    Body::Bars(BarsData {
+        bars: hourly
+            .iter()
+            .map(|h| Bar {
+                label: format!("+{}h", h.offset_hours),
+                // Bars are integer-valued; multiply by 10 to keep one decimal of precision
+                // (i.e. units = "tenths of mm" / "tenths of an inch").
+                value: (h.precipitation.max(0.0) * 10.0).round() as u64,
+            })
+            .collect(),
+    })
+}
+
+fn weather_badge(code: u16) -> BadgeData {
+    let (status, label) = match code {
+        95 | 96 | 99 => (Status::Error, "thunderstorm"),
+        56 | 57 | 66 | 67 => (Status::Warn, "freezing"),
+        65 | 75 | 82 | 86 => (Status::Warn, "heavy precip"),
+        61 | 63 | 71 | 73 | 80 | 81 | 85 => (Status::Warn, "precip"),
+        _ => {
+            let (_, desc) = weather_description(code);
+            (Status::Ok, desc)
+        }
+    };
+    BadgeData {
+        status,
+        label: label.into(),
     }
 }
 
@@ -361,6 +487,45 @@ mod tests {
         let raw: toml::Value =
             toml::from_str("latitude = 1.0\nlongitude = 2.0\nbogus = true").unwrap();
         assert!(parse_options::<WeatherOptions>(Some(&raw)).is_err());
+    }
+
+    #[test]
+    fn point_series_carries_one_temperature_series_with_24_points() {
+        let body = point_series(&Sample::default().hourly, Units::Metric);
+        let Body::PointSeries(d) = body else {
+            panic!("expected point series");
+        };
+        assert_eq!(d.series.len(), 1);
+        assert_eq!(d.series[0].points.len(), HOURLY_HOURS);
+        assert!(d.series[0].name.contains("°C"));
+    }
+
+    #[test]
+    fn number_series_rounds_temperatures_to_u64() {
+        let body = number_series(&Sample::default().hourly);
+        let Body::NumberSeries(d) = body else {
+            panic!("expected number series");
+        };
+        assert_eq!(d.values.len(), HOURLY_HOURS);
+    }
+
+    #[test]
+    fn precipitation_bars_are_labelled_with_hour_offsets() {
+        let body = precipitation_bars(&Sample::default().hourly);
+        let Body::Bars(d) = body else {
+            panic!("expected bars");
+        };
+        assert_eq!(d.bars.len(), HOURLY_HOURS);
+        assert_eq!(d.bars[0].label, "+0h");
+        assert_eq!(d.bars[5].label, "+5h");
+    }
+
+    #[test]
+    fn weather_badge_severity_follows_wmo_groups() {
+        assert_eq!(weather_badge(0).status, Status::Ok);
+        assert_eq!(weather_badge(63).status, Status::Warn);
+        assert_eq!(weather_badge(75).status, Status::Warn);
+        assert_eq!(weather_badge(95).status, Status::Error);
     }
 
     /// Live smoke test — hits Open-Meteo. `#[ignore]` keeps CI offline-safe; run with

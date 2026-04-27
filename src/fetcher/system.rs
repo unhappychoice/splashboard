@@ -12,7 +12,8 @@ use sysinfo::{Disks, ProcessesToUpdate, System};
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Bar, BarsData, Body, EntriesData, Entry, Payload, RatioData, TextBlockData, TextData,
+    BadgeData, Bar, BarsData, Body, EntriesData, Entry, Payload, RatioData, Status, TextBlockData,
+    TextData,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -672,7 +673,7 @@ impl RealtimeFetcher for BatteryFetcher {
         "Charge level and state of the primary (or `index`-selected) battery. `Ratio` drives gauges, `Text` formats a summary line whose field is picked by `kind`, and `Entries` rolls up charge / state / time-left / cycles / health. Hosts without a battery render a steady `\"AC\"` placeholder."
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Ratio, Shape::Text, Shape::Entries]
+        &[Shape::Ratio, Shape::Text, Shape::Entries, Shape::Badge]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         BATTERY_OPTION_SCHEMAS
@@ -688,6 +689,7 @@ impl RealtimeFetcher for BatteryFetcher {
                 ("cycles", "284"),
                 ("health", "97%"),
             ]),
+            Shape::Badge => samples::badge(Status::Ok, "87% · Charging"),
             _ => return None,
         })
     }
@@ -705,6 +707,7 @@ impl RealtimeFetcher for BatteryFetcher {
             (Some(snap), Shape::Entries) => payload(Body::Entries(EntriesData {
                 items: battery_entries(&snap),
             })),
+            (Some(snap), Shape::Badge) => payload(Body::Badge(battery_badge(&snap))),
             (Some(snap), _) => payload(Body::Ratio(RatioData {
                 value: snap.charge,
                 label: Some(format!(
@@ -788,6 +791,19 @@ fn format_battery_text(snap: &BatterySnapshot, kind: BatteryTextKind) -> String 
     }
 }
 
+fn battery_badge(snap: &BatterySnapshot) -> BadgeData {
+    let status = match snap.state {
+        BatteryState::Charging | BatteryState::Full => Status::Ok,
+        _ if snap.charge < 0.20 => Status::Error,
+        _ if snap.charge < 0.50 => Status::Warn,
+        _ => Status::Ok,
+    };
+    BadgeData {
+        status,
+        label: format!("{} · {}", format_percent(snap.charge), snap.state.label()),
+    }
+}
+
 fn battery_entries(snap: &BatterySnapshot) -> Vec<Entry> {
     let mut items = vec![
         entry("charge", &format_percent(snap.charge)),
@@ -816,6 +832,10 @@ fn no_battery_payload(shape: Shape, kind: BatteryTextKind) -> Payload {
         })),
         Shape::Entries => payload(Body::Entries(EntriesData {
             items: vec![entry("power", "AC")],
+        })),
+        Shape::Badge => payload(Body::Badge(BadgeData {
+            status: Status::Ok,
+            label: "AC".into(),
         })),
         _ => payload(Body::Ratio(RatioData {
             value: 1.0,
@@ -1234,12 +1254,25 @@ mod tests {
             Some(Shape::Ratio),
             Some(Shape::Text),
             Some(Shape::Entries),
+            Some(Shape::Badge),
         ] {
             let p = f.compute(&ctx_with_shape(shape));
             // Each branch must produce *some* body; on hosts without a battery we land on the
             // AC stand-in, on laptops we get the real reading. Both are valid.
             assert!(!matches!(p.body, Body::Image(_)));
         }
+    }
+
+    #[test]
+    fn battery_badge_status_reflects_charge_and_state() {
+        let low = snapshot(0.05, BatteryState::Discharging, None);
+        assert_eq!(battery_badge(&low).status, Status::Error);
+        let mid = snapshot(0.30, BatteryState::Discharging, None);
+        assert_eq!(battery_badge(&mid).status, Status::Warn);
+        let high = snapshot(0.95, BatteryState::Discharging, None);
+        assert_eq!(battery_badge(&high).status, Status::Ok);
+        let charging_low = snapshot(0.05, BatteryState::Charging, None);
+        assert_eq!(battery_badge(&charging_low).status, Status::Ok);
     }
 
     #[test]

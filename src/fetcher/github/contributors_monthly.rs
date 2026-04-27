@@ -9,7 +9,8 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Bar, BarsData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload,
+    Bar, BarsData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData,
+    MarkdownTextBlockData, Payload, TextBlockData, TextData,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -18,7 +19,14 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::{http, resolve_token};
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Bars, Shape::LinkedTextBlock, Shape::Entries];
+const SHAPES: &[Shape] = &[
+    Shape::Bars,
+    Shape::LinkedTextBlock,
+    Shape::Entries,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Text,
+];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -67,7 +75,7 @@ impl Fetcher for GithubContributorsMonthly {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Top contributors to a repo over the last N days, ranked by commit count, as bars or a list. Useful for the maintainer view of who has been shipping recently."
+        "Top contributors to a repo over the last N days, ranked by commit count. Bars / Entries / LinkedTextBlock / TextBlock / MarkdownTextBlock all carry the ranking; Text collapses to a `\"@alice +42 / @bob +27 / …\"` headline."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -88,6 +96,16 @@ impl Fetcher for GithubContributorsMonthly {
             Shape::Entries => {
                 samples::entries(&[("alice", "42"), ("bob", "27"), ("charlie", "11")])
             }
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                ("alice  42", Some("https://github.com/alice")),
+                ("bob  27", Some("https://github.com/bob")),
+                ("charlie  11", Some("https://github.com/charlie")),
+            ]),
+            Shape::TextBlock => samples::text_block(&["alice    42", "bob      27", "charlie  11"]),
+            Shape::MarkdownTextBlock => {
+                samples::markdown("1. **@alice** — 42\n2. **@bob** — 27\n3. **@charlie** — 11")
+            }
+            Shape::Text => samples::text("@alice +42 · @bob +27 · @charlie +11"),
             _ => return None,
         })
     }
@@ -206,6 +224,24 @@ fn render_body(rows: &[(String, u64)], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
+        Shape::TextBlock => Body::TextBlock(TextBlockData {
+            lines: rows.iter().map(|(n, c)| format!("{n}  {c}")).collect(),
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: rows
+                .iter()
+                .enumerate()
+                .map(|(i, (n, c))| format!("{}. **@{n}** — {c}", i + 1))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }),
+        Shape::Text => Body::Text(TextData {
+            value: rows
+                .iter()
+                .map(|(n, c)| format!("@{n} +{c}"))
+                .collect::<Vec<_>>()
+                .join(" · "),
+        }),
         _ => Body::Bars(BarsData {
             bars: rows
                 .iter()
@@ -226,4 +262,41 @@ fn repo_for_key(ctx: &FetchContext) -> String {
         .map(String::from)
         .or_else(|| resolve_repo(None).ok().map(|s: RepoSlug| s.as_path()))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rows() -> Vec<(String, u64)> {
+        vec![("alice".into(), 42), ("bob".into(), 27)]
+    }
+
+    #[test]
+    fn text_body_collapses_to_at_handles_with_plus_counts() {
+        let body = render_body(&rows(), Shape::Text);
+        let Body::Text(d) = body else {
+            panic!("expected text")
+        };
+        assert_eq!(d.value, "@alice +42 · @bob +27");
+    }
+
+    #[test]
+    fn markdown_text_block_lists_handles_and_counts() {
+        let body = render_body(&rows(), Shape::MarkdownTextBlock);
+        let Body::MarkdownTextBlock(d) = body else {
+            panic!("expected markdown")
+        };
+        assert!(d.value.contains("1. **@alice** — 42"));
+        assert!(d.value.contains("2. **@bob** — 27"));
+    }
+
+    #[test]
+    fn text_block_has_one_line_per_contributor() {
+        let body = render_body(&rows(), Shape::TextBlock);
+        let Body::TextBlock(d) = body else {
+            panic!("expected text block")
+        };
+        assert_eq!(d.lines.len(), 2);
+    }
 }

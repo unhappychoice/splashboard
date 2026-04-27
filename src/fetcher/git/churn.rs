@@ -7,21 +7,28 @@ use gix::object::tree::diff::Change;
 use gix::revision::walk::Sorting;
 use gix::traverse::commit::simple::CommitTimeOrder;
 
-use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload};
+use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, MarkdownTextBlockData, Payload};
 use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, open_repo, payload, repo_cache_key, text_block_body, text_body};
 
-const SHAPES: &[Shape] = &[Shape::Entries, Shape::Bars, Shape::TextBlock, Shape::Text];
+const SHAPES: &[Shape] = &[
+    Shape::Entries,
+    Shape::Bars,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Text,
+];
 const DEFAULT_DAYS: u64 = 30;
 const TOP_FILES: usize = 10;
 const MAX_COMMITS: usize = 500;
 
 /// Top files by change count over the last N days (default 30, configurable via `format = "N"`).
 /// `Entries` is the default (`path: count` rows); `Bars` ranks visually; `TextBlock` emits one
-/// `"path (count)"` per line; `Text` collapses everything into a single-line basename summary
+/// `"path (count)"` per line; `MarkdownTextBlock` outputs the same ranking as a numbered markdown
+/// list; `Text` collapses everything into a single-line basename summary
 /// `"main.rs (42), lib.rs (31), …"`. Pairs with `code_largest_files` for "where's the action vs
 /// where's the mass" framing.
 pub struct GitChurn;
@@ -66,6 +73,9 @@ impl Fetcher for GitChurn {
                 "src/render/mod.rs (18)",
                 "src/fetcher/mod.rs (12)",
             ]),
+            Shape::MarkdownTextBlock => samples::markdown(
+                "1. `src/main.rs` — 42\n2. `src/lib.rs` — 31\n3. `src/render/mod.rs` — 18\n4. `src/fetcher/mod.rs` — 12",
+            ),
             Shape::Text => samples::text("main.rs (42), lib.rs (31), mod.rs (18)"),
             _ => return None,
         })
@@ -182,6 +192,14 @@ fn render_body(ranked: Vec<(String, u64)>, shape: Shape) -> Body {
                 .map(|(path, count)| format!("{path} ({count})"))
                 .collect(),
         ),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: ranked
+                .into_iter()
+                .enumerate()
+                .map(|(i, (path, count))| format!("{}. `{path}` — {count}", i + 1))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }),
         Shape::Text => {
             if ranked.is_empty() {
                 text_body("")
@@ -312,6 +330,21 @@ mod tests {
         let body = render_body(Vec::new(), Shape::Text);
         match body {
             Body::Text(d) => assert!(d.value.is_empty()),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn markdown_text_block_emits_numbered_list_with_inline_code() {
+        let body = render_body(
+            vec![("src/foo.rs".into(), 3), ("src/bar.rs".into(), 1)],
+            Shape::MarkdownTextBlock,
+        );
+        match body {
+            Body::MarkdownTextBlock(d) => {
+                assert!(d.value.contains("1. `src/foo.rs` — 3"));
+                assert!(d.value.contains("2. `src/bar.rs` — 1"));
+            }
             _ => panic!(),
         }
     }

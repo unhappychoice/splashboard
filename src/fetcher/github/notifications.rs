@@ -6,8 +6,8 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload, TextBlockData,
-    TimelineData, TimelineEvent,
+    BadgeData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, Payload, Status,
+    TextBlockData, TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -21,6 +21,7 @@ const SHAPES: &[Shape] = &[
     Shape::TextBlock,
     Shape::Entries,
     Shape::Timeline,
+    Shape::Badge,
 ];
 const DEFAULT_LIMIT: u32 = 10;
 
@@ -90,6 +91,7 @@ impl Fetcher for GithubNotifications {
                 ),
                 (1_773_800_000, "ratatui", Some("mention: rfc: themes")),
             ]),
+            Shape::Badge => samples::badge(Status::Warn, "2 notifications"),
             _ => return None,
         })
     }
@@ -161,6 +163,7 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
+        Shape::Badge => Body::Badge(notifications_badge(items.len())),
         _ => Body::TextBlock(TextBlockData {
             lines: items
                 .iter()
@@ -172,6 +175,17 @@ fn render_body(items: &[Notification], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
+    }
+}
+
+fn notifications_badge(count: usize) -> BadgeData {
+    BadgeData {
+        status: if count == 0 { Status::Ok } else { Status::Warn },
+        label: match count {
+            0 => "inbox zero".into(),
+            1 => "1 notification".into(),
+            n => format!("{n} notifications"),
+        },
     }
 }
 
@@ -212,6 +226,22 @@ mod tests {
     fn short_repo_drops_owner() {
         assert_eq!(short_repo("unhappychoice/splashboard"), "splashboard");
         assert_eq!(short_repo("singleton"), "singleton");
+    }
+
+    #[test]
+    fn badge_body_collapses_to_count_pill() {
+        let body = render_body(&[sample(), sample()], Shape::Badge);
+        let Body::Badge(b) = body else {
+            panic!("expected badge")
+        };
+        assert_eq!(b.status, Status::Warn);
+        assert_eq!(b.label, "2 notifications");
+        let body = render_body(&[], Shape::Badge);
+        let Body::Badge(b) = body else {
+            panic!("expected badge")
+        };
+        assert_eq!(b.status, Status::Ok);
+        assert_eq!(b.label, "inbox zero");
     }
 
     #[test]

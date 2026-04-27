@@ -9,7 +9,10 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Bar, BarsData, Body, EntriesData, Entry, Payload};
+use crate::payload::{
+    Bar, BarsData, Body, EntriesData, Entry, MarkdownTextBlockData, Payload, TextBlockData,
+    TextData,
+};
 use crate::render::Shape;
 use crate::samples;
 
@@ -17,7 +20,13 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Bars, Shape::Entries];
+const SHAPES: &[Shape] = &[
+    Shape::Bars,
+    Shape::Entries,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Text,
+];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -58,7 +67,7 @@ impl Fetcher for GithubLanguages {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Language byte-count breakdown for a repo, sorted by size, as bars or percent rows. Languages beyond `limit` collapse into a single `other` bucket so totals stay honest."
+        "Language byte-count breakdown for a repo, sorted by size. `Bars` / `Entries` / `TextBlock` / `MarkdownTextBlock` carry the full ranking with percent values; `Text` collapses to a `\"Rust 87% · TOML 8% · …\"` headline. Languages beyond `limit` collapse into a single `other` bucket so totals stay honest."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -77,6 +86,13 @@ impl Fetcher for GithubLanguages {
         Some(match shape {
             Shape::Bars => samples::bars(&[("Rust", 87_000), ("TOML", 8_000), ("Shell", 5_000)]),
             Shape::Entries => samples::entries(&[("Rust", "87%"), ("TOML", "8%"), ("Shell", "5%")]),
+            Shape::TextBlock => {
+                samples::text_block(&["Rust    87.0%", "TOML     8.0%", "Shell    5.0%"])
+            }
+            Shape::MarkdownTextBlock => {
+                samples::markdown("- **Rust** — 87.0%\n- **TOML** — 8.0%\n- **Shell** — 5.0%")
+            }
+            Shape::Text => samples::text("Rust 87% · TOML 8% · Shell 5%"),
             _ => return None,
         })
     }
@@ -101,6 +117,15 @@ fn build_body(raw: BTreeMap<String, u64>, shape: Shape, limit: usize) -> Body {
         Shape::Entries => Body::Entries(EntriesData {
             items: to_entries(&sorted),
         }),
+        Shape::TextBlock => Body::TextBlock(TextBlockData {
+            lines: text_lines(&sorted),
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: markdown_text(&sorted),
+        }),
+        Shape::Text => Body::Text(TextData {
+            value: text_headline(&sorted),
+        }),
         _ => Body::Bars(BarsData {
             bars: sorted
                 .into_iter()
@@ -108,6 +133,40 @@ fn build_body(raw: BTreeMap<String, u64>, shape: Shape, limit: usize) -> Body {
                 .collect(),
         }),
     }
+}
+
+fn text_lines(sorted: &[(String, u64)]) -> Vec<String> {
+    let total: u64 = sorted.iter().map(|(_, v)| v).sum();
+    sorted
+        .iter()
+        .map(|(label, value)| format!("{label}  {}", format_percent(*value, total)))
+        .collect()
+}
+
+fn markdown_text(sorted: &[(String, u64)]) -> String {
+    let total: u64 = sorted.iter().map(|(_, v)| v).sum();
+    sorted
+        .iter()
+        .map(|(label, value)| format!("- **{label}** — {}", format_percent(*value, total)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn text_headline(sorted: &[(String, u64)]) -> String {
+    let total: u64 = sorted.iter().map(|(_, v)| v).sum();
+    sorted
+        .iter()
+        .map(|(label, value)| format!("{label} {}", format_percent_short(*value, total)))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+fn format_percent_short(value: u64, total: u64) -> String {
+    if total == 0 {
+        return "0%".into();
+    }
+    let pct = (value as f64 / total as f64) * 100.0;
+    format!("{pct:.0}%")
 }
 
 /// Sort by size descending, cap to `limit` entries. If the source has more languages than
@@ -215,6 +274,33 @@ mod tests {
         let entries = to_entries(&sorted);
         assert_eq!(entries[0].value.as_deref(), Some("75.0%"));
         assert_eq!(entries[1].value.as_deref(), Some("25.0%"));
+    }
+
+    #[test]
+    fn text_headline_collapses_to_one_line_with_rounded_percents() {
+        let sorted = vec![
+            ("Rust".into(), 870),
+            ("TOML".into(), 80),
+            ("Shell".into(), 50),
+        ];
+        assert_eq!(text_headline(&sorted), "Rust 87% · TOML 8% · Shell 5%");
+    }
+
+    #[test]
+    fn markdown_text_emits_one_bullet_per_language() {
+        let sorted = vec![("Rust".into(), 750), ("TOML".into(), 250)];
+        let md = markdown_text(&sorted);
+        assert!(md.contains("- **Rust** — 75.0%"));
+        assert!(md.contains("- **TOML** — 25.0%"));
+    }
+
+    #[test]
+    fn build_body_text_emits_text_value() {
+        let body = build_body(raw(&[("Rust", 870), ("TOML", 130)]), Shape::Text, 10);
+        match body {
+            Body::Text(d) => assert!(d.value.contains("Rust") && d.value.contains("87%")),
+            _ => panic!("expected text"),
+        }
     }
 
     #[test]

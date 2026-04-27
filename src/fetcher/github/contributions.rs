@@ -7,7 +7,7 @@ use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, HeatmapData, Payload};
+use crate::payload::{Body, HeatmapData, NumberSeriesData, Payload};
 use crate::render::Shape;
 use crate::samples;
 
@@ -15,7 +15,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::graphql;
 use super::common::{cache_key, parse_options, payload};
 
-const SHAPES: &[Shape] = &[Shape::Heatmap];
+const SHAPES: &[Shape] = &[Shape::Heatmap, Shape::NumberSeries];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "login",
@@ -49,7 +49,7 @@ impl Fetcher for GithubContributions {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "The GitHub contribution calendar (kusa) as a year-long heatmap of daily commit counts. Defaults to the authenticated viewer; pass `login` to show another user."
+        "The GitHub contribution calendar (kusa) as a year-long heatmap of daily commit counts. Defaults to the authenticated viewer; pass `login` to show another user. `NumberSeries` collapses the calendar to one value per week for sparkline-style rendering."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -69,6 +69,9 @@ impl Fetcher for GithubContributions {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         match shape {
             Shape::Heatmap => Some(samples::heatmap_grid(7, 52)),
+            Shape::NumberSeries => Some(Body::NumberSeries(NumberSeriesData {
+                values: vec![3, 4, 7, 5, 11, 9, 13, 8, 6, 15, 12, 18],
+            })),
             _ => None,
         }
     }
@@ -78,7 +81,11 @@ impl Fetcher for GithubContributions {
             None => fetch_viewer().await?,
             Some(login) => fetch_user(login).await?,
         };
-        Ok(payload(Body::Heatmap(to_heatmap(&calendar))))
+        let body = match ctx.shape.unwrap_or(Shape::Heatmap) {
+            Shape::NumberSeries => Body::NumberSeries(to_weekly_series(&calendar)),
+            _ => Body::Heatmap(to_heatmap(&calendar)),
+        };
+        Ok(payload(body))
     }
 }
 
@@ -161,6 +168,23 @@ fn to_heatmap(cal: &Calendar) -> HeatmapData {
     }
 }
 
+fn to_weekly_series(cal: &Calendar) -> NumberSeriesData {
+    NumberSeriesData {
+        values: cal
+            .weeks
+            .iter()
+            .map(|w| {
+                u64::from(
+                    w.contribution_days
+                        .iter()
+                        .map(|d| d.contribution_count)
+                        .sum::<u32>(),
+                )
+            })
+            .collect(),
+    }
+}
+
 fn weekday_index(raw: &str) -> Option<usize> {
     let date = NaiveDate::parse_from_str(raw, "%Y-%m-%d").ok()?;
     // ISO weekday: Mon=0..Sun=6. GitHub's weeks start Sunday, so shift to Sun=0..Sat=6.
@@ -233,5 +257,17 @@ mod tests {
         };
         let h = to_heatmap(&cal);
         assert_eq!(h.cells[0][0], 9);
+    }
+
+    #[test]
+    fn weekly_series_sums_contributions_per_week() {
+        let cal = Calendar {
+            weeks: vec![
+                week(vec![day("2026-04-19", 1), day("2026-04-20", 2)]),
+                week(vec![day("2026-04-26", 3), day("2026-04-27", 4)]),
+            ],
+        };
+        let series = to_weekly_series(&cal);
+        assert_eq!(series.values, vec![3, 7]);
     }
 }
