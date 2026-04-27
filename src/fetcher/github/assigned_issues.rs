@@ -61,6 +61,16 @@ impl Fetcher for GithubAssignedIssues {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "unhappychoice/splashboard#41 meta: widget catalog & roadmap",
+                    Some("https://github.com/unhappychoice/splashboard/issues/41"),
+                ),
+                (
+                    "unhappychoice/splashboard#17 theme system",
+                    Some("https://github.com/unhappychoice/splashboard/issues/17"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&[
                 "unhappychoice/splashboard#41 meta: widget catalog & roadmap",
                 "unhappychoice/splashboard#17 theme system",

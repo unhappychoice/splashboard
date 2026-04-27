@@ -62,6 +62,16 @@ impl Fetcher for GithubMyPrs {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "unhappychoice/splashboard#54 feat(docs): generate widget catalogue",
+                    Some("https://github.com/unhappychoice/splashboard/pull/54"),
+                ),
+                (
+                    "unhappychoice/splashboard#51 feat(fetcher): split clock options",
+                    Some("https://github.com/unhappychoice/splashboard/pull/51"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&[
                 "unhappychoice/splashboard#54 feat(docs): generate widget catalogue",
                 "unhappychoice/splashboard#51 feat(fetcher): split clock options",

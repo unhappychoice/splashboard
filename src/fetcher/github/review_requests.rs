@@ -61,6 +61,16 @@ impl Fetcher for GithubReviewRequests {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "ratatui/ratatui#1234 feat: add pie chart",
+                    Some("https://github.com/ratatui/ratatui/pull/1234"),
+                ),
+                (
+                    "tokio-rs/tokio#5678 fix: race in spawn",
+                    Some("https://github.com/tokio-rs/tokio/pull/5678"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&[
                 "ratatui/ratatui#1234 feat: add pie chart",
                 "tokio-rs/tokio#5678 fix: race in spawn",

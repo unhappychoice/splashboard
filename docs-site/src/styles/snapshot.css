@@ -75,6 +75,16 @@
   vertical-align: top;
 }
 
+/* Linked rows from `list_links` carry the same parent text colour; underline on hover
+   marks them as clickable without overpowering the snapshot. */
+.splash-snapshot .splash-link {
+  color: inherit;
+  text-decoration: none;
+}
+.splash-snapshot .splash-link:hover {
+  text-decoration: underline;
+}
+
 /* Landing full-dashboard preview: behaves like an image — scales to the container's width
    while preserving aspect ratio, no horizontal scroll ever. The dogfood renders at 120 cells
    so at the reference previews' fixed 0.95rem font-size it overflows narrower content

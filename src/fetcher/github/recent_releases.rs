@@ -74,6 +74,16 @@ impl Fetcher for GithubRecentReleases {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "v0.3.0  2026-04-10",
+                    Some("https://github.com/unhappychoice/splashboard/releases/tag/v0.3.0"),
+                ),
+                (
+                    "v0.2.1  2026-03-05",
+                    Some("https://github.com/unhappychoice/splashboard/releases/tag/v0.2.1"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&["v0.3.0  2026-04-10", "v0.2.1  2026-03-05"]),
             Shape::Entries => {
                 samples::entries(&[("v0.3.0", "2026-04-10"), ("v0.2.1", "2026-03-05")])
