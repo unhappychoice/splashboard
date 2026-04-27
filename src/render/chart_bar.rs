@@ -25,6 +25,8 @@ struct Options {
     pub max_bars: Option<usize>,
     #[serde(default)]
     pub bar_width: Option<u16>,
+    #[serde(default)]
+    pub bar_gap: Option<u16>,
 }
 
 const COLOR_KEYS: &[ColorKey] = &[theme::TEXT];
@@ -57,6 +59,13 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         required: false,
         default: Some("3 for vertical, 1 for horizontal"),
         description: "Thickness of each bar along the axis perpendicular to its growth. Horizontal bars default to 1 cell so several fit into a compact slot without stacking tall; vertical bars default to 3 so labels under them have room.",
+    },
+    OptionSchema {
+        name: "bar_gap",
+        type_hint: "cells (u16)",
+        required: false,
+        default: Some("1 for vertical, 0 for horizontal"),
+        description: "Gap between adjacent bars. Vertical bars default to 1 cell so labels under each bar stay legible; horizontal bars default to 0 so rows pack tight without blank gutters between them.",
     },
 ];
 
@@ -110,10 +119,12 @@ fn render_bars(
         Direction::Vertical
     };
     let bar_width = specific.bar_width.unwrap_or(if horizontal { 1 } else { 3 });
+    let bar_gap = specific.bar_gap.unwrap_or(if horizontal { 0 } else { 1 });
     frame.render_widget(
         BarChart::default()
             .data(&bars)
             .bar_width(bar_width)
+            .bar_gap(bar_gap)
             .direction(direction)
             .label_style(Style::default().fg(theme.text))
             .value_style(Style::default().fg(theme.text)),
