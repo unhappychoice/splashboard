@@ -9,7 +9,7 @@
 //! - **caches successful responses** for 60s so back-to-back refreshes inside the burst
 //!   window reuse the body. The splashboard payload cache keeps shape-specific copies for
 //!   longer; this layer is just the burst smoother in front of it.
-//! - **bounds concurrency** via a semaphore (2 in flight). The documented limit is
+//! - **bounds concurrency** via a semaphore (4 in flight). The documented limit is
 //!   120 req/min per key (rolling window, no burst sub-limit) so 10 calls per refresh
 //!   cycle leaves plenty of headroom; the cap is mainly so `on_this_day`'s 8-anchor fan-
 //!   out doesn't spike disk / network for a moment. If a 429 does fire (token shared with

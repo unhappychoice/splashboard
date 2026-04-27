@@ -9,6 +9,7 @@
 //! Safety::Safe: host `api.deariary.com` is hardcoded.
 
 use async_trait::async_trait;
+use chrono::{Local, NaiveDate};
 use serde::Deserialize;
 
 use super::client::{ApiEntry, cached_get_entries, cached_get_entry, entry_url, resolve_token};
@@ -106,7 +107,8 @@ impl Fetcher for DeariaryToday {
         let token = resolve_token(opts.token.as_deref())?;
         let entry = latest_entry(&token).await?;
         let shape = ctx.shape.unwrap_or(Shape::TextBlock);
-        Ok(payload(render_body(entry.as_ref(), shape)))
+        let today = Local::now().date_naive();
+        Ok(payload(render_body(entry.as_ref(), shape, today)))
     }
 }
 
@@ -121,7 +123,7 @@ async fn latest_entry(token: &str) -> Result<Option<ApiEntry>, FetchError> {
     cached_get_entry(token, &latest.date).await
 }
 
-fn render_body(entry: Option<&ApiEntry>, shape: Shape) -> Body {
+fn render_body(entry: Option<&ApiEntry>, shape: Shape, today: NaiveDate) -> Body {
     match entry {
         None => empty_body(shape),
         Some(e) => match shape {
@@ -129,7 +131,7 @@ fn render_body(entry: Option<&ApiEntry>, shape: Shape) -> Body {
             Shape::MarkdownTextBlock => render_markdown(e),
             Shape::LinkedTextBlock => render_linked(e),
             Shape::Entries => render_entries(e),
-            Shape::Badge => render_badge(e),
+            Shape::Badge => render_badge(e, today),
             _ => render_text_block(e),
         },
     }
@@ -187,11 +189,24 @@ fn render_entries(e: &ApiEntry) -> Body {
     Body::Entries(EntriesData { items })
 }
 
-fn render_badge(_e: &ApiEntry) -> Body {
+fn render_badge(e: &ApiEntry, today: NaiveDate) -> Body {
     Body::Badge(BadgeData {
         status: Status::Ok,
-        label: "📔 today".into(),
+        label: format!("📔 {}", relative_day(&e.date, today)),
     })
+}
+
+/// `today` / `yesterday` / falls back to the raw ISO date for older entries — keeps the badge
+/// label honest when today's hasn't generated yet and the fetcher returns yesterday's instead.
+fn relative_day(raw: &str, today: NaiveDate) -> String {
+    let Ok(date) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") else {
+        return raw.to_string();
+    };
+    match (today - date).num_days() {
+        0 => "today".into(),
+        1 => "yesterday".into(),
+        _ => raw.to_string(),
+    }
 }
 
 fn content_lines(e: &ApiEntry) -> Vec<String> {
@@ -237,9 +252,13 @@ mod tests {
         }
     }
 
+    fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
     #[test]
     fn text_body_uses_title_only() {
-        let Body::Text(t) = render_body(Some(&entry()), Shape::Text) else {
+        let Body::Text(t) = render_body(Some(&entry()), Shape::Text, ymd(2026, 4, 27)) else {
             panic!("expected Text");
         };
         assert!(t.value.contains("My Day"));
@@ -248,7 +267,8 @@ mod tests {
 
     #[test]
     fn text_block_splits_content_into_lines() {
-        let Body::TextBlock(t) = render_body(Some(&entry()), Shape::TextBlock) else {
+        let Body::TextBlock(t) = render_body(Some(&entry()), Shape::TextBlock, ymd(2026, 4, 27))
+        else {
             panic!("expected TextBlock");
         };
         assert_eq!(t.lines, vec!["# Hello", "", "World"]);
@@ -256,7 +276,9 @@ mod tests {
 
     #[test]
     fn linked_text_block_emits_one_clickable_headline() {
-        let Body::LinkedTextBlock(l) = render_body(Some(&entry()), Shape::LinkedTextBlock) else {
+        let Body::LinkedTextBlock(l) =
+            render_body(Some(&entry()), Shape::LinkedTextBlock, ymd(2026, 4, 27))
+        else {
             panic!("expected LinkedTextBlock");
         };
         assert_eq!(l.items.len(), 1);
@@ -269,7 +291,8 @@ mod tests {
 
     #[test]
     fn markdown_block_passes_content_through_verbatim() {
-        let Body::MarkdownTextBlock(m) = render_body(Some(&entry()), Shape::MarkdownTextBlock)
+        let Body::MarkdownTextBlock(m) =
+            render_body(Some(&entry()), Shape::MarkdownTextBlock, ymd(2026, 4, 27))
         else {
             panic!("expected MarkdownTextBlock");
         };
@@ -281,7 +304,7 @@ mod tests {
         let mut bare = entry();
         bare.tags.clear();
         bare.sources.clear();
-        let Body::Entries(e) = render_body(Some(&bare), Shape::Entries) else {
+        let Body::Entries(e) = render_body(Some(&bare), Shape::Entries, ymd(2026, 4, 27)) else {
             panic!("expected Entries");
         };
         let keys: Vec<&str> = e.items.iter().map(|i| i.key.as_str()).collect();
@@ -290,7 +313,7 @@ mod tests {
 
     #[test]
     fn entries_joins_tags_and_sources_when_present() {
-        let Body::Entries(e) = render_body(Some(&entry()), Shape::Entries) else {
+        let Body::Entries(e) = render_body(Some(&entry()), Shape::Entries, ymd(2026, 4, 27)) else {
             panic!("expected Entries");
         };
         let tags = e.items.iter().find(|i| i.key == "tags").unwrap();
@@ -298,8 +321,8 @@ mod tests {
     }
 
     #[test]
-    fn badge_label_is_constant_when_entry_present() {
-        let Body::Badge(b) = render_body(Some(&entry()), Shape::Badge) else {
+    fn badge_label_says_today_when_entry_date_matches_today() {
+        let Body::Badge(b) = render_body(Some(&entry()), Shape::Badge, ymd(2026, 4, 27)) else {
             panic!("expected Badge");
         };
         assert_eq!(b.status, Status::Ok);
@@ -307,8 +330,24 @@ mod tests {
     }
 
     #[test]
+    fn badge_label_says_yesterday_when_today_has_not_generated_yet() {
+        let Body::Badge(b) = render_body(Some(&entry()), Shape::Badge, ymd(2026, 4, 28)) else {
+            panic!("expected Badge");
+        };
+        assert_eq!(b.label, "📔 yesterday");
+    }
+
+    #[test]
+    fn badge_label_falls_back_to_iso_date_for_older_entries() {
+        let Body::Badge(b) = render_body(Some(&entry()), Shape::Badge, ymd(2026, 5, 1)) else {
+            panic!("expected Badge");
+        };
+        assert_eq!(b.label, "📔 2026-04-27");
+    }
+
+    #[test]
     fn missing_entry_emits_empty_text_block() {
-        let Body::TextBlock(t) = render_body(None, Shape::TextBlock) else {
+        let Body::TextBlock(t) = render_body(None, Shape::TextBlock, ymd(2026, 4, 27)) else {
             panic!("expected TextBlock");
         };
         assert!(t.lines.is_empty());
@@ -316,7 +355,7 @@ mod tests {
 
     #[test]
     fn missing_entry_emits_warn_badge() {
-        let Body::Badge(b) = render_body(None, Shape::Badge) else {
+        let Body::Badge(b) = render_body(None, Shape::Badge, ymd(2026, 4, 27)) else {
             panic!("expected Badge");
         };
         assert_eq!(b.status, Status::Warn);

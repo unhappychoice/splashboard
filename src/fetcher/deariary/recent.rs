@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use chrono::{Datelike, Local, NaiveDate};
 use serde::Deserialize;
 
-use super::client::{ApiEntry, cached_get_entries, entry_url, resolve_token};
+use super::client::{ApiEntry, MAX_LIST_LIMIT, cached_get_entries, entry_url, resolve_token};
 use crate::fetcher::github::common::{cache_key, parse_options, parse_timestamp, payload};
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
@@ -24,7 +24,6 @@ use crate::samples;
 
 const DEFAULT_LIMIT: u32 = 10;
 const MIN_LIMIT: u32 = 1;
-const MAX_LIMIT: u32 = 100;
 const SHAPES: &[Shape] = &[
     Shape::Timeline,
     Shape::Text,
@@ -147,7 +146,7 @@ impl Fetcher for DeariaryRecent {
         let limit = opts
             .limit
             .unwrap_or(DEFAULT_LIMIT)
-            .clamp(MIN_LIMIT, MAX_LIMIT);
+            .clamp(MIN_LIMIT, MAX_LIST_LIMIT);
         let entries = cached_get_entries(&token, opts.tag.as_deref()).await?;
         let shape = ctx.shape.unwrap_or(Shape::Timeline);
         let today = Local::now().date_naive();
