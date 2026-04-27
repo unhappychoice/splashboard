@@ -7,6 +7,8 @@
 //! noise that's been committed anyway and would otherwise inflate metrics
 //! (`Cargo.lock` alone is ~6k lines on a typical Rust repo).
 
+use tokei::{CodeStats, Config, LanguageType};
+
 use super::super::FetchError;
 use super::super::git::fail;
 
@@ -140,6 +142,57 @@ where
         visit(path_str, &bytes);
     }
     Ok(())
+}
+
+/// Path → display label + tokei [`LanguageType`]. Pre-checks bare filenames tokei misses
+/// (`Gemfile`, `Brewfile` → Ruby), then defers to tokei's extension table. Returns the
+/// canonicalised display name (`TSX` / `JSX` are folded into `TypeScript` / `JavaScript`
+/// for splash purposes — they're variant syntaxes of the same language for the user's
+/// mental model).
+pub fn classify_with_lang(path: &str, cfg: &Config) -> Option<(&'static str, LanguageType)> {
+    if let Some(forced) = special_basename(path) {
+        return Some(forced);
+    }
+    let lang = LanguageType::from_path(path, cfg)?;
+    Some((canonical_name(lang.name()), lang))
+}
+
+/// Display-name-only convenience for path-only callers (`code_language_logo`).
+pub fn classify_path(path: &str) -> Option<&'static str> {
+    classify_with_lang(path, &Config::default()).map(|(name, _)| name)
+}
+
+fn special_basename(path: &str) -> Option<(&'static str, LanguageType)> {
+    let basename = path.rsplit('/').next().unwrap_or(path);
+    match basename {
+        "Gemfile" | "Brewfile" => Some(("Ruby", LanguageType::Ruby)),
+        _ => None,
+    }
+}
+
+fn canonical_name(name: &'static str) -> &'static str {
+    match name {
+        "TSX" => "TypeScript",
+        "JSX" => "JavaScript",
+        _ => name,
+    }
+}
+
+/// Visit each tracked, classifiable, in-bounds file with its display label and per-file
+/// [`CodeStats`] (`code` / `comments` / `blanks`). Files whose extension neither tokei nor
+/// [`special_basename`] recognise are skipped silently; aggregate them under "Other"
+/// upstream if needed. Reuses [`for_each_tracked_file`]'s exclusion + size-cap rules.
+pub fn for_each_tokei_stat<F>(repo: &gix::Repository, mut visit: F) -> Result<(), FetchError>
+where
+    F: FnMut(&str, &'static str, &CodeStats),
+{
+    let cfg = Config::default();
+    for_each_tracked_file(repo, |path, bytes| {
+        if let Some((name, lang)) = classify_with_lang(path, &cfg) {
+            let stats = lang.parse_from_slice(bytes, &cfg);
+            visit(path, name, &stats);
+        }
+    })
 }
 
 fn is_regular_file(mode: gix::index::entry::Mode) -> bool {
