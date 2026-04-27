@@ -12,6 +12,7 @@ use super::Fetcher;
 mod files;
 mod language_logo;
 mod languages;
+mod largest_files;
 mod loc;
 mod logo_assets;
 mod scan;
@@ -19,6 +20,7 @@ mod todos;
 
 pub use files::CodeFiles;
 pub use language_logo::CodeLanguageLogo;
+pub use largest_files::CodeLargestFiles;
 pub use loc::CodeLoc;
 pub use todos::CodeTodos;
 
@@ -28,5 +30,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(CodeLoc),
         Arc::new(CodeLanguageLogo),
         Arc::new(CodeFiles),
+        Arc::new(CodeLargestFiles),
     ]
 }
