@@ -57,8 +57,8 @@ your chosen theme — followed by a final confirmation page:
    `home_minimal` / `home_feed`. Shown on new shells and when `cd`-ing
    anywhere outside a git repo root.
 2. **Project dashboard** — one of `project_splash` / `project_github` /
-   `project_minimal`. Shown when `cd`-ing into the top of any git repo that
-   doesn't ship its own `./.splashboard/`.
+   `project_minimal` / `project_codebase`. Shown when `cd`-ing into the top
+   of any git repo that doesn't ship its own `./.splashboard/`.
 3. **Theme** — `default` (the Splash signature ocean palette), or one of
    `tokyo_night`, `catppuccin_mocha`, `dracula`, `nord`, `gruvbox_dark`. The
    preview re-renders your home pick under the highlighted theme so you see
@@ -112,7 +112,7 @@ Flag reference:
 Available templates:
 
 - **home**: `home_splash`, `home_daily`, `home_github`, `home_minimal`, `home_feed`
-- **project**: `project_splash`, `project_github`, `project_minimal`
+- **project**: `project_splash`, `project_github`, `project_minimal`, `project_codebase`
 
 See [Presets](/guides/presets/) for a rendered preview of each,
 and [Themes](/guides/themes/) for the palette details.

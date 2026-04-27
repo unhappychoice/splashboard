@@ -11,7 +11,7 @@ the relevant section below.
 
 _Screenshots pending: `home_splash`, `home_daily`, `home_github`,_
 _`home_minimal`, `home_feed`, `project_splash`, `project_github`,_
-_`project_minimal`._
+_`project_minimal`, `project_codebase`._
 
 ## Themes
 
