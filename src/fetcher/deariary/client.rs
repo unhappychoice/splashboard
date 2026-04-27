@@ -70,18 +70,24 @@ pub fn entry_url(date: &str) -> String {
 }
 
 pub fn resolve_token(config_token: Option<&str>) -> Result<String, FetchError> {
-    config_token
+    let trimmed = config_token
+        .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(str::to_string)
-        .or_else(|| std::env::var("DEARIARY_TOKEN").ok())
-        .ok_or_else(|| {
-            FetchError::Failed("deariary token missing: set options.token or DEARIARY_TOKEN".into())
-        })
+        .or_else(|| {
+            std::env::var("DEARIARY_TOKEN")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+    trimmed.ok_or_else(|| {
+        FetchError::Failed("deariary token missing: set options.token or DEARIARY_TOKEN".into())
+    })
 }
 
 /// Fetches `/entries/:date` with deduplication + 60s cache. Returns `Ok(None)` on 404.
 pub async fn cached_get_entry(token: &str, date: &str) -> Result<Option<ApiEntry>, FetchError> {
-    let slot = entry_slot(date);
+    let slot = entry_slot(token, date);
     let mut guard = slot.lock().await;
     if let Some(cached) = guard.as_ref()
         && Instant::now() < cached.expires
@@ -104,7 +110,7 @@ pub async fn cached_get_entries(
     token: &str,
     tag: Option<&str>,
 ) -> Result<Vec<ApiEntry>, FetchError> {
-    let slot = list_slot(tag.unwrap_or(""));
+    let slot = list_slot(token, tag.unwrap_or(""));
     let mut guard = slot.lock().await;
     if let Some(cached) = guard.as_ref()
         && Instant::now() < cached.expires
@@ -167,20 +173,23 @@ fn list_cache() -> &'static StdMutex<HashMap<String, ListSlot>> {
     C.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 
-fn entry_slot(date: &str) -> EntrySlot {
+/// Cache key scopes the per-date slot to the token so a process holding multiple tokens
+/// (e.g. one widget per account) doesn't serve account A's entries to account B's widget.
+/// The token is part of the in-process key only — never written to disk or logs.
+fn entry_slot(token: &str, date: &str) -> EntrySlot {
     entry_cache()
         .lock()
         .unwrap()
-        .entry(date.to_string())
+        .entry(format!("{token}|{date}"))
         .or_insert_with(|| Arc::new(AsyncMutex::new(None)))
         .clone()
 }
 
-fn list_slot(tag: &str) -> ListSlot {
+fn list_slot(token: &str, tag: &str) -> ListSlot {
     list_cache()
         .lock()
         .unwrap()
-        .entry(tag.to_string())
+        .entry(format!("{token}|{tag}"))
         .or_insert_with(|| Arc::new(AsyncMutex::new(None)))
         .clone()
 }
@@ -391,20 +400,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn entry_slot_returns_same_arc_for_same_date() {
-        let a = entry_slot("2026-04-27");
-        let b = entry_slot("2026-04-27");
+    async fn entry_slot_returns_same_arc_for_same_token_and_date() {
+        let a = entry_slot("tok-A", "2026-04-27");
+        let b = entry_slot("tok-A", "2026-04-27");
         assert!(Arc::ptr_eq(&a, &b));
-        let c = entry_slot("2026-04-26");
+        let c = entry_slot("tok-A", "2026-04-26");
         assert!(!Arc::ptr_eq(&a, &c));
     }
 
     #[tokio::test]
-    async fn list_slot_returns_same_arc_for_same_tag() {
-        let a = list_slot("travel");
-        let b = list_slot("travel");
+    async fn entry_slot_isolates_per_token() {
+        let a = entry_slot("tok-A", "2026-04-27");
+        let b = entry_slot("tok-B", "2026-04-27");
+        assert!(
+            !Arc::ptr_eq(&a, &b),
+            "different tokens must not share a cache slot",
+        );
+    }
+
+    #[tokio::test]
+    async fn list_slot_returns_same_arc_for_same_token_and_tag() {
+        let a = list_slot("tok-A", "travel");
+        let b = list_slot("tok-A", "travel");
         assert!(Arc::ptr_eq(&a, &b));
-        let c = list_slot("");
+        let c = list_slot("tok-A", "");
         assert!(!Arc::ptr_eq(&a, &c));
+    }
+
+    #[tokio::test]
+    async fn list_slot_isolates_per_token() {
+        let a = list_slot("tok-A", "travel");
+        let b = list_slot("tok-B", "travel");
+        assert!(
+            !Arc::ptr_eq(&a, &b),
+            "different tokens must not share a list cache slot",
+        );
+    }
+
+    #[test]
+    fn resolve_token_trims_whitespace() {
+        let token = resolve_token(Some("  abc  ")).unwrap();
+        assert_eq!(token, "abc");
+    }
+
+    #[test]
+    fn resolve_token_rejects_whitespace_only_config_value() {
+        // Whitespace-only config doesn't take precedence; falls through to env (which we
+        // don't set here in the unit test, so this should fail). Asserts the trim-and-empty
+        // check kicks in.
+        let result = resolve_token(Some("   "));
+        // Either falls back to env (if DEARIARY_TOKEN is set in CI) or errors. We just need
+        // the config value not to be returned verbatim.
+        if let Ok(t) = result {
+            assert!(!t.trim().is_empty(), "should not return whitespace-only");
+            assert_ne!(t, "   ");
+        }
     }
 }

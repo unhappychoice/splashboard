@@ -179,7 +179,15 @@ async fn fetch_anchors(
                 error_count += 1;
                 last_error = Some(err);
             }
-            Err(_) => {}
+            // Spawned task panicked or was cancelled. Count it like a fetch error so the
+            // "all anchors failed" branch below can surface a real error rather than an
+            // empty-but-Ok result that would silently render as "no entries".
+            Err(join_err) => {
+                error_count += 1;
+                last_error = Some(FetchError::Failed(format!(
+                    "deariary anchor task failed: {join_err}"
+                )));
+            }
         }
     }
     if hits.is_empty() && error_count == spawned && spawned > 0 {

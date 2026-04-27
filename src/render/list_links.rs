@@ -123,15 +123,32 @@ thread_local! {
 }
 
 /// Run `f` with OSC 8 hyperlink wrapping disabled. Idempotent and re-entrant: nested calls
-/// stack the suppression and restore the prior value on exit.
+/// stack the suppression and restore the prior value on exit. Panic-safe: an RAII guard
+/// restores the prior value via `Drop`, so a panic inside `f` doesn't leak the suppressed
+/// state into subsequent unrelated draws on the same thread.
 pub fn without_osc8<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    let prior = OSC8_SUPPRESSED.with(|cell| cell.replace(true));
-    let result = f();
-    OSC8_SUPPRESSED.with(|cell| cell.set(prior));
-    result
+    let _guard = SuppressionGuard::engage();
+    f()
+}
+
+struct SuppressionGuard {
+    prior: bool,
+}
+
+impl SuppressionGuard {
+    fn engage() -> Self {
+        let prior = OSC8_SUPPRESSED.with(|cell| cell.replace(true));
+        Self { prior }
+    }
+}
+
+impl Drop for SuppressionGuard {
+    fn drop(&mut self) {
+        OSC8_SUPPRESSED.with(|cell| cell.set(self.prior));
+    }
 }
 
 fn osc8_suppressed() -> bool {
@@ -349,5 +366,36 @@ mod tests {
             assert!(row.contains(ch), "missing {ch}: {row:?}");
         }
         assert!(row.contains("world"));
+    }
+
+    #[test]
+    fn without_osc8_restores_state_after_panic() {
+        assert!(!osc8_suppressed());
+        let result = std::panic::catch_unwind(|| {
+            without_osc8(|| {
+                assert!(osc8_suppressed());
+                panic!("simulated renderer panic");
+            })
+        });
+        assert!(result.is_err(), "the inner panic should propagate");
+        assert!(
+            !osc8_suppressed(),
+            "RAII guard must reset suppression even when f panics",
+        );
+    }
+
+    #[test]
+    fn without_osc8_nested_calls_restore_outer_state() {
+        without_osc8(|| {
+            assert!(osc8_suppressed());
+            without_osc8(|| {
+                assert!(osc8_suppressed());
+            });
+            assert!(
+                osc8_suppressed(),
+                "nested guard exit must not flip the outer suppression off",
+            );
+        });
+        assert!(!osc8_suppressed());
     }
 }
