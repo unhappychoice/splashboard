@@ -16,13 +16,13 @@ fetcher = "git_repo_name"
 render = { type = "text_ascii", style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
 
 # Subtitle: `github_repo` emits TextBlock (slug / description / license on their own rows).
-# `text_plain` renders via ratatui's `Paragraph` which centers each line individually,
+# `list_plain` renders via ratatui's `Paragraph` which centers each line individually,
 # so short lines like "ISC" still sit under the hero centreline instead of hugging the
 # block's left edge.
 [[widget]]
 id = "subtitle"
 fetcher = "github_repo"
-render = { type = "text_plain", align = "center" }
+render = { type = "list_plain", align = "center" }
 
 [[widget]]
 id = "repo_stats"

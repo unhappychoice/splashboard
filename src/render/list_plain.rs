@@ -1,8 +1,8 @@
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Alignment, Rect},
     style::Style,
-    widgets::{List, ListItem},
+    widgets::Paragraph,
 };
 
 use crate::options::OptionSchema;
@@ -37,27 +37,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
 ];
 
-fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
-    if content_width == 0 || content_width >= area.width {
-        return area;
-    }
-    let offset = match align {
-        Some("center") => (area.width - content_width) / 2,
-        Some("right") => area.width - content_width,
-        _ => return area,
-    };
-    Rect {
-        x: area.x + offset,
-        y: area.y,
-        width: content_width,
-        height: area.height,
-    }
-}
-
-/// Renders a multi-line block through ratatui's `List` widget. Behaviourally close to `text_plain`
-/// today; the distinction matters once we add list-specific options (bullet marker, highlight
-/// selected item, scrollbar). Alternate renderer for the `TextBlock` shape so tests of the 1→N
-/// dispatch stay honest.
+/// Multi-line `TextBlock` renderer. Uses ratatui's `Paragraph` so `align = "center"` centres
+/// each line individually (matters when entries are very different lengths — e.g. a 3-char
+/// "MIT" line in the same block as a 50-char description). Adds list-flavoured options on top:
+/// `bullet` glyph prefix and `max_items` cap.
 pub struct ListPlainRenderer;
 
 impl Renderer for ListPlainRenderer {
@@ -86,12 +69,29 @@ impl Renderer for ListPlainRenderer {
         _registry: &Registry,
     ) {
         if let Body::TextBlock(d) = body {
-            render_list(frame, area, d, opts, theme);
+            render_block(frame, area, d, opts, theme);
         }
+    }
+    fn natural_height(
+        &self,
+        body: &Body,
+        opts: &RenderOptions,
+        _max_width: u16,
+        _registry: &Registry,
+    ) -> u16 {
+        let lines = match body {
+            Body::TextBlock(d) => d
+                .lines
+                .len()
+                .min(opts.max_items.unwrap_or(usize::MAX))
+                .max(1),
+            _ => 1,
+        };
+        u16::try_from(lines).unwrap_or(u16::MAX)
     }
 }
 
-fn render_list(
+fn render_block(
     frame: &mut Frame,
     area: Rect,
     data: &TextBlockData,
@@ -99,23 +99,25 @@ fn render_list(
     theme: &Theme,
 ) {
     let prefix = bullet_prefix(opts.bullet.as_deref());
-    let lines: Vec<String> = data
+    let content = data
         .lines
         .iter()
         .take(opts.max_items.unwrap_or(usize::MAX))
         .map(|l| format!("{prefix}{l}"))
-        .collect();
-    let max = lines
-        .iter()
-        .map(|l| l.chars().count() as u16)
-        .max()
-        .unwrap_or(0);
-    let target = align_rect(area, max, opts.align.as_deref());
-    let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
-    frame.render_widget(
-        List::new(items).style(Style::default().fg(theme.text)),
-        target,
-    );
+        .collect::<Vec<_>>()
+        .join("\n");
+    let p = Paragraph::new(content)
+        .style(Style::default().fg(theme.text))
+        .alignment(parse_align(opts.align.as_deref()));
+    frame.render_widget(p, area);
+}
+
+fn parse_align(s: Option<&str>) -> Alignment {
+    match s {
+        Some("center") => Alignment::Center,
+        Some("right") => Alignment::Right,
+        _ => Alignment::Left,
+    }
 }
 
 fn bullet_prefix(bullet: Option<&str>) -> String {

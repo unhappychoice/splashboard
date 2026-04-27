@@ -17,7 +17,8 @@ const SHAPES: &[Shape] = &[Shape::TextBlock, Shape::Text];
 
 /// Cookie strings parsed from `data.txt`. Format: `%`-separated entries; entries may be
 /// single-line one-liners or multi-line short verses. Newlines inside an entry are
-/// preserved verbatim — `Text` shape keeps them, `TextBlock` splits on them.
+/// preserved verbatim for `TextBlock` (one row per line); `Text` collapses them with
+/// ` · ` separators to honour the single-string contract.
 static COOKIES: LazyLock<Vec<String>> = LazyLock::new(|| parse(include_str!("data.txt")));
 
 pub struct RandomFortuneFetcher;
@@ -38,7 +39,7 @@ impl RealtimeFetcher for RandomFortuneFetcher {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         let cookie = first_cookie()?;
         Some(match shape {
-            Shape::Text => samples::text(cookie),
+            Shape::Text => samples::text(&single_line(cookie)),
             Shape::TextBlock => samples::text_block(&cookie.lines().collect::<Vec<_>>()),
             _ => return None,
         })
@@ -47,7 +48,7 @@ impl RealtimeFetcher for RandomFortuneFetcher {
         let cookie = pick(&now());
         let body = match ctx.shape.unwrap_or(Shape::TextBlock) {
             Shape::Text => Body::Text(TextData {
-                value: cookie.to_string(),
+                value: single_line(cookie),
             }),
             _ => Body::TextBlock(TextBlockData {
                 lines: cookie.lines().map(str::to_string).collect(),
@@ -76,6 +77,10 @@ fn pick(now: &DateTime<FixedOffset>) -> &'static str {
 fn first_cookie() -> Option<&'static str> {
     let entries: &'static [String] = &COOKIES;
     entries.first().map(String::as_str)
+}
+
+fn single_line(cookie: &str) -> String {
+    cookie.lines().collect::<Vec<_>>().join(" · ")
 }
 
 /// Parse `%`-separated entries. Trims surrounding whitespace per entry, drops empties.
@@ -167,6 +172,28 @@ mod tests {
     #[test]
     fn parse_drops_empty_chunks() {
         assert!(parse("\n%\n\n%\n").is_empty());
+    }
+
+    #[test]
+    fn single_line_joins_multi_line_cookie() {
+        assert_eq!(
+            single_line("Line one\nLine two\nLine three"),
+            "Line one · Line two · Line three"
+        );
+        assert_eq!(single_line("Just one line"), "Just one line");
+    }
+
+    #[test]
+    fn text_shape_collapses_newlines() {
+        let p = RandomFortuneFetcher.compute(&ctx(Some(Shape::Text)));
+        let Body::Text(d) = p.body else {
+            panic!("expected text");
+        };
+        assert!(
+            !d.value.contains('\n'),
+            "Text body must be single-line, got: {:?}",
+            d.value
+        );
     }
 
     #[test]

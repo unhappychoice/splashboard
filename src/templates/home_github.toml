@@ -21,7 +21,7 @@ render = { type = "media_image", fit = "contain", max_width = 14, max_height = 7
 [[widget]]
 id = "profile"
 fetcher = "github_user"
-render = { type = "text_plain", align = "left" }
+render = { type = "list_plain", align = "left" }
 
 [[widget]]
 id = "contributions"

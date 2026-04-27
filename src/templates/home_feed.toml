@@ -23,7 +23,7 @@ render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color
 [[widget]]
 id = "fortune"
 fetcher = "random_fortune"
-render = { type = "text_plain", align = "center", color = "panel_title" }
+render = { type = "list_plain", align = "center", color = "panel_title" }
 
 # Greeting seam — "good " (right) + time-of-day (left), home_minimal pattern.
 [[widget]]

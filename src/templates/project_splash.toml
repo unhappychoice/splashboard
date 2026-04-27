@@ -18,12 +18,12 @@ fetcher = "git_repo_name"
 render = { type = "animated_postfx", inner = "text_ascii", effect = "particle_burst", duration_ms = 1500, style = "figlet", font = "ansi_shadow", color = "panel_title", align = "center" }
 
 # Subtitle — slug / description / license on three lines via `github_repo` TextBlock.
-# `text_plain` centres each line individually, so single-word fields (e.g. "MIT")
-# still sit under the hero's centreline instead of the block's left edge.
+# `list_plain` (Paragraph-backed) centres each line individually, so single-word fields
+# (e.g. "MIT") still sit under the hero's centreline instead of the block's left edge.
 [[widget]]
 id = "subtitle"
 fetcher = "github_repo"
-render = { type = "text_plain", align = "center" }
+render = { type = "list_plain", align = "center" }
 
 # ── Layout ─────────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@
 [[widget]]
 id = "quote"
 fetcher = "random_quote"
-render = { type = "text_plain", align = "center" }
+render = { type = "list_plain", align = "center" }
 
 [[widget]]
 id = "hero"
