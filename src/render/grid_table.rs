@@ -101,8 +101,15 @@ fn render_rows(
     theme: &Theme,
 ) {
     let column_align = column_alignments(specific.column_align.as_deref());
+    let key_width = data
+        .items
+        .iter()
+        .map(|e| e.key.chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(area.width as usize);
+    let widths = [Constraint::Length(key_width as u16), Constraint::Fill(1)];
     let rows = data.items.iter().map(|e| to_row(e, column_align, theme));
-    let widths = [Constraint::Percentage(40), Constraint::Percentage(60)];
     frame.render_widget(
         Table::new(rows, widths).style(Style::default().fg(theme.text)),
         area,
@@ -150,16 +157,18 @@ fn parse_align(s: Option<&str>) -> Alignment {
 }
 
 fn column_alignments(raw: Option<&[String]>) -> [Alignment; 2] {
-    let get = |i: usize| -> Alignment {
+    let get = |i: usize, default: Alignment| -> Alignment {
         raw.and_then(|a| a.get(i))
             .map(|s| match s.as_str() {
                 "center" => Alignment::Center,
                 "right" => Alignment::Right,
                 _ => Alignment::Left,
             })
-            .unwrap_or(Alignment::Left)
+            .unwrap_or(default)
     };
-    [get(0), get(1)]
+    // Key left-aligned, value right-aligned by default so the value sits flush against
+    // the right edge of the cell (fills the panel width). Override via `column_align`.
+    [get(0, Alignment::Left), get(1, Alignment::Right)]
 }
 
 fn to_row<'a>(item: &'a Entry, aligns: [Alignment; 2], theme: &Theme) -> Row<'a> {
