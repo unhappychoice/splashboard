@@ -78,6 +78,16 @@ impl Fetcher for GithubNotifications {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "splashboard review_requested: feat: heatmap",
+                    Some("https://github.com/unhappychoice/splashboard/pull/12"),
+                ),
+                (
+                    "ratatui mention: rfc: themes",
+                    Some("https://github.com/ratatui/ratatui/issues/345"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&[
                 "splashboard review_requested: feat: heatmap",
                 "ratatui mention: rfc: themes",

@@ -82,6 +82,16 @@ impl Fetcher for GithubGoodFirstIssues {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
+            Shape::LinkedTextBlock => samples::linked_text_block(&[
+                (
+                    "ratatui/ratatui#999 improve docs for Paragraph",
+                    Some("https://github.com/ratatui/ratatui/issues/999"),
+                ),
+                (
+                    "tokio-rs/console#123 add quickstart section",
+                    Some("https://github.com/tokio-rs/console/issues/123"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&[
                 "ratatui/ratatui#999 improve docs for Paragraph",
                 "tokio-rs/console#123 add quickstart section",

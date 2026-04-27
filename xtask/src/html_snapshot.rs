@@ -12,23 +12,78 @@ pub fn buffer_to_html(buf: &Buffer) -> String {
     out.push_str("<pre class=\"splash-snapshot\">");
     let area = buf.area();
     for y in 0..area.height {
-        let mut run_style: Option<Style> = None;
-        let mut run_cells: Vec<String> = Vec::new();
-        for x in 0..area.width {
-            let cell = buf[(x, y)].clone();
-            let style = cell_style(&cell);
-            if Some(style) != run_style {
-                flush_run(&mut out, run_style.as_ref(), &run_cells);
-                run_cells.clear();
-                run_style = Some(style);
-            }
-            run_cells.push(cell.symbol().to_string());
-        }
-        flush_run(&mut out, run_style.as_ref(), &run_cells);
+        emit_row(&mut out, buf, y, area.width);
         out.push('\n');
     }
     out.push_str("</pre>");
     out
+}
+
+fn emit_row(out: &mut String, buf: &Buffer, y: u16, width: u16) {
+    let mut run_style: Option<Style> = None;
+    let mut run_cells: Vec<String> = Vec::new();
+    for x in 0..width {
+        let cell = buf[(x, y)].clone();
+        // Cells flagged `skip` are placeholders for the visible region of an OSC 8 hyperlink
+        // — the link's first cell carries the whole sequence; the trailing cells exist only
+        // so terminal cursor math lines up. Drop them in HTML to avoid emitting stray spaces.
+        if cell.skip {
+            continue;
+        }
+        let style = cell_style(&cell);
+        if let Some((url, visible)) = parse_osc8(cell.symbol()) {
+            flush_run(out, run_style.as_ref(), &run_cells);
+            run_cells.clear();
+            run_style = None;
+            emit_link(out, &style, &url, &visible);
+            continue;
+        }
+        if Some(style) != run_style {
+            flush_run(out, run_style.as_ref(), &run_cells);
+            run_cells.clear();
+            run_style = Some(style);
+        }
+        run_cells.push(cell.symbol().to_string());
+    }
+    flush_run(out, run_style.as_ref(), &run_cells);
+}
+
+/// Parse an OSC 8 hyperlink wrapper of the form `ESC ] 8 ; ; <url> ESC \ <visible> ESC ] 8 ; ; ESC \`
+/// into its URL and visible-text components. The terminal renderer (`list_links`) embeds the
+/// whole sequence into a single cell symbol; in HTML we need the parts so we can emit a real
+/// `<a>` tag instead of leaking the escape codes as text.
+fn parse_osc8(symbol: &str) -> Option<(String, String)> {
+    const PREFIX: &str = "\x1b]8;;";
+    const ST: &str = "\x1b\\";
+    const CLOSE: &str = "\x1b]8;;\x1b\\";
+    let s = symbol.strip_prefix(PREFIX)?;
+    let url_end = s.find(ST)?;
+    let url = &s[..url_end];
+    let after_url = &s[url_end + ST.len()..];
+    let close_pos = after_url.rfind(CLOSE)?;
+    let visible = &after_url[..close_pos];
+    Some((url.to_string(), visible.to_string()))
+}
+
+fn emit_link(out: &mut String, style: &Style, url: &str, visible: &str) {
+    let styled = has_visible_style(style);
+    if styled {
+        out.push_str("<span style=\"");
+        out.push_str(&style_css(style));
+        out.push_str("\">");
+    }
+    out.push_str("<a href=\"");
+    out.push_str(&escape_html(url));
+    out.push_str("\" class=\"splash-link\">");
+    for ch in visible.chars() {
+        out.push_str("<span class=\"c\">");
+        out.push_str(&escape_html(&ch.to_string()));
+        out.push_str("</span>");
+    }
+    out.push_str("</a>");
+    if styled {
+        out.push_str("</span>");
+    }
 }
 
 /// Skip `Color::Reset` (ratatui's "no explicit color" sentinel) so default cells produce plain
@@ -163,5 +218,32 @@ mod tests {
         assert!(html.contains("&lt;"));
         assert!(html.contains("&amp;"));
         assert!(html.contains("&gt;"));
+    }
+
+    #[test]
+    fn osc8_hyperlink_becomes_anchor() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
+        buf[(0, 0)].set_symbol("\x1b]8;;https://example.com/\x1b\\Hi\x1b]8;;\x1b\\");
+        buf[(1, 0)].set_skip(true);
+        let html = buffer_to_html(&buf);
+        assert!(
+            html.contains("<a href=\"https://example.com/\""),
+            "expected anchor tag, got: {html}"
+        );
+        assert!(html.contains("<span class=\"c\">H</span>"));
+        assert!(html.contains("<span class=\"c\">i</span>"));
+        assert!(!html.contains("\x1b"));
+        assert!(!html.contains("]8;;"));
+    }
+
+    #[test]
+    fn skip_cells_are_dropped() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 4, 1));
+        buf[(0, 0)].set_symbol("a");
+        buf[(1, 0)].set_skip(true);
+        buf[(2, 0)].set_skip(true);
+        buf[(3, 0)].set_symbol("b");
+        let html = buffer_to_html(&buf);
+        assert_eq!(html.matches("<span class=\"c\">").count(), 2);
     }
 }
