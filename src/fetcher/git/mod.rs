@@ -15,6 +15,7 @@ use crate::payload::{Body, Payload, TextBlockData, TextData};
 
 use super::{FetchContext, FetchError, Fetcher};
 
+mod age;
 mod blame_heatmap;
 mod commits_activity;
 mod contributors;
@@ -39,6 +40,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(worktrees::GitWorktrees),
         Arc::new(blame_heatmap::GitBlameHeatmap),
         Arc::new(repo_name::GitRepoName),
+        Arc::new(age::GitAge),
     ]
 }
 
