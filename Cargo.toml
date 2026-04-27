@@ -52,6 +52,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 tracing-appender = "0.2"
 tui-markdown = "0.3.7"
 feed-rs = { version = "2", default-features = false }
+tokei = { version = "14", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

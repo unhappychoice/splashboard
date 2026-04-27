@@ -11,8 +11,8 @@ use crate::render::Shape;
 
 use super::super::git::{open_repo, payload, repo_cache_key};
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::languages;
 use super::logo_assets;
+use super::scan::classify_path;
 use super::scan::for_each_tracked_path;
 
 const SHAPES: &[Shape] = &[Shape::Image];
@@ -104,7 +104,7 @@ fn detect_dominant_language() -> Result<Option<&'static str>, FetchError> {
 fn detect_dominant_in(repo: &gix::Repository) -> Result<Option<&'static str>, FetchError> {
     let mut counts: HashMap<&'static str, u32> = HashMap::new();
     for_each_tracked_path(repo, |path| {
-        if let Some(lang) = languages::classify(path) {
+        if let Some(lang) = classify_path(path) {
             *counts.entry(lang).or_insert(0) += 1;
         }
     })?;

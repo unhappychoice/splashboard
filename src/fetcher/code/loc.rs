@@ -13,8 +13,7 @@ use crate::samples;
 
 use super::super::git::{open_repo, payload, repo_cache_key};
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::languages;
-use super::scan::for_each_tracked_file;
+use super::scan::{classify_with_lang, for_each_tracked_file};
 
 const SHAPES: &[Shape] = &[
     Shape::Text,
@@ -194,21 +193,30 @@ fn scan_cwd() -> Result<Totals, FetchError> {
 }
 
 fn scan_repo(repo: &gix::Repository) -> Result<Totals, FetchError> {
+    let cfg = tokei::Config::default();
     let mut counts: HashMap<&'static str, u64> = HashMap::new();
     let mut other_lines: u64 = 0;
     let mut total: u64 = 0;
-    for_each_tracked_file(repo, |path, bytes| {
-        let Ok(text) = std::str::from_utf8(bytes) else {
-            return;
-        };
-        let lines = text.lines().count() as u64;
-        if lines == 0 {
-            return;
+    for_each_tracked_file(repo, |path, bytes| match classify_with_lang(path, &cfg) {
+        Some((name, lang)) => {
+            let stats = lang.parse_from_slice(bytes, &cfg);
+            let lines = (stats.code + stats.comments + stats.blanks) as u64;
+            if lines == 0 {
+                return;
+            }
+            total += lines;
+            *counts.entry(name).or_insert(0) += lines;
         }
-        total += lines;
-        match languages::classify(path) {
-            Some(lang) => *counts.entry(lang).or_insert(0) += lines,
-            None => other_lines += lines,
+        None => {
+            let Ok(text) = std::str::from_utf8(bytes) else {
+                return;
+            };
+            let lines = text.lines().count() as u64;
+            if lines == 0 {
+                return;
+            }
+            total += lines;
+            other_lines += lines;
         }
     })?;
     let mut by_language: Vec<(String, u64)> = counts

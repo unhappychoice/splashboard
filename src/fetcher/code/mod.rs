@@ -9,15 +9,16 @@ use std::sync::Arc;
 
 use super::Fetcher;
 
+mod comments;
 mod files;
 mod language_logo;
-mod languages;
 mod largest_files;
 mod loc;
 mod logo_assets;
 mod scan;
 mod todos;
 
+pub use comments::CodeComments;
 pub use files::CodeFiles;
 pub use language_logo::CodeLanguageLogo;
 pub use largest_files::CodeLargestFiles;
@@ -28,6 +29,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![
         Arc::new(CodeTodos),
         Arc::new(CodeLoc),
+        Arc::new(CodeComments),
         Arc::new(CodeLanguageLogo),
         Arc::new(CodeFiles),
         Arc::new(CodeLargestFiles),
