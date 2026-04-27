@@ -21,9 +21,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     description: "Horizontal alignment of the rendered text within its cell.",
 }];
 
-/// Plain-text renderer. Accepts both `Text` (single string) and `TextBlock` (multi-line) and
-/// draws them as a ratatui `Paragraph`. The default renderer for both shapes. Honours the
-/// `align` option (left / center / right).
+/// Plain-text renderer for the single-string `Text` shape — draws the value as a ratatui
+/// `Paragraph`. Honours the `align` option (left / center / right). For multi-line `TextBlock`
+/// payloads use `list_plain` instead; pairing `text_plain` with a multi-line fetcher yields a
+/// shape-mismatch placeholder by design.
 pub struct TextPlainRenderer;
 
 impl Renderer for TextPlainRenderer {
@@ -31,10 +32,10 @@ impl Renderer for TextPlainRenderer {
         "text_plain"
     }
     fn description(&self) -> &'static str {
-        "Single-line or multi-line body text in the theme text colour, no decoration. The quiet default for any string payload — pick `text_ascii` when you want a hero block instead."
+        "Single-line body text in the theme text colour, no decoration. The quiet default for any `Text` payload — pick `text_ascii` for a hero block, or `list_plain` when the fetcher emits a `TextBlock`."
     }
     fn accepts(&self) -> &[Shape] {
-        &[Shape::Text, Shape::TextBlock]
+        &[Shape::Text]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -51,11 +52,8 @@ impl Renderer for TextPlainRenderer {
         theme: &Theme,
         _registry: &Registry,
     ) {
-        let content = match body {
-            Body::Text(d) => d.value.clone(),
-            Body::TextBlock(d) => d.lines.join("\n"),
-            _ => return,
-        };
+        let Body::Text(d) = body else { return };
+        let content = d.value.clone();
         let p = Paragraph::new(content)
             .style(Style::default().fg(theme.text))
             .alignment(parse_align(opts.align.as_deref()));
@@ -72,7 +70,6 @@ impl Renderer for TextPlainRenderer {
         // bodies still deserve a row of height so `length = "auto"` callers don't collapse.
         let lines = match body {
             Body::Text(d) => d.value.lines().count().max(1),
-            Body::TextBlock(d) => d.lines.len().max(1),
             _ => 1,
         };
         u16::try_from(lines).unwrap_or(u16::MAX)
@@ -90,7 +87,7 @@ fn parse_align(s: Option<&str>) -> Alignment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Payload, TextBlockData, TextData};
+    use crate::payload::{Payload, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer};
 
     fn text_payload(value: &str) -> Payload {
@@ -104,28 +101,10 @@ mod tests {
         }
     }
 
-    fn block_payload(lines: &[&str]) -> Payload {
-        Payload {
-            icon: None,
-            status: None,
-            format: None,
-            body: Body::TextBlock(TextBlockData {
-                lines: lines.iter().map(|s| s.to_string()).collect(),
-            }),
-        }
-    }
-
     #[test]
     fn renders_text_at_top() {
         let buf = render_to_buffer(&text_payload("hello world"), 30, 5);
         assert!(line_text(&buf, 0).contains("hello world"));
-    }
-
-    #[test]
-    fn renders_text_block_stacked() {
-        let buf = render_to_buffer(&block_payload(&["first", "second"]), 30, 5);
-        assert!(line_text(&buf, 0).contains("first"));
-        assert!(line_text(&buf, 1).contains("second"));
     }
 
     #[test]
@@ -144,36 +123,12 @@ mod tests {
     }
 
     #[test]
-    fn natural_height_textblock_uses_line_count() {
-        let r = TextPlainRenderer;
-        let registry = Registry::with_builtins();
-        let opts = RenderOptions::default();
-        assert_eq!(
-            r.natural_height(&block_payload(&["one"]).body, &opts, 30, &registry),
-            1
-        );
-        assert_eq!(
-            r.natural_height(
-                &block_payload(&["one", "two", "three"]).body,
-                &opts,
-                30,
-                &registry
-            ),
-            3
-        );
-    }
-
-    #[test]
     fn natural_height_floors_at_one_for_empty_bodies() {
         let r = TextPlainRenderer;
         let registry = Registry::with_builtins();
         let opts = RenderOptions::default();
         assert_eq!(
             r.natural_height(&text_payload("").body, &opts, 30, &registry),
-            1
-        );
-        assert_eq!(
-            r.natural_height(&block_payload(&[]).body, &opts, 30, &registry),
             1
         );
     }

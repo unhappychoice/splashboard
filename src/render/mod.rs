@@ -394,7 +394,7 @@ impl Registry {
 pub fn default_renderer_for(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "text_plain",
-        Shape::TextBlock => "text_plain",
+        Shape::TextBlock => "list_plain",
         Shape::MarkdownTextBlock => "text_markdown",
         Shape::LinkedTextBlock => "list_links",
         Shape::Entries => "grid_table",
