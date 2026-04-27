@@ -92,12 +92,27 @@ fn render_ranking(
     let style = opts.style.as_deref().unwrap_or("number");
     let prefixes: Vec<String> = (0..rows.len()).map(|i| rank_prefix(i, style)).collect();
     let widths = column_widths(&prefixes, &rows);
+    // Stretch the label column so the value sits flush against the right edge of
+    // the cell instead of leaving dead space, and truncate over-long labels so the
+    // value doesn't get clipped off the right.
+    let target = align_rect(area, widths.total() as u16, opts.align.as_deref());
+    let prefix_part = if widths.prefix > 0 {
+        widths.prefix + 1
+    } else {
+        0
+    };
+    let fixed = prefix_part + COLUMN_GAP.len() + widths.value;
+    let label_width = (target.width as usize).saturating_sub(fixed);
+    let effective = Widths {
+        prefix: widths.prefix,
+        label: label_width,
+        value: widths.value,
+    };
     let lines: Vec<Line> = rows
         .iter()
         .zip(prefixes.iter())
-        .map(|((label, value), prefix)| compose_line(prefix, label, *value, widths, theme))
+        .map(|((label, value), prefix)| compose_line(prefix, label, *value, effective, theme))
         .collect();
-    let target = align_rect(area, widths.total() as u16, opts.align.as_deref());
     frame.render_widget(
         Paragraph::new(lines).style(Style::default().fg(theme.text)),
         target,
@@ -173,10 +188,32 @@ fn compose_line<'a>(
             Style::default().fg(theme.text_dim),
         ));
     }
-    spans.push(Span::raw(pad_right(label, widths.label)));
+    spans.push(Span::raw(fit_label(label, widths.label)));
     spans.push(Span::raw(COLUMN_GAP));
     spans.push(Span::raw(pad_left(&value.to_string(), widths.value)));
     Line::from(spans)
+}
+
+/// Pad with trailing spaces if `label` fits, else truncate from the right (with a single
+/// `…` ellipsis) so the value column stays visible. Empty width returns empty.
+fn fit_label(label: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let n = label.chars().count();
+    if n <= width {
+        let mut out = String::with_capacity(width);
+        out.push_str(label);
+        out.extend(std::iter::repeat_n(' ', width - n));
+        return out;
+    }
+    if width == 1 {
+        return "…".to_string();
+    }
+    let take = width - 1;
+    let mut out: String = label.chars().take(take).collect();
+    out.push('…');
+    out
 }
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
@@ -204,17 +241,6 @@ fn pad_left(s: &str, width: usize) -> String {
     let mut out = String::with_capacity(width);
     out.extend(std::iter::repeat_n(' ', width - n));
     out.push_str(s);
-    out
-}
-
-fn pad_right(s: &str, width: usize) -> String {
-    let n = s.chars().count();
-    if n >= width {
-        return s.to_string();
-    }
-    let mut out = String::with_capacity(width);
-    out.push_str(s);
-    out.extend(std::iter::repeat_n(' ', width - n));
     out
 }
 
