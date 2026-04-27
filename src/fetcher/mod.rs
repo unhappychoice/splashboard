@@ -9,8 +9,8 @@ use async_trait::async_trait;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, MarkdownTextBlockData, Payload,
-    TextBlockData, TextData,
+    BadgeData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, MarkdownTextBlockData,
+    Payload, RatioData, Status, TextBlockData, TextData, TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -151,12 +151,13 @@ pub struct ShapeMismatch {
     pub requested: Shape,
 }
 
-/// Build a placeholder body of the given shape from a list of message lines. Text-bearing
-/// shapes get a natural-shape body so their renderers display the message inline. Other
-/// shapes (Badge, Timeline, Bars, Ratio, NumberSeries, PointSeries, Image, Heatmap,
-/// Calendar) fall through to `TextBlock` — `render_payload` detects the shape mismatch and
-/// routes the body's text through `render_error`, so users see "⚠ deariary 429" rather than
-/// an empty chart or a generic "cannot display" warning.
+/// Build a placeholder body of the given shape from a list of message lines. Each shape
+/// gets a body its primary renderer will accept, so a 429 / timeout / trust message reaches
+/// the user inline rather than being swallowed by the shape-mismatch path. Shape-only
+/// renderers that can't carry free-form text (NumberSeries / PointSeries / Heatmap / Image
+/// / Bars / Calendar) fall through to `TextBlock`; in those cases `render_payload` shows the
+/// usual "renderer X cannot display TextBlock" warning, which is the right answer for
+/// shapes whose primary renderers genuinely have no slot for a message.
 pub fn placeholder_body(shape: Shape, lines: &[&str]) -> Body {
     match shape {
         Shape::Text => Body::Text(TextData {
@@ -184,6 +185,26 @@ pub fn placeholder_body(shape: Shape, lines: &[&str]) -> Body {
                     key: (*s).to_string(),
                     value: None,
                     status: None,
+                })
+                .collect(),
+        }),
+        Shape::Badge => Body::Badge(BadgeData {
+            status: Status::Error,
+            label: lines.first().map(|s| (*s).to_string()).unwrap_or_default(),
+        }),
+        Shape::Ratio => Body::Ratio(RatioData {
+            value: 0.0,
+            label: lines.first().map(|s| (*s).to_string()),
+            denominator: None,
+        }),
+        Shape::Timeline => Body::Timeline(TimelineData {
+            events: lines
+                .iter()
+                .map(|s| TimelineEvent {
+                    timestamp: 0,
+                    title: (*s).to_string(),
+                    detail: None,
+                    status: Some(Status::Error),
                 })
                 .collect(),
         }),
@@ -657,14 +678,38 @@ mod tests {
         assert_eq!(e.items[0].key, "hello");
         assert!(e.items[0].value.is_none());
 
-        // Non-text-bearing shapes fall through to TextBlock; render_payload's mismatch path
-        // surfaces the body's text via render_error so the user sees the error message
-        // instead of an empty chart or generic warning.
+        // Badge — placeholder reaches `status_badge` as a Status::Error pill so 429 / trust
+        // messages stay visible without falling through to the mismatch error path.
+        let body = placeholder_body(Shape::Badge, &["⚠ deariary 429", "see logs"]);
+        let Body::Badge(b) = body else {
+            panic!("expected Badge for placeholder");
+        };
+        assert_eq!(b.status, Status::Error);
+        assert_eq!(b.label, "⚠ deariary 429");
+
+        // Ratio — gauge renderers carry the message via the label slot; value clamped to 0.
+        let body = placeholder_body(Shape::Ratio, &["⚠ rate limited", "see logs"]);
+        let Body::Ratio(r) = body else {
+            panic!("expected Ratio for placeholder");
+        };
+        assert_eq!(r.value, 0.0);
+        assert_eq!(r.label.as_deref(), Some("⚠ rate limited"));
+
+        // Timeline — list_timeline reads `title`, so each line becomes one event tagged
+        // with Status::Error; timestamp is 0 (the renderer falls back to "—").
+        let body = placeholder_body(Shape::Timeline, &["⚠ rate limited", "see logs"]);
+        let Body::Timeline(t) = body else {
+            panic!("expected Timeline for placeholder");
+        };
+        assert_eq!(t.events.len(), 2);
+        assert_eq!(t.events[0].title, "⚠ rate limited");
+        assert_eq!(t.events[0].status, Some(Status::Error));
+
+        // Shape-only renderers (chart, grid, image) genuinely have no slot for free-form
+        // text, so they keep falling through to TextBlock and `render_payload` shows the
+        // explicit "renderer X cannot display TextBlock" mismatch warning per the contract.
         for shape in [
-            Shape::Badge,
-            Shape::Timeline,
             Shape::Bars,
-            Shape::Ratio,
             Shape::NumberSeries,
             Shape::PointSeries,
             Shape::Image,
@@ -673,7 +718,7 @@ mod tests {
         ] {
             let body = placeholder_body(shape, &["⚠ rate limited", "see logs"]);
             let Body::TextBlock(t) = body else {
-                panic!("expected TextBlock for {shape:?}");
+                panic!("expected TextBlock fallback for {shape:?}");
             };
             assert_eq!(t.lines, vec!["⚠ rate limited", "see logs"]);
         }
