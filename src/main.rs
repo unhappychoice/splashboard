@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::io::{self, BufRead, IsTerminal, Write, stdin, stdout};
 use std::path::{Path, PathBuf};
 
@@ -125,11 +126,8 @@ enum CatalogTarget {
     Renderer { name: Option<String> },
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> io::Result<()> {
+fn main() -> io::Result<()> {
     let cli = Cli::parse();
-    logging::init();
-    apply_secrets();
     match cli.command {
         Some(Command::Init { shell }) => {
             print!("{}", shell::init_snippet(shell));
@@ -153,25 +151,42 @@ async fn main() -> io::Result<()> {
             wait: wait.then_some(true),
             ..Default::default()
         }),
-        Some(Command::FetchOnly { kind, path }) => {
-            daemon::run_fetch_only(kind, path.as_deref()).await
-        }
+        Some(Command::FetchOnly { kind, path }) => run_async({
+            logging::init();
+            apply_secrets();
+            daemon::run_fetch_only(kind, path.as_deref())
+        }),
         Some(Command::Trust { path }) => run_trust(path),
         Some(Command::Revoke { path }) => run_revoke(path),
         Some(Command::ListTrusted) => run_list_trusted(),
         Some(Command::Catalog { target }) => run_catalog(target),
         Some(Command::License { own }) => run_license(own),
         None => {
+            if !should_render() {
+                return Ok(());
+            }
+            logging::init();
+            apply_secrets();
             // Swallow render errors at the shell-facing boundary so a broken splash never breaks
             // the user's prompt. Internal paths (FetchOnly above) still propagate errors.
             let _ = if cli.on_cd {
-                render_for_cd(cli.wait).await
+                run_async(render_for_cd(cli.wait))
             } else {
-                render_splash(cli.wait).await
+                run_async(render_splash(cli.wait))
             };
             Ok(())
         }
     }
+}
+
+fn run_async<F>(future: F) -> io::Result<()>
+where
+    F: Future<Output = io::Result<()>>,
+{
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(future)
 }
 
 async fn render_splash(wait: bool) -> io::Result<()> {
