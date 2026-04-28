@@ -46,4 +46,4 @@ fi
 
 cd "$ROOT"
 
-exec gnhf --max-tokens "$TOKEN_CAP" < "$PROMPT"
+exec gnhf --max-tokens "$TOKEN_CAP" --prevent-sleep off < "$PROMPT"
