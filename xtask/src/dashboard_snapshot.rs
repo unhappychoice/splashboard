@@ -265,3 +265,165 @@ fn inner_renderer_name(opts: &RenderOptions) -> String {
 fn font_sequence(opts: &RenderOptions) -> Option<Vec<String>> {
     opts.extra_string_array("font_sequence")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn widget(id: &str, fetcher: &str) -> WidgetConfig {
+        WidgetConfig {
+            id: id.into(),
+            fetcher: fetcher.into(),
+            render: None,
+            format: None,
+            refresh_interval: None,
+            file_format: None,
+            options: None,
+        }
+    }
+
+    fn write_dashboard(body: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "splashboard-dashboard-snapshot-{unique}-{}.toml",
+            std::process::id()
+        ));
+        fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn render_config_html_renders_basic_static_dashboard() {
+        let path = write_dashboard(
+            r#"
+[[widget]]
+id = "hello"
+fetcher = "basic_static"
+format = "Hi"
+render = "list_plain"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "hello"
+"#,
+        );
+        let html = render_config_html(&path, 12, 4).unwrap();
+        fs::remove_file(path).unwrap();
+
+        assert!(html.starts_with("<pre class=\"splash-snapshot\">"));
+        assert!(html.contains("<span class=\"c\">H</span>"));
+        assert!(html.contains("<span class=\"c\">i</span>"));
+        assert!(html.ends_with("</pre>"));
+    }
+
+    #[test]
+    fn sample_payloads_use_realtime_compute_and_basic_static_override() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+
+        let mut static_widget = widget("static", "basic_static");
+        static_widget.format = Some("alpha\nbeta".into());
+        static_widget.render = Some(RenderSpec::Short("list_plain".into()));
+
+        let mut clock_widget = widget("clock", "clock");
+        clock_widget.render = Some(RenderSpec::Short("grid_table".into()));
+
+        let payloads = sample_payloads(&[static_widget, clock_widget], &fetchers, &renderers);
+
+        assert!(matches!(
+            &payloads.get("static").unwrap().body,
+            Body::TextBlock(TextBlockData { lines })
+                if lines == &vec![String::from("alpha"), String::from("beta")]
+        ));
+        assert!(matches!(
+            payloads.get("clock").map(|payload| &payload.body),
+            Some(Body::Entries(_))
+        ));
+    }
+
+    #[test]
+    fn resolve_shape_prefers_shared_shape_and_falls_back_to_renderer_shape() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+        let fetcher = fetchers.get("basic_static").unwrap();
+
+        let mut shared = widget("shared", "basic_static");
+        shared.render = Some(RenderSpec::Short("list_plain".into()));
+        assert_eq!(
+            resolve_shape(&shared, &fetcher, &renderers),
+            Some(Shape::TextBlock)
+        );
+
+        let mut mismatch = widget("mismatch", "basic_static");
+        mismatch.render = Some(RenderSpec::Short("status_badge".into()));
+        assert_eq!(
+            resolve_shape(&mismatch, &fetcher, &renderers),
+            Some(Shape::Badge)
+        );
+    }
+
+    #[test]
+    fn widget_specs_default_and_deanimate_wrapped_renderers() {
+        let plain = widget("plain", "basic_static");
+
+        let mut typewriter = widget("typewriter", "basic_static");
+        typewriter.render = Some(RenderSpec::Short("animated_typewriter".into()));
+
+        let mut postfx = widget("postfx", "basic_static");
+        postfx.render = Some(RenderSpec::Full {
+            type_name: "animated_postfx".into(),
+            options: RenderOptions {
+                align: Some("center".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("inner", "list_plain"),
+        });
+
+        let specs = widget_specs(&[plain, typewriter, postfx]);
+
+        assert!(matches!(
+            specs.get("plain"),
+            Some(RenderSpec::Short(name)) if name == "text_plain"
+        ));
+        assert!(matches!(
+            specs.get("typewriter"),
+            Some(RenderSpec::Short(name)) if name == "text_plain"
+        ));
+        assert!(matches!(
+            specs.get("postfx"),
+            Some(RenderSpec::Full { type_name, options })
+                if type_name == "list_plain" && options.align.as_deref() == Some("center")
+        ));
+    }
+
+    #[test]
+    fn deanimate_figlet_morph_uses_last_font_and_preserves_style_options() {
+        let spec = RenderSpec::Full {
+            type_name: "animated_figlet_morph".into(),
+            options: RenderOptions {
+                align: Some("right".into()),
+                color: Some("panel_title".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("font_sequence", vec!["small", "doom"]),
+        };
+
+        let deanimated = deanimate(spec);
+
+        assert!(matches!(
+            deanimated,
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_ascii"
+                    && options.style.as_deref() == Some("figlet")
+                    && options.align.as_deref() == Some("right")
+                    && options.color.as_deref() == Some("panel_title")
+                    && options.extra_str("font") == Some("doom")
+        ));
+    }
+}

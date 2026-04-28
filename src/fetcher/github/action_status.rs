@@ -161,6 +161,8 @@ fn repo_for_key(ctx: &FetchContext) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     fn run(status: &str, conclusion: Option<&str>) -> WorkflowRun {
@@ -169,6 +171,75 @@ mod tests {
             conclusion: conclusion.map(String::from),
             head_branch: Some("main".into()),
         }
+    }
+
+    fn run_with_branch(
+        status: &str,
+        conclusion: Option<&str>,
+        head_branch: Option<&str>,
+    ) -> WorkflowRun {
+        WorkflowRun {
+            status: status.into(),
+            conclusion: conclusion.map(String::from),
+            head_branch: head_branch.map(String::from),
+        }
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "ci".into(),
+            format: Some("compact".into()),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.repo.is_none());
+        assert!(opts.branch.is_none());
+    }
+
+    #[test]
+    fn options_deserialize_repo_and_branch() {
+        let raw: toml::Value = toml::from_str("repo = \"foo/bar\"\nbranch = \"main\"").unwrap();
+        let opts: Options = raw.try_into().unwrap();
+        assert_eq!(opts.repo.as_deref(), Some("foo/bar"));
+        assert_eq!(opts.branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("repo = \"foo/bar\"\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_metadata_and_samples_cover_supported_shapes() {
+        let fetcher = GithubActionStatus;
+        assert_eq!(fetcher.name(), "github_action_status");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("latest CI workflow run"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Badge);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+
+        let Some(Body::Badge(badge)) = fetcher.sample_body(Shape::Badge) else {
+            panic!("expected badge sample");
+        };
+        assert_eq!(badge.status, Status::Ok);
+        assert_eq!(badge.label, "ci passing");
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        assert_eq!(text.value, "main · passing");
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
     }
 
     #[test]
@@ -187,5 +258,90 @@ mod tests {
     #[test]
     fn in_progress_is_warn() {
         assert_eq!(classify(&run("in_progress", None)).0, Status::Warn);
+    }
+
+    #[test]
+    fn completed_timed_out_and_startup_failure_are_errors() {
+        ["timed_out", "startup_failure"]
+            .into_iter()
+            .for_each(|conclusion| {
+                assert_eq!(
+                    classify(&run("completed", Some(conclusion))),
+                    (Status::Error, "failing")
+                );
+            });
+    }
+
+    #[test]
+    fn completed_cancelled_and_skipped_stay_warn() {
+        ["cancelled", "neutral", "skipped"]
+            .into_iter()
+            .map(|conclusion| (conclusion, classify(&run("completed", Some(conclusion)))))
+            .for_each(|(conclusion, actual)| {
+                let expected = if conclusion == "cancelled" {
+                    (Status::Warn, "cancelled")
+                } else {
+                    (Status::Warn, "skipped")
+                };
+                assert_eq!(actual, expected);
+            });
+    }
+
+    #[test]
+    fn completed_unknown_conclusion_falls_back_to_completed() {
+        assert_eq!(
+            classify(&run("completed", Some("action_required"))),
+            (Status::Warn, "completed")
+        );
+        assert_eq!(
+            classify(&run("completed", None)),
+            (Status::Warn, "completed")
+        );
+    }
+
+    #[test]
+    fn render_badge_uses_branch_and_classified_label() {
+        let body = render_body(&run("completed", Some("cancelled")), Shape::Badge);
+        let Body::Badge(badge) = body else {
+            panic!("expected badge");
+        };
+        assert_eq!(badge.status, Status::Warn);
+        assert_eq!(badge.label, "main · cancelled");
+    }
+
+    #[test]
+    fn render_text_falls_back_to_question_mark_for_missing_branch() {
+        let body = render_body(
+            &run_with_branch("completed", Some("success"), None),
+            Shape::Text,
+        );
+        let Body::Text(text) = body else {
+            panic!("expected text");
+        };
+        assert_eq!(text.value, "? · passing");
+    }
+
+    #[test]
+    fn repo_for_key_prefers_explicit_repo_option() {
+        assert_eq!(
+            repo_for_key(&ctx(Some("repo = \"foo/bar\""), Some(Shape::Badge))),
+            "foo/bar"
+        );
+    }
+
+    #[test]
+    fn repo_for_key_falls_back_to_resolved_repo() {
+        assert_eq!(
+            repo_for_key(&ctx(None, Some(Shape::Badge))),
+            resolve_repo(None).unwrap().as_path()
+        );
+    }
+
+    #[test]
+    fn cache_key_changes_with_repo_option() {
+        let fetcher = GithubActionStatus;
+        let a = fetcher.cache_key(&ctx(Some("repo = \"foo/bar\""), Some(Shape::Badge)));
+        let b = fetcher.cache_key(&ctx(Some("repo = \"foo/baz\""), Some(Shape::Badge)));
+        assert_ne!(a, b);
     }
 }
