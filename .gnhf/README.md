@@ -14,35 +14,39 @@ moves a metric in one direction.
 ├── prompts/
 │   ├── coverage-loop.md   # tests-only loop: line coverage only goes up
 │   └── perf-loop.md       # perf-only loop: cold-start latency only goes down
-├── run.sh                 # launches both loops in parallel worktrees
+├── run.sh                 # launches one loop (foreground) on a gnhf/ branch
 └── runs/                  # gnhf runtime state (git-ignored)
 ```
 
 ## Usage
 
-Start fresh on `main` with a clean tree:
+Start fresh on `main` with a clean tree, then pick a loop:
 
 ```sh
 git checkout main && git pull --ff-only
-./.gnhf/run.sh
+
+./.gnhf/run.sh coverage   # tests-only loop
+./.gnhf/run.sh perf       # perf-only loop
 ```
 
-Two `gnhf` processes detach into the background, each in its own git worktree
-under `../splashboard-gnhf-worktrees/`. Logs land in `/tmp/gnhf-*.log`.
-
-In the morning:
+`run.sh` runs in the foreground so you can watch the live gnhf TUI and
+Ctrl+C when you're done. Override the token cap with `GNHF_MAX_TOKENS`:
 
 ```sh
-ls ../splashboard-gnhf-worktrees/
-tail /tmp/gnhf-coverage.log /tmp/gnhf-perf.log
+GNHF_MAX_TOKENS=10000000 ./.gnhf/run.sh coverage
 ```
 
-Review the commit stack on each worktree's `gnhf/...` branch, cherry-pick the
-good ones onto a feature branch, open PRs, merge with `--merge`.
+When the loop ends (token cap, runtime cap, or Ctrl+C), the commits live on
+the `gnhf/...` branch gnhf created. Cherry-pick the good ones onto a feature
+branch, open a PR, merge with `--merge`.
+
+Only one loop at a time per checkout — `gnhf` writes to a single `gnhf/`
+branch in this repo. Run separate loops in separate clones if you want them
+in parallel.
 
 ## Adding a new loop
 
 1. Drop a new `<name>-loop.md` into `prompts/`. Write a continuous objective
    with a measurable metric and an "exit non-zero if metric did not move"
    gate, so failed iterations roll back automatically.
-2. Add a launch line to `run.sh`.
+2. `./.gnhf/run.sh <name>` picks it up automatically.
