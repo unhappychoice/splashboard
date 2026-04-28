@@ -42,3 +42,86 @@ pub async fn get<T: DeserializeOwned>(url: &str) -> Result<T, FetchError> {
         .await
         .map_err(|e| FetchError::Failed(format!("hn json parse: {e}")))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use serde::Deserialize;
+
+    use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct TestPayload {
+        title: String,
+    }
+
+    #[test]
+    fn get_deserializes_success_body() {
+        let (url, server) = serve_once("200 OK", r#"{"title":"Launch HN"}"#);
+        let payload: TestPayload = run_async(get(&url)).unwrap();
+        server.join().unwrap();
+        assert_eq!(payload.title, "Launch HN");
+    }
+
+    #[test]
+    fn get_surfaces_non_success_status() {
+        let (url, server) = serve_once("503 Service Unavailable", "");
+        let err = run_async(get::<TestPayload>(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "hn 503 Service Unavailable"
+        ));
+    }
+
+    #[test]
+    fn get_surfaces_json_parse_errors() {
+        let (url, server) = serve_once("200 OK", "not-json");
+        let err = run_async(get::<TestPayload>(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("hn json parse")
+        ));
+    }
+
+    #[test]
+    fn get_surfaces_request_failures() {
+        let err = run_async(get::<TestPayload>("not-a-url")).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("hn request failed")
+        ));
+    }
+
+    fn serve_once(status: &str, body: &str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+}
