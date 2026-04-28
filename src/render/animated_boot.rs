@@ -241,7 +241,14 @@ fn process_start() -> Instant {
 mod tests {
     use super::*;
     use crate::payload::{Payload, TextData};
-    use crate::render::{RenderSpec, test_utils::render_to_buffer_with_spec};
+    use crate::render::{
+        RenderSpec,
+        test_utils::{line_text, render_to_buffer_with_spec},
+    };
+
+    fn joined_text(buf: &ratatui::buffer::Buffer) -> String {
+        (0..buf.area.height).map(|y| line_text(buf, y)).collect()
+    }
 
     #[test]
     fn boot_lines_falls_back_to_default_when_none() {
@@ -275,6 +282,87 @@ mod tests {
         assert!(parsed.boot_lines.is_none());
         assert!(inner.duration_ms.is_none());
         assert_eq!(inner.style.as_deref(), Some("figlet"));
+    }
+
+    #[test]
+    fn empty_boot_lines_hands_off_to_default_inner_renderer() {
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: "hello".into(),
+            }),
+        };
+        let spec = RenderSpec::Full {
+            type_name: "animated_boot".into(),
+            options: RenderOptions::default().with_extra("boot_lines", Vec::<String>::new()),
+        };
+        let registry = super::super::Registry::with_builtins();
+        let buf = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 20, 3);
+        assert!(joined_text(&buf).contains("hello"));
+    }
+
+    #[test]
+    fn unknown_inner_renderer_surfaces_inline_error() {
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: "hello".into(),
+            }),
+        };
+        let spec = RenderSpec::Full {
+            type_name: "animated_boot".into(),
+            options: RenderOptions::default().with_extra("inner", "missing_renderer"),
+        };
+        let registry = super::super::Registry::with_builtins();
+        let buf = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 80, 3);
+        assert!(joined_text(&buf).contains("unknown inner renderer: missing_renderer"));
+    }
+
+    #[test]
+    fn incompatible_inner_renderer_surfaces_shape_error() {
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: "hello".into(),
+            }),
+        };
+        let spec = RenderSpec::Full {
+            type_name: "animated_boot".into(),
+            options: RenderOptions::default().with_extra("inner", "grid_table"),
+        };
+        let registry = super::super::Registry::with_builtins();
+        let buf = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 80, 3);
+        assert!(joined_text(&buf).contains("inner grid_table cannot display Text"));
+    }
+
+    #[test]
+    fn natural_height_falls_back_to_one_for_unknown_inner_renderer() {
+        let renderer = AnimatedBootRenderer;
+        let registry = super::super::Registry::with_builtins();
+        let body = Body::Text(TextData {
+            value: "hello\nworld".into(),
+        });
+        let opts = RenderOptions::default().with_extra("inner", "missing_renderer");
+        assert_eq!(renderer.natural_height(&body, &opts, 20, &registry), 1);
+    }
+
+    #[test]
+    fn natural_height_delegates_to_shape_default_renderer() {
+        let renderer = AnimatedBootRenderer;
+        let registry = super::super::Registry::with_builtins();
+        let body = Body::Text(TextData {
+            value: "hello\nworld".into(),
+        });
+        assert_eq!(
+            renderer.natural_height(&body, &RenderOptions::default(), 20, &registry),
+            2
+        );
     }
 
     #[test]
