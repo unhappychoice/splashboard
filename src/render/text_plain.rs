@@ -87,7 +87,7 @@ fn parse_align(s: Option<&str>) -> Alignment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Payload, TextData};
+    use crate::payload::{ErrorData, ErrorKind, Payload, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer};
 
     fn text_payload(value: &str) -> Payload {
@@ -131,5 +131,41 @@ mod tests {
             r.natural_height(&text_payload("").body, &opts, 30, &registry),
             1
         );
+    }
+
+    #[test]
+    fn natural_height_non_text_falls_back_to_one() {
+        let r = TextPlainRenderer;
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default();
+        let body = Body::Error(ErrorData {
+            kind: ErrorKind::Fetch,
+            message: "boom".to_string(),
+            detail: None,
+        });
+        assert_eq!(r.natural_height(&body, &opts, 30, &registry), 1);
+    }
+
+    #[test]
+    fn parse_align_supports_center_right_and_fallback() {
+        assert_eq!(parse_align(Some("center")), Alignment::Center);
+        assert_eq!(parse_align(Some("right")), Alignment::Right);
+        assert_eq!(parse_align(Some("bogus")), Alignment::Left);
+        assert_eq!(parse_align(None), Alignment::Left);
+    }
+
+    #[test]
+    fn renderer_exposes_docs_metadata() {
+        let r = TextPlainRenderer;
+        let schemas = r.option_schemas();
+        let colors = r.color_keys();
+
+        assert!(r.description().contains("Single-line body text"));
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, "align");
+        assert_eq!(schemas[0].type_hint, "\"left\" | \"center\" | \"right\"");
+        assert_eq!(schemas[0].default, Some("\"left\""));
+        assert_eq!(colors.len(), 1);
+        assert_eq!(colors[0].name, "text");
     }
 }

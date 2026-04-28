@@ -208,7 +208,49 @@ fn process_start() -> Instant {
 mod tests {
     use super::*;
     use crate::payload::{Payload, TextData};
-    use crate::render::{RenderSpec, test_utils::render_to_buffer_with_spec};
+    use crate::render::{
+        RenderSpec,
+        test_utils::{line_text, render_to_buffer_with_spec},
+    };
+    use ratatui::{
+        Terminal, backend::TestBackend, buffer::Buffer, style::Color, widgets::Paragraph,
+    };
+
+    fn text_payload(value: &str) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: value.into(),
+            }),
+        }
+    }
+
+    fn fg_at(buf: &Buffer, row: u16, needle: char) -> Color {
+        let area = buf.area;
+        for x in 0..area.width {
+            let cell = buf.cell((x, row)).unwrap();
+            if cell.symbol().contains(needle) {
+                return cell.style().fg.unwrap_or(Color::Reset);
+            }
+        }
+        panic!("char {needle:?} not found on row {row}");
+    }
+
+    fn render_wave_frame(elapsed_ms: u32, total_ms: u32, width: u16) -> Buffer {
+        let backend = TestBackend::new(width, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                frame.render_widget(Paragraph::new("ABCDEFGH"), area);
+                apply_wave(frame, area, elapsed_ms, total_ms, &theme);
+            })
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
 
     #[test]
     fn inner_options_strips_wrapper_fields() {
@@ -226,15 +268,84 @@ mod tests {
     }
 
     #[test]
-    fn renders_without_panic() {
-        let payload = Payload {
-            icon: None,
-            status: None,
-            format: None,
-            body: Body::Text(TextData {
-                value: "wave".into(),
-            }),
+    fn renderer_exposes_docs_metadata() {
+        let renderer = AnimatedWaveRenderer;
+        let schemas = renderer.option_schemas();
+        let colors = renderer.color_keys();
+
+        assert_eq!(renderer.name(), "animated_wave");
+        assert!(renderer.animates());
+        assert!(renderer.description().contains("wave of signal"));
+        assert_eq!(renderer.accepts(), ALL_SHAPES);
+        assert_eq!(schemas.len(), 2);
+        assert_eq!(schemas[0].name, "inner");
+        assert_eq!(schemas[1].name, "duration_ms");
+        assert_eq!(colors.len(), 2);
+        assert_eq!(colors[0].name, "panel_title");
+        assert_eq!(colors[1].name, "text");
+    }
+
+    #[test]
+    fn unknown_inner_renderer_renders_inline_error() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Full {
+            type_name: "animated_wave".into(),
+            options: RenderOptions::default().with_extra("inner", "missing"),
         };
+        let buf = render_to_buffer_with_spec(&text_payload("wave"), Some(&spec), &registry, 50, 1);
+        assert!(line_text(&buf, 0).contains("unknown inner renderer: missing"));
+    }
+
+    #[test]
+    fn shape_mismatch_inner_renderer_renders_inline_error() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Full {
+            type_name: "animated_wave".into(),
+            options: RenderOptions::default().with_extra("inner", "grid_table"),
+        };
+        let buf = render_to_buffer_with_spec(&text_payload("wave"), Some(&spec), &registry, 50, 1);
+        assert!(line_text(&buf, 0).contains("cannot display Text"));
+    }
+
+    #[test]
+    fn natural_height_uses_shape_default_and_unknown_falls_back_to_one() {
+        let registry = Registry::with_builtins();
+        let renderer = AnimatedWaveRenderer;
+        let body = text_payload("wave\ncrest").body;
+        let opts = RenderOptions::default();
+        let expected = registry
+            .get(default_renderer_for(Shape::Text))
+            .unwrap()
+            .natural_height(&body, &inner_options(&opts), 20, &registry);
+
+        assert_eq!(
+            renderer.natural_height(&body, &opts, 20, &registry),
+            expected
+        );
+        assert_eq!(
+            renderer.natural_height(
+                &body,
+                &RenderOptions::default().with_extra("inner", "missing"),
+                20,
+                &registry,
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn wave_masks_future_columns_and_highlights_the_crest() {
+        let theme = Theme::default();
+        let buf = render_wave_frame(250, 1000, 8);
+
+        assert_eq!(line_text(&buf, 0), "ABCDEF  ");
+        assert_eq!(fg_at(&buf, 0, 'A'), theme.panel_title);
+        assert_eq!(fg_at(&buf, 0, 'F'), Color::Reset);
+    }
+
+    #[test]
+    fn renders_without_panic() {
+        let payload = text_payload("wave");
         let spec = RenderSpec::Full {
             type_name: "animated_wave".into(),
             options: RenderOptions {
