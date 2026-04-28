@@ -42,6 +42,7 @@ Procedure for THIS iteration:
      expected splash for the default config.
 
 7. Commit:
+   - The structured `summary` field and the commit body MUST be written in English. No Japanese, no other languages.
    - Conventional: perf(scope): <what was sped up>
    - Body includes: before ms ± stddev -> after ms ± stddev (delta + %), what was
      slow, why, what changed, machine info (uname -a; rustc --version).

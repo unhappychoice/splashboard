@@ -38,6 +38,7 @@ Procedure for THIS iteration:
    - cargo fmt --all -- --check
 
 7. Commit:
+   - The structured `summary` field and the commit body MUST be written in English. No Japanese, no other languages.
    - Conventional: test(scope): cover <area>
    - Body includes: before% -> after% (+Xpp), which file/function, why it was the pick.
    - Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
