@@ -21,6 +21,7 @@ const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
 const ACCEPT: &str = "application/vnd.github+json";
 const API_VERSION: &str = "2022-11-28";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+static AUTHENTICATED_USER_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 pub fn http() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
@@ -45,8 +46,7 @@ pub fn resolve_token() -> Result<String, FetchError> {
 /// within a session. Lets `github_avatar` / `github_user` work with zero config when a token is
 /// already set.
 pub async fn resolve_authenticated_user() -> Result<String, FetchError> {
-    static CACHED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-    let slot = CACHED.get_or_init(|| Mutex::new(None));
+    let slot = AUTHENTICATED_USER_CACHE.get_or_init(|| Mutex::new(None));
     if let Some(cached) = slot.lock().ok().and_then(|g| g.clone()) {
         return Ok(cached);
     }
@@ -59,6 +59,16 @@ pub async fn resolve_authenticated_user() -> Result<String, FetchError> {
         *g = Some(me.login.clone());
     }
     Ok(me.login)
+}
+
+#[cfg(test)]
+pub(crate) fn clear_authenticated_user_cache() {
+    if let Ok(mut guard) = AUTHENTICATED_USER_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *guard = None;
+    }
 }
 
 /// REST GET → deserialize JSON. Non-2xx responses surface the GitHub-reported `message` when

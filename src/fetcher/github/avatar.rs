@@ -175,6 +175,7 @@ fn payload(body: Body) -> Payload {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fetcher::github::client;
 
     struct EnvGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
@@ -240,7 +241,9 @@ mod tests {
             ("GH_TOKEN", None),
             ("GITHUB_TOKEN", None),
         ]);
+        client::clear_authenticated_user_cache();
         let err = resolve_user(None).await.unwrap_err();
+        client::clear_authenticated_user_cache();
         assert!(err.contains("GH_TOKEN"), "unexpected error: {err}");
     }
 
