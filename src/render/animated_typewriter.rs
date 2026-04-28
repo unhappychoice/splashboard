@@ -110,8 +110,51 @@ fn process_start() -> Instant {
 
 #[cfg(test)]
 mod tests {
+    use std::thread::sleep;
+    use std::time::{Duration, Instant};
+
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+
+    use super::*;
+    use crate::payload::{ErrorData, ErrorKind, Payload};
+    use crate::render::{
+        RenderSpec,
+        test_utils::{line_text, render_to_buffer_with_spec},
+    };
+
     fn reveal(text: &str, budget: usize) -> String {
         text.chars().take(budget).collect()
+    }
+
+    fn text_payload(value: &str) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: value.to_string(),
+            }),
+        }
+    }
+
+    fn render_direct(body: &Body, opts: &RenderOptions, width: u16, height: u16) -> Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        let renderer = AnimatedTypewriterRenderer;
+        terminal
+            .draw(|f| renderer.render(f, f.area(), body, opts, &theme, &registry))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn wait_until_revealed(total: usize) {
+        let deadline = Instant::now() + Duration::from_millis(250);
+        while chars_revealed(total) < total && Instant::now() < deadline {
+            sleep(Duration::from_millis(5));
+        }
+        assert_eq!(chars_revealed(total), total);
     }
 
     #[test]
@@ -124,5 +167,64 @@ mod tests {
     #[test]
     fn empty_budget_yields_empty_string() {
         assert_eq!(reveal("x", 0), "");
+    }
+
+    #[test]
+    fn parse_align_supports_center_right_and_fallback() {
+        assert_eq!(parse_align(Some("center")), Alignment::Center);
+        assert_eq!(parse_align(Some("right")), Alignment::Right);
+        assert_eq!(parse_align(Some("bogus")), Alignment::Left);
+        assert_eq!(parse_align(None), Alignment::Left);
+    }
+
+    #[test]
+    fn chars_revealed_clamps_to_total() {
+        assert_eq!(chars_revealed(0), 0);
+        wait_until_revealed(1);
+        assert_eq!(chars_revealed(1), 1);
+    }
+
+    #[test]
+    fn centered_render_reveals_text_once_budget_catches_up() {
+        wait_until_revealed(2);
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Full {
+            type_name: "animated_typewriter".into(),
+            options: RenderOptions {
+                align: Some("center".into()),
+                ..RenderOptions::default()
+            },
+        };
+        let buf = render_to_buffer_with_spec(&text_payload("OK"), Some(&spec), &registry, 6, 1);
+        assert_eq!(line_text(&buf, 0), "  OK  ");
+    }
+
+    #[test]
+    fn renderer_ignores_non_text_bodies() {
+        let body = Body::Error(ErrorData {
+            kind: ErrorKind::Fetch,
+            message: "boom".into(),
+            detail: None,
+        });
+        let buf = render_direct(&body, &RenderOptions::default(), 8, 1);
+        assert_eq!(line_text(&buf, 0), "        ");
+    }
+
+    #[test]
+    fn renderer_exposes_docs_metadata() {
+        let renderer = AnimatedTypewriterRenderer;
+        let schemas = renderer.option_schemas();
+        let colors = renderer.color_keys();
+
+        assert_eq!(renderer.name(), "animated_typewriter");
+        assert!(renderer.animates());
+        assert!(renderer.description().contains("40 chars/sec"));
+        assert_eq!(renderer.accepts(), &[Shape::Text]);
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, "align");
+        assert_eq!(schemas[0].type_hint, "\"left\" | \"center\" | \"right\"");
+        assert_eq!(schemas[0].default, Some("\"left\""));
+        assert_eq!(colors.len(), 1);
+        assert_eq!(colors[0].name, "text");
     }
 }
