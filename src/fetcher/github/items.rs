@@ -119,6 +119,17 @@ fn entries_key(i: &IssueItem, include_repo: bool) -> String {
 mod tests {
     use super::*;
 
+    fn issue_item() -> IssueItem {
+        IssueItem {
+            title: "Fix cached splash mismatch".into(),
+            number: 42,
+            repository_url: "https://api.github.com/repos/unhappychoice/splashboard".into(),
+            updated_at: "2026-04-22T10:15:30Z".into(),
+            html_url: "https://github.com/unhappychoice/splashboard/issues/42".into(),
+            state: "open".into(),
+        }
+    }
+
     #[test]
     fn repo_from_url_extracts_slug() {
         let s = repo_from_url("https://api.github.com/repos/foo/bar").unwrap();
@@ -129,5 +140,65 @@ mod tests {
     #[test]
     fn repo_from_url_rejects_non_api_host() {
         assert!(repo_from_url("https://github.com/foo/bar").is_none());
+    }
+
+    #[test]
+    fn render_entries_include_repo_name_and_title() {
+        let Body::Entries(data) = render_items(&[issue_item()], Shape::Entries, true) else {
+            panic!("expected entries");
+        };
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].key, "splashboard #42");
+        assert_eq!(
+            data.items[0].value.as_deref(),
+            Some("Fix cached splash mismatch")
+        );
+        assert!(data.items[0].status.is_none());
+    }
+
+    #[test]
+    fn render_linked_text_block_uses_short_label_and_optional_url() {
+        let mut item = issue_item();
+        item.html_url.clear();
+
+        let Body::LinkedTextBlock(data) = render_items(&[item], Shape::LinkedTextBlock, false)
+        else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].text, "#42 Fix cached splash mismatch");
+        assert!(data.items[0].url.is_none());
+    }
+
+    #[test]
+    fn render_timeline_uses_repo_fallback_and_parsed_timestamp() {
+        let mut item = issue_item();
+        item.repository_url = "https://api.github.com/not-a-repo".into();
+
+        let Body::Timeline(data) = render_items(&[item], Shape::Timeline, true) else {
+            panic!("expected timeline");
+        };
+        assert_eq!(data.events.len(), 1);
+        assert_eq!(data.events[0].timestamp, 1_776_852_930);
+        assert_eq!(data.events[0].title, "?#42");
+        assert_eq!(
+            data.events[0].detail.as_deref(),
+            Some("Fix cached splash mismatch")
+        );
+        assert!(data.events[0].status.is_none());
+    }
+
+    #[test]
+    fn render_text_block_is_the_fallback_shape() {
+        let Body::TextBlock(data) = render_items(&[issue_item()], Shape::TextBlock, false) else {
+            panic!("expected text block");
+        };
+        assert_eq!(data.lines, vec!["#42 Fix cached splash mismatch"]);
+    }
+
+    #[test]
+    fn search_result_defaults_missing_items_to_empty() {
+        let result: SearchResult = serde_json::from_str("{}").unwrap();
+        assert!(result.items.is_empty());
     }
 }
