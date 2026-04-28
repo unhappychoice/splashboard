@@ -28,6 +28,7 @@ tests or relocatable installs.
 ```
 $HOME/.splashboard/
 ├── settings.toml              # [general], [theme]
+├── secrets.toml               # tokens / env vars exported at startup
 ├── home.dashboard.toml        # ambient splash
 ├── project.dashboard.toml     # repo-root splash when the repo ships no config
 ├── trust.toml                 # trust store (auto-managed)
@@ -104,6 +105,42 @@ panel_title = "#ff0088"
 
 Full theme token list and the `"reset"` escape hatch for light terminals:
 see [Themes](/guides/themes/).
+
+## `secrets.toml`
+
+Tokens and other env vars that fetchers need (`GH_TOKEN`, `GITHUB_TOKEN`,
+`TODOIST_TOKEN`, …) can live in a flat top-level TOML map at
+`$HOME/.splashboard/secrets.toml`. splashboard reads it once at startup and
+exports each entry as a process env var, so any fetcher that looks up the
+matching env name picks it up without touching your shell rc.
+
+```toml
+# $HOME/.splashboard/secrets.toml
+GH_TOKEN      = "ghp_..."
+TODOIST_TOKEN = "..."
+```
+
+Rules:
+
+- **Shell env always wins.** A key already defined in the environment is
+  left alone, so an ad-hoc `GH_TOKEN=... splashboard ...` override still
+  works.
+- **Filtered keys.** `SPLASHBOARD_*` (splashboard's own knobs) and ambient
+  process state owned by the shell — `PATH`, `HOME`, `SHELL`, `USER`,
+  `LOGNAME`, `PWD`, `OLDPWD`, `IFS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`,
+  `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH` — are silently ignored, so a
+  stray entry can't redirect ambient state.
+- **Best-effort.** A missing file is fine; a parse error logs a warning and
+  the splash still renders.
+- **Git-ignored by `splashboard install`.** The installer drops
+  `secrets.toml` into a sibling `$HOME/.splashboard/.gitignore` (idempotent),
+  so dotfiles-in-git users who commit the rest of `.splashboard/` don't leak
+  their tokens by accident.
+
+Lives in its own file (not `settings.toml`) so dotfiles-in-git users can
+git-ignore exactly the file that holds tokens without losing the rest of
+their splashboard config. See the
+[cookbook](/guides/cookbook/#github-credentials) for example wiring.
 
 ## Dashboard files
 

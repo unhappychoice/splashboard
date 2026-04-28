@@ -11,15 +11,31 @@ Small recipes that stitch together the pieces from the other guides.
 query. splashboard reads `GH_TOKEN` first, then falls back to
 `GITHUB_TOKEN`.
 
-```bash
-# In ~/.zshrc / ~/.bashrc — export before the splashboard init snippet.
-export GH_TOKEN="ghp_..."
+The recommended place is `$HOME/.splashboard/secrets.toml` — a flat TOML
+map of `KEY = "value"` pairs that splashboard exports as process env at
+startup. No shell rc edit, no leakage into other tools.
+
+```toml
+# $HOME/.splashboard/secrets.toml
+GH_TOKEN      = "ghp_..."
+TODOIST_TOKEN = "..."          # any fetcher that reads an env var works the same way
 ```
 
-If you already have the `gh` CLI configured and don't want the token in
-an rc file, a typical setup is:
+`splashboard install` git-ignores this file under
+`$HOME/.splashboard/.gitignore` so dotfiles-in-git users don't commit it
+by accident. Shell env always wins, so an ad-hoc
+`GH_TOKEN=... splashboard ...` override still works. See the
+[`secrets.toml` reference](/guides/configuration/#secretstoml) for the
+denylist and full rules.
+
+If you'd rather keep the token in your shell rc — e.g. because other
+tools also read it — that still works. Export before the splashboard init
+snippet:
 
 ```bash
+# ~/.zshrc / ~/.bashrc
+export GH_TOKEN="ghp_..."
+# or, if you have the `gh` CLI configured:
 export GH_TOKEN="$(gh auth token 2>/dev/null)"
 ```
 
