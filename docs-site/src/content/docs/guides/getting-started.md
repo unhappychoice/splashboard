@@ -189,9 +189,16 @@ the [trust model guide](/guides/trust/) for the consent flow —
 `splashboard trust` is usually what you want.
 
 **A GitHub widget renders an error.** `github_*` fetchers need a token with
-read access. Export `GH_TOKEN` (or `GITHUB_TOKEN`) before starting the shell.
-See the [cookbook](/guides/cookbook/#github-credentials) for the
-recommended place to put it.
+read access. The simplest fix is to drop a line into
+`$HOME/.splashboard/secrets.toml`:
+
+```toml
+GH_TOKEN = "ghp_..."
+```
+
+splashboard exports it at startup, so no shell rc edit is required. See
+the [cookbook](/guides/cookbook/#github-credentials) for alternatives
+(shell rc, `gh auth token`, `GITHUB_TOKEN` fallback).
 
 **I want to see fresh data, not cached.** Run `splashboard --wait` once. The
 cached-first model normally paints instantly from the last refresh; `--wait`
