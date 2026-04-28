@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-04-28
+
+### ✨ Features
+
+- feat(time): project-wide locale + timezone consistency ([01a3a1e](https://github.com/unhappychoice/splashboard/commit/01a3a1e))
+- feat(secrets): load tokens from $HOME/.splashboard/secrets.toml ([ae10678](https://github.com/unhappychoice/splashboard/commit/ae10678))
+- feat(fetcher): add deariary_* family for diary entries ([a473344](https://github.com/unhappychoice/splashboard/commit/a473344))
+- feat(templates): add project_codebase preset ([dea9a21](https://github.com/unhappychoice/splashboard/commit/dea9a21))
+- feat(render): expose bar_gap option for chart_bar ([05e574d](https://github.com/unhappychoice/splashboard/commit/05e574d))
+- feat(fetcher): fill missing shape coverage across 14 fetchers ([9e09185](https://github.com/unhappychoice/splashboard/commit/9e09185))
+- feat(fetcher): add `code_largest_files` for refactor-candidate hunting ([bd9b4d4](https://github.com/unhappychoice/splashboard/commit/bd9b4d4))
+- feat(fetcher): add code_files — top-level-dir ranking + headline file count ([342c2b3](https://github.com/unhappychoice/splashboard/commit/342c2b3))
+- feat(fetcher): add `code_language_logo` for repo-language Devicon hero ([45d66ea](https://github.com/unhappychoice/splashboard/commit/45d66ea))
+- feat(fetcher): expand `code_loc` with 4 more shapes and `unit` option ([b2362b8](https://github.com/unhappychoice/splashboard/commit/b2362b8))
+- feat(fetcher): add `code_loc` for tracked-line counts per language ([637c517](https://github.com/unhappychoice/splashboard/commit/637c517))
+- feat(fetcher): add `git_churn` for top-changed files in last N days ([08a859e](https://github.com/unhappychoice/splashboard/commit/08a859e))
+- feat(fetcher): add `git_age` for repository age from first commit ([5a885fa](https://github.com/unhappychoice/splashboard/commit/5a885fa))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher): address coderabbit review on cache key + recent count + today freshness ([2b2e655](https://github.com/unhappychoice/splashboard/commit/2b2e655))
+- fix(fetcher,payload): scope deariary disk cache per token + lock Body::Error wire format ([761c1d1](https://github.com/unhappychoice/splashboard/commit/761c1d1))
+- fix(render,fetcher): restore explicit shape-mismatch error per AGENTS contract ([dba8572](https://github.com/unhappychoice/splashboard/commit/dba8572))
+- fix(fetcher,render): address coderabbit review on deariary PR ([451a53c](https://github.com/unhappychoice/splashboard/commit/451a53c))
+- fix(fetcher): self-review nits on deariary_* family ([75c1668](https://github.com/unhappychoice/splashboard/commit/75c1668))
+- fix(render): grid_table sizes key column to content and right-aligns values ([fb7ce98](https://github.com/unhappychoice/splashboard/commit/fb7ce98))
+- fix(render): list_ranking stretches label and truncates to keep value visible ([5c33a5a](https://github.com/unhappychoice/splashboard/commit/5c33a5a))
+- fix(docs): render LinkedTextBlock previews as real anchors ([685057f](https://github.com/unhappychoice/splashboard/commit/685057f))
+- fix(fetcher): address coderabbit review on shape-coverage PR ([bbfdcf8](https://github.com/unhappychoice/splashboard/commit/bbfdcf8))
+- fix(fetcher): collapse newlines in Text shape to honour single-string contract ([41c1221](https://github.com/unhappychoice/splashboard/commit/41c1221))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.0.0 ([d1b1191](https://github.com/unhappychoice/splashboard/commit/d1b1191))
+- docs(secrets): document $HOME/.splashboard/secrets.toml in user guides ([645022b](https://github.com/unhappychoice/splashboard/commit/645022b))
+- refactor(payload,render): model placeholder errors as Body::Error ([530d143](https://github.com/unhappychoice/splashboard/commit/530d143))
+- docs(templates): correct project_codebase TEMPLATES description ([db8e7e2](https://github.com/unhappychoice/splashboard/commit/db8e7e2))
+- docs(presets): correct project_codebase widget table ([8a5462a](https://github.com/unhappychoice/splashboard/commit/8a5462a))
+- docs(presets): list project_codebase in guides + xtask snapshots ([201153e](https://github.com/unhappychoice/splashboard/commit/201153e))
+- refactor(fetcher): adopt tokei for code_* metrics; add code_comments ([5f63fb1](https://github.com/unhappychoice/splashboard/commit/5f63fb1))
+- docs(agents,skill): codify single-shape renderer rule ([bc74d07](https://github.com/unhappychoice/splashboard/commit/bc74d07))
+- refactor(render): narrow text_plain to Text shape only ([67fa9cd](https://github.com/unhappychoice/splashboard/commit/67fa9cd))
+- refactor(templates): use list_plain for TextBlock-emitting widgets ([d873bd5](https://github.com/unhappychoice/splashboard/commit/d873bd5))
+- refactor(render): switch list_plain to Paragraph-backed rendering ([c861c65](https://github.com/unhappychoice/splashboard/commit/c861c65))
+- chore(deps)(deps): bump tui-piechart from 0.3.2 to 0.3.3 ([fd47e7d](https://github.com/unhappychoice/splashboard/commit/fd47e7d))
+- chore: update flake.nix hashes for v0.4.0 ([b39c478](https://github.com/unhappychoice/splashboard/commit/b39c478))
+
+
 ## [0.4.0] - 2026-04-26
 
 ### ✨ Features
@@ -44,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v0.4.0 ([af115bd](https://github.com/unhappychoice/splashboard/commit/af115bd))
+- chore: bump version to v0.4.0 ([a14c913](https://github.com/unhappychoice/splashboard/commit/a14c913))
 - refactor(reference): render fetcher/renderer meta as a table ([a71920c](https://github.com/unhappychoice/splashboard/commit/a71920c))
 - refactor(templates): use height = "auto" for home_feed fortune footer ([0ac7f5a](https://github.com/unhappychoice/splashboard/commit/0ac7f5a))
 - refactor(fetcher): rename fortune / quote_of_day to random_* family ([30d93fa](https://github.com/unhappychoice/splashboard/commit/30d93fa))
