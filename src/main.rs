@@ -195,6 +195,9 @@ async fn render_splash(wait: bool) -> io::Result<()> {
     }
     let source = config::resolve_dashboard_source();
     let (config, ident) = load_full_config(&source)?;
+    if matches!(source, DashboardSource::Home) && !config.general.auto_home {
+        return Ok(());
+    }
     let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
     runtime::run(&config, &source, ident_ref, wait).await
 }
@@ -207,6 +210,9 @@ async fn render_for_cd(wait: bool) -> io::Result<()> {
         return Ok(());
     };
     let (config, ident) = load_full_config(&source)?;
+    if !config.general.auto_on_cd {
+        return Ok(());
+    }
     let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
     runtime::run(&config, &source, ident_ref, wait).await
 }

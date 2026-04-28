@@ -93,6 +93,11 @@ height = 24
 # `{ x = 2, y = 1 }` (split horizontal / vertical).
 padding = { x = 2, y = 1 }
 
+# Auto-display toggles — both default true. Set independently to mute one
+# trigger without unwiring the shell rc. See the cookbook for use cases.
+auto_home  = true   # render the home dashboard at shell startup
+auto_on_cd = true   # repaint when entering a project directory
+
 [theme]
 # Base palette — one of "default", "tokyo_night", "nord", "dracula",
 # "gruvbox_dark", "catppuccin_mocha". See the themes guide.

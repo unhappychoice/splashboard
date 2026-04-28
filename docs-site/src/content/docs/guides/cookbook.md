@@ -130,6 +130,42 @@ To mute just the current shell:
 export SPLASHBOARD_SILENT=1
 ```
 
+### Disable the auto-display selectively
+
+Two `[general]` toggles in `settings.toml` carve up the auto-display
+behaviour without killing it entirely:
+
+```toml
+[general]
+# Skip the home dashboard at shell startup. The cd-hook still paints the
+# project splash when you enter a project directory.
+auto_home = false
+
+# Skip every cd-hook repaint. Shell startup still renders.
+auto_on_cd = false
+```
+
+Both default to `true`. Set both to `false` and `splashboard` only renders
+when you invoke it explicitly.
+
+### Remove the install line entirely
+
+For the simplest opt-out, delete the marker block that
+`splashboard install` wrote into your shell rc:
+
+```text
+# >>> splashboard >>>
+# Added by `splashboard install`. Safe to remove.
+eval "$(splashboard init zsh)"
+# <<< splashboard <<<
+```
+
+Drop those lines from `~/.zshrc` / `~/.bashrc` / `~/.config/fish/config.fish`
+and no startup or cd-hook fires. The `splashboard` binary still works on
+demand; only the auto-display is gone.
+
+### Slower paint, fresher data
+
 To trade snappiness for freshness (block the initial paint until every
 widget has fetched):
 
