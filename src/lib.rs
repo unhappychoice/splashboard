@@ -12,6 +12,7 @@ pub mod payload;
 pub mod render;
 pub mod runtime;
 pub mod samples;
+pub mod secrets;
 pub mod shell;
 pub mod templates;
 pub mod theme;

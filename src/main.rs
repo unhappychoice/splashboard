@@ -14,6 +14,7 @@ use splashboard::logging;
 use splashboard::paths;
 use splashboard::render::Registry as RenderRegistry;
 use splashboard::runtime;
+use splashboard::secrets::SecretsConfig;
 use splashboard::shell::{self, Shell};
 use splashboard::trust::{TrustStore, load_dashboard_and_hash};
 
@@ -128,6 +129,7 @@ enum CatalogTarget {
 async fn main() -> io::Result<()> {
     let cli = Cli::parse();
     logging::init();
+    apply_secrets();
     match cli.command {
         Some(Command::Init { shell }) => {
             print!("{}", shell::init_snippet(shell));
@@ -232,6 +234,31 @@ fn load_full_config(source: &DashboardSource) -> io::Result<(Config, Option<(Pat
         DashboardSource::Project => (load_project_dashboard_or_baked()?, None),
     };
     Ok((Config::from_parts(settings, dashboard), ident))
+}
+
+/// Loads `$HOME/.splashboard/secrets.toml` and exports each entry as a process env var, but
+/// only when the env doesn't already define it. Runs once at startup so every fetcher
+/// (`GH_TOKEN`, `TODOIST_TOKEN`, etc.) sees the same view regardless of who reads first.
+/// Failures (parse error, unreadable file) log and continue — a stale token shouldn't break
+/// the splash, and the user's shell env is still authoritative.
+fn apply_secrets() {
+    let Some(path) = paths::secrets_path() else {
+        return;
+    };
+    match SecretsConfig::load_or_default(&path) {
+        Ok(secrets) => {
+            secrets.apply_to_env(
+                |k| std::env::var(k).ok(),
+                // SAFETY: called once from `main` before any user code reads env. The Tokio
+                // worker threads exist but are idle — none of our fetchers / runtime tasks
+                // have been spawned yet, so no thread is racing on `getenv`/`setenv`.
+                |k, v| unsafe { std::env::set_var(k, v) },
+            );
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to load secrets.toml; continuing without it");
+        }
+    }
 }
 
 fn load_settings() -> io::Result<SettingsConfig> {
