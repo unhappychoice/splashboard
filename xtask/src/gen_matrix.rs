@@ -50,7 +50,7 @@ pub fn run(out: &Path) -> Result<()> {
         write_file(&out.join(rel_path("fetchers", f.name())), &page)?;
     }
     for r in renderers.sorted() {
-        let page = renderer_page(&r, &fetchers);
+        let page = renderer_page(&r, &fetchers, &renderers);
         write_file(&out.join(rel_path("renderers", r.name())), &page)?;
     }
     Ok(())
@@ -190,12 +190,31 @@ fn fetcher_page(f: &RegisteredFetcher, renderers: &RenderRegistry) -> String {
 
 fn render_previews(out: &mut String, fetcher: &RegisteredFetcher, renderers: &RenderRegistry) {
     let previews = snapshots::previews_for(fetcher, renderers);
+    render_preview_section(out, previews, |p| {
+        format!("`{}` via `{}`", p.shape.as_str(), p.renderer)
+    });
+}
+
+fn render_renderer_previews(
+    out: &mut String,
+    renderer: &Arc<dyn Renderer>,
+    fetchers: &FetcherRegistry,
+    renderers: &RenderRegistry,
+) {
+    let previews = snapshots::previews_for_renderer(renderer, fetchers, renderers);
+    render_preview_section(out, previews, |p| format!("`{}`", p.shape.as_str()));
+}
+
+fn render_preview_section<F>(out: &mut String, previews: Vec<snapshots::Preview>, heading: F)
+where
+    F: Fn(&snapshots::Preview) -> String,
+{
     if previews.is_empty() {
         return;
     }
     out.push_str("## Preview\n\n");
     for p in previews {
-        let _ = writeln!(out, "### `{}` via `{}`\n", p.shape.as_str(), p.renderer);
+        let _ = writeln!(out, "### {}\n", heading(&p));
         out.push_str(&p.html);
         out.push_str("\n\n");
         out.push_str("```toml\n");
@@ -204,7 +223,11 @@ fn render_previews(out: &mut String, fetcher: &RegisteredFetcher, renderers: &Re
     }
 }
 
-fn renderer_page(r: &Arc<dyn Renderer>, fetchers: &FetcherRegistry) -> String {
+fn renderer_page(
+    r: &Arc<dyn Renderer>,
+    fetchers: &FetcherRegistry,
+    renderers: &RenderRegistry,
+) -> String {
     let mut out = String::new();
     push_frontmatter(&mut out, r.name(), r.description());
     let _ = writeln!(out, "{}\n", r.description());
@@ -224,6 +247,7 @@ fn renderer_page(r: &Arc<dyn Renderer>, fetchers: &FetcherRegistry) -> String {
     );
     render_color_keys_section(&mut out, r.color_keys());
     render_compatible_fetchers(&mut out, r.accepts(), fetchers);
+    render_renderer_previews(&mut out, r, fetchers, renderers);
     out
 }
 
