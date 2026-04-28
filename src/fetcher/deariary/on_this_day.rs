@@ -12,7 +12,7 @@ use chrono::{Local, Months, NaiveDate};
 use serde::Deserialize;
 use tokio::task::JoinSet;
 
-use super::client::{ApiEntry, cached_get_entry, entry_url, resolve_token};
+use super::client::{ApiEntry, cache_extra, cached_get_entry, entry_url, resolve_token};
 use crate::fetcher::github::common::{cache_key, parse_options, payload};
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
@@ -81,11 +81,8 @@ impl Fetcher for DeariaryOnThisDay {
         OPTION_SCHEMAS
     }
     fn cache_key(&self, ctx: &FetchContext) -> String {
-        let extra = ctx
-            .options
-            .as_ref()
-            .and_then(|v| toml::to_string(v).ok())
-            .unwrap_or_default();
+        let opts: Options = parse_options(ctx.options.as_ref()).unwrap_or_default();
+        let extra = cache_extra(opts.token.as_deref(), ctx.options.as_ref());
         cache_key(self.name(), ctx, &extra)
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {

@@ -69,6 +69,41 @@ pub fn entry_url(date: &str) -> String {
     format!("https://app.deariary.com/entries/{path}")
 }
 
+/// Stable opaque scope string for a token. Used to namespace both the in-process slot cache
+/// keys and the per-fetcher disk `cache_key` so account A's cached entries can't be served
+/// to a widget configured against account B's token. Hashing avoids two distinct concerns
+/// in one go: keeps the raw token out of the cache-key strings (which surface in logs /
+/// file paths under `cache/`) and dodges any collision risk from a literal `|` separator
+/// in the token. We take only the first 16 hex chars of SHA-256 — collisions are vanishingly
+/// unlikely at that width and short keys keep the on-disk cache filenames reasonable.
+/// Callers that don't have a token (resolution failed earlier) pass `""`, yielding a stable
+/// empty-token scope rather than skipping the namespace entirely.
+pub fn token_scope(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(token.as_bytes());
+    let mut s = String::with_capacity(16);
+    for byte in digest.iter().take(8) {
+        use std::fmt::Write;
+        let _ = write!(s, "{byte:02x}");
+    }
+    s
+}
+
+/// Cache-key `extra` partition string for the deariary family. Resolves the token via the
+/// same precedence as `fetch` (config option > `DEARIARY_TOKEN` env), then prefixes the raw
+/// options blob with the scoped token hash so changing accounts produces distinct disk
+/// cache files even when the token only lives in env (cf. CodeRabbit review on PR #176 —
+/// without this, two users sharing a `$HOME/.splashboard/cache` directory would observe
+/// each other's diary entries). Token-resolution failure folds to the empty scope; the
+/// subsequent fetch surfaces the missing-token error via `error_placeholder`.
+pub fn cache_extra(opts_token: Option<&str>, raw_opts: Option<&toml::Value>) -> String {
+    let resolved = resolve_token(opts_token).unwrap_or_default();
+    let opts_str = raw_opts
+        .and_then(|v| toml::to_string(v).ok())
+        .unwrap_or_default();
+    format!("{}|{}", token_scope(&resolved), opts_str)
+}
+
 pub fn resolve_token(config_token: Option<&str>) -> Result<String, FetchError> {
     let trimmed = config_token
         .map(str::trim)
@@ -175,12 +210,14 @@ fn list_cache() -> &'static StdMutex<HashMap<String, ListSlot>> {
 
 /// Cache key scopes the per-date slot to the token so a process holding multiple tokens
 /// (e.g. one widget per account) doesn't serve account A's entries to account B's widget.
-/// The token is part of the in-process key only — never written to disk or logs.
+/// The token is hashed via [`token_scope`] before becoming part of the key — defends
+/// against `|` colliding two distinct (token, date) pairs into one slot, and keeps the raw
+/// token out of the in-memory key string.
 fn entry_slot(token: &str, date: &str) -> EntrySlot {
     entry_cache()
         .lock()
         .unwrap()
-        .entry(format!("{token}|{date}"))
+        .entry(format!("{}|{date}", token_scope(token)))
         .or_insert_with(|| Arc::new(AsyncMutex::new(None)))
         .clone()
 }
@@ -189,7 +226,7 @@ fn list_slot(token: &str, tag: &str) -> ListSlot {
     list_cache()
         .lock()
         .unwrap()
-        .entry(format!("{token}|{tag}"))
+        .entry(format!("{}|{tag}", token_scope(token)))
         .or_insert_with(|| Arc::new(AsyncMutex::new(None)))
         .clone()
 }
@@ -397,6 +434,62 @@ mod tests {
             entry_url("2026-04-27"),
             "https://app.deariary.com/entries/2026/04/27"
         );
+    }
+
+    #[test]
+    fn token_scope_is_stable_collision_resistant_and_obscures_raw_token() {
+        let a = token_scope("tok-A");
+        let b = token_scope("tok-A");
+        assert_eq!(a, b, "scope must be deterministic for repeat calls");
+        assert_ne!(token_scope("tok-A"), token_scope("tok-B"));
+        // 16 hex chars = 64 bits of entropy. Plenty for distinguishing local accounts.
+        assert_eq!(a.len(), 16);
+        // Token-content-derived but not the token itself — defends `cache/` filenames /
+        // log lines that surface the scope from leaking the bearer.
+        assert!(!a.contains("tok-A"));
+    }
+
+    #[test]
+    fn token_scope_dodges_naive_pipe_separator_collision() {
+        // The slot key was previously `format!("{token}|{date}")`. A token containing `|`
+        // could collide with an entirely different (token, date) pair. Hashed scope removes
+        // the ambiguity — `a|b` and `a` against date `|b` no longer hash to the same bucket.
+        assert_ne!(token_scope("a|b"), token_scope("a"));
+    }
+
+    #[test]
+    fn cache_extra_partitions_disk_cache_per_resolved_token() {
+        // Direct config tokens — different tokens must produce different extras even with
+        // the same options blob, otherwise account A's disk cache leaks to account B.
+        let a = cache_extra(Some("tok-A"), None);
+        let b = cache_extra(Some("tok-B"), None);
+        assert_ne!(
+            a, b,
+            "different config tokens must yield different cache extras",
+        );
+    }
+
+    #[test]
+    fn cache_extra_includes_options_blob_for_per_invocation_keys() {
+        // Same token, different options (e.g. different `tag`) → different extras so
+        // cached entries don't bleed across invocation parameters.
+        let v1: toml::Value = toml::from_str("tag = \"work\"").unwrap();
+        let v2: toml::Value = toml::from_str("tag = \"travel\"").unwrap();
+        let a = cache_extra(Some("tok-A"), Some(&v1));
+        let b = cache_extra(Some("tok-A"), Some(&v2));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_extra_includes_a_token_scope_prefix() {
+        // Structural assertion: extra always begins with the scoped token followed by `|`,
+        // so even when DEARIARY_TOKEN flips out from under us mid-cache-lifetime, the new
+        // run produces a distinct cache key (we don't read stale account-A data into
+        // account-B's slot). Asserting the prefix shape rather than the exact value sidesteps
+        // env races with parallel tests.
+        let extra = cache_extra(Some("tok-A"), None);
+        let scope = token_scope("tok-A");
+        assert!(extra.starts_with(&format!("{scope}|")), "got: {extra:?}");
     }
 
     #[tokio::test]

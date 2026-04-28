@@ -530,4 +530,69 @@ mod tests {
         assert!(!json.contains("icon"));
         assert!(!json.contains("status"));
     }
+
+    #[test]
+    fn error_round_trips_with_full_field_set() {
+        // Locks the on-disk wire format for `Body::Error`. Cached `CacheEntryKind::Err`
+        // entries serialize this and must deserialize back identically after a process
+        // restart, otherwise the cache layer drops the placeholder mid-flight.
+        let p = bare(Body::Error(ErrorData {
+            kind: ErrorKind::Fetch,
+            message: "⚠ deariary 429".into(),
+            detail: Some("see logs".into()),
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn error_round_trips_without_detail() {
+        // Detail is `Option<String>` — round-trip must preserve `None` rather than
+        // collapsing it to an empty string, because the renderer treats the two distinctly
+        // (no detail = single-line layout vs detail = two-line message + hint).
+        let p = bare(Body::Error(ErrorData {
+            kind: ErrorKind::Timeout,
+            message: "⏱ timed out".into(),
+            detail: None,
+        }));
+        assert_eq!(p, round_trip(&p));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(
+            !json.contains("detail"),
+            "skip_serializing_if must drop None detail: {json}"
+        );
+    }
+
+    #[test]
+    fn error_serializes_with_expected_shape_tag_and_snake_case_kind() {
+        // Pins the canonical wire format so changes to the serde derives surface here
+        // rather than as silent breakage in cached payloads.
+        let p = bare(Body::Error(ErrorData {
+            kind: ErrorKind::ShapeMismatch,
+            message: "⚠ static_text can't emit bars".into(),
+            detail: Some("check `render` in config".into()),
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "error");
+        assert_eq!(v["data"]["kind"], "shape_mismatch");
+        assert_eq!(v["data"]["message"], "⚠ static_text can't emit bars");
+        assert_eq!(v["data"]["detail"], "check `render` in config");
+    }
+
+    #[test]
+    fn error_kind_covers_every_known_variant() {
+        // Exhaustive snake_case round-trip per ErrorKind so a new variant landing without
+        // a corresponding renaming convention trips this test.
+        for (kind, expected) in [
+            (ErrorKind::Fetch, "fetch"),
+            (ErrorKind::Timeout, "timeout"),
+            (ErrorKind::UnknownFetcher, "unknown_fetcher"),
+            (ErrorKind::ShapeMismatch, "shape_mismatch"),
+            (ErrorKind::RequiresTrust, "requires_trust"),
+        ] {
+            let s = serde_json::to_string(&kind).unwrap();
+            assert_eq!(s, format!("\"{expected}\""), "kind: {kind:?}");
+            let back: ErrorKind = serde_json::from_str(&s).unwrap();
+            assert_eq!(back, kind);
+        }
+    }
 }
