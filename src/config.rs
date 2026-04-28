@@ -46,7 +46,7 @@ pub struct DashboardConfig {
     pub rows: Vec<RowConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct General {
     #[serde(default)]
     pub wait_for_fresh: bool,
@@ -72,6 +72,33 @@ pub struct General {
     /// rendering identical strings.
     #[serde(default)]
     pub locale: Option<String>,
+    /// Render the home dashboard automatically on shell startup. Default `true`.
+    /// Set to `false` to keep `splashboard` quiet when CWD doesn't resolve to a project,
+    /// while still letting the cd-hook paint the project splash on entry.
+    #[serde(default = "default_true")]
+    pub auto_home: bool,
+    /// Run the cd-hook (`splashboard --on-cd`) when entering a project directory. Default
+    /// `true`. Set to `false` to disable per-`cd` repaints without unwiring the shell rc.
+    #[serde(default = "default_true")]
+    pub auto_on_cd: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for General {
+    fn default() -> Self {
+        Self {
+            wait_for_fresh: false,
+            height: None,
+            padding: None,
+            timezone: None,
+            locale: None,
+            auto_home: true,
+            auto_on_cd: true,
+        }
+    }
 }
 
 /// Uniform or split padding. Short form `padding = 1` applies the same value to all sides;
@@ -659,6 +686,36 @@ preset = "nord"
         assert!(s.general.wait_for_fresh);
         assert_eq!(s.general.height, Some(24));
         assert_eq!(s.theme.preset.as_deref(), Some("nord"));
+    }
+
+    #[test]
+    fn auto_display_toggles_default_to_true() {
+        let s = SettingsConfig::default_baked();
+        assert!(s.general.auto_home);
+        assert!(s.general.auto_on_cd);
+    }
+
+    #[test]
+    fn auto_display_toggles_parse_when_false() {
+        let toml = r#"
+[general]
+auto_home = false
+auto_on_cd = false
+"#;
+        let s = SettingsConfig::parse(toml).unwrap();
+        assert!(!s.general.auto_home);
+        assert!(!s.general.auto_on_cd);
+    }
+
+    #[test]
+    fn auto_display_toggles_partial_override_keeps_other_default() {
+        let toml = r#"
+[general]
+auto_home = false
+"#;
+        let s = SettingsConfig::parse(toml).unwrap();
+        assert!(!s.general.auto_home);
+        assert!(s.general.auto_on_cd);
     }
 
     #[test]

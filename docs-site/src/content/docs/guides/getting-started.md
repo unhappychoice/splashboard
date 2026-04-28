@@ -180,8 +180,12 @@ rendering when any of these is true:
 - `TERM=dumb`.
 - Any of `CI`, `SPLASHBOARD_SILENT`, or `NO_SPLASHBOARD` is set.
 - The terminal is smaller than 40×16.
+- Source resolves to the home dashboard and `[general] auto_home = false`,
+  or the trigger is the cd-hook and `[general] auto_on_cd = false`.
 
-Unset the variable or widen the terminal and try again.
+Unset the variable or widen the terminal and try again. To opt out
+deliberately — only at the home context, only on `cd`, or entirely — see
+the [cookbook](/guides/cookbook/#opting-out).
 
 **A widget renders `🔒 requires trust`.** The widget is classified as
 `Network` and the local dashboard it came from has not been trusted yet. See
