@@ -90,18 +90,38 @@ pub fn token_scope(token: &str) -> String {
 }
 
 /// Cache-key `extra` partition string for the deariary family. Resolves the token via the
-/// same precedence as `fetch` (config option > `DEARIARY_TOKEN` env), then prefixes the raw
-/// options blob with the scoped token hash so changing accounts produces distinct disk
-/// cache files even when the token only lives in env (cf. CodeRabbit review on PR #176 —
-/// without this, two users sharing a `$HOME/.splashboard/cache` directory would observe
-/// each other's diary entries). Token-resolution failure folds to the empty scope; the
-/// subsequent fetch surfaces the missing-token error via `error_placeholder`.
+/// same precedence as `fetch` (config option > `DEARIARY_TOKEN` env), then prefixes the
+/// (token-stripped) options blob with the scoped token hash so changing accounts produces
+/// distinct disk cache files even when the token only lives in env (cf. CodeRabbit review
+/// on PR #176 — without this, two users sharing a `$HOME/.splashboard/cache` directory
+/// would observe each other's diary entries). Token-resolution failure folds to the empty
+/// scope; the subsequent fetch surfaces the missing-token error via `error_placeholder`.
+///
+/// The `token` field is stripped from the options blob before serialisation so the bearer
+/// doesn't ride along inside the intermediate `extra` string. The hash-prefix already
+/// partitions per token; reproducing the raw token verbatim in the blob would only
+/// re-introduce it as a panic-backtrace / log-tracing leak surface.
 pub fn cache_extra(opts_token: Option<&str>, raw_opts: Option<&toml::Value>) -> String {
     let resolved = resolve_token(opts_token).unwrap_or_default();
     let opts_str = raw_opts
-        .and_then(|v| toml::to_string(v).ok())
+        .map(strip_token_field)
+        .and_then(|v| toml::to_string(&v).ok())
         .unwrap_or_default();
     format!("{}|{}", token_scope(&resolved), opts_str)
+}
+
+/// Returns a clone of `value` with the top-level `token` key removed. Used by
+/// [`cache_extra`] so the bearer never survives into a cache-key intermediate even when
+/// `[widget.options]` carries it inline. Non-table inputs round-trip unchanged.
+fn strip_token_field(value: &toml::Value) -> toml::Value {
+    match value {
+        toml::Value::Table(table) => {
+            let mut copy = table.clone();
+            copy.remove("token");
+            toml::Value::Table(copy)
+        }
+        other => other.clone(),
+    }
 }
 
 pub fn resolve_token(config_token: Option<&str>) -> Result<String, FetchError> {
@@ -478,6 +498,22 @@ mod tests {
         let a = cache_extra(Some("tok-A"), Some(&v1));
         let b = cache_extra(Some("tok-A"), Some(&v2));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_extra_strips_token_from_options_blob() {
+        // The bearer must never survive into the `extra` intermediate — the hash prefix
+        // already does the per-account partitioning, and reproducing the raw token in the
+        // serialised blob would only re-introduce it as a panic-backtrace / tracing leak.
+        let opts: toml::Value = toml::from_str("token = \"super-secret\"\ntag = \"work\"").unwrap();
+        let extra = cache_extra(Some("super-secret"), Some(&opts));
+        assert!(
+            !extra.contains("super-secret"),
+            "raw token must not appear in extra: {extra:?}"
+        );
+        // The non-token option survives so different `tag` values still produce distinct
+        // cache keys per account.
+        assert!(extra.contains("tag = \"work\""), "got: {extra:?}");
     }
 
     #[test]

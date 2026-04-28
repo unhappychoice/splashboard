@@ -104,22 +104,39 @@ impl Fetcher for DeariaryToday {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let token = resolve_token(opts.token.as_deref())?;
-        let entry = latest_entry(&token).await?;
-        let shape = ctx.shape.unwrap_or(Shape::TextBlock);
         let today = Local::now().date_naive();
+        let entry = latest_entry(&token, today).await?;
+        let shape = ctx.shape.unwrap_or(Shape::TextBlock);
         Ok(payload(render_body(entry.as_ref(), shape, today)))
     }
 }
 
-/// Pulls the freshest entry: list call (cached, shared with `deariary_recent`) gives the
-/// newest date, then a per-date lookup (cached, shared with `deariary_on_this_day`) returns
-/// the body with `content` populated — `/entries` list responses may strip content for size.
-async fn latest_entry(token: &str) -> Result<Option<ApiEntry>, FetchError> {
+/// Pulls the freshest entry, but only when it's recent enough to be honest about. The
+/// fetcher's description promises "typically today's, falling back to yesterday's when
+/// today's hasn't generated yet" — surfacing a 5-day-old entry as "today" would be a
+/// silent lie. If the newest available entry isn't from today or yesterday, return
+/// `Ok(None)` and let the empty-state placeholder render instead.
+///
+/// The list call is cached and shared with `deariary_recent`; the per-date lookup is
+/// cached and shared with `deariary_on_this_day` — `/entries` list responses may strip
+/// content for size, so we re-fetch the full body via the date endpoint.
+async fn latest_entry(token: &str, today: NaiveDate) -> Result<Option<ApiEntry>, FetchError> {
     let entries = cached_get_entries(token, None).await?;
     let Some(latest) = entries.first() else {
         return Ok(None);
     };
+    if !is_today_or_yesterday(&latest.date, today) {
+        return Ok(None);
+    }
     cached_get_entry(token, &latest.date).await
+}
+
+fn is_today_or_yesterday(raw: &str, today: NaiveDate) -> bool {
+    let Ok(date) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") else {
+        return false;
+    };
+    let days_back = (today - date).num_days();
+    (0..=1).contains(&days_back)
 }
 
 fn render_body(entry: Option<&ApiEntry>, shape: Shape, today: NaiveDate) -> Body {
@@ -342,6 +359,25 @@ mod tests {
             panic!("expected Badge");
         };
         assert_eq!(b.label, "📔 2026-04-27");
+    }
+
+    #[test]
+    fn freshness_gate_accepts_today_and_yesterday_only() {
+        // The fetcher's contract is "typically today's, falling back to yesterday's" — a
+        // 5-day-old entry must NOT be served as "today" or even "yesterday". Bound the
+        // gate to a 0/1-day delta and let `Ok(None)` fall through to the empty-state
+        // placeholder for older surrogates.
+        let today = ymd(2026, 4, 27);
+        assert!(is_today_or_yesterday("2026-04-27", today));
+        assert!(is_today_or_yesterday("2026-04-26", today));
+        assert!(!is_today_or_yesterday("2026-04-25", today));
+        assert!(!is_today_or_yesterday("2026-04-22", today));
+        // Future-dated entries (clock skew, time-zone weirdness on the API side) shouldn't
+        // be silently surfaced either — guard against them too.
+        assert!(!is_today_or_yesterday("2026-04-28", today));
+        // Unparseable dates fall through to false; the surrogate placeholder beats
+        // surfacing an entry the fetcher can't reason about.
+        assert!(!is_today_or_yesterday("not-a-date", today));
     }
 
     #[test]

@@ -156,18 +156,21 @@ impl Fetcher for DeariaryRecent {
 fn render_body(entries: &[ApiEntry], shape: Shape, limit: usize, today: NaiveDate) -> Body {
     let limited: Vec<&ApiEntry> = entries.iter().take(limit).collect();
     match shape {
-        Shape::Text => render_text(&limited),
+        // Headline shapes (Text/Badge) report the real total, not the truncated count —
+        // a `limit = 5` widget with 23 cached entries should still say "📔 23 recent",
+        // not "📔 5 recent". The user-set `limit` only governs how many ROWS render.
+        Shape::Text => render_text(entries),
+        Shape::Badge => render_badge(entries),
         Shape::TextBlock => render_text_block(&limited),
         Shape::MarkdownTextBlock => render_markdown(&limited),
         Shape::LinkedTextBlock => render_linked(&limited),
         Shape::Entries => render_entries(&limited),
-        Shape::Badge => render_badge(&limited),
         Shape::Calendar => render_calendar(entries, today),
         _ => render_timeline(&limited),
     }
 }
 
-fn render_text(entries: &[&ApiEntry]) -> Body {
+fn render_text(entries: &[ApiEntry]) -> Body {
     let value = entries.first().map_or(String::new(), |e| {
         format!("📔 {} entries · latest: {}", entries.len(), e.title)
     });
@@ -214,7 +217,7 @@ fn render_entries(entries: &[&ApiEntry]) -> Body {
     })
 }
 
-fn render_badge(entries: &[&ApiEntry]) -> Body {
+fn render_badge(entries: &[ApiEntry]) -> Body {
     Body::Badge(BadgeData {
         status: if entries.is_empty() {
             Status::Warn
@@ -408,6 +411,43 @@ mod tests {
             panic!("expected TextBlock");
         };
         assert_eq!(t.lines.len(), 2);
+    }
+
+    #[test]
+    fn text_headline_reports_total_count_not_limit() {
+        // limit governs how many rows the *list* renderers show. A 23-entry cache shown
+        // through a Text headline should still say "23 entries", not the truncated count.
+        let entries = vec![
+            entry("2026-04-27", "A"),
+            entry("2026-04-26", "B"),
+            entry("2026-04-25", "C"),
+            entry("2026-04-24", "D"),
+            entry("2026-04-23", "E"),
+        ];
+        let Body::Text(t) = render_body(&entries, Shape::Text, 2, ymd(2026, 4, 27)) else {
+            panic!("expected Text");
+        };
+        assert!(
+            t.value.contains("5 entries"),
+            "headline must use real total: {}",
+            t.value
+        );
+    }
+
+    #[test]
+    fn badge_headline_reports_total_count_not_limit() {
+        let entries = vec![
+            entry("2026-04-27", "A"),
+            entry("2026-04-26", "B"),
+            entry("2026-04-25", "C"),
+        ];
+        let Body::Badge(b) = render_body(&entries, Shape::Badge, 1, ymd(2026, 4, 27)) else {
+            panic!("expected Badge");
+        };
+        assert_eq!(
+            b.label, "📔 3 recent",
+            "badge must reflect total entries, not the row limit"
+        );
     }
 
     #[test]
