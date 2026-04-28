@@ -184,6 +184,15 @@ pub struct RenderOptions {
     /// chart_line / chart_scatter: draw a bordered axis block around the plot.
     #[serde(default)]
     pub axes: Option<bool>,
+    /// IANA timezone resolved by the runtime from `[general].timezone`. Renderers that draw
+    /// timestamps (today: `list_timeline`) read this. `None` means "use host `Local`" — every
+    /// helper in [`crate::time`] honours that fallback.
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Locale code (`"en_US"`, `"ja_JP"`, …) resolved by the runtime from `[general].locale`.
+    /// `None` resolves to `Locale::POSIX`, matching chrono's unlocalised `format()` output.
+    #[serde(default)]
+    pub locale: Option<String>,
     /// Renderer-specific extras. Each renderer parses its own typed Options struct via
     /// [`Self::parse_specific`]; unknown keys for that renderer surface as parse errors at
     /// render time. Common-field typos (e.g. `aling = "center"`) also land here, then get
@@ -435,6 +444,7 @@ pub fn render_payload(
     spec: Option<&RenderSpec>,
     registry: &Registry,
     theme: &Theme,
+    general: &crate::config::General,
 ) {
     // Error bodies bypass the shape × renderer dispatch entirely. Asking the configured
     // renderer (e.g. `chart_bar`, `grid_calendar`) to display a structured fetch / trust /
@@ -451,13 +461,21 @@ pub fn render_payload(
         return;
     }
     let shape = shape_of(&payload.body);
-    let (name, options) = match spec {
+    let (name, mut options) = match spec {
         Some(s) => (s.renderer_name().to_string(), s.options()),
         None => (
             default_renderer_for(shape).to_string(),
             RenderOptions::default(),
         ),
     };
+    // Inherit `[general]` defaults for cross-cutting fields that the renderer-spec form rarely
+    // overrides (timezone / locale). Per-renderer overrides on the spec still win.
+    if options.timezone.is_none() {
+        options.timezone = general.timezone.clone();
+    }
+    if options.locale.is_none() {
+        options.locale = general.locale.clone();
+    }
     let Some(renderer) = registry.get(&name) else {
         render_error(frame, area, &format!("unknown renderer: {name}"), theme);
         return;

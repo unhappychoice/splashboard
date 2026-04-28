@@ -75,6 +75,7 @@ impl TemplatePreview {
             &self.specs,
             &self.renderers,
             &self.theme,
+            &self.config.general,
             &loading,
         );
     }

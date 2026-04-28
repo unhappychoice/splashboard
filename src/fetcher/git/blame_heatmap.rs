@@ -3,7 +3,7 @@ use std::convert::Infallible;
 use std::ops::ControlFlow;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
+use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Utc};
 use gix::object::tree::diff::Change;
 use gix::revision::walk::Sorting;
 use gix::traverse::commit::simple::CommitTimeOrder;
@@ -11,6 +11,7 @@ use gix::traverse::commit::simple::CommitTimeOrder;
 use crate::payload::{Body, HeatmapData, Payload};
 use crate::render::Shape;
 use crate::samples;
+use crate::time as t;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, open_repo, payload, repo_cache_key, text_body};
@@ -56,8 +57,8 @@ impl Fetcher for GitBlameHeatmap {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
-        let today = Local::now().date_naive();
-        let churn = churn(&repo, today)?;
+        let now = t::now_in(ctx.timezone.as_deref());
+        let churn = churn(&repo, now.date_naive(), *now.offset())?;
         Ok(payload(render_body(
             churn,
             ctx.shape.unwrap_or(Shape::Heatmap),
@@ -71,7 +72,7 @@ struct Churn {
     grid: Vec<Vec<u32>>,
 }
 
-fn churn(repo: &gix::Repository, today: NaiveDate) -> Result<Churn, FetchError> {
+fn churn(repo: &gix::Repository, today: NaiveDate, tz: FixedOffset) -> Result<Churn, FetchError> {
     let Ok(head_id) = repo.head_id() else {
         return Ok(Churn {
             files: Vec::new(),
@@ -103,7 +104,7 @@ fn churn(repo: &gix::Repository, today: NaiveDate) -> Result<Churn, FetchError> 
         let Some(dt) = DateTime::<Utc>::from_timestamp(time.seconds, 0) else {
             continue;
         };
-        let date = dt.with_timezone(&Local).date_naive();
+        let date = dt.with_timezone(&tz).date_naive();
         let Some(col) = week_col(date, start) else {
             continue;
         };
@@ -229,10 +230,19 @@ mod tests {
     use super::super::test_support::{commit_touching, make_repo};
     use super::*;
 
+    fn local_now() -> chrono::DateTime<FixedOffset> {
+        t::now_in(None)
+    }
+
     #[test]
     fn empty_repo_returns_empty() {
         let (_tmp, repo) = make_repo();
-        let c = churn(&repo, NaiveDate::from_ymd_opt(2026, 4, 22).unwrap()).unwrap();
+        let c = churn(
+            &repo,
+            NaiveDate::from_ymd_opt(2026, 4, 22).unwrap(),
+            FixedOffset::east_opt(0).unwrap(),
+        )
+        .unwrap();
         assert!(c.files.is_empty());
     }
 
@@ -243,7 +253,8 @@ mod tests {
         commit_touching(&repo, "a.rs", "a2");
         commit_touching(&repo, "a.rs", "a3");
         commit_touching(&repo, "b.rs", "b1");
-        let c = churn(&repo, Local::now().date_naive()).unwrap();
+        let now = local_now();
+        let c = churn(&repo, now.date_naive(), *now.offset()).unwrap();
         assert_eq!(c.files[0], "a.rs");
         assert_eq!(c.totals[0], 3);
         assert_eq!(c.files[1], "b.rs");
@@ -254,7 +265,8 @@ mod tests {
     fn current_week_lands_in_rightmost_column() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "a.rs", "a");
-        let c = churn(&repo, Local::now().date_naive()).unwrap();
+        let now = local_now();
+        let c = churn(&repo, now.date_naive(), *now.offset()).unwrap();
         assert_eq!(c.grid[0][WEEKS - 1], 1);
     }
 
@@ -262,8 +274,9 @@ mod tests {
     fn text_shape_summarises_with_counts() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "dir/deep/name.rs", "x");
+        let now = local_now();
         let body = render_body(
-            churn(&repo, Local::now().date_naive()).unwrap(),
+            churn(&repo, now.date_naive(), *now.offset()).unwrap(),
             Shape::Text,
         );
         match body {
@@ -282,8 +295,9 @@ mod tests {
     fn heatmap_shape_carries_row_labels() {
         let (_tmp, repo) = make_repo();
         commit_touching(&repo, "x.rs", "x");
+        let now = local_now();
         let body = render_body(
-            churn(&repo, Local::now().date_naive()).unwrap(),
+            churn(&repo, now.date_naive(), *now.offset()).unwrap(),
             Shape::Heatmap,
         );
         match body {

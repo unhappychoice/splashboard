@@ -83,7 +83,7 @@ impl Fetcher for GitChurn {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
         let days = parse_days(ctx.format.as_deref());
-        let ranked = churn(&repo, days)?;
+        let ranked = churn(&repo, days, ctx.timezone.as_deref())?;
         Ok(payload(render_body(
             ranked,
             ctx.shape.unwrap_or(Shape::Entries),
@@ -91,11 +91,15 @@ impl Fetcher for GitChurn {
     }
 }
 
-fn churn(repo: &gix::Repository, days: u64) -> Result<Vec<(String, u64)>, FetchError> {
+fn churn(
+    repo: &gix::Repository,
+    days: u64,
+    timezone: Option<&str>,
+) -> Result<Vec<(String, u64)>, FetchError> {
     let Ok(head_id) = repo.head_id() else {
         return Ok(Vec::new());
     };
-    let cutoff = chrono::Utc::now().timestamp() - (days as i64) * 86_400;
+    let cutoff = crate::time::now_in(timezone).timestamp() - (days as i64) * 86_400;
     let walker = repo
         .rev_walk([head_id.detach()])
         .sorting(Sorting::ByCommitTimeCutoff {
@@ -237,7 +241,7 @@ mod tests {
     #[test]
     fn empty_repo_returns_empty() {
         let (_tmp, repo) = make_repo();
-        assert!(churn(&repo, 30).unwrap().is_empty());
+        assert!(churn(&repo, 30, None).unwrap().is_empty());
     }
 
     #[test]
@@ -247,7 +251,7 @@ mod tests {
         commit_touching(&repo, "a.rs", "a2");
         commit_touching(&repo, "a.rs", "a3");
         commit_touching(&repo, "b.rs", "b1");
-        let ranked = churn(&repo, 30).unwrap();
+        let ranked = churn(&repo, 30, None).unwrap();
         assert_eq!(ranked[0], ("a.rs".to_string(), 3));
         assert_eq!(ranked[1], ("b.rs".to_string(), 1));
     }
@@ -258,7 +262,7 @@ mod tests {
         for i in 0..(TOP_FILES + 5) {
             commit_touching(&repo, &format!("f{i}.rs"), &format!("c{i}"));
         }
-        let ranked = churn(&repo, 30).unwrap();
+        let ranked = churn(&repo, 30, None).unwrap();
         assert_eq!(ranked.len(), TOP_FILES);
     }
 

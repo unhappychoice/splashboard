@@ -1,11 +1,12 @@
 use async_trait::async_trait;
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Utc};
 use gix::revision::walk::Sorting;
 use gix::traverse::commit::simple::CommitTimeOrder;
 
 use crate::payload::{Body, HeatmapData, NumberSeriesData, Payload};
 use crate::render::Shape;
 use crate::samples;
+use crate::time as t;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, open_repo, payload, repo_cache_key, text_body};
@@ -52,8 +53,9 @@ impl Fetcher for GitCommitsActivity {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
-        let today = Local::now().date_naive();
-        let grid = commits_grid(&repo, today)?;
+        let now = t::now_in(ctx.timezone.as_deref());
+        let today = now.date_naive();
+        let grid = commits_grid(&repo, today, *now.offset())?;
         Ok(payload(render_body(
             grid,
             today,
@@ -62,7 +64,11 @@ impl Fetcher for GitCommitsActivity {
     }
 }
 
-fn commits_grid(repo: &gix::Repository, today: NaiveDate) -> Result<Vec<Vec<u32>>, FetchError> {
+fn commits_grid(
+    repo: &gix::Repository,
+    today: NaiveDate,
+    tz: FixedOffset,
+) -> Result<Vec<Vec<u32>>, FetchError> {
     let mut grid = vec![vec![0u32; WEEKS]; DAYS_PER_WEEK];
     let Ok(head_id) = repo.head_id() else {
         return Ok(grid);
@@ -86,7 +92,7 @@ fn commits_grid(repo: &gix::Repository, today: NaiveDate) -> Result<Vec<Vec<u32>
         let Some(dt) = DateTime::<Utc>::from_timestamp(time.seconds, 0) else {
             continue;
         };
-        let date = dt.with_timezone(&Local).date_naive();
+        let date = dt.with_timezone(&tz).date_naive();
         if let Some((row, col)) = cell_of(date, start, today) {
             grid[row][col] = grid[row][col].saturating_add(1);
         }
@@ -181,7 +187,7 @@ mod tests {
     #[test]
     fn empty_repo_grid_is_all_zero() {
         let (_tmp, repo) = make_repo();
-        let grid = commits_grid(&repo, any_weekday()).unwrap();
+        let grid = commits_grid(&repo, any_weekday(), FixedOffset::east_opt(0).unwrap()).unwrap();
         assert_eq!(grid.len(), DAYS_PER_WEEK);
         assert!(grid.iter().all(|row| row.len() == WEEKS));
         assert!(grid.iter().flatten().all(|v| *v == 0));
@@ -191,8 +197,9 @@ mod tests {
     fn today_commit_lands_in_rightmost_column() {
         let (_tmp, repo) = make_repo();
         commit(&repo, "today");
-        let today = Local::now().date_naive();
-        let grid = commits_grid(&repo, today).unwrap();
+        let now = t::now_in(None);
+        let today = now.date_naive();
+        let grid = commits_grid(&repo, today, *now.offset()).unwrap();
         let row = today.weekday().num_days_from_sunday() as usize;
         assert_eq!(grid[row][WEEKS - 1], 1, "today should be in last column");
     }

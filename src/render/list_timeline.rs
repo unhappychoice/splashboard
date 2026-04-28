@@ -10,6 +10,7 @@ use ratatui::{
 use crate::options::OptionSchema;
 use crate::payload::{Body, Status, TimelineData, TimelineEvent};
 use crate::theme::{self, ColorKey, Theme};
+use crate::time as t;
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
@@ -113,9 +114,11 @@ fn render_timeline_at(
         .take(opts.max_items.unwrap_or(usize::MAX))
         .collect();
     let use_absolute = matches!(specific.date_format.as_deref(), Some("absolute"));
+    let timezone = opts.timezone.as_deref();
+    let locale = opts.locale.as_deref();
     let prefixes: Vec<String> = events
         .iter()
-        .map(|e| format_prefix(e.timestamp, now, use_absolute))
+        .map(|e| format_prefix(e.timestamp, now, use_absolute, timezone, locale))
         .collect();
     let prefix_width = prefixes
         .iter()
@@ -164,19 +167,29 @@ fn bullet_for(option: Option<&str>) -> String {
     }
 }
 
-fn format_prefix(ts: i64, now: i64, absolute: bool) -> String {
+fn format_prefix(
+    ts: i64,
+    now: i64,
+    absolute: bool,
+    timezone: Option<&str>,
+    locale: Option<&str>,
+) -> String {
     if absolute {
-        format_iso_date(ts)
+        format_iso_date(ts, timezone, locale)
     } else {
-        format_relative(ts, now)
+        format_relative(ts, now, timezone, locale)
     }
 }
 
-fn format_iso_date(ts: i64) -> String {
-    Utc.timestamp_opt(ts, 0)
-        .single()
-        .map(|dt| dt.format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| "—".into())
+fn format_iso_date(ts: i64, timezone: Option<&str>, locale: Option<&str>) -> String {
+    let Some(utc) = Utc.timestamp_opt(ts, 0).single() else {
+        return "—".into();
+    };
+    let local = match t::parse_tz(timezone) {
+        Some(tz) => utc.with_timezone(&tz).fixed_offset(),
+        None => utc.with_timezone(&chrono::Local).fixed_offset(),
+    };
+    t::format_local(&local, "%Y-%m-%d", locale)
 }
 
 fn align_rect(area: Rect, content_width: u16, align: Option<&str>) -> Rect {
@@ -217,54 +230,33 @@ fn status_style(status: Option<Status>, theme: &Theme) -> Style {
 /// Relative label for `ts` seen from `now`. Past events shrink to `Ns`/`Nm`/`Nh`/`Nd`/`Nw`;
 /// anything older than ~4 weeks falls back to an absolute date so the label stays short. Future
 /// events get an `in …` prefix. Same clock for past and future keeps the column width stable.
-fn format_relative(ts: i64, now: i64) -> String {
+fn format_relative(ts: i64, now: i64, timezone: Option<&str>, locale: Option<&str>) -> String {
     let delta = now - ts;
-    if delta.abs() < 45 {
-        return "now".into();
-    }
-    let abs = delta.abs();
-    let compact = compact_delta(abs);
-    match compact {
-        Some(s) => {
-            if delta >= 0 {
-                s
-            } else {
-                format!("in {s}")
-            }
-        }
-        None => format_absolute(ts, now),
+    match t::format_relative_compact(delta, locale) {
+        Some(s) => s,
+        None => format_absolute(ts, now, timezone, locale),
     }
 }
 
-fn compact_delta(abs: i64) -> Option<String> {
-    const MIN: i64 = 60;
-    const HOUR: i64 = 60 * 60;
-    const DAY: i64 = 60 * 60 * 24;
-    const WEEK: i64 = DAY * 7;
-    if abs < HOUR {
-        Some(format!("{}m", (abs + MIN / 2) / MIN))
-    } else if abs < DAY {
-        Some(format!("{}h", abs / HOUR))
-    } else if abs < WEEK {
-        Some(format!("{}d", abs / DAY))
-    } else if abs < WEEK * 4 {
-        Some(format!("{}w", abs / WEEK))
-    } else {
-        None
-    }
-}
-
-fn format_absolute(ts: i64, now: i64) -> String {
-    let Some(event) = Utc.timestamp_opt(ts, 0).single() else {
+fn format_absolute(ts: i64, now: i64, timezone: Option<&str>, locale: Option<&str>) -> String {
+    let Some(event_utc) = Utc.timestamp_opt(ts, 0).single() else {
         return "—".into();
     };
-    let Some(now_dt) = Utc.timestamp_opt(now, 0).single() else {
-        return event.format("%Y-%m-%d").to_string();
+    let event = match t::parse_tz(timezone) {
+        Some(tz) => event_utc.with_timezone(&tz).fixed_offset(),
+        None => event_utc.with_timezone(&chrono::Local).fixed_offset(),
     };
-    if event.year() == now_dt.year() {
-        event.format("%b %-d").to_string()
+    let Some(now_utc) = Utc.timestamp_opt(now, 0).single() else {
+        return t::format_local(&event, "%Y-%m-%d", locale);
+    };
+    let now_local = match t::parse_tz(timezone) {
+        Some(tz) => now_utc.with_timezone(&tz).fixed_offset(),
+        None => now_utc.with_timezone(&chrono::Local).fixed_offset(),
+    };
+    if event.year() == now_local.year() {
+        t::format_local(&event, "%b %-d", locale)
     } else {
-        event.format("%Y-%m-%d").to_string()
+        t::format_local(&event, "%Y-%m-%d", locale)
     }
 }
 
@@ -292,34 +284,38 @@ mod tests {
             .collect()
     }
 
+    fn rel(ts: i64, now: i64) -> String {
+        format_relative(ts, now, Some("UTC"), None)
+    }
+
     #[test]
     fn format_relative_seconds_is_now() {
-        assert_eq!(format_relative(1_000, 1_030), "now");
+        assert_eq!(rel(1_000, 1_030), "now");
     }
 
     #[test]
     fn format_relative_minutes() {
-        assert_eq!(format_relative(0, 120), "2m");
+        assert_eq!(rel(0, 120), "2m");
     }
 
     #[test]
     fn format_relative_minutes_rounds_half_up() {
-        assert_eq!(format_relative(0, 45), "1m");
+        assert_eq!(rel(0, 45), "1m");
     }
 
     #[test]
     fn format_relative_hours() {
-        assert_eq!(format_relative(0, 3 * 3600), "3h");
+        assert_eq!(rel(0, 3 * 3600), "3h");
     }
 
     #[test]
     fn format_relative_days() {
-        assert_eq!(format_relative(0, 2 * 86_400), "2d");
+        assert_eq!(rel(0, 2 * 86_400), "2d");
     }
 
     #[test]
     fn format_relative_weeks() {
-        assert_eq!(format_relative(0, 8 * 86_400), "1w");
+        assert_eq!(rel(0, 8 * 86_400), "1w");
     }
 
     #[test]
@@ -330,7 +326,7 @@ mod tests {
             .unwrap()
             .timestamp();
         let ts = now - 60 * 86_400; // → 2026-02-21
-        assert_eq!(format_relative(ts, now), "Feb 21");
+        assert_eq!(rel(ts, now), "Feb 21");
     }
 
     #[test]
@@ -346,12 +342,12 @@ mod tests {
             .single()
             .unwrap()
             .timestamp();
-        assert_eq!(format_relative(ts, now), "2025-11-20");
+        assert_eq!(rel(ts, now), "2025-11-20");
     }
 
     #[test]
     fn format_relative_future_gets_in_prefix() {
-        assert_eq!(format_relative(3_600, 0), "in 1h");
+        assert_eq!(rel(3_600, 0), "in 1h");
     }
 
     #[test]

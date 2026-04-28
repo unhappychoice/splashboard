@@ -60,6 +60,18 @@ pub struct General {
     /// not the terminal background.
     #[serde(default)]
     pub padding: Option<PaddingSpec>,
+    /// IANA timezone name (`"Asia/Tokyo"`, `"UTC"`, …) applied to every fetcher and renderer
+    /// that emits a human-readable timestamp. Unset (or unrecognised) falls back to the host's
+    /// `Local` zone — matching pre-config behaviour. Per-widget options can still override
+    /// (for example each `clock_*` widget already carries its own `timezone` knob).
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Locale code (`"en_US"`, `"ja_JP"`, …) for chrono's localized month / weekday names.
+    /// Requires the `unstable-locales` chrono feature. Unset falls back to `Locale::POSIX`,
+    /// which matches chrono's hard-coded English output and keeps unmigrated configs
+    /// rendering identical strings.
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 /// Uniform or split padding. Short form `padding = 1` applies the same value to all sides;

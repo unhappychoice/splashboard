@@ -97,6 +97,7 @@ fn render_template(template: &Template, width: u16, height: u16) {
                     &specs,
                     &renderers,
                     &theme,
+                    &config.general,
                     &loading,
                 );
             })

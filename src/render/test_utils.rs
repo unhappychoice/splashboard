@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 
+use crate::config::General;
 use crate::layout::{self, Layout, WidgetId};
 use crate::payload::Payload;
 use crate::render::{Registry, RenderSpec, render_payload};
@@ -24,8 +25,9 @@ pub fn render_to_buffer_with_spec(
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     let theme = Theme::default();
+    let general = General::default();
     terminal
-        .draw(|f| render_payload(f, f.area(), payload, spec, registry, &theme))
+        .draw(|f| render_payload(f, f.area(), payload, spec, registry, &theme, &general))
         .unwrap();
     terminal.backend().buffer().clone()
 }
@@ -50,6 +52,7 @@ pub fn render_to_buffer_with_layout_and_specs(
 ) -> Buffer {
     let registry = Registry::with_builtins();
     let theme = Theme::default();
+    let general = General::default();
     let loading = HashMap::new();
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -63,6 +66,7 @@ pub fn render_to_buffer_with_layout_and_specs(
                 specs,
                 &registry,
                 &theme,
+                &general,
                 &loading,
             )
         })

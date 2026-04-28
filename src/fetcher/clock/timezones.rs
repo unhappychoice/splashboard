@@ -83,11 +83,17 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let fmt = ctx.format.as_deref().unwrap_or(common::DEFAULT_FORMAT);
+        let locale = ctx.locale.as_deref();
         let shape = ctx.shape.unwrap_or(Shape::TextBlock);
         let rows: Vec<(String, String)> = opts
             .timezones
             .iter()
-            .map(|spec| (spec.label().to_string(), format_time(spec.tz(), fmt)))
+            .map(|spec| {
+                (
+                    spec.label().to_string(),
+                    format_time(spec.tz(), fmt, locale),
+                )
+            })
             .collect();
         let body = match shape {
             Shape::Entries => Body::Entries(EntriesData {
@@ -113,9 +119,9 @@ impl RealtimeFetcher for ClockTimezonesFetcher {
     }
 }
 
-fn format_time(zone: &str, fmt: &str) -> String {
+fn format_time(zone: &str, fmt: &str, locale: Option<&str>) -> String {
     resolve(zone)
-        .map(|dt| common::safe_format(&dt, fmt))
+        .map(|dt| common::safe_format_with_locale(&dt, fmt, locale))
         .unwrap_or_else(|| "??".into())
 }
 

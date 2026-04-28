@@ -16,4 +16,5 @@ pub mod secrets;
 pub mod shell;
 pub mod templates;
 pub mod theme;
+pub mod time;
 pub mod trust;
