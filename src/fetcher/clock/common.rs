@@ -2,37 +2,40 @@
 //! pulls from here for tz resolution, safe strftime, julian-day math, and the small placeholder
 //! helper. Keeping these central avoids per-fetcher duplication while letting each sibling keep a
 //! narrow public surface.
+//!
+//! tz / locale resolution is delegated to [`crate::time`] so the same defaults flow through every
+//! fetcher in the project, not just clocks.
 
-use std::fmt::Write;
-
-use chrono::{DateTime, FixedOffset, Local, NaiveDate, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate};
 
 use crate::payload::{Body, Payload, TextBlockData};
+use crate::time as t;
 
 pub const DEFAULT_FORMAT: &str = "%H:%M";
 
 pub fn now_in(timezone: Option<&str>) -> DateTime<FixedOffset> {
-    match timezone {
-        None => Local::now().fixed_offset(),
-        Some(name) => match name.parse::<chrono_tz::Tz>() {
-            Ok(tz) => Utc::now().with_timezone(&tz).fixed_offset(),
-            Err(_) => Local::now().fixed_offset(),
-        },
-    }
+    t::now_in(timezone)
 }
 
 pub fn parse_tz(name: &str) -> Option<chrono_tz::Tz> {
-    name.parse().ok()
+    t::parse_tz(Some(name))
 }
 
 pub fn safe_format(dt: &DateTime<FixedOffset>, fmt: &str) -> String {
-    format_with(dt, fmt).unwrap_or_else(|| format_with(dt, DEFAULT_FORMAT).unwrap_or_default())
+    safe_format_with_locale(dt, fmt, None)
 }
 
-fn format_with(dt: &DateTime<FixedOffset>, fmt: &str) -> Option<String> {
-    let mut buf = String::new();
-    write!(&mut buf, "{}", dt.format(fmt)).ok()?;
-    Some(buf)
+pub fn safe_format_with_locale(
+    dt: &DateTime<FixedOffset>,
+    fmt: &str,
+    locale: Option<&str>,
+) -> String {
+    let primary = t::format_local(dt, fmt, locale);
+    if primary.is_empty() {
+        t::format_local(dt, DEFAULT_FORMAT, locale)
+    } else {
+        primary
+    }
 }
 
 pub fn julian_day(date: NaiveDate) -> i64 {

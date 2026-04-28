@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders},
 };
 
+use crate::config::General;
 use crate::payload::Payload;
 use crate::render::{Registry, RenderSpec, Shape, loading::render_loading, render_payload};
 use crate::theme::Theme;
@@ -314,6 +315,7 @@ pub fn draw(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &Registry,
     theme: &Theme,
+    general: &General,
     loading: &HashMap<WidgetId, Shape>,
 ) {
     match layout {
@@ -327,7 +329,8 @@ pub fn draw(
             paint_bg(frame, area, *bg, theme);
             let inner = draw_panel(frame, area, panel, theme);
             draw_stack(
-                frame, inner, *direction, *flex, children, widgets, specs, registry, theme, loading,
+                frame, inner, *direction, *flex, children, widgets, specs, registry, theme,
+                general, loading,
             );
         }
         Layout::Widget { id, panel, bg } => {
@@ -339,7 +342,15 @@ pub fn draw(
             if let Some(&shape) = loading.get(id) {
                 render_loading(frame, inner, shape, theme);
             } else if let Some(payload) = widgets.get(id) {
-                render_payload(frame, inner, payload, specs.get(id), registry, theme);
+                render_payload(
+                    frame,
+                    inner,
+                    payload,
+                    specs.get(id),
+                    registry,
+                    theme,
+                    general,
+                );
             }
         }
         Layout::Empty => {}
@@ -424,6 +435,7 @@ fn draw_stack(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &Registry,
     theme: &Theme,
+    general: &General,
     loading: &HashMap<WidgetId, Shape>,
 ) {
     let axis = direction;
@@ -445,6 +457,7 @@ fn draw_stack(
             specs,
             registry,
             theme,
+            general,
             loading,
         );
     }
@@ -748,7 +761,19 @@ mod tests {
         let backend = TestBackend::new(30, 3);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|f| draw(f, f.area(), &l, &w, &specs, &registry, &theme, &loading))
+            .draw(|f| {
+                draw(
+                    f,
+                    f.area(),
+                    &l,
+                    &w,
+                    &specs,
+                    &registry,
+                    &theme,
+                    &General::default(),
+                    &loading,
+                )
+            })
             .unwrap();
         let buf = terminal.backend().buffer().clone();
         let dump: String = (0..buf.area().height).map(|y| line_text(&buf, y)).collect();

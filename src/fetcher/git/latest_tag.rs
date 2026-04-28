@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use crate::payload::{Body, EntriesData, Entry, Payload};
 use crate::render::Shape;
 use crate::samples;
+use crate::time as t;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::{fail, open_repo, payload, repo_cache_key, text_body};
@@ -47,12 +48,22 @@ impl Fetcher for GitLatestTag {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let repo = open_repo()?;
-        build(&repo, ctx.shape.unwrap_or(Shape::Text))
+        build(
+            &repo,
+            ctx.shape.unwrap_or(Shape::Text),
+            ctx.timezone.as_deref(),
+            ctx.locale.as_deref(),
+        )
     }
 }
 
-fn build(repo: &gix::Repository, shape: Shape) -> Result<Payload, FetchError> {
-    let Some(tag) = latest_tag(repo)? else {
+fn build(
+    repo: &gix::Repository,
+    shape: Shape,
+    timezone: Option<&str>,
+    locale: Option<&str>,
+) -> Result<Payload, FetchError> {
+    let Some(tag) = latest_tag(repo, timezone, locale)? else {
         return Ok(payload(text_body("")));
     };
     let body = match shape {
@@ -74,7 +85,11 @@ struct TagInfo {
     iso_date: String,
 }
 
-fn latest_tag(repo: &gix::Repository) -> Result<Option<TagInfo>, FetchError> {
+fn latest_tag(
+    repo: &gix::Repository,
+    timezone: Option<&str>,
+    locale: Option<&str>,
+) -> Result<Option<TagInfo>, FetchError> {
     let refs = repo.references().map_err(fail)?;
     let tags = refs.tags().map_err(fail)?;
     let mut best: Option<(TagInfo, i64)> = None;
@@ -90,7 +105,7 @@ fn latest_tag(repo: &gix::Repository) -> Result<Option<TagInfo>, FetchError> {
         let info = TagInfo {
             name,
             short_hash,
-            iso_date: iso_date(time),
+            iso_date: iso_date(time, timezone, locale),
         };
         match best {
             Some((_, t)) if t >= time => {}
@@ -100,11 +115,16 @@ fn latest_tag(repo: &gix::Repository) -> Result<Option<TagInfo>, FetchError> {
     Ok(best.map(|(info, _)| info))
 }
 
-fn iso_date(unix_seconds: i64) -> String {
+fn iso_date(unix_seconds: i64, timezone: Option<&str>, locale: Option<&str>) -> String {
     use chrono::{DateTime, Utc};
-    DateTime::<Utc>::from_timestamp(unix_seconds, 0)
-        .map(|dt| dt.format("%Y-%m-%d").to_string())
-        .unwrap_or_default()
+    let Some(utc) = DateTime::<Utc>::from_timestamp(unix_seconds, 0) else {
+        return String::new();
+    };
+    let local = match t::parse_tz(timezone) {
+        Some(tz) => utc.with_timezone(&tz).fixed_offset(),
+        None => utc.with_timezone(&chrono::Local).fixed_offset(),
+    };
+    t::format_local(&local, "%Y-%m-%d", locale)
 }
 
 fn entry(key: &str, value: &str) -> Entry {
@@ -123,7 +143,7 @@ mod tests {
     #[test]
     fn returns_empty_text_when_no_tags() {
         let (_tmp, repo) = make_repo();
-        let p = build(&repo, Shape::Text).unwrap();
+        let p = build(&repo, Shape::Text, None, None).unwrap();
         match p.body {
             Body::Text(d) => assert!(d.value.is_empty()),
             _ => panic!(),
@@ -135,7 +155,7 @@ mod tests {
         let (_tmp, repo) = make_repo();
         super::super::test_support::commit(&repo, "initial");
         super::super::test_support::tag(&repo, "v0.1.0");
-        let p = build(&repo, Shape::Text).unwrap();
+        let p = build(&repo, Shape::Text, None, None).unwrap();
         match p.body {
             Body::Text(d) => assert_eq!(d.value, "v0.1.0"),
             _ => panic!(),
@@ -147,7 +167,7 @@ mod tests {
         let (_tmp, repo) = make_repo();
         super::super::test_support::commit(&repo, "initial");
         super::super::test_support::tag(&repo, "v1.2.3");
-        let p = build(&repo, Shape::Entries).unwrap();
+        let p = build(&repo, Shape::Entries, None, None).unwrap();
         match p.body {
             Body::Entries(d) => {
                 let keys: Vec<_> = d.items.iter().map(|e| e.key.as_str()).collect();

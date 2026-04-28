@@ -70,6 +70,14 @@ pub struct FetchContext {
     /// Fetcher-specific options passed through from `[widget.options]`. Each fetcher
     /// deserializes its own typed view; unknown keys are ignored.
     pub options: Option<toml::Value>,
+    /// `[general].timezone` resolved by the runtime. `None` means "use host `Local`" — every
+    /// helper in [`crate::time`] honours that fallback. Per-widget overrides can still be
+    /// pulled off `options` (for example `clock_*` honour their own `timezone` field), but
+    /// fetchers that don't take their own override read this.
+    pub timezone: Option<String>,
+    /// `[general].locale` resolved by the runtime — chrono locale code such as `"en_US"`. `None`
+    /// resolves to `Locale::POSIX`, matching chrono's unlocalised `format()` output.
+    pub locale: Option<String>,
 }
 
 #[async_trait]

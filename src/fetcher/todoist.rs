@@ -7,7 +7,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Datelike, Local, NaiveDate};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate};
 use reqwest::Client;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -19,6 +19,7 @@ use crate::payload::{
 };
 use crate::render::Shape;
 use crate::samples;
+use crate::time as t;
 
 use super::{FetchContext, FetchError, Fetcher, Safety};
 
@@ -230,7 +231,7 @@ impl Fetcher for TodoistTasks {
         let opts: Options = parse_options(ctx.options.as_ref())?;
         let token = resolve_token(opts.token.as_deref())?;
         let tasks = fetch_tasks(&token, build_filter(&opts)).await?;
-        let now = Local::now();
+        let now = t::now_in(ctx.timezone.as_deref());
         let mut views: Vec<TaskView> = tasks.into_iter().map(|t| to_task_view(t, &now)).collect();
         views.sort_by(cmp_views);
         let max_items = opts
@@ -382,7 +383,7 @@ fn escape_filter_atom(value: &str) -> String {
     }
 }
 
-fn to_task_view(task: ApiTask, now: &DateTime<Local>) -> TaskView {
+fn to_task_view(task: ApiTask, now: &DateTime<FixedOffset>) -> TaskView {
     let created_ts = task
         .created_at
         .as_deref()
@@ -406,12 +407,13 @@ fn to_task_view(task: ApiTask, now: &DateTime<Local>) -> TaskView {
 
 fn parse_due(
     due: &ApiDue,
-    now: &DateTime<Local>,
+    now: &DateTime<FixedOffset>,
 ) -> (Option<String>, Option<i64>, Option<i64>, bool) {
+    let tz = *now.offset();
     if let Some(dt) = due.datetime.as_deref().and_then(parse_rfc3339_timestamp) {
         let today = now.date_naive();
         let date_label = DateTime::from_timestamp(dt, 0)
-            .map(|d| d.with_timezone(&Local).date_naive())
+            .map(|d| d.with_timezone(&tz).date_naive())
             .map(|d| due_label_from_date(d, today))
             .unwrap_or_else(|| "scheduled".into());
         return (Some(date_label), Some(dt), Some(dt), dt < now.timestamp());
@@ -613,7 +615,7 @@ mod tests {
 
     #[test]
     fn parse_due_labels_relative_days() {
-        let now = Local::now();
+        let now = t::now_in(None);
         let today_date = now.date_naive();
         let tomorrow_date = today_date.succ_opt().unwrap_or(today_date);
         let overdue_date = today_date.pred_opt().unwrap_or(today_date);

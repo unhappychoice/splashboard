@@ -25,6 +25,7 @@ use crate::options::OptionSchema;
 use crate::payload::{Body, LinkedLine, LinkedTextBlockData, Payload, TextBlockData};
 use crate::render::Shape;
 use crate::samples;
+use crate::time as t;
 
 const DEFAULT_COUNT: u32 = 5;
 const MIN_COUNT: u32 = 1;
@@ -122,6 +123,8 @@ impl Fetcher for RssFetcher {
             &feed,
             count,
             ctx.shape.unwrap_or(Shape::LinkedTextBlock),
+            ctx.timezone.as_deref(),
+            ctx.locale.as_deref(),
         )))
     }
 }
@@ -176,17 +179,26 @@ async fn fetch_bytes(url: &Url) -> Result<Vec<u8>, FetchError> {
     Ok(bytes.to_vec())
 }
 
-fn render_body(feed: &Feed, count: usize, shape: Shape) -> Body {
+fn render_body(
+    feed: &Feed,
+    count: usize,
+    shape: Shape,
+    timezone: Option<&str>,
+    locale: Option<&str>,
+) -> Body {
     let entries: Vec<&Entry> = feed.entries.iter().take(count).collect();
     match shape {
         Shape::TextBlock => Body::TextBlock(TextBlockData {
-            lines: entries.iter().map(|e| line_text(e)).collect(),
+            lines: entries
+                .iter()
+                .map(|e| line_text(e, timezone, locale))
+                .collect(),
         }),
         _ => Body::LinkedTextBlock(LinkedTextBlockData {
             items: entries
                 .iter()
                 .map(|e| LinkedLine {
-                    text: line_text(e),
+                    text: line_text(e, timezone, locale),
                     url: link_for(e),
                 })
                 .collect(),
@@ -194,8 +206,8 @@ fn render_body(feed: &Feed, count: usize, shape: Shape) -> Body {
     }
 }
 
-fn line_text(entry: &Entry) -> String {
-    let date = date_label(entry);
+fn line_text(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> String {
+    let date = date_label(entry, timezone, locale);
     let title = title_or_placeholder(entry);
     if date.is_empty() {
         title
@@ -204,16 +216,20 @@ fn line_text(entry: &Entry) -> String {
     }
 }
 
-fn date_label(entry: &Entry) -> String {
+fn date_label(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> String {
     entry
         .published
         .or(entry.updated)
-        .map(format_short)
+        .map(|dt| format_short(dt, timezone, locale))
         .unwrap_or_default()
 }
 
-fn format_short(dt: DateTime<Utc>) -> String {
-    dt.format("%b %d").to_string()
+fn format_short(dt: DateTime<Utc>, timezone: Option<&str>, locale: Option<&str>) -> String {
+    let local = match t::parse_tz(timezone) {
+        Some(tz) => dt.with_timezone(&tz).fixed_offset(),
+        None => dt.with_timezone(&chrono::Local).fixed_offset(),
+    };
+    t::format_local(&local, "%b %d", locale)
 }
 
 fn title_or_placeholder(entry: &Entry) -> String {
@@ -343,7 +359,7 @@ mod tests {
     #[test]
     fn rss_parses_into_linked_text_block_with_dates_and_urls() {
         let feed = parse(RSS_FIXTURE);
-        let body = render_body(&feed, 5, Shape::LinkedTextBlock);
+        let body = render_body(&feed, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -356,7 +372,7 @@ mod tests {
     #[test]
     fn rss_parses_into_text_block_without_urls() {
         let feed = parse(RSS_FIXTURE);
-        let body = render_body(&feed, 5, Shape::TextBlock);
+        let body = render_body(&feed, 5, Shape::TextBlock, None, None);
         let Body::TextBlock(t) = body else {
             panic!("expected text block");
         };
@@ -367,7 +383,7 @@ mod tests {
     #[test]
     fn atom_parses_with_link_and_date() {
         let feed = parse(ATOM_FIXTURE);
-        let body = render_body(&feed, 5, Shape::LinkedTextBlock);
+        let body = render_body(&feed, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -382,7 +398,7 @@ mod tests {
     #[test]
     fn count_caps_entries() {
         let feed = parse(RSS_FIXTURE);
-        let body = render_body(&feed, 1, Shape::LinkedTextBlock);
+        let body = render_body(&feed, 1, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -411,7 +427,7 @@ mod tests {
             ttl: None,
             entries: vec![],
         };
-        let body = render_body(&empty, 5, Shape::LinkedTextBlock);
+        let body = render_body(&empty, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -422,7 +438,7 @@ mod tests {
     fn missing_title_falls_back_to_placeholder() {
         let mut feed = parse(RSS_FIXTURE);
         feed.entries[0].title = None;
-        let body = render_body(&feed, 1, Shape::TextBlock);
+        let body = render_body(&feed, 1, Shape::TextBlock, None, None);
         let Body::TextBlock(t) = body else {
             panic!("expected text block");
         };
@@ -499,7 +515,7 @@ mod tests {
     #[test]
     fn link_prefers_alternate_over_self_in_atom() {
         let feed = parse(ATOM_MULTI_REL_FIXTURE);
-        let body = render_body(&feed, 5, Shape::LinkedTextBlock);
+        let body = render_body(&feed, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -518,7 +534,7 @@ mod tests {
         let bytes = fetch_bytes(&url).await.unwrap();
         let feed = parser::parse(bytes.as_slice()).unwrap();
         assert!(!feed.entries.is_empty());
-        let body = render_body(&feed, 3, Shape::LinkedTextBlock);
+        let body = render_body(&feed, 3, Shape::LinkedTextBlock, None, None);
         if let Body::LinkedTextBlock(b) = body {
             for it in &b.items {
                 eprintln!("{}  -> {:?}", it.text, it.url);

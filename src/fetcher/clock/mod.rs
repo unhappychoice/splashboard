@@ -106,7 +106,8 @@ impl RealtimeFetcher for ClockFetcher {
             Ok(o) => o,
             Err(msg) => return common::placeholder(&msg),
         };
-        let now = common::now_in(opts.timezone.as_deref());
+        let tz = opts.timezone.as_deref().or(ctx.timezone.as_deref());
+        let now = common::now_in(tz);
         let shape = ctx.shape.unwrap_or(Shape::Text);
         let body = match shape {
             Shape::Entries => Body::Entries(EntriesData {
@@ -119,9 +120,10 @@ impl RealtimeFetcher for ClockFetcher {
                 events: opts.events.unwrap_or_default(),
             }),
             _ => Body::Text(TextData {
-                value: common::safe_format(
+                value: common::safe_format_with_locale(
                     &now,
                     ctx.format.as_deref().unwrap_or(common::DEFAULT_FORMAT),
+                    ctx.locale.as_deref(),
                 ),
             }),
         };

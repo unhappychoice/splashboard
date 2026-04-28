@@ -15,7 +15,7 @@ use ratatui::{
 use tokio::task::JoinSet;
 
 use crate::cache::{Cache, CacheEntry, CacheEntryKind};
-use crate::config::{Config, WidgetConfig};
+use crate::config::{Config, General, WidgetConfig};
 use crate::daemon;
 use crate::fetcher::{self, FetchContext, Registry, ShapeMismatch};
 use crate::layout::{self, Layout, WidgetId};
@@ -134,13 +134,19 @@ fn partition_by_shape_support(
 fn compute_realtime_payloads(
     registry: &Registry,
     widgets: &[WidgetConfig],
+    general: &General,
     shapes: &HashMap<WidgetId, Shape>,
 ) -> HashMap<WidgetId, Payload> {
     widgets
         .iter()
         .filter_map(|w| {
             let fetcher = registry.get_realtime(&w.fetcher)?;
-            let ctx = fetch_context(w, shapes.get(&w.id).copied(), Duration::from_secs(0));
+            let ctx = fetch_context(
+                w,
+                general,
+                shapes.get(&w.id).copied(),
+                Duration::from_secs(0),
+            );
             Some((w.id.clone(), fetcher.compute(&ctx)))
         })
         .collect()
@@ -261,11 +267,18 @@ pub async fn run(
     // frame and never touch disk.
     let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
 
-    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets, &shapes);
+    let entries = load_entries(
+        cache.as_ref(),
+        &registry,
+        &cached_widgets,
+        &config.general,
+        &shapes,
+    );
     let mut payloads = entries_to_payloads(&entries);
     payloads.extend(compute_realtime_payloads(
         &registry,
         &realtime_widgets,
+        &config.general,
         &shapes,
     ));
     for w in &gated {
@@ -342,6 +355,7 @@ pub async fn run(
             &specs,
             &render_registry,
             &theme,
+            &config.general,
             padding,
             requested_height,
             viewport_lines,
@@ -373,7 +387,14 @@ pub async fn run(
             // hard window deadline expires.
             let mut daemon_done = !wait;
             loop {
-                let entries = refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
+                let entries = refresh_payloads(
+                    &cache,
+                    &registry,
+                    &buckets,
+                    &config.general,
+                    &shapes,
+                    &mut payloads,
+                );
                 let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, wait);
                 draw(
                     &mut terminal,
@@ -382,6 +403,7 @@ pub async fn run(
                     &specs,
                     &render_registry,
                     &theme,
+                    &config.general,
                     padding,
                     hidden_rows,
                     &loading,
@@ -417,7 +439,14 @@ pub async fn run(
                     tokio::time::sleep(tick).await;
                 }
             }
-            let entries = refresh_payloads(&cache, &registry, &buckets, &shapes, &mut payloads);
+            let entries = refresh_payloads(
+                &cache,
+                &registry,
+                &buckets,
+                &config.general,
+                &shapes,
+                &mut payloads,
+            );
             let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, wait);
             finalize_draw(
                 &mut terminal,
@@ -426,6 +455,7 @@ pub async fn run(
                 &specs,
                 &render_registry,
                 &theme,
+                &config.general,
                 padding,
                 requested_height,
                 viewport_lines,
@@ -441,6 +471,7 @@ pub async fn run(
                 cache.as_ref(),
                 &cached_widgets,
                 &entries,
+                &config.general,
                 &shapes,
                 fetch_deadline,
             )
@@ -458,6 +489,7 @@ pub async fn run(
                 &specs,
                 &render_registry,
                 &theme,
+                &config.general,
                 padding,
                 requested_height,
                 viewport_lines,
@@ -490,12 +522,19 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
     let (fetchable, _shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
     // Daemon only persists cached-fetcher output. Realtime widgets have no disk representation.
     let (cached_widgets, _realtime) = split_by_fetcher_kind(&fetchable, &registry);
-    let entries = load_entries(cache.as_ref(), &registry, &cached_widgets, &shapes);
+    let entries = load_entries(
+        cache.as_ref(),
+        &registry,
+        &cached_widgets,
+        &config.general,
+        &shapes,
+    );
     let _ = fetch_all(
         &registry,
         cache.as_ref(),
         &cached_widgets,
         &entries,
+        &config.general,
         &shapes,
         DAEMON_DEADLINE,
     )
@@ -521,10 +560,11 @@ fn refresh_payloads(
     cache: &Option<Cache>,
     registry: &Registry,
     buckets: &WidgetBuckets<'_>,
+    general: &General,
     shapes: &HashMap<WidgetId, Shape>,
     payloads: &mut HashMap<WidgetId, Payload>,
 ) -> HashMap<WidgetId, CacheEntry> {
-    let entries = load_entries(cache.as_ref(), registry, buckets.cached, shapes);
+    let entries = load_entries(cache.as_ref(), registry, buckets.cached, general, shapes);
     for (id, payload) in entries_to_payloads(&entries) {
         payloads.insert(id, payload);
     }
@@ -543,7 +583,12 @@ fn refresh_payloads(
     entries
 }
 
-fn fetch_context(w: &WidgetConfig, shape: Option<Shape>, deadline: Duration) -> FetchContext {
+fn fetch_context(
+    w: &WidgetConfig,
+    general: &General,
+    shape: Option<Shape>,
+    deadline: Duration,
+) -> FetchContext {
     FetchContext {
         widget_id: w.id.clone(),
         format: w.format.clone(),
@@ -551,6 +596,8 @@ fn fetch_context(w: &WidgetConfig, shape: Option<Shape>, deadline: Duration) -> 
         file_format: w.file_format.clone(),
         shape,
         options: w.options.clone(),
+        timezone: general.timezone.clone(),
+        locale: general.locale.clone(),
     }
 }
 
@@ -558,6 +605,7 @@ fn load_entries(
     cache: Option<&Cache>,
     registry: &Registry,
     widgets: &[WidgetConfig],
+    general: &General,
     shapes: &HashMap<WidgetId, Shape>,
 ) -> HashMap<WidgetId, CacheEntry> {
     let Some(c) = cache else {
@@ -568,7 +616,7 @@ fn load_entries(
         .filter_map(|w| {
             let fetcher = registry.get_cached(&w.fetcher)?;
             let shape = shapes.get(&w.id).copied();
-            let key = fetcher.cache_key(&fetch_context(w, shape, Duration::from_secs(0)));
+            let key = fetcher.cache_key(&fetch_context(w, general, shape, Duration::from_secs(0)));
             c.load(&key).map(|e| (w.id.clone(), e))
         })
         .collect()
@@ -591,6 +639,7 @@ async fn fetch_all(
     cache: Option<&Cache>,
     widgets: &[WidgetConfig],
     cached: &HashMap<WidgetId, CacheEntry>,
+    general: &General,
     shapes: &HashMap<WidgetId, Shape>,
     deadline: Duration,
 ) -> HashMap<WidgetId, Payload> {
@@ -602,7 +651,7 @@ async fn fetch_all(
         let Some(fetcher) = registry.get_cached(&w.fetcher) else {
             continue;
         };
-        let ctx = fetch_context(w, shapes.get(&w.id).copied(), deadline);
+        let ctx = fetch_context(w, general, shapes.get(&w.id).copied(), deadline);
         let cache_key = fetcher.cache_key(&ctx);
         let lock = match cache {
             Some(c) => match c.try_lock(&cache_key) {
@@ -691,6 +740,7 @@ fn draw<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
     theme: &Theme,
+    general: &General,
     padding: (u16, u16),
     hidden_rows: u16,
     loading: &HashMap<WidgetId, Shape>,
@@ -704,6 +754,7 @@ fn draw<B: Backend>(
             specs,
             registry,
             theme,
+            general,
             padding,
             hidden_rows,
             loading,
@@ -725,6 +776,7 @@ fn draw_final<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
     theme: &Theme,
+    general: &General,
     padding: (u16, u16),
     hidden_rows: u16,
     loading: &HashMap<WidgetId, Shape>,
@@ -741,6 +793,7 @@ fn draw_final<B: Backend>(
             specs,
             registry,
             theme,
+            general,
             padding,
             hidden_rows,
             loading,
@@ -770,6 +823,7 @@ fn finalize_draw<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
     theme: &Theme,
+    general: &General,
     padding: (u16, u16),
     requested_height: u16,
     viewport_lines: u16,
@@ -778,7 +832,7 @@ fn finalize_draw<B: Backend>(
     let scrollback_rows = requested_height.saturating_sub(viewport_lines);
     if scrollback_rows == 0 {
         return draw_final(
-            terminal, root, payloads, specs, registry, theme, padding, 0, loading,
+            terminal, root, payloads, specs, registry, theme, general, padding, 0, loading,
         );
     }
     flush_full_to_scrollback(
@@ -788,6 +842,7 @@ fn finalize_draw<B: Backend>(
         specs,
         registry,
         theme,
+        general,
         padding,
         requested_height,
         viewport_lines,
@@ -803,6 +858,7 @@ fn flush_full_to_scrollback<B: Backend>(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
     theme: &Theme,
+    general: &General,
     padding: (u16, u16),
     requested_height: u16,
     viewport_lines: u16,
@@ -817,6 +873,7 @@ fn flush_full_to_scrollback<B: Backend>(
         specs,
         registry,
         theme,
+        general,
         padding,
         loading,
     );
@@ -857,6 +914,7 @@ fn render_full_into_buffer(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
     theme: &Theme,
+    general: &General,
     padding: (u16, u16),
     loading: &HashMap<WidgetId, Shape>,
 ) -> Buffer {
@@ -875,7 +933,7 @@ fn render_full_into_buffer(
                 paint_viewport_bg(frame, area, theme);
                 let content = shrink(area, padding);
                 layout::draw(
-                    frame, content, root, payloads, specs, registry, theme, loading,
+                    frame, content, root, payloads, specs, registry, theme, general, loading,
                 );
             });
         })
@@ -919,6 +977,7 @@ fn draw_frame(
     specs: &HashMap<WidgetId, RenderSpec>,
     registry: &render::Registry,
     theme: &Theme,
+    general: &General,
     padding: (u16, u16),
     hidden_rows: u16,
     loading: &HashMap<WidgetId, Shape>,
@@ -945,12 +1004,13 @@ fn draw_frame(
             specs,
             registry,
             theme,
+            general,
             loading,
         );
         render_clip_hint(frame, hint_area, hidden_rows, theme);
     } else {
         layout::draw(
-            frame, content, root, payloads, specs, registry, theme, loading,
+            frame, content, root, payloads, specs, registry, theme, general, loading,
         );
     }
 }
@@ -1060,6 +1120,7 @@ mod tests {
                     &specs,
                     &registry,
                     &theme,
+                    &General::default(),
                     (0, 0),
                     7,
                     &loading,
@@ -1096,6 +1157,7 @@ mod tests {
                     &specs,
                     &registry,
                     &theme,
+                    &General::default(),
                     (0, 0),
                     0,
                     &loading,
@@ -1165,6 +1227,7 @@ mod tests {
             &specs,
             &registry,
             &theme,
+            &General::default(),
             (0, 0),
             &loading,
         );
@@ -1195,6 +1258,7 @@ mod tests {
             &specs,
             &registry,
             &theme,
+            &General::default(),
             (0, 0),
             8,
             4,
@@ -1238,6 +1302,7 @@ mod tests {
             &specs,
             &registry,
             &theme,
+            &General::default(),
             (0, 0),
             3,
             3,
@@ -1309,6 +1374,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
@@ -1318,7 +1384,12 @@ mod tests {
         let key = registry
             .get_cached("basic_static")
             .unwrap()
-            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
+            .cache_key(&fetch_context(
+                &widgets[0],
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
         let loaded = cache.load(&key).unwrap();
         match loaded.payload.body {
             Body::TextBlock(t) => assert_eq!(t.lines, vec!["Hi!".to_string()]),
@@ -1341,12 +1412,19 @@ mod tests {
             Some(&cache),
             &widgets[..1],
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
 
-        let entries = load_entries(Some(&cache), &registry, &widgets[1..], &HashMap::new());
+        let entries = load_entries(
+            Some(&cache),
+            &registry,
+            &widgets[1..],
+            &General::default(),
+            &HashMap::new(),
+        );
         assert!(entries.contains_key("greeting_project_b"));
     }
 
@@ -1363,12 +1441,19 @@ mod tests {
             Some(&cache),
             &first,
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
         .await;
 
-        let entries = load_entries(Some(&cache), &registry, &second, &HashMap::new());
+        let entries = load_entries(
+            Some(&cache),
+            &registry,
+            &second,
+            &General::default(),
+            &HashMap::new(),
+        );
         assert!(
             entries.is_empty(),
             "second widget should not read first widget's cache"
@@ -1395,6 +1480,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &cached,
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
@@ -1412,7 +1498,12 @@ mod tests {
         let key = registry
             .get_cached("basic_static")
             .unwrap()
-            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
+            .cache_key(&fetch_context(
+                &widgets[0],
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
         let _held = cache.try_lock(&key).expect("first acquire");
 
         let fresh = fetch_all(
@@ -1420,6 +1511,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
@@ -1444,6 +1536,7 @@ mod tests {
             None,
             &widgets,
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
@@ -1492,6 +1585,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_secs(1),
         )
@@ -1513,7 +1607,12 @@ mod tests {
         let key = registry
             .get_cached("boom")
             .unwrap()
-            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
+            .cache_key(&fetch_context(
+                &widgets[0],
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
         let stored = cache.load(&key).expect("error entry must be cached");
         assert_eq!(stored.kind, CacheEntryKind::Err);
         assert_eq!(stored.ttl_seconds, ERROR_CACHE_TTL_SECS);
@@ -1559,6 +1658,7 @@ mod tests {
             Some(&cache),
             &widgets,
             &HashMap::new(),
+            &General::default(),
             &HashMap::new(),
             Duration::from_millis(10),
         )
@@ -1580,7 +1680,12 @@ mod tests {
         let key = registry
             .get_cached("slow")
             .unwrap()
-            .cache_key(&fetch_context(&widgets[0], None, Duration::from_secs(0)));
+            .cache_key(&fetch_context(
+                &widgets[0],
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
         let stored = cache.load(&key).expect("timeout entry must be cached");
         assert_eq!(stored.kind, CacheEntryKind::Timeout);
     }
@@ -1720,7 +1825,14 @@ mod tests {
             shape_invalid: &[],
         };
         let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
-        let _ = refresh_payloads(&None, &registry, &buckets, &HashMap::new(), &mut payloads);
+        let _ = refresh_payloads(
+            &None,
+            &registry,
+            &buckets,
+            &General::default(),
+            &HashMap::new(),
+            &mut payloads,
+        );
         let payload = payloads.get("typo").expect("unknown fetcher must surface");
         match &payload.body {
             Body::Error(err) => {

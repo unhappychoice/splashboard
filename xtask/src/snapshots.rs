@@ -9,6 +9,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 
+use splashboard::config::General;
 use splashboard::fetcher::RegisteredFetcher;
 use splashboard::payload::{Body, Payload};
 use splashboard::render::{Registry as RenderRegistry, RenderSpec, Shape, render_payload};
@@ -105,7 +106,15 @@ fn render_html(
     terminal
         .draw(|frame| {
             let area = Rect::new(0, 0, width, height);
-            render_payload(frame, area, &payload, spec, registry, &theme);
+            render_payload(
+                frame,
+                area,
+                &payload,
+                spec,
+                registry,
+                &theme,
+                &General::default(),
+            );
         })
         .expect("draw");
     buffer_to_html(terminal.backend().buffer())

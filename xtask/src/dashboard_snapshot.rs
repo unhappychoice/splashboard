@@ -51,7 +51,15 @@ pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result
             let area = Rect::new(0, 0, width, height);
             frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
             layout_engine::draw(
-                frame, area, &root, &payloads, &specs, &renderers, &theme, &loading,
+                frame,
+                area,
+                &root,
+                &payloads,
+                &specs,
+                &renderers,
+                &theme,
+                &config.general,
+                &loading,
             );
         })
         .context("draw dashboard")?;
@@ -79,6 +87,8 @@ fn sample_payloads(
                     file_format: None,
                     shape: Some(shape),
                     options: w.options.clone(),
+                    timezone: None,
+                    locale: None,
                 };
                 return Some((w.id.clone(), realtime.compute(&ctx)));
             }
