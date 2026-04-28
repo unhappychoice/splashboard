@@ -47,6 +47,8 @@ pub fn canonical_sample(shape: Shape) -> Option<Body> {
             (1_699_990_000, "opened #41", None),
             (1_699_900_000, "reverted #40", None),
         ]),
+        // `Error` is a placeholder body, not a fetcher-emitted shape — no sample needed.
+        Shape::Error => return None,
     })
 }
 

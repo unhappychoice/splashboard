@@ -35,7 +35,7 @@ mod gauge_thermometer;
 mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
-mod list_links;
+pub mod list_links;
 mod list_plain;
 mod list_ranking;
 mod list_timeline;
@@ -68,6 +68,10 @@ pub enum Shape {
     Heatmap,
     Badge,
     Timeline,
+    /// Pseudo-shape carried by [`Body::Error`] so `shape_of` stays total. Never appears in a
+    /// fetcher's `shapes()` list or a renderer's `accepts()` list — `render_payload`
+    /// short-circuits Body::Error before any dispatch.
+    Error,
 }
 
 pub fn shape_of(body: &Body) -> Shape {
@@ -86,6 +90,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::Heatmap(_) => Shape::Heatmap,
         Body::Badge(_) => Shape::Badge,
         Body::Timeline(_) => Shape::Timeline,
+        Body::Error(_) => Shape::Error,
     }
 }
 
@@ -108,6 +113,7 @@ impl Shape {
             Self::Heatmap => "heatmap",
             Self::Badge => "badge",
             Self::Timeline => "timeline",
+            Self::Error => "error",
         }
     }
 }
@@ -407,6 +413,10 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::Heatmap => "grid_heatmap",
         Shape::Badge => "status_badge",
         Shape::Timeline => "list_timeline",
+        // Body::Error short-circuits in `render_payload` before this is called, but include
+        // a stable string so the function stays total. `text_plain` is the closest fallback
+        // if an Error body somehow leaked past the short-circuit.
+        Shape::Error => "text_plain",
     }
 }
 
@@ -426,6 +436,16 @@ pub fn render_payload(
     registry: &Registry,
     theme: &Theme,
 ) {
+    // Error bodies bypass the shape × renderer dispatch entirely. Asking the configured
+    // renderer (e.g. `chart_bar`, `grid_calendar`) to display a structured fetch / trust /
+    // timeout error would either silently drop the message or trigger a misleading
+    // "cannot display" warning. Render the error message inline regardless of the spec —
+    // the AGENTS.md contract about explicit shape-mismatch warnings still applies to
+    // genuine misconfigured payloads, which never carry a `Body::Error`.
+    if let Body::Error(err) = &payload.body {
+        render_error_body(frame, area, err, theme);
+        return;
+    }
     if is_empty_body(&payload.body) {
         render_empty_state(frame, area, theme);
         return;
@@ -454,6 +474,23 @@ pub fn render_payload(
     renderer.render(frame, area, &payload.body, &options, theme, registry);
 }
 
+fn render_error_body(
+    frame: &mut Frame,
+    area: Rect,
+    err: &crate::payload::ErrorData,
+    theme: &Theme,
+) {
+    // `render_error` already centers + dims the text and respects narrow areas. Joining the
+    // two-line variant with a newline lets it lay out as message-on-top, detail-below when
+    // the area has at least two rows; narrower areas collapse to the first line via the
+    // helper's own clamp.
+    let text = match &err.detail {
+        Some(d) => format!("{}\n{}", err.message, d),
+        None => err.message.clone(),
+    };
+    render_error(frame, area, &text, theme);
+}
+
 /// `true` when the body has no meaningful data to render. Callers (most usefully
 /// [`render_payload`]) use this to substitute an empty-state placeholder rather than letting a
 /// specific renderer silently draw nothing.
@@ -475,7 +512,9 @@ pub fn is_empty_body(body: &Body) -> bool {
         Body::Image(d) => d.path.is_empty(),
         Body::Heatmap(d) => d.cells.is_empty() || d.cells.iter().all(|r| r.is_empty()),
         Body::Timeline(d) => d.events.is_empty(),
-        Body::Badge(_) | Body::Calendar(_) | Body::Ratio(_) => false,
+        // `Error` always carries a message — we want the user to see it, never collapse it to
+        // the "nothing here yet" placeholder.
+        Body::Badge(_) | Body::Calendar(_) | Body::Ratio(_) | Body::Error(_) => false,
     }
 }
 
@@ -711,6 +750,40 @@ mod tests {
         assert!(
             joined.contains("nothing here yet"),
             "missing caption: {joined:?}"
+        );
+    }
+
+    #[test]
+    fn error_body_renders_inline_regardless_of_configured_renderer() {
+        // Regression: a fetcher error (e.g. 429) feeding a chart_bar slot used to fall
+        // through to the "renderer chart_bar cannot display TextBlock" warning, hiding the
+        // actionable message in logs only. Body::Error short-circuits before the shape ×
+        // renderer dispatch, so the message reaches the user even on shape-only renderers.
+        use crate::payload::{Body, ErrorData, ErrorKind, Payload};
+        use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Error(ErrorData {
+                kind: ErrorKind::Fetch,
+                message: "⚠ deariary 429".into(),
+                detail: Some("see logs".into()),
+            }),
+        };
+        let registry = Registry::with_builtins();
+        // chart_bar accepts only Bars — under the old contract this would render the generic
+        // "cannot display" warning and lose the placeholder text.
+        let spec = RenderSpec::Short("chart_bar".into());
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 40, 4);
+        let joined: String = (0..4).map(|y| line_text(&buf, y)).collect();
+        assert!(
+            joined.contains("deariary 429"),
+            "actionable error message must reach the user: {joined:?}"
+        );
+        assert!(
+            !joined.contains("cannot display"),
+            "Body::Error should bypass the shape × renderer mismatch path: {joined:?}"
         );
     }
 

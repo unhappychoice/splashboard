@@ -8,6 +8,15 @@
 //! atomic in the byte stream (no `MoveTo` interruption), and dodges `Buffer::diff`'s width
 //! calculation, which would otherwise count the printable characters inside the escape sequence
 //! as visible columns and incorrectly skip the cells immediately after the link.
+//!
+//! The `skip = true` trick only buys real-terminal correctness: `TestBackend` doesn't
+//! simulate the terminal's char-rendering of the OSC 8 visible portion, so the skipped cells
+//! stay at their default empty state in its buffer. The runtime's off-screen scrollback
+//! capture (`render_full_into_buffer`) targets `TestBackend` and would inherit that broken
+//! state — we wrap that draw in [`without_osc8`] so the renderer emits plain text for the
+//! capture, while the on-screen `CrosstermBackend` pass keeps the OSC 8 wrap.
+
+use std::cell::Cell as StdCell;
 
 use ratatui::{Frame, buffer::Buffer, layout::Rect, style::Style};
 
@@ -95,9 +104,55 @@ fn write_row(buf: &mut Buffer, x: u16, y: u16, max_width: u16, line: &LinkedLine
     if drawn == 0 {
         return;
     }
+    if osc8_suppressed() {
+        return;
+    }
     if let Some(url) = line.url.as_deref() {
         wrap_link(buf, x, y, end_x, url, style);
     }
+}
+
+thread_local! {
+    /// Suppresses the OSC 8 wrap inside the closure passed to [`without_osc8`]. The runtime's
+    /// off-screen capture path (`render_full_into_buffer`) targets `TestBackend`, which holds
+    /// raw cell symbols verbatim and doesn't interpret escape sequences — putting the OSC 8
+    /// wrap there would only pollute the buffer that later gets sliced into the inline
+    /// scrollback. The on-screen `CrosstermBackend` pass runs without this flag so user-facing
+    /// frames keep the clickable hyperlinks.
+    static OSC8_SUPPRESSED: StdCell<bool> = const { StdCell::new(false) };
+}
+
+/// Run `f` with OSC 8 hyperlink wrapping disabled. Idempotent and re-entrant: nested calls
+/// stack the suppression and restore the prior value on exit. Panic-safe: an RAII guard
+/// restores the prior value via `Drop`, so a panic inside `f` doesn't leak the suppressed
+/// state into subsequent unrelated draws on the same thread.
+pub fn without_osc8<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let _guard = SuppressionGuard::engage();
+    f()
+}
+
+struct SuppressionGuard {
+    prior: bool,
+}
+
+impl SuppressionGuard {
+    fn engage() -> Self {
+        let prior = OSC8_SUPPRESSED.with(|cell| cell.replace(true));
+        Self { prior }
+    }
+}
+
+impl Drop for SuppressionGuard {
+    fn drop(&mut self) {
+        OSC8_SUPPRESSED.with(|cell| cell.set(self.prior));
+    }
+}
+
+fn osc8_suppressed() -> bool {
+    OSC8_SUPPRESSED.with(StdCell::get)
 }
 
 fn wrap_link(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Style) {
@@ -311,5 +366,36 @@ mod tests {
             assert!(row.contains(ch), "missing {ch}: {row:?}");
         }
         assert!(row.contains("world"));
+    }
+
+    #[test]
+    fn without_osc8_restores_state_after_panic() {
+        assert!(!osc8_suppressed());
+        let result = std::panic::catch_unwind(|| {
+            without_osc8(|| {
+                assert!(osc8_suppressed());
+                panic!("simulated renderer panic");
+            })
+        });
+        assert!(result.is_err(), "the inner panic should propagate");
+        assert!(
+            !osc8_suppressed(),
+            "RAII guard must reset suppression even when f panics",
+        );
+    }
+
+    #[test]
+    fn without_osc8_nested_calls_restore_outer_state() {
+        without_osc8(|| {
+            assert!(osc8_suppressed());
+            without_osc8(|| {
+                assert!(osc8_suppressed());
+            });
+            assert!(
+                osc8_suppressed(),
+                "nested guard exit must not flip the outer suppression off",
+            );
+        });
+        assert!(!osc8_suppressed());
     }
 }

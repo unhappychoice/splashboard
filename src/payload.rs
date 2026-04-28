@@ -65,6 +65,47 @@ pub enum Body {
     /// history. Timestamps are raw unix seconds so the renderer computes the `"3h ago"` label
     /// at draw time — keeping cached payloads from going stale.
     Timeline(TimelineData),
+    /// Structured error payload — what the user sees instead of a real fetch result when the
+    /// widget can't produce one (fetch failed / timed out, fetcher unknown, fetcher can't emit
+    /// the renderer's required shape, network widget under untrusted config). Bypasses the
+    /// shape × renderer dispatch entirely: `render_payload` short-circuits on `Body::Error` and
+    /// draws the message inline regardless of the configured renderer, since asking
+    /// `chart_bar` to render an error message via `Bars` would either silently drop it or
+    /// trigger a misleading "cannot display" warning. Real fetchers never emit this — only the
+    /// placeholder constructors in `crate::fetcher` and `crate::trust`.
+    Error(ErrorData),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ErrorData {
+    pub kind: ErrorKind,
+    /// First line of the error pill. Convention: lead with the affected source ("⚠ deariary",
+    /// "🔒 requires trust") so users can scan a multi-widget splash for which one needs
+    /// attention without reading the full sentence.
+    pub message: String,
+    /// Optional second line. Typically a follow-up hint ("see logs", "check `render` in
+    /// config"). `None` if the kind is self-explanatory or the area is too narrow for two
+    /// lines anyway.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorKind {
+    /// Fetcher returned `Err` (HTTP failure, parse error, missing token, …).
+    Fetch,
+    /// Fetcher exceeded the runtime deadline.
+    Timeout,
+    /// Configured fetcher name is not in the registry — usually a config newer than the
+    /// installed binary.
+    UnknownFetcher,
+    /// Fetcher can't emit the shape its renderer requires; user needs to change `render` or
+    /// `fetcher` in config.
+    ShapeMismatch,
+    /// `Network`-class widget in an untrusted local config; user runs `splashboard trust` to
+    /// unlock.
+    RequiresTrust,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -488,5 +529,70 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert!(!json.contains("icon"));
         assert!(!json.contains("status"));
+    }
+
+    #[test]
+    fn error_round_trips_with_full_field_set() {
+        // Locks the on-disk wire format for `Body::Error`. Cached `CacheEntryKind::Err`
+        // entries serialize this and must deserialize back identically after a process
+        // restart, otherwise the cache layer drops the placeholder mid-flight.
+        let p = bare(Body::Error(ErrorData {
+            kind: ErrorKind::Fetch,
+            message: "⚠ deariary 429".into(),
+            detail: Some("see logs".into()),
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn error_round_trips_without_detail() {
+        // Detail is `Option<String>` — round-trip must preserve `None` rather than
+        // collapsing it to an empty string, because the renderer treats the two distinctly
+        // (no detail = single-line layout vs detail = two-line message + hint).
+        let p = bare(Body::Error(ErrorData {
+            kind: ErrorKind::Timeout,
+            message: "⏱ timed out".into(),
+            detail: None,
+        }));
+        assert_eq!(p, round_trip(&p));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(
+            !json.contains("detail"),
+            "skip_serializing_if must drop None detail: {json}"
+        );
+    }
+
+    #[test]
+    fn error_serializes_with_expected_shape_tag_and_snake_case_kind() {
+        // Pins the canonical wire format so changes to the serde derives surface here
+        // rather than as silent breakage in cached payloads.
+        let p = bare(Body::Error(ErrorData {
+            kind: ErrorKind::ShapeMismatch,
+            message: "⚠ static_text can't emit bars".into(),
+            detail: Some("check `render` in config".into()),
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "error");
+        assert_eq!(v["data"]["kind"], "shape_mismatch");
+        assert_eq!(v["data"]["message"], "⚠ static_text can't emit bars");
+        assert_eq!(v["data"]["detail"], "check `render` in config");
+    }
+
+    #[test]
+    fn error_kind_covers_every_known_variant() {
+        // Exhaustive snake_case round-trip per ErrorKind so a new variant landing without
+        // a corresponding renaming convention trips this test.
+        for (kind, expected) in [
+            (ErrorKind::Fetch, "fetch"),
+            (ErrorKind::Timeout, "timeout"),
+            (ErrorKind::UnknownFetcher, "unknown_fetcher"),
+            (ErrorKind::ShapeMismatch, "shape_mismatch"),
+            (ErrorKind::RequiresTrust, "requires_trust"),
+        ] {
+            let s = serde_json::to_string(&kind).unwrap();
+            assert_eq!(s, format!("\"{expected}\""), "kind: {kind:?}");
+            let back: ErrorKind = serde_json::from_str(&s).unwrap();
+            assert_eq!(back, kind);
+        }
     }
 }
