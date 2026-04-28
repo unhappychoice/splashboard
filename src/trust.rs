@@ -153,15 +153,16 @@ pub fn partition_by_trust(
         })
 }
 
-pub fn requires_trust_placeholder(shape: crate::render::Shape) -> Payload {
+pub fn requires_trust_placeholder() -> Payload {
     Payload {
         icon: None,
-        status: None,
+        status: Some(crate::payload::Status::Error),
         format: None,
-        body: crate::fetcher::placeholder_body(
-            shape,
-            &["🔒 requires trust", "run `splashboard trust`"],
-        ),
+        body: crate::payload::Body::Error(crate::payload::ErrorData {
+            kind: crate::payload::ErrorKind::RequiresTrust,
+            message: "🔒 requires trust".into(),
+            detail: Some("run `splashboard trust`".into()),
+        }),
     }
 }
 
@@ -421,30 +422,23 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_has_lock_icon_in_first_line() {
-        let p = requires_trust_placeholder(crate::render::Shape::TextBlock);
+    fn placeholder_carries_lock_icon_and_trust_command() {
+        let p = requires_trust_placeholder();
         match p.body {
-            crate::payload::Body::TextBlock(t) => {
-                assert!(t.lines[0].contains("🔒"));
-                assert!(t.lines[1].contains("splashboard trust"));
+            crate::payload::Body::Error(err) => {
+                assert_eq!(err.kind, crate::payload::ErrorKind::RequiresTrust);
+                assert!(err.message.contains("🔒"));
+                assert!(
+                    err.detail
+                        .as_deref()
+                        .is_some_and(|d| d.contains("splashboard trust"))
+                );
             }
-            _ => panic!("expected text_block body"),
+            other => panic!("expected Body::Error, got {other:?}"),
         }
-    }
-
-    /// `list_links`-equipped widgets (the canonical home_feed / hackernews_top pair) need a
-    /// `LinkedTextBlock`-shaped placeholder; otherwise the trust gate's TextBlock body trips
-    /// the renderer's shape check and the user sees "renderer list_links cannot display
-    /// TextBlock" instead of the actual "🔒 requires trust" message.
-    #[test]
-    fn placeholder_emits_linked_text_block_for_link_renderer() {
-        let p = requires_trust_placeholder(crate::render::Shape::LinkedTextBlock);
-        match p.body {
-            crate::payload::Body::LinkedTextBlock(d) => {
-                assert!(d.items[0].text.contains("🔒"));
-                assert!(d.items.iter().all(|i| i.url.is_none()));
-            }
-            _ => panic!("expected linked_text_block body"),
-        }
+        // Status::Error is the orthogonal "this widget is in error state" signal carried on
+        // the Payload header — useful for outside listeners (cache-entry tagging, future
+        // status sidebars). Body::Error already implies it; we set both for redundancy.
+        assert_eq!(p.status, Some(crate::payload::Status::Error));
     }
 }

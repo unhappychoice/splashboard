@@ -65,6 +65,47 @@ pub enum Body {
     /// history. Timestamps are raw unix seconds so the renderer computes the `"3h ago"` label
     /// at draw time — keeping cached payloads from going stale.
     Timeline(TimelineData),
+    /// Structured error payload — what the user sees instead of a real fetch result when the
+    /// widget can't produce one (fetch failed / timed out, fetcher unknown, fetcher can't emit
+    /// the renderer's required shape, network widget under untrusted config). Bypasses the
+    /// shape × renderer dispatch entirely: `render_payload` short-circuits on `Body::Error` and
+    /// draws the message inline regardless of the configured renderer, since asking
+    /// `chart_bar` to render an error message via `Bars` would either silently drop it or
+    /// trigger a misleading "cannot display" warning. Real fetchers never emit this — only the
+    /// placeholder constructors in `crate::fetcher` and `crate::trust`.
+    Error(ErrorData),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ErrorData {
+    pub kind: ErrorKind,
+    /// First line of the error pill. Convention: lead with the affected source ("⚠ deariary",
+    /// "🔒 requires trust") so users can scan a multi-widget splash for which one needs
+    /// attention without reading the full sentence.
+    pub message: String,
+    /// Optional second line. Typically a follow-up hint ("see logs", "check `render` in
+    /// config"). `None` if the kind is self-explanatory or the area is too narrow for two
+    /// lines anyway.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorKind {
+    /// Fetcher returned `Err` (HTTP failure, parse error, missing token, …).
+    Fetch,
+    /// Fetcher exceeded the runtime deadline.
+    Timeout,
+    /// Configured fetcher name is not in the registry — usually a config newer than the
+    /// installed binary.
+    UnknownFetcher,
+    /// Fetcher can't emit the shape its renderer requires; user needs to change `render` or
+    /// `fetcher` in config.
+    ShapeMismatch,
+    /// `Network`-class widget in an untrusted local config; user runs `splashboard trust` to
+    /// unlock.
+    RequiresTrust,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

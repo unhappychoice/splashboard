@@ -269,14 +269,12 @@ pub async fn run(
         &shapes,
     ));
     for w in &gated {
-        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
-        payloads.insert(w.id.clone(), trust::requires_trust_placeholder(shape));
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
     for w in &unknown {
-        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
         payloads.insert(
             w.id.clone(),
-            fetcher::unknown_fetcher_placeholder(shape, &w.fetcher),
+            fetcher::unknown_fetcher_placeholder(&w.fetcher),
         );
     }
     for (w, err) in &shape_invalid {
@@ -531,14 +529,12 @@ fn refresh_payloads(
         payloads.insert(id, payload);
     }
     for w in buckets.gated {
-        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
-        payloads.insert(w.id.clone(), trust::requires_trust_placeholder(shape));
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
     }
     for w in buckets.unknown {
-        let shape = shapes.get(&w.id).copied().unwrap_or(Shape::TextBlock);
         payloads.insert(
             w.id.clone(),
-            fetcher::unknown_fetcher_placeholder(shape, &w.fetcher),
+            fetcher::unknown_fetcher_placeholder(&w.fetcher),
         );
     }
     for (w, err) in buckets.shape_invalid {
@@ -635,10 +631,7 @@ async fn fetch_all(
                         cache_key,
                         ERROR_CACHE_TTL_SECS,
                         CacheEntryKind::Err,
-                        fetcher::error_placeholder(
-                            ctx.shape.unwrap_or(Shape::TextBlock),
-                            &e.to_string(),
-                        ),
+                        fetcher::error_placeholder(&e.to_string()),
                     )
                 }
                 Err(_) => {
@@ -654,7 +647,7 @@ async fn fetch_all(
                         cache_key,
                         ERROR_CACHE_TTL_SECS,
                         CacheEntryKind::Timeout,
-                        fetcher::timeout_placeholder(ctx.shape.unwrap_or(Shape::TextBlock)),
+                        fetcher::timeout_placeholder(),
                     )
                 }
             }
@@ -1506,12 +1499,15 @@ mod tests {
 
         let payload = fresh.get("x").expect("error must surface as a payload");
         match &payload.body {
-            Body::TextBlock(t) => assert!(
-                t.lines.iter().any(|l| l.contains("boom")),
-                "error message must appear in the placeholder: {:?}",
-                t.lines
-            ),
-            other => panic!("expected TextBlock error placeholder, got {other:?}"),
+            Body::Error(err) => {
+                assert_eq!(err.kind, crate::payload::ErrorKind::Fetch);
+                assert!(
+                    err.message.contains("boom"),
+                    "error message must appear in the placeholder: {:?}",
+                    err.message
+                );
+            }
+            other => panic!("expected Body::Error error placeholder, got {other:?}"),
         }
 
         let key = registry
@@ -1570,12 +1566,15 @@ mod tests {
 
         let payload = fresh.get("x").expect("timeout must surface as a payload");
         match &payload.body {
-            Body::TextBlock(t) => assert!(
-                t.lines.iter().any(|l| l.contains("timed out")),
-                "timeout message must appear: {:?}",
-                t.lines
-            ),
-            other => panic!("expected TextBlock timeout placeholder, got {other:?}"),
+            Body::Error(err) => {
+                assert_eq!(err.kind, crate::payload::ErrorKind::Timeout);
+                assert!(
+                    err.message.contains("timed out"),
+                    "timeout message must appear: {:?}",
+                    err.message
+                );
+            }
+            other => panic!("expected Body::Error timeout placeholder, got {other:?}"),
         }
 
         let key = registry
@@ -1724,12 +1723,15 @@ mod tests {
         let _ = refresh_payloads(&None, &registry, &buckets, &HashMap::new(), &mut payloads);
         let payload = payloads.get("typo").expect("unknown fetcher must surface");
         match &payload.body {
-            Body::TextBlock(t) => assert!(
-                t.lines.iter().any(|l| l.contains("no_such_fetcher")),
-                "placeholder must mention the unknown fetcher name: {:?}",
-                t.lines
-            ),
-            other => panic!("expected TextBlock placeholder, got {other:?}"),
+            Body::Error(err) => {
+                assert_eq!(err.kind, crate::payload::ErrorKind::UnknownFetcher);
+                assert!(
+                    err.message.contains("no_such_fetcher"),
+                    "placeholder must mention the unknown fetcher name: {:?}",
+                    err.message
+                );
+            }
+            other => panic!("expected Body::Error placeholder, got {other:?}"),
         }
     }
 

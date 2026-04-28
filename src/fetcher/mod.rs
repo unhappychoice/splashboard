@@ -8,10 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::options::OptionSchema;
-use crate::payload::{
-    BadgeData, Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, MarkdownTextBlockData,
-    Payload, RatioData, Status, TextBlockData, TextData, TimelineData, TimelineEvent,
-};
+use crate::payload::{Body, ErrorData, ErrorKind, Payload, Status};
 use crate::render::Shape;
 use crate::samples;
 
@@ -151,119 +148,68 @@ pub struct ShapeMismatch {
     pub requested: Shape,
 }
 
-/// Build a placeholder body of the given shape from a list of message lines. Each shape
-/// gets a body its primary renderer will accept, so a 429 / timeout / trust message reaches
-/// the user inline rather than being swallowed by the shape-mismatch path. Shape-only
-/// renderers that can't carry free-form text (NumberSeries / PointSeries / Heatmap / Image
-/// / Bars / Calendar) fall through to `TextBlock`; in those cases `render_payload` shows the
-/// usual "renderer X cannot display TextBlock" warning, which is the right answer for
-/// shapes whose primary renderers genuinely have no slot for a message.
-pub fn placeholder_body(shape: Shape, lines: &[&str]) -> Body {
-    match shape {
-        Shape::Text => Body::Text(TextData {
-            value: lines.join(" — "),
-        }),
-        Shape::TextBlock => Body::TextBlock(TextBlockData {
-            lines: lines.iter().map(|s| (*s).to_string()).collect(),
-        }),
-        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
-            value: lines.join("\n\n"),
-        }),
-        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
-            items: lines
-                .iter()
-                .map(|s| LinkedLine {
-                    text: (*s).to_string(),
-                    url: None,
-                })
-                .collect(),
-        }),
-        Shape::Entries => Body::Entries(EntriesData {
-            items: lines
-                .iter()
-                .map(|s| Entry {
-                    key: (*s).to_string(),
-                    value: None,
-                    status: None,
-                })
-                .collect(),
-        }),
-        Shape::Badge => Body::Badge(BadgeData {
-            status: Status::Error,
-            label: lines.first().map(|s| (*s).to_string()).unwrap_or_default(),
-        }),
-        Shape::Ratio => Body::Ratio(RatioData {
-            value: 0.0,
-            label: lines.first().map(|s| (*s).to_string()),
-            denominator: None,
-        }),
-        Shape::Timeline => Body::Timeline(TimelineData {
-            events: lines
-                .iter()
-                .map(|s| TimelineEvent {
-                    timestamp: 0,
-                    title: (*s).to_string(),
-                    detail: None,
-                    status: Some(Status::Error),
-                })
-                .collect(),
-        }),
-        _ => Body::TextBlock(TextBlockData {
-            lines: lines.iter().map(|s| (*s).to_string()).collect(),
+/// Compose an error placeholder payload. Used by every constructor in this module that
+/// produces a placeholder when a real fetch can't run (`error_placeholder` /
+/// `timeout_placeholder` / `unknown_fetcher_placeholder` / `shape_mismatch_placeholder`),
+/// plus [`crate::trust::requires_trust_placeholder`]. `Body::Error` carries the structured
+/// kind / message / detail straight through to `render_payload`, which renders it inline
+/// regardless of the configured renderer — bypassing the shape × renderer dispatch so the
+/// message reaches the user even for shape-only chart / grid renderers.
+fn error_payload(kind: ErrorKind, message: String, detail: Option<&str>) -> Payload {
+    Payload {
+        icon: None,
+        status: Some(Status::Error),
+        format: None,
+        body: Body::Error(ErrorData {
+            kind,
+            message,
+            detail: detail.map(str::to_string),
         }),
     }
 }
 
-/// Structure mirrors [`crate::trust::requires_trust_placeholder`] — a two-line hint so the user
-/// can tell what's wrong without opening logs. The body matches the renderer's expected shape so
-/// the message renders inline rather than triggering a second-order shape-mismatch error.
+/// Two-line placeholder shown when the fetcher/renderer pair can't produce data the renderer
+/// will accept. First line names the offending fetcher and the shape it was asked to emit;
+/// the second line tells the user where to fix it.
 pub fn shape_mismatch_placeholder(err: &ShapeMismatch) -> Payload {
-    let line1 = format!("⚠ {} can't emit {}", err.fetcher, err.requested.as_str());
-    let lines = [line1.as_str(), "check `render` in config"];
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body: placeholder_body(err.requested, &lines),
-    }
+    error_payload(
+        ErrorKind::ShapeMismatch,
+        format!("⚠ {} can't emit {}", err.fetcher, err.requested.as_str()),
+        Some("check `render` in config"),
+    )
 }
 
 /// Payload rendered in place of a widget whose configured fetcher name isn't registered. Mirrors
 /// the renderer side of the contract (`render_payload` draws `unknown renderer: <name>` for the
 /// same situation): the typical trigger is an installed binary older than the config it's reading,
 /// so the second line points at upgrading rather than the log file.
-pub fn unknown_fetcher_placeholder(shape: Shape, name: &str) -> Payload {
-    let line1 = format!("⚠ unknown fetcher: {name}");
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body: placeholder_body(shape, &[line1.as_str(), "upgrade splashboard?"]),
-    }
+pub fn unknown_fetcher_placeholder(name: &str) -> Payload {
+    error_payload(
+        ErrorKind::UnknownFetcher,
+        format!("⚠ unknown fetcher: {name}"),
+        Some("upgrade splashboard?"),
+    )
 }
 
 /// Payload rendered in place of a widget whose fetch returned `Err`. One-line `⚠ <msg>`, with a
 /// follow-up pointer to the log file so the user can track structured details (error chain,
 /// cache key, fetcher name) without forcing a second line into the splash for every error.
-pub fn error_placeholder(shape: Shape, msg: &str) -> Payload {
-    let line1 = format!("⚠ {msg}");
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body: placeholder_body(shape, &[line1.as_str(), "see $HOME/.splashboard/logs"]),
-    }
+pub fn error_placeholder(msg: &str) -> Payload {
+    error_payload(
+        ErrorKind::Fetch,
+        format!("⚠ {msg}"),
+        Some("see $HOME/.splashboard/logs"),
+    )
 }
 
 /// Payload rendered in place of a widget whose fetch exceeded the runtime deadline. Kept
 /// separate from [`error_placeholder`] so users can tell "slow" from "broken" at a glance.
-pub fn timeout_placeholder(shape: Shape) -> Payload {
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body: placeholder_body(shape, &["⏱ timed out", "see $HOME/.splashboard/logs"]),
-    }
+pub fn timeout_placeholder() -> Payload {
+    error_payload(
+        ErrorKind::Timeout,
+        "⏱ timed out".into(),
+        Some("see $HOME/.splashboard/logs"),
+    )
 }
 
 pub fn default_cache_key(name: &str, ctx: &FetchContext) -> String {
@@ -627,111 +573,69 @@ mod tests {
 
     #[test]
     fn unknown_fetcher_placeholder_mentions_name_and_upgrade_hint() {
-        let p = unknown_fetcher_placeholder(Shape::TextBlock, "system_battery");
-        match p.body {
-            Body::TextBlock(t) => {
-                assert!(
-                    t.lines[0].contains("system_battery"),
-                    "lines: {:?}",
-                    t.lines
-                );
-                assert!(t.lines[0].starts_with("⚠"), "lines: {:?}", t.lines);
-                assert!(
-                    t.lines.iter().any(|l| l.contains("upgrade")),
-                    "expected upgrade hint: {:?}",
-                    t.lines
-                );
-            }
-            other => panic!("expected TextBlock body, got {other:?}"),
-        }
+        let p = unknown_fetcher_placeholder("system_battery");
+        let Body::Error(err) = &p.body else {
+            panic!("expected Body::Error, got {:?}", p.body);
+        };
+        assert_eq!(err.kind, ErrorKind::UnknownFetcher);
+        assert!(err.message.contains("system_battery"));
+        assert!(err.message.starts_with("⚠"));
+        assert!(err.detail.as_deref().is_some_and(|d| d.contains("upgrade")));
+        assert_eq!(p.status, Some(Status::Error));
     }
 
     #[test]
-    fn placeholder_body_adapts_to_shape() {
-        // TextBlock — straight passthrough.
-        let body = placeholder_body(Shape::TextBlock, &["hello", "world"]);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
+    fn shape_mismatch_placeholder_carries_offending_pair_in_message() {
+        let err = ShapeMismatch {
+            fetcher: "static_text".into(),
+            requested: Shape::Bars,
         };
-        assert_eq!(t.lines, vec!["hello".to_string(), "world".to_string()]);
-
-        // LinkedTextBlock — text without URL so list_links can render the message.
-        let body = placeholder_body(Shape::LinkedTextBlock, &["hello", "world"]);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
+        let p = shape_mismatch_placeholder(&err);
+        let Body::Error(e) = &p.body else {
+            panic!("expected Body::Error, got {:?}", p.body);
         };
-        assert_eq!(b.items.len(), 2);
-        assert!(b.items.iter().all(|i| i.url.is_none()));
-
-        // Text — joined into one string so single-line renderers (`text_plain`) get a hint.
-        let body = placeholder_body(Shape::Text, &["hello", "world"]);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert!(t.value.contains("hello") && t.value.contains("world"));
-
-        // Entries — each line becomes a key with no value, so grid_table renders rows.
-        let body = placeholder_body(Shape::Entries, &["hello"]);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        assert_eq!(e.items[0].key, "hello");
-        assert!(e.items[0].value.is_none());
-
-        // Badge — placeholder reaches `status_badge` as a Status::Error pill so 429 / trust
-        // messages stay visible without falling through to the mismatch error path.
-        let body = placeholder_body(Shape::Badge, &["⚠ deariary 429", "see logs"]);
-        let Body::Badge(b) = body else {
-            panic!("expected Badge for placeholder");
-        };
-        assert_eq!(b.status, Status::Error);
-        assert_eq!(b.label, "⚠ deariary 429");
-
-        // Ratio — gauge renderers carry the message via the label slot; value clamped to 0.
-        let body = placeholder_body(Shape::Ratio, &["⚠ rate limited", "see logs"]);
-        let Body::Ratio(r) = body else {
-            panic!("expected Ratio for placeholder");
-        };
-        assert_eq!(r.value, 0.0);
-        assert_eq!(r.label.as_deref(), Some("⚠ rate limited"));
-
-        // Timeline — list_timeline reads `title`, so each line becomes one event tagged
-        // with Status::Error; timestamp is 0 (the renderer falls back to "—").
-        let body = placeholder_body(Shape::Timeline, &["⚠ rate limited", "see logs"]);
-        let Body::Timeline(t) = body else {
-            panic!("expected Timeline for placeholder");
-        };
-        assert_eq!(t.events.len(), 2);
-        assert_eq!(t.events[0].title, "⚠ rate limited");
-        assert_eq!(t.events[0].status, Some(Status::Error));
-
-        // Shape-only renderers (chart, grid, image) genuinely have no slot for free-form
-        // text, so they keep falling through to TextBlock and `render_payload` shows the
-        // explicit "renderer X cannot display TextBlock" mismatch warning per the contract.
-        for shape in [
-            Shape::Bars,
-            Shape::NumberSeries,
-            Shape::PointSeries,
-            Shape::Image,
-            Shape::Heatmap,
-            Shape::Calendar,
-        ] {
-            let body = placeholder_body(shape, &["⚠ rate limited", "see logs"]);
-            let Body::TextBlock(t) = body else {
-                panic!("expected TextBlock fallback for {shape:?}");
-            };
-            assert_eq!(t.lines, vec!["⚠ rate limited", "see logs"]);
-        }
-    }
-
-    #[test]
-    fn requires_trust_placeholder_via_fetcher_module_emits_link_shape() {
-        // Cross-module sanity: trust gate routes through `placeholder_body`, so a
-        // `LinkedTextBlock`-expecting renderer must see a `LinkedTextBlock` body.
-        let body = placeholder_body(
-            Shape::LinkedTextBlock,
-            &["🔒 requires trust", "run `splashboard trust`"],
+        assert_eq!(e.kind, ErrorKind::ShapeMismatch);
+        assert!(e.message.contains("static_text"));
+        assert!(e.message.contains("bars"));
+        assert!(
+            e.detail.as_deref().is_some_and(|d| d.contains("`render`")),
+            "detail should point at the render config: {:?}",
+            e.detail,
         );
-        assert!(matches!(body, Body::LinkedTextBlock(_)));
+    }
+
+    #[test]
+    fn error_placeholder_prefixes_warn_glyph_and_points_at_logs() {
+        let p = error_placeholder("deariary 429: rate limited");
+        let Body::Error(err) = &p.body else {
+            panic!("expected Body::Error, got {:?}", p.body);
+        };
+        assert_eq!(err.kind, ErrorKind::Fetch);
+        assert!(err.message.starts_with("⚠"));
+        assert!(err.message.contains("rate limited"));
+        assert!(err.detail.as_deref().is_some_and(|d| d.contains("logs")));
+    }
+
+    #[test]
+    fn timeout_placeholder_uses_clock_glyph_and_points_at_logs() {
+        let p = timeout_placeholder();
+        let Body::Error(err) = &p.body else {
+            panic!("expected Body::Error, got {:?}", p.body);
+        };
+        assert_eq!(err.kind, ErrorKind::Timeout);
+        assert!(err.message.starts_with("⏱"));
+        assert!(err.detail.as_deref().is_some_and(|d| d.contains("logs")));
+    }
+
+    #[test]
+    fn error_payloads_serialize_round_trip_through_serde() {
+        // Body::Error rides the same serde tag/content envelope as the other Body variants,
+        // so cached Err entries deserialize back into the same structured payload after a
+        // process restart.
+        let original = error_placeholder("deariary 429");
+        let json = serde_json::to_string(&original).unwrap();
+        let back: Payload = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, back);
+        assert!(matches!(back.body, Body::Error(_)));
     }
 }
