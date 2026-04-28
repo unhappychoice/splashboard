@@ -6,6 +6,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier, Style};
+use unicode_width::UnicodeWidthStr;
 
 pub fn buffer_to_html(buf: &Buffer) -> String {
     let mut out = String::new();
@@ -22,12 +23,14 @@ pub fn buffer_to_html(buf: &Buffer) -> String {
 fn emit_row(out: &mut String, buf: &Buffer, y: u16, width: u16) {
     let mut run_style: Option<Style> = None;
     let mut run_cells: Vec<String> = Vec::new();
-    for x in 0..width {
+    let mut x = 0u16;
+    while x < width {
         let cell = buf[(x, y)].clone();
         // Cells flagged `skip` are placeholders for the visible region of an OSC 8 hyperlink
         // — the link's first cell carries the whole sequence; the trailing cells exist only
         // so terminal cursor math lines up. Drop them in HTML to avoid emitting stray spaces.
         if cell.skip {
+            x += 1;
             continue;
         }
         let style = cell_style(&cell);
@@ -36,6 +39,13 @@ fn emit_row(out: &mut String, buf: &Buffer, y: u16, width: u16) {
             run_cells.clear();
             run_style = None;
             emit_link(out, &style, &url, &visible);
+            // The TestBackend stores the OSC 8 sequence in the first cell only; the trailing
+            // cells the renderer flagged with `skip` aren't preserved across the diff/flush
+            // (the backend's per-cell store has no `skip` field), so they keep whatever the
+            // prior frame left there. Step past them ourselves using the visible text's
+            // display width so we don't double-emit the underlying spaces / glyphs.
+            let cells_consumed = UnicodeWidthStr::width(visible.as_str()).max(1) as u16;
+            x = x.saturating_add(cells_consumed);
             continue;
         }
         if Some(style) != run_style {
@@ -44,6 +54,7 @@ fn emit_row(out: &mut String, buf: &Buffer, y: u16, width: u16) {
             run_style = Some(style);
         }
         run_cells.push(cell.symbol().to_string());
+        x += 1;
     }
     flush_run(out, run_style.as_ref(), &run_cells);
 }
@@ -234,6 +245,21 @@ mod tests {
         assert!(html.contains("<span class=\"c\">i</span>"));
         assert!(!html.contains("\x1b"));
         assert!(!html.contains("]8;;"));
+    }
+
+    #[test]
+    fn osc8_link_consumes_underlying_cells_even_when_skip_is_lost() {
+        // The TestBackend doesn't carry the renderer's `skip` flag across the diff/flush, so
+        // the cells trailing an OSC 8 link land back in the buffer as plain spaces. Without
+        // the visible-width step in `emit_row`, those would emit as extra cell spans on top
+        // of the link's own char spans — a 5-char link in a 10-wide row would produce 5 + 4
+        // = 9 spans inside the link area, blowing past the row width.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
+        buf[(0, 0)].set_symbol("\x1b]8;;https://example.com/\x1b\\hello\x1b]8;;\x1b\\");
+        // No skip flags — emulating what the TestBackend hands back after the diff/flush.
+        let html = buffer_to_html(&buf);
+        // 5 link chars + 5 trailing cells = 10 cell spans, matching the buffer width.
+        assert_eq!(html.matches("<span class=\"c\">").count(), 10);
     }
 
     #[test]
