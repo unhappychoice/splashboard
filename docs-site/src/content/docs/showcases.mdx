@@ -1,0 +1,104 @@
+---
+title: Showcases
+description: A gallery of splashboard in the wild — every built-in preset, plus themes and community dashboards.
+---
+
+import homeSplash from '../../assets/rendered/home_splash.html?raw';
+import homeDaily from '../../assets/rendered/home_daily.html?raw';
+import homeGithub from '../../assets/rendered/home_github.html?raw';
+import homeMinimal from '../../assets/rendered/home_minimal.html?raw';
+import homeFeed from '../../assets/rendered/home_feed.html?raw';
+import projectSplash from '../../assets/rendered/project_splash.html?raw';
+import projectGithub from '../../assets/rendered/project_github.html?raw';
+import projectMinimal from '../../assets/rendered/project_minimal.html?raw';
+import projectCodebase from '../../assets/rendered/project_codebase.html?raw';
+
+A gallery of what splashboard looks like. Snapshots are rendered from
+the actual preset TOMLs at the same 120×42 canvas; the per-widget
+breakdowns live on the [Presets](/guides/presets/) page.
+
+## Home presets
+
+### `home_splash`
+
+Terminal hero + greeting + clock. Five lines, no panes — the quiet,
+ambient default.
+
+<div class="splash-landing" set:html={homeSplash} />
+
+### `home_daily`
+
+Quote, day-of-week hero, calendar | almanac | world-clock | system,
+and full-width time-elapsed gauges. Everything-at-a-glance.
+
+<div class="splash-landing" set:html={homeDaily} />
+
+### `home_github`
+
+Avatar + handle + profile, contributions heatmap, open PRs / review
+queue, recent notifications timeline. Requires `gh auth login`.
+
+<div class="splash-landing" set:html={homeGithub} />
+
+### `home_minimal`
+
+Greeting, date, daily quote. Three quiet lines — acknowledged without
+a dashboard taking over.
+
+<div class="splash-landing" set:html={homeMinimal} />
+
+### `home_feed`
+
+Morning briefing — date masthead, time-of-day greeting, almanac strip,
+then 2×3 curated feeds (HN · r/programming · Wired · BBC Tech ·
+Engadget · Wikipedia on this day) and a fortune.
+
+<div class="splash-landing" set:html={homeFeed} />
+
+## Project presets
+
+### `project_splash`
+
+Repo name as a giant figlet with particle-burst reveal, slug /
+description / license below. Title-screen energy when someone clones.
+
+<div class="splash-landing" set:html={projectSplash} />
+
+### `project_github`
+
+Repo hero, activity grid: commits heatmap, top contributors, open PRs
+/ issues, languages breakdown, recent releases. The operational repo
+view.
+
+<div class="splash-landing" set:html={projectGithub} />
+
+### `project_minimal`
+
+Repo name, latest tag, last three commits. Fully offline — every
+widget reads local git.
+
+<div class="splash-landing" set:html={projectMinimal} />
+
+### `project_codebase`
+
+Repo personality at a glance — LOC by language, project age, comment
+density, files-by-dir, largest files, churn, TODOs. Sister to
+`project_github`, on the "shape of this codebase" axis instead of the
+forge axis.
+
+<div class="splash-landing" set:html={projectCodebase} />
+
+## Themes
+
+_Screenshots pending. The same dashboard rendered under each of the 26_
+_built-in palettes — Splash signature plus the dark and light staples_
+_from the editor-theme ecosystem (Catppuccin family, Tokyo Night family,_
+_Rosé Pine family, Solarized, Gruvbox, GitHub, Nord, Dracula, Monokai,_
+_Kanagawa, Everforest, One Dark, Night Owl, SynthWave '84, Ayu Mirage,_
+_Material Palenight) side by side._
+
+## In the wild
+
+_Community splashes. Share yours via PR or an issue with the screenshot_
+_attached — what the dashboard TOML is, what fetchers / renderers it_
+_uses, and a screenshot._
