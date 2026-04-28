@@ -3,6 +3,11 @@ members = [".", "xtask"]
 default-members = ["."]
 resolver = "2"
 
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
 [package]
 name = "splashboard"
 version = "1.0.0"
