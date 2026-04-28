@@ -24,6 +24,13 @@ pub fn settings_path() -> Option<PathBuf> {
     splashboard_home().map(|d| d.join("settings.toml"))
 }
 
+/// Sensitive env vars (`GH_TOKEN`, `TODOIST_TOKEN`, etc.). Kept separate from `settings.toml`
+/// so dotfiles-in-git users can git-ignore this one file without losing the rest of their
+/// splashboard config.
+pub fn secrets_path() -> Option<PathBuf> {
+    splashboard_home().map(|d| d.join("secrets.toml"))
+}
+
 /// Default dashboard when no per-dir dashboard applies and the CWD isn't a project root.
 pub fn home_dashboard_path() -> Option<PathBuf> {
     splashboard_home().map(|d| d.join("home.dashboard.toml"))
@@ -80,6 +87,7 @@ mod tests {
         }
         assert_eq!(splashboard_home(), Some(path.clone()));
         assert_eq!(settings_path(), Some(path.join("settings.toml")));
+        assert_eq!(secrets_path(), Some(path.join("secrets.toml")));
         assert_eq!(
             home_dashboard_path(),
             Some(path.join("home.dashboard.toml"))

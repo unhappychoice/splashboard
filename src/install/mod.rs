@@ -140,6 +140,7 @@ pub fn run(opts: InstallOptions) -> io::Result<()> {
     }
 
     ensure_parent_dirs(&destinations)?;
+    ensure_secrets_gitignore(&home_dir)?;
     let mut write_report = write_dashboards(&destinations, home, project)?;
     let settings_report = write_settings(
         &destinations.settings,
@@ -275,6 +276,29 @@ impl Destinations {
             project_dashboard: dir.join("project.dashboard.toml"),
         }
     }
+}
+
+/// Drops `secrets.toml` into `$HOME/.splashboard/.gitignore` so dotfiles-in-git users who
+/// commit the rest of `.splashboard/` don't leak their tokens by accident. Idempotent:
+/// appends the line only when missing, leaves the rest of the file alone.
+fn ensure_secrets_gitignore(home_dir: &Path) -> io::Result<()> {
+    let path = home_dir.join(".gitignore");
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if existing
+        .lines()
+        .any(|l| l.trim() == "secrets.toml" || l.trim() == "/secrets.toml")
+    {
+        return Ok(());
+    }
+    let mut next = existing;
+    if !next.is_empty() && !next.ends_with('\n') {
+        next.push('\n');
+    }
+    if next.is_empty() {
+        next.push_str("# Written by `splashboard install` — keeps tokens out of dotfiles repos.\n");
+    }
+    next.push_str("secrets.toml\n");
+    std::fs::write(&path, next)
 }
 
 fn ensure_parent_dirs(dest: &Destinations) -> io::Result<()> {
@@ -737,6 +761,34 @@ mod tests {
             std::fs::read_to_string(&backup).unwrap(),
             "# hand-edited settings\n"
         );
+    }
+
+    #[test]
+    fn ensure_secrets_gitignore_creates_when_missing() {
+        let dir = tempdir().unwrap();
+        ensure_secrets_gitignore(dir.path()).unwrap();
+        let body = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+        assert!(body.contains("secrets.toml"));
+    }
+
+    #[test]
+    fn ensure_secrets_gitignore_appends_to_existing() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "node_modules\n").unwrap();
+        ensure_secrets_gitignore(dir.path()).unwrap();
+        let body = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+        assert!(body.contains("node_modules"));
+        assert!(body.contains("secrets.toml"));
+    }
+
+    #[test]
+    fn ensure_secrets_gitignore_is_idempotent() {
+        let dir = tempdir().unwrap();
+        ensure_secrets_gitignore(dir.path()).unwrap();
+        let first = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+        ensure_secrets_gitignore(dir.path()).unwrap();
+        let second = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+        assert_eq!(first, second);
     }
 
     /// Running `install` twice with identical flags should be a no-op — no backup

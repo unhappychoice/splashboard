@@ -111,10 +111,17 @@ All splashboard state lives under **`$HOME/.splashboard/`** (no XDG paths, same 
 ```
 $HOME/.splashboard/
 ├── config.toml        # global config
+├── secrets.toml       # tokens / env vars exported at startup (git-ignored by install)
 ├── trust.toml         # trust store (path + sha256 entries)
 ├── cache/             # per-widget cache (key.json + key.lock)
 └── store/             # ReadStore files — $HOME/.splashboard/store/<id>.<ext>
 ```
+
+`secrets.toml` is a flat top-level TOML map (`GH_TOKEN = "ghp_..."`). Keys get exported
+as process env at startup, but only when the shell env doesn't already define them — shell
+wins. `SPLASHBOARD_*`, `PATH`, `HOME`, `SHELL`, and a small denylist of ambient/owned keys
+are filtered out (see `secrets.rs`). `splashboard install` drops `secrets.toml` into
+`$HOME/.splashboard/.gitignore` so dotfiles-in-git users don't commit tokens by accident.
 
 Overridable via `SPLASHBOARD_HOME` env var (for tests, CI, relocatable installs).
 
