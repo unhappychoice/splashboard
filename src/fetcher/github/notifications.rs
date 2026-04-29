@@ -225,7 +225,68 @@ fn subject_html_url(n: &Notification) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "notifications".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     fn sample() -> Notification {
         Notification {
@@ -239,6 +300,88 @@ mod tests {
                 full_name: "unhappychoice/splashboard".into(),
             },
         }
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        assert!(Options::default().limit.is_none());
+        assert!(Options::default().all.is_none());
+    }
+
+    #[test]
+    fn options_deserialize_limit_and_all() {
+        let raw: toml::Value = toml::from_str("limit = 7\nall = true").unwrap();
+        let opts: Options = raw.try_into().unwrap();
+        assert_eq!(opts.limit, Some(7));
+        assert_eq!(opts.all, Some(true));
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("bogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_metadata_and_samples_cover_supported_shapes() {
+        let fetcher = GithubNotifications;
+        assert_eq!(fetcher.name(), "github_notifications");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("notification inbox"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+        assert_eq!(fetcher.option_schemas()[0].name, "limit");
+        assert_eq!(fetcher.option_schemas()[1].name, "all");
+
+        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
+        else {
+            panic!("expected linked text block sample");
+        };
+        assert_eq!(
+            linked.items[0].url.as_deref(),
+            Some("https://github.com/unhappychoice/splashboard/pull/12")
+        );
+
+        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(text.lines[1], "ratatui mention: rfc: themes");
+
+        let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
+            panic!("expected entries sample");
+        };
+        assert_eq!(entries.items[0].key, "splashboard");
+        assert_eq!(
+            entries.items[1].value.as_deref(),
+            Some("mention: rfc: themes")
+        );
+
+        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
+            panic!("expected timeline sample");
+        };
+        assert_eq!(timeline.events[0].title, "splashboard");
+        assert_eq!(
+            timeline.events[1].detail.as_deref(),
+            Some("mention: rfc: themes")
+        );
+
+        let Some(Body::Badge(badge)) = fetcher.sample_body(Shape::Badge) else {
+            panic!("expected badge sample");
+        };
+        assert_eq!(badge.status, Status::Warn);
+        assert_eq!(badge.label, "2 notifications");
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_format() {
+        let fetcher = GithubNotifications;
+        let linked = fetcher.cache_key(&ctx(None, Some(Shape::LinkedTextBlock), None));
+        let badge = fetcher.cache_key(&ctx(None, Some(Shape::Badge), None));
+        let markdown = fetcher.cache_key(&ctx(None, Some(Shape::LinkedTextBlock), Some("md")));
+        assert_ne!(linked, badge);
+        assert_ne!(linked, markdown);
     }
 
     #[test]
@@ -265,14 +408,19 @@ mod tests {
 
     #[test]
     fn badge_label_marks_capped_count_with_plus() {
-        // Simulate a full BADGE_PAGE response — the page is exhausted, so the true total may be
-        // higher and the label has to admit that with `"50+"`.
         let items: Vec<Notification> = (0..BADGE_PAGE).map(|_| sample()).collect();
         let body = render_body(&items, Shape::Badge, true);
         let Body::Badge(b) = body else {
             panic!("expected badge")
         };
         assert_eq!(b.label, format!("{BADGE_PAGE}+ notifications"));
+    }
+
+    #[test]
+    fn badge_label_keeps_singular_form() {
+        let badge = notifications_badge(1, false);
+        assert_eq!(badge.status, Status::Warn);
+        assert_eq!(badge.label, "1 notification");
     }
 
     #[test]
@@ -284,5 +432,88 @@ mod tests {
         assert!(l.lines[0].contains("unhappychoice/splashboard"));
         assert!(l.lines[0].contains("review_requested"));
         assert!(l.lines[0].contains("feat: heatmap"));
+    }
+
+    #[test]
+    fn linked_body_converts_subject_api_url_to_html_url() {
+        let body = render_body(&[sample()], Shape::LinkedTextBlock, false);
+        let Body::LinkedTextBlock(linked) = body else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(
+            linked.items[0].url.as_deref(),
+            Some("https://github.com/unhappychoice/splashboard/pulls/1")
+        );
+        assert!(linked.items[0].text.contains("review_requested"));
+    }
+
+    #[test]
+    fn linked_body_leaves_rows_unlinked_when_subject_url_cannot_be_mapped() {
+        let mut missing = sample();
+        missing.subject.url = None;
+        assert!(subject_html_url(&missing).is_none());
+
+        let mut wrong_prefix = sample();
+        wrong_prefix.subject.url = Some("https://api.github.com/user".into());
+        assert!(subject_html_url(&wrong_prefix).is_none());
+    }
+
+    #[test]
+    fn entries_body_shortens_repo_name_and_keeps_reason() {
+        let body = render_body(&[sample()], Shape::Entries, false);
+        let Body::Entries(entries) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].key, "splashboard");
+        assert_eq!(
+            entries.items[0].value.as_deref(),
+            Some("review_requested: feat: heatmap")
+        );
+    }
+
+    #[test]
+    fn timeline_body_uses_short_repo_and_parsed_timestamp() {
+        let body = render_body(&[sample()], Shape::Timeline, false);
+        let Body::Timeline(timeline) = body else {
+            panic!("expected timeline");
+        };
+        assert_eq!(timeline.events[0].title, "splashboard");
+        assert_eq!(
+            timeline.events[0].detail.as_deref(),
+            Some("review_requested: feat: heatmap")
+        );
+        assert!(timeline.events[0].timestamp > 0);
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_options() {
+        let err = run_async(GithubNotifications.fetch(&ctx(Some("bogus = true"), None, None)))
+            .unwrap_err();
+        assert!(matches!(err, FetchError::Failed(message) if message.contains("unknown field")));
+    }
+
+    #[test]
+    fn fetch_without_token_fails_after_building_default_list_path() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        let err = run_async(GithubNotifications.fetch(&ctx(None, None, None))).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message == "GH_TOKEN / GITHUB_TOKEN not set"
+        ));
+    }
+
+    #[test]
+    fn fetch_without_token_covers_badge_shape_and_clamped_limit_path() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        let err = run_async(GithubNotifications.fetch(&ctx(
+            Some("limit = 99\nall = true"),
+            Some(Shape::Badge),
+            None,
+        )))
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message == "GH_TOKEN / GITHUB_TOKEN not set"
+        ));
     }
 }
