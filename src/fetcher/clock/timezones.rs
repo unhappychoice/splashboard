@@ -179,4 +179,63 @@ mod tests {
             _ => panic!("expected text_block"),
         }
     }
+
+    #[test]
+    fn timezone_spec_named_uses_tz_and_label_fallbacks() {
+        let labelled = TimezoneSpec::Named {
+            tz: "Asia/Tokyo".into(),
+            label: Some("Tokyo".into()),
+        };
+        assert_eq!(labelled.tz(), "Asia/Tokyo");
+        assert_eq!(labelled.label(), "Tokyo");
+
+        let unlabeled = TimezoneSpec::Named {
+            tz: "UTC".into(),
+            label: None,
+        };
+        assert_eq!(unlabeled.tz(), "UTC");
+        assert_eq!(unlabeled.label(), "UTC");
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = ClockTimezonesFetcher;
+        assert_eq!(fetcher.name(), "clock_timezones");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("world-clock strip"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn default_shape_uses_text_block_and_named_labels() {
+        let p = ClockTimezonesFetcher.compute(&ctx(
+            None,
+            r#"timezones = [{ tz = "UTC", label = "Zulu" }, { tz = "Europe/London" }]"#,
+        ));
+        match p.body {
+            Body::TextBlock(d) => {
+                assert!(d.lines[0].starts_with("Zulu "));
+                assert!(d.lines[1].starts_with("Europe/London "));
+            }
+            _ => panic!("expected text_block"),
+        }
+    }
+
+    #[test]
+    fn invalid_options_return_placeholder() {
+        let p = ClockTimezonesFetcher.compute(&ctx(Some(Shape::TextBlock), "unexpected = 1"));
+        match p.body {
+            Body::TextBlock(d) => assert!(d.lines[0].contains("invalid options")),
+            _ => panic!("expected text_block"),
+        }
+    }
 }
