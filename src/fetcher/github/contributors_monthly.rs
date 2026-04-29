@@ -266,10 +266,156 @@ fn repo_for_key(ctx: &FetchContext) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration as StdDuration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let prev = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, prev)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "contributors-monthly".into(),
+            format: Some("compact".into()),
+            timeout: StdDuration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     fn rows() -> Vec<(String, u64)> {
         vec![("alice".into(), 42), ("bob".into(), 27)]
+    }
+
+    fn contributor(login: Option<&str>, weeks: &[(i64, u64)]) -> Contributor {
+        Contributor {
+            author: login.map(|login| Author {
+                login: login.into(),
+            }),
+            weeks: weeks.iter().map(|(w, c)| Week { w: *w, c: *c }).collect(),
+        }
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.repo.is_none());
+        assert!(opts.limit.is_none());
+        assert!(opts.days.is_none());
+    }
+
+    #[test]
+    fn options_deserialize_repo_limit_and_days() {
+        let raw: toml::Value = toml::from_str("repo = \"foo/bar\"\nlimit = 7\ndays = 14").unwrap();
+        let opts: Options = raw.try_into().unwrap();
+        assert_eq!(opts.repo.as_deref(), Some("foo/bar"));
+        assert_eq!(opts.limit, Some(7));
+        assert_eq!(opts.days, Some(14));
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("repo = \"foo/bar\"\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_metadata_and_samples_cover_supported_shapes() {
+        let fetcher = GithubContributorsMonthly;
+        assert_eq!(fetcher.name(), "github_contributors_monthly");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Top contributors"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Bars);
+        assert_eq!(fetcher.option_schemas().len(), 3);
+        assert_eq!(fetcher.option_schemas()[0].name, "repo");
+        assert_eq!(fetcher.option_schemas()[1].name, "limit");
+        assert_eq!(fetcher.option_schemas()[2].name, "days");
+
+        let Some(Body::Bars(bars)) = fetcher.sample_body(Shape::Bars) else {
+            panic!("expected bars sample");
+        };
+        assert_eq!(bars.bars[0].label, "alice");
+        assert_eq!(bars.bars[1].value, 27);
+
+        let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
+            panic!("expected entries sample");
+        };
+        assert_eq!(entries.items[0].key, "alice");
+        assert_eq!(entries.items[2].value.as_deref(), Some("11"));
+
+        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
+        else {
+            panic!("expected linked text block sample");
+        };
+        assert_eq!(linked.items[0].text, "alice  42");
+        assert_eq!(
+            linked.items[2].url.as_deref(),
+            Some("https://github.com/charlie")
+        );
+
+        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(text.lines[1], "bob  27");
+
+        let Some(Body::MarkdownTextBlock(markdown)) = fetcher.sample_body(Shape::MarkdownTextBlock)
+        else {
+            panic!("expected markdown sample");
+        };
+        assert!(markdown.value.contains("1. **@alice** — 42"));
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        assert_eq!(text.value, "@alice +42 · @bob +27 · @charlie +11");
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
@@ -298,5 +444,121 @@ mod tests {
             panic!("expected text block")
         };
         assert_eq!(d.lines.len(), 2);
+    }
+
+    #[test]
+    fn entries_body_keeps_name_to_count_pairs() {
+        let body = render_body(&rows(), Shape::Entries);
+        let Body::Entries(entries) = body else {
+            panic!("expected entries")
+        };
+        assert_eq!(entries.items[0].key, "alice");
+        assert_eq!(entries.items[1].value.as_deref(), Some("27"));
+    }
+
+    #[test]
+    fn linked_text_block_uses_profile_urls() {
+        let body = render_body(&rows(), Shape::LinkedTextBlock);
+        let Body::LinkedTextBlock(linked) = body else {
+            panic!("expected linked text block")
+        };
+        assert_eq!(linked.items[0].text, "alice  42");
+        assert_eq!(
+            linked.items[1].url.as_deref(),
+            Some("https://github.com/bob")
+        );
+    }
+
+    #[test]
+    fn bars_body_preserves_labels_and_values() {
+        let body = render_body(&rows(), Shape::Bars);
+        let Body::Bars(bars) = body else {
+            panic!("expected bars")
+        };
+        assert_eq!(bars.bars[0].label, "alice");
+        assert_eq!(bars.bars[1].value, 27);
+    }
+
+    #[test]
+    fn top_contributors_filters_old_zero_and_anonymous_rows_then_sorts_and_truncates() {
+        let now = Utc::now().timestamp();
+        let stats = vec![
+            contributor(
+                Some("alice"),
+                &[
+                    (now - Duration::days(2).num_seconds(), 4),
+                    (now - Duration::days(10).num_seconds(), 6),
+                ],
+            ),
+            contributor(
+                Some("bob"),
+                &[
+                    (now - Duration::days(5).num_seconds(), 7),
+                    (now - Duration::days(40).num_seconds(), 20),
+                ],
+            ),
+            contributor(Some("carol"), &[(now - Duration::days(1).num_seconds(), 0)]),
+            contributor(None, &[(now - Duration::days(1).num_seconds(), 9)]),
+            contributor(
+                Some("dave"),
+                &[(now - Duration::days(60).num_seconds(), 11)],
+            ),
+        ];
+
+        let rows = top_contributors(&stats, 30, 2);
+
+        assert_eq!(rows, vec![("alice".into(), 10), ("bob".into(), 7)]);
+    }
+
+    #[test]
+    fn repo_for_key_prefers_explicit_repo_option() {
+        assert_eq!(
+            repo_for_key(&ctx(
+                Some("repo = \"foo/bar\"\nlimit = 7\ndays = 14"),
+                Some(Shape::Bars)
+            )),
+            "foo/bar"
+        );
+    }
+
+    #[test]
+    fn repo_for_key_falls_back_to_resolved_repo() {
+        assert_eq!(
+            repo_for_key(&ctx(None, Some(Shape::Bars))),
+            resolve_repo(None).unwrap().as_path()
+        );
+    }
+
+    #[test]
+    fn cache_key_changes_with_repo_option() {
+        let fetcher = GithubContributorsMonthly;
+        let a = fetcher.cache_key(&ctx(Some("repo = \"foo/bar\""), Some(Shape::Bars)));
+        let b = fetcher.cache_key(&ctx(Some("repo = \"foo/baz\""), Some(Shape::Bars)));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_repo_before_auth_lookup() {
+        let fetcher = GithubContributorsMonthly;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"not-a-slug\"\nlimit = 99\ndays = 999"),
+            Some(Shape::Entries),
+        )))
+        .unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid repo option")));
+    }
+
+    #[test]
+    fn fetch_surfaces_missing_token_without_network_response() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        let fetcher = GithubContributorsMonthly;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"foo/bar\"\nlimit = 99\ndays = 999"),
+            Some(Shape::Entries),
+        )))
+        .unwrap_err();
+        assert!(
+            matches!(err, FetchError::Failed(msg) if msg.contains("GH_TOKEN / GITHUB_TOKEN not set"))
+        );
     }
 }
