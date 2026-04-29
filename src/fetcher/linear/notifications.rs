@@ -300,7 +300,7 @@ impl Fetcher for LinearNotifications {
             .filter(|v| matches_type(v, opts.filter_type.as_deref()))
             .filter(|v| matches_team(v, opts.filter_team.as_deref()))
             .collect();
-        views.sort_by(|a, b| b.created_ts.cmp(&a.created_ts));
+        views.sort_by_key(|v| std::cmp::Reverse(v.created_ts));
         let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
         let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
         Ok(payload(render_body(&views, shape, limit)))
