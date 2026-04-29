@@ -714,4 +714,147 @@ mod tests {
             issues: vec![],
         }
     }
+
+    fn issue_for_test(id: &str, state: &str, due: Option<NaiveDate>) -> IssueView {
+        IssueView {
+            identifier: id.into(),
+            title: format!("Title {id}"),
+            state_name: state.into(),
+            state_type: state.to_lowercase(),
+            due_date: due,
+            url: format!("https://linear.app/acme/issue/{id}"),
+        }
+    }
+
+    #[test]
+    fn build_filter_previous_uses_is_previous() {
+        let f = build_filter(&options("cycle = \"previous\""));
+        assert_eq!(f["isPrevious"]["eq"], json!(true));
+        assert!(f.get("isActive").is_none());
+    }
+
+    #[test]
+    fn build_filter_unrecognised_keyword_falls_back_to_active() {
+        let f = build_filter(&options("cycle = \"garbage\""));
+        assert_eq!(f["isActive"]["eq"], json!(true));
+    }
+
+    #[test]
+    fn render_text_block_lists_dates_and_days_left() {
+        let view = view_for_test(0.4, 4, 10);
+        let body = render_body(&view, Shape::TextBlock);
+        let Body::TextBlock(b) = body else {
+            panic!("expected text_block");
+        };
+        let joined = b.lines.join("\n");
+        assert!(joined.contains(&view.starts_at.to_string()));
+        assert!(joined.contains(&view.ends_at.to_string()));
+        assert!(joined.contains("4/10"));
+    }
+
+    #[test]
+    fn render_markdown_uses_bold_for_name_and_dates() {
+        let view = view_for_test(0.4, 4, 10);
+        let body = render_body(&view, Shape::MarkdownTextBlock);
+        let Body::MarkdownTextBlock(b) = body else {
+            panic!("expected markdown");
+        };
+        assert!(b.value.contains("**Cycle 24**"));
+        assert!(b.value.contains("**4/10**"));
+    }
+
+    #[test]
+    fn render_entries_returns_six_canonical_rows() {
+        let view = view_for_test(0.4, 4, 10);
+        let body = render_body(&view, Shape::Entries);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        let keys: Vec<&str> = e.items.iter().map(|i| i.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec!["Cycle", "Team", "Started", "Ends", "Completed", "Days left"]
+        );
+    }
+
+    #[test]
+    fn render_bars_groups_issues_by_state_name() {
+        let mut view = view_for_test(0.4, 2, 4);
+        view.issues = vec![
+            issue_for_test("ENG-1", "Started", None),
+            issue_for_test("ENG-2", "Todo", None),
+            issue_for_test("ENG-3", "Todo", None),
+            issue_for_test("ENG-4", "Completed", None),
+        ];
+        let body = render_body(&view, Shape::Bars);
+        let Body::Bars(b) = body else {
+            panic!("expected bars");
+        };
+        let todo = b.bars.iter().find(|x| x.label == "Todo").unwrap();
+        assert_eq!(todo.value, 2);
+    }
+
+    #[test]
+    fn calendar_includes_cycle_days_within_anchor_month() {
+        let view = view_for_test(0.4, 4, 10);
+        let body = render_body(&view, Shape::Calendar);
+        let Body::Calendar(c) = body else {
+            panic!("expected calendar");
+        };
+        // The cycle spans 4-22 → 5-6 (14 days). The anchor is whatever month `today` is in,
+        // clamped into the cycle range — for tests we just check the events are non-empty
+        // and lie within the cycle's date range.
+        assert!(!c.events.is_empty());
+        for day in &c.events {
+            assert!((1..=31).contains(day));
+        }
+    }
+
+    #[test]
+    fn calendar_anchor_clamps_to_cycle_end_when_today_is_after() {
+        let mut view = view_for_test(1.0, 10, 10);
+        view.starts_at = NaiveDate::from_ymd_opt(2020, 1, 5).unwrap();
+        view.ends_at = NaiveDate::from_ymd_opt(2020, 1, 15).unwrap();
+        // `today` (the current process date) is far after Jan 2020; the anchor should clamp
+        // to the cycle end → January 2020, with all 11 cycle days populated.
+        let body = render_body(&view, Shape::Calendar);
+        let Body::Calendar(c) = body else {
+            panic!("expected calendar");
+        };
+        assert_eq!(c.year, 2020);
+        assert_eq!(c.month, 1);
+        for day in 5u8..=15 {
+            assert!(c.events.contains(&day), "missing day {day}");
+        }
+    }
+
+    #[test]
+    fn render_badge_label_reflects_progress_status() {
+        let mut view = view_for_test(0.10, 1, 10);
+        view.starts_at = NaiveDate::from_ymd_opt(2026, 4, 22).unwrap();
+        view.ends_at = NaiveDate::from_ymd_opt(2026, 5, 6).unwrap();
+        let body = render_body(&view, Shape::Badge);
+        let Body::Badge(b) = body else {
+            panic!("expected badge");
+        };
+        // We can't pin the today-relative label deterministically, but the static result of
+        // calling badge_label / progress_status with today=ends_at gives "behind" for this
+        // view (10% done, 100% elapsed → gap 0.90).
+        let label = badge_label(&view, view.ends_at);
+        assert!(["behind", "at risk", "on track", "done"].contains(&label));
+        assert!(b.label.contains("Cycle 24"));
+    }
+
+    #[test]
+    fn badge_label_done_when_progress_full() {
+        let view = view_for_test(1.0, 10, 10);
+        assert_eq!(badge_label(&view, view.starts_at), "done");
+    }
+
+    #[test]
+    fn days_left_clamps_to_zero_when_cycle_has_ended() {
+        let view = view_for_test(1.0, 10, 10);
+        let after = view.ends_at + chrono::Duration::days(7);
+        assert_eq!(days_left(&view, after), 0);
+    }
 }

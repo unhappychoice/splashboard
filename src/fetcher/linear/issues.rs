@@ -807,4 +807,116 @@ mod tests {
             updated_at: ts,
         }
     }
+
+    #[test]
+    fn render_text_block_caps_at_limit() {
+        let views: Vec<IssueView> = (0..15)
+            .map(|i| view_for_test(&format!("ENG-{i}"), 1, None, 0))
+            .collect();
+        let body = render_body(&views, Shape::TextBlock, &Options::default(), 5);
+        let Body::TextBlock(b) = body else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 5);
+    }
+
+    #[test]
+    fn render_markdown_emboldens_identifier() {
+        let views = vec![view_for_test("ENG-7", 2, None, 0)];
+        let body = render_body(&views, Shape::MarkdownTextBlock, &Options::default(), 10);
+        let Body::MarkdownTextBlock(b) = body else {
+            panic!("expected markdown");
+        };
+        assert!(b.value.contains("**ENG-7**"), "got: {}", b.value);
+        assert!(b.value.contains("*[Todo]*"), "got: {}", b.value);
+    }
+
+    #[test]
+    fn render_entries_maps_state_type_to_status() {
+        let mut started = view_for_test("ENG-1", 2, None, 0);
+        started.state_type = "started".into();
+        let mut completed = view_for_test("ENG-2", 2, None, 0);
+        completed.state_type = "completed".into();
+        let mut canceled = view_for_test("ENG-3", 2, None, 0);
+        canceled.state_type = "canceled".into();
+        let body = render_body(
+            &[started, completed, canceled],
+            Shape::Entries,
+            &Options::default(),
+            10,
+        );
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items[0].status, Some(Status::Warn));
+        assert_eq!(e.items[1].status, Some(Status::Ok));
+        assert_eq!(e.items[2].status, Some(Status::Error));
+    }
+
+    #[test]
+    fn render_calendar_filters_due_dates_to_current_month() {
+        let now = t::now_in(None).date_naive();
+        let in_month = NaiveDate::from_ymd_opt(now.year(), now.month(), 5).unwrap();
+        let last_year = NaiveDate::from_ymd_opt(now.year() - 1, now.month(), 9).unwrap();
+        let views = vec![
+            view_for_test("ENG-1", 1, Some(in_month), 0),
+            view_for_test("ENG-2", 2, Some(last_year), 0),
+            view_for_test("ENG-3", 3, None, 0),
+        ];
+        let body = render_body(&views, Shape::Calendar, &Options::default(), 10);
+        let Body::Calendar(c) = body else {
+            panic!("expected calendar");
+        };
+        assert_eq!(c.year, now.year());
+        assert!(c.events.contains(&5));
+        assert!(!c.events.contains(&9));
+    }
+
+    #[test]
+    fn render_timeline_carries_state_status_and_priority_detail() {
+        let mut started = view_for_test("ENG-1", 1, None, 1_700_000_000);
+        started.state_type = "started".into();
+        started.state_name = "In Progress".into();
+        let body = render_body(&[started], Shape::Timeline, &Options::default(), 10);
+        let Body::Timeline(t) = body else {
+            panic!("expected timeline");
+        };
+        assert_eq!(t.events[0].status, Some(Status::Warn));
+        assert_eq!(t.events[0].timestamp, 1_700_000_000);
+        let detail = t.events[0].detail.as_deref().unwrap();
+        assert!(detail.contains("In Progress"), "got: {detail}");
+        assert!(detail.contains("P1"), "got: {detail}");
+    }
+
+    #[test]
+    fn bars_group_by_status_uses_state_name() {
+        let mut a = view_for_test("ENG-1", 1, None, 0);
+        a.state_name = "In Progress".into();
+        let mut b = view_for_test("ENG-2", 1, None, 0);
+        b.state_name = "Todo".into();
+        let mut c = view_for_test("ENG-3", 1, None, 0);
+        c.state_name = "Todo".into();
+        let opts = Options {
+            group_by: Some("status".into()),
+            ..Default::default()
+        };
+        let body = render_body(&[a, b, c], Shape::Bars, &opts, 10);
+        let Body::Bars(bars) = body else {
+            panic!("expected bars");
+        };
+        let todo = bars.bars.iter().find(|x| x.label == "Todo").unwrap();
+        assert_eq!(todo.value, 2);
+    }
+
+    #[test]
+    fn cmp_views_breaks_ties_with_due_date_then_recency() {
+        let dec1 = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+        let dec5 = NaiveDate::from_ymd_opt(2026, 12, 5).unwrap();
+        let earlier = view_for_test("ENG-A", 2, Some(dec5), 100);
+        let later = view_for_test("ENG-B", 2, Some(dec1), 50);
+        let mut list = [earlier, later];
+        list.sort_by(cmp_views);
+        // Same priority → earlier due date wins.
+        assert_eq!(list[0].identifier, "ENG-B");
+    }
 }

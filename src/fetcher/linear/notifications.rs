@@ -772,4 +772,118 @@ mod tests {
         let line = line_for(&v);
         assert!(line.contains("Please review"), "got: {line}");
     }
+
+    #[test]
+    fn pretty_type_maps_pr_review_distinct_from_pr() {
+        assert_eq!(pretty_type("pullRequestReviewRequested"), "PR review");
+        assert_eq!(pretty_type("pullRequestComment"), "PR");
+        assert_eq!(pretty_type("pullRequestMerged"), "PR");
+    }
+
+    #[test]
+    fn pretty_type_humanises_unknown_camel_case() {
+        assert_eq!(pretty_type("issueDoneSomething"), "issue done something");
+    }
+
+    #[test]
+    fn line_for_omits_actor_segment_when_actor_missing() {
+        let mut v = view_for_test("issueMention", true, Some("ENG-1"));
+        v.actor = None;
+        let line = line_for(&v);
+        assert!(
+            !line.contains("@"),
+            "actor segment should be elided: {line}"
+        );
+        assert!(line.contains("ENG-1"));
+    }
+
+    #[test]
+    fn render_text_block_caps_at_limit() {
+        let views: Vec<NotifView> = (0..15)
+            .map(|i| view_for_test("issueMention", true, Some(&format!("E-{i}"))))
+            .collect();
+        let body = render_body(&views, Shape::TextBlock, 5);
+        let Body::TextBlock(b) = body else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 5);
+    }
+
+    #[test]
+    fn render_entries_marks_unread_with_warn_status() {
+        let unread = view_for_test("issueMention", true, Some("ENG-1"));
+        let read = view_for_test("issueMention", false, Some("ENG-2"));
+        let body = render_body(&[unread, read], Shape::Entries, 10);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items[0].status, Some(Status::Warn));
+        assert_eq!(e.items[1].status, None);
+    }
+
+    #[test]
+    fn render_timeline_event_carries_created_ts_and_unread_status() {
+        let v = view_for_test("issueMention", true, Some("ENG-1"));
+        let body = render_body(&[v], Shape::Timeline, 10);
+        let Body::Timeline(t) = body else {
+            panic!("expected timeline");
+        };
+        assert_eq!(t.events[0].timestamp, 1_745_896_800);
+        assert_eq!(t.events[0].status, Some(Status::Warn));
+    }
+
+    #[test]
+    fn badge_warn_when_unread_in_warn_band() {
+        let views: Vec<NotifView> = (0..5)
+            .map(|i| view_for_test("issueMention", true, Some(&format!("E-{i}"))))
+            .collect();
+        let body = render_body(&views, Shape::Badge, 10);
+        let Body::Badge(b) = body else {
+            panic!("expected badge");
+        };
+        assert_eq!(b.status, Status::Warn);
+    }
+
+    #[test]
+    fn to_view_prefers_pull_request_over_project_when_both_absent_for_issue() {
+        let api = ApiNotification {
+            notif_type: "pullRequestReviewRequested".into(),
+            read_at: None,
+            created_at: "2026-04-29T00:00:00Z".into(),
+            actor: None,
+            issue: None,
+            project: None,
+            comment: None,
+            pull_request: Some(ApiPullRequest {
+                number: 42,
+                title: "Fix login flow".into(),
+                url: "https://github.com/acme/widgets/pull/42".into(),
+            }),
+        };
+        let v = to_view(api);
+        assert_eq!(v.issue_identifier.as_deref(), Some("acme/widgets#42"));
+        assert_eq!(v.issue_title.as_deref(), Some("Fix login flow"));
+        assert!(v.is_unread);
+    }
+
+    #[test]
+    fn to_view_uses_project_when_no_issue_or_pull_request() {
+        let api = ApiNotification {
+            notif_type: "projectUpdateCreated".into(),
+            read_at: Some("2026-04-29T00:00:00Z".into()),
+            created_at: "2026-04-28T00:00:00Z".into(),
+            actor: None,
+            issue: None,
+            project: Some(ApiProject {
+                name: "Q2 Roadmap".into(),
+                url: "https://linear.app/acme/project/q2-roadmap".into(),
+            }),
+            comment: None,
+            pull_request: None,
+        };
+        let v = to_view(api);
+        assert_eq!(v.issue_identifier, None);
+        assert_eq!(v.issue_title.as_deref(), Some("Q2 Roadmap"));
+        assert!(!v.is_unread);
+    }
 }
