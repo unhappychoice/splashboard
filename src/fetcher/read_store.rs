@@ -384,4 +384,301 @@ mod tests {
         let b = ReadStoreFetcher.cache_key(&ctx("habit", Shape::TextBlock, "json"));
         assert_ne!(a, b);
     }
+
+    fn structured_cases() -> Vec<(Shape, &'static str, &'static str, Body)> {
+        vec![
+            (
+                Shape::Text,
+                r#"{"value":"hello"}"#,
+                r#"value = "hello""#,
+                Body::Text(TextData {
+                    value: "hello".into(),
+                }),
+            ),
+            (
+                Shape::TextBlock,
+                r#"{"lines":["one","two"]}"#,
+                r#"lines = ["one", "two"]"#,
+                Body::TextBlock(TextBlockData {
+                    lines: vec!["one".into(), "two".into()],
+                }),
+            ),
+            (
+                Shape::Entries,
+                r#"{"items":[{"key":"branch","value":"main"}]}"#,
+                r#"[[items]]
+key = "branch"
+value = "main""#,
+                Body::Entries(EntriesData {
+                    items: vec![crate::payload::Entry {
+                        key: "branch".into(),
+                        value: Some("main".into()),
+                        status: None,
+                    }],
+                }),
+            ),
+            (
+                Shape::Ratio,
+                r#"{"value":0.25,"label":"done","denominator":4}"#,
+                "value = 0.25\nlabel = \"done\"\ndenominator = 4",
+                Body::Ratio(RatioData {
+                    value: 0.25,
+                    label: Some("done".into()),
+                    denominator: Some(4),
+                }),
+            ),
+            (
+                Shape::NumberSeries,
+                r#"{"values":[1,2,3]}"#,
+                "values = [1, 2, 3]",
+                Body::NumberSeries(NumberSeriesData {
+                    values: vec![1, 2, 3],
+                }),
+            ),
+            (
+                Shape::PointSeries,
+                r#"{"series":[{"name":"cpu","points":[[0.0,1.0],[1.0,2.0]]}]}"#,
+                "[[series]]\nname = \"cpu\"\npoints = [[0.0, 1.0], [1.0, 2.0]]",
+                Body::PointSeries(PointSeriesData {
+                    series: vec![crate::payload::PointSeries {
+                        name: "cpu".into(),
+                        points: vec![(0.0, 1.0), (1.0, 2.0)],
+                    }],
+                }),
+            ),
+            (
+                Shape::Bars,
+                r#"{"bars":[{"label":"todo","value":3}]}"#,
+                "[[bars]]\nlabel = \"todo\"\nvalue = 3",
+                Body::Bars(BarsData {
+                    bars: vec![Bar {
+                        label: "todo".into(),
+                        value: 3,
+                    }],
+                }),
+            ),
+            (
+                Shape::Image,
+                r#"{"path":"/tmp/pic.png"}"#,
+                r#"path = "/tmp/pic.png""#,
+                Body::Image(ImageData {
+                    path: "/tmp/pic.png".into(),
+                }),
+            ),
+            (
+                Shape::Calendar,
+                r#"{"year":2026,"month":4,"day":30,"events":[1,15]}"#,
+                "year = 2026\nmonth = 4\nday = 30\nevents = [1, 15]",
+                Body::Calendar(CalendarData {
+                    year: 2026,
+                    month: 4,
+                    day: Some(30),
+                    events: vec![1, 15],
+                }),
+            ),
+            (
+                Shape::Heatmap,
+                r#"{"cells":[[0,1],[2,3]],"thresholds":[1,2,3,4],"row_labels":["Mon","Tue"],"col_labels":["AM","PM"]}"#,
+                "cells = [[0, 1], [2, 3]]\nthresholds = [1, 2, 3, 4]\nrow_labels = [\"Mon\", \"Tue\"]\ncol_labels = [\"AM\", \"PM\"]",
+                Body::Heatmap(HeatmapData {
+                    cells: vec![vec![0, 1], vec![2, 3]],
+                    thresholds: Some(vec![1, 2, 3, 4]),
+                    row_labels: Some(vec!["Mon".into(), "Tue".into()]),
+                    col_labels: Some(vec!["AM".into(), "PM".into()]),
+                }),
+            ),
+        ]
+    }
+
+    #[test]
+    fn fetcher_contract_and_resolve_path_are_stable() {
+        assert_eq!(ReadStoreFetcher.name(), "basic_read_store");
+        assert_eq!(ReadStoreFetcher.safety(), Safety::Safe);
+        assert_eq!(ReadStoreFetcher.shapes(), READ_STORE_SHAPES);
+        assert!(
+            ReadStoreFetcher
+                .description()
+                .contains("$HOME/.splashboard/store/")
+        );
+        assert_eq!(default_format_for_shape(Shape::Text), "text");
+        assert_eq!(default_format_for_shape(Shape::TextBlock), "text");
+        assert_eq!(default_format_for_shape(Shape::Heatmap), "json");
+
+        let tmp = tempfile::tempdir().unwrap();
+        let _guard = ScopedHome::new(tmp.path());
+        assert_eq!(
+            resolve_path("notes", "text"),
+            Some(tmp.path().join("store").join("notes.txt"))
+        );
+        assert_eq!(
+            resolve_path("chart?", "toml"),
+            Some(tmp.path().join("store").join("chart_.toml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_defaults_file_format_for_text_and_structured_shapes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("store");
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(store.join("headline.txt"), "hello\nworld").unwrap();
+        std::fs::write(store.join("habit.json"), r#"{"cells":[[1,2],[3,4]]}"#).unwrap();
+        let _guard = ScopedHome::new(tmp.path());
+        let text_ctx = FetchContext {
+            widget_id: "headline".into(),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::Text),
+            ..Default::default()
+        };
+        let heatmap_ctx = FetchContext {
+            widget_id: "habit".into(),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::Heatmap),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            ReadStoreFetcher.fetch(&text_ctx).await.unwrap().body,
+            Body::Text(TextData {
+                value: "hello world".into(),
+            })
+        );
+        assert_eq!(
+            ReadStoreFetcher.fetch(&heatmap_ctx).await.unwrap().body,
+            Body::Heatmap(HeatmapData {
+                cells: vec![vec![1, 2], vec![3, 4]],
+                thresholds: None,
+                row_labels: None,
+                col_labels: None,
+            })
+        );
+    }
+
+    #[test]
+    fn structured_json_and_toml_cover_all_supported_shapes() {
+        structured_cases()
+            .into_iter()
+            .for_each(|(shape, json, toml, expected)| {
+                assert_eq!(from_json(json, shape).unwrap(), expected.clone());
+                assert_eq!(from_toml(toml, shape).unwrap(), expected);
+            });
+    }
+
+    #[test]
+    fn parse_and_load_errors_cover_fallback_branches() {
+        assert_eq!(
+            parse_body("one\ntwo", "text", Shape::Text).unwrap(),
+            Body::Text(TextData {
+                value: "one two".into(),
+            })
+        );
+        assert_eq!(
+            parse_body("one\ntwo", "text", Shape::TextBlock).unwrap(),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["one".into(), "two".into()],
+            })
+        );
+        assert!(matches!(
+            parse_body("{}", "text", Shape::Bars),
+            Err(FetchError::Failed(message)) if message.contains("requires json or toml")
+        ));
+        assert!(matches!(
+            parse_body("{}", "yaml", Shape::TextBlock),
+            Err(FetchError::Failed(message)) if message.contains("unknown file_format")
+        ));
+        assert!(matches!(
+            from_json("{", Shape::Text),
+            Err(FetchError::Failed(message)) if message.contains("json parse")
+        ));
+        assert!(matches!(
+            from_json("{}", Shape::Badge),
+            Err(FetchError::Failed(message)) if message.contains("doesn't support shape")
+        ));
+        assert!(matches!(
+            from_toml("value = [", Shape::Text),
+            Err(FetchError::Failed(message)) if message.contains("toml parse")
+        ));
+        assert!(matches!(
+            from_toml("", Shape::Timeline),
+            Err(FetchError::Failed(message)) if message.contains("doesn't support shape")
+        ));
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir_error = load_body(tmp.path(), "json", Shape::Text).unwrap_err();
+        assert!(
+            matches!(dir_error, FetchError::Failed(message) if message.contains("read failed"))
+        );
+
+        let invalid = tmp.path().join("bad.json");
+        std::fs::write(&invalid, [0xff, 0xfe]).unwrap();
+        let utf8_error = load_body(&invalid, "json", Shape::Text).unwrap_err();
+        assert!(matches!(utf8_error, FetchError::Failed(message) if message.contains("utf-8")));
+    }
+
+    #[test]
+    fn empty_body_matches_declared_shape_defaults() {
+        [
+            (
+                Shape::Text,
+                Body::Text(TextData {
+                    value: String::new(),
+                }),
+            ),
+            (
+                Shape::TextBlock,
+                Body::TextBlock(TextBlockData { lines: Vec::new() }),
+            ),
+            (
+                Shape::Entries,
+                Body::Entries(EntriesData { items: Vec::new() }),
+            ),
+            (
+                Shape::Ratio,
+                Body::Ratio(RatioData {
+                    value: 0.0,
+                    label: None,
+                    denominator: None,
+                }),
+            ),
+            (
+                Shape::NumberSeries,
+                Body::NumberSeries(NumberSeriesData { values: Vec::new() }),
+            ),
+            (
+                Shape::PointSeries,
+                Body::PointSeries(PointSeriesData { series: Vec::new() }),
+            ),
+            (Shape::Bars, Body::Bars(BarsData { bars: Vec::new() })),
+            (
+                Shape::Image,
+                Body::Image(ImageData {
+                    path: String::new(),
+                }),
+            ),
+            (
+                Shape::Calendar,
+                Body::Calendar(CalendarData {
+                    year: 1970,
+                    month: 1,
+                    day: None,
+                    events: Vec::new(),
+                }),
+            ),
+            (
+                Shape::Heatmap,
+                Body::Heatmap(HeatmapData {
+                    cells: Vec::new(),
+                    thresholds: None,
+                    row_labels: None,
+                    col_labels: None,
+                }),
+            ),
+            (
+                Shape::Badge,
+                Body::TextBlock(TextBlockData { lines: Vec::new() }),
+            ),
+        ]
+        .into_iter()
+        .for_each(|(shape, expected)| assert_eq!(empty_body(shape), expected));
+    }
 }
