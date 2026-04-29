@@ -263,6 +263,60 @@ fn link_for(entry: &Entry) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
+        FetchContext {
+            widget_id: "w".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options,
+            ..Default::default()
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn serve_once(
+        status: &str,
+        content_type: &str,
+        body: &[u8],
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let content_type = content_type.to_owned();
+        let body = body.to_vec();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let header = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn assert_failed_contains(err: FetchError, needle: &str) {
+        match err {
+            FetchError::Failed(message) => assert!(message.contains(needle), "msg: {message}"),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
 
     #[test]
     fn options_default_to_none() {
@@ -491,8 +545,86 @@ mod tests {
     }
 
     #[test]
-    fn announces_network_safety() {
-        assert_eq!(RssFetcher.safety(), Safety::Network);
+    fn fetcher_exposes_catalog_contract() {
+        let fetcher = RssFetcher;
+        assert_eq!(fetcher.name(), "rss");
+        assert_eq!(fetcher.safety(), Safety::Network);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["url", "count"]
+        );
+        assert!(fetcher.description().contains("feed-rs"));
+    }
+
+    #[test]
+    fn whitespace_only_titles_fall_back_to_placeholder() {
+        let mut feed = parse(RSS_FIXTURE);
+        feed.entries[0].title.as_mut().unwrap().content = " \n\t ".into();
+        let body = render_body(&feed, 1, Shape::TextBlock, None, None);
+        let Body::TextBlock(t) = body else {
+            panic!("expected text block");
+        };
+        assert!(t.lines[0].contains("(no title)"));
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_options_before_network() {
+        let raw: toml::Value =
+            toml::from_str("url = \"https://example.com\"\nbogus = true").unwrap();
+        let err = run_async(RssFetcher.fetch(&ctx(None, Some(raw)))).unwrap_err();
+        assert_failed_contains(err, "unknown field");
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_url_before_network() {
+        let raw: toml::Value = toml::from_str("url = \"ftp://example.com/feed.xml\"").unwrap();
+        let err = run_async(RssFetcher.fetch(&ctx(None, Some(raw)))).unwrap_err();
+        assert_failed_contains(err, "unsupported url scheme");
+    }
+
+    #[test]
+    fn fetch_parses_remote_feed_and_uses_default_linked_shape() {
+        let (url, server) = serve_once("200 OK", "application/rss+xml", RSS_FIXTURE.as_bytes());
+        let raw: toml::Value = toml::from_str(&format!("url = \"{url}\"")).unwrap();
+        let payload = run_async(RssFetcher.fetch(&ctx(None, Some(raw)))).unwrap();
+        server.join().unwrap();
+        let Body::LinkedTextBlock(body) = payload.body else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(body.items.len(), 2);
+        assert_eq!(body.items[1].url.as_deref(), Some("https://example.com/2"));
+    }
+
+    #[test]
+    fn fetch_surfaces_parse_errors_from_non_feed_body() {
+        let (url, server) = serve_once("200 OK", "text/plain", b"not a feed");
+        let raw: toml::Value = toml::from_str(&format!("url = \"{url}\"")).unwrap();
+        let err = run_async(RssFetcher.fetch(&ctx(None, Some(raw)))).unwrap_err();
+        server.join().unwrap();
+        assert_failed_contains(err, "rss parse");
+    }
+
+    #[test]
+    fn fetch_bytes_reports_http_status_and_size_cap() {
+        let (status_url, status_server) =
+            serve_once("500 Internal Server Error", "text/plain", b"oops");
+        let status_err =
+            run_async(fetch_bytes(&validated_url(Some(&status_url)).unwrap())).unwrap_err();
+        status_server.join().unwrap();
+        assert_failed_contains(status_err, "rss 500");
+
+        let oversized = vec![b'x'; MAX_BYTES + 1];
+        let (size_url, size_server) = serve_once("200 OK", "application/octet-stream", &oversized);
+        let size_err =
+            run_async(fetch_bytes(&validated_url(Some(&size_url)).unwrap())).unwrap_err();
+        size_server.join().unwrap();
+        assert_failed_contains(size_err, "too large");
     }
 
     /// Atom feeds frequently carry both `rel="self"` (feed-internal permalink) and
