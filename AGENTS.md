@@ -136,7 +136,7 @@ Sub-issues:
 - **#61** — renderer roadmap (primitives + animation families)
 - **#62** — fetcher roadmap: Local / System (`clock_*`, `system_*`, `disk_*`, `net_*`, `docker_*`, `k8s_*`, `project_*`)
 - **#63** — fetcher roadmap: VCS / Forge (`git_*`, `github_*`, `gitlab_*`, `bitbucket_*`, `gitea_*`, `sourcehut_*`, `azure_devops_*`, `gerrit_*`)
-- **#64** — fetcher roadmap: Coding & Build (`ci_*`, `deploy_*`, `wakatime_*`, `leetcode_*`, `stackoverflow_*`, `oss_*`, package downloads)
+- **#64** — fetcher roadmap: Coding & Build (`ci_*`, `deploy_*`, `leetcode_*`, `stackoverflow_*`, `oss_*`, package downloads)
 - **#65** — fetcher roadmap: Cloud / Infra / Ops (`aws_*`, `gcp_*`, `cloudflare_*`, `tailscale_*`, uptime, `pagerduty_*`, observability)
 - **#66** — fetcher roadmap: Communication & PM (`slack_*`, `discord_*`, `email_*`, `matrix_*`, `jira_*`, `linear_*`, `todoist_*`, `notion_*`)
 - **#67** — fetcher roadmap: Social & Media (RSS / news, `mastodon_*`, `bluesky_*`, `youtube_*`, `twitch_*`, `spotify_*`, reading / watching, novelty feeds)

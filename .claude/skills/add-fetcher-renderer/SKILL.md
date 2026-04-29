@@ -20,11 +20,11 @@ Skip this phase only if the user named a specific candidate ("add `system_batter
 2. **Filter to the open boxes** in the surveyed issues.
 3. **Score candidates with these four filters** (these supersede #41's looser rubric for ranking — keep #41 for cross-cutting context, do scoring here):
 
-   **A. Renderer primitive leverage (renderer asks).** Counts only if you can name **≥2 specific consumer fetchers** from the current catalog — shipped or in an open box, by name. Vague "could be useful for some Ratio fetcher" doesn't count. `text_big_number` clears it (wakatime_today, github_repo_stars, oss_followers_delta, deploy_error_budget, package downloads). `chart_funnel` doesn't (no roadmap fetcher emits funnel-shaped Bars yet) — defer until a consumer lands.
+   **A. Renderer primitive leverage (renderer asks).** Counts only if you can name **≥2 specific consumer fetchers** from the current catalog — shipped or in an open box, by name. Vague "could be useful for some Ratio fetcher" doesn't count. `text_big_number` clears it (github_repo_stars, oss_followers_delta, deploy_error_budget, package downloads). `chart_funnel` doesn't (no roadmap fetcher emits funnel-shaped Bars yet) — defer until a consumer lands.
 
    **B. Recurring-change × repeated-look-value** (the real "daily-driver" test, replacing #41's vague rubric ②). Both sub-tests must pass for a high rank:
    - *Recurring-change*: does displayed content change ≥1×/day?
-   - *Repeated-look-value*: would the user still want to see it after 100 splash opens? **Novelty traps fail here** — `iss_position` (fun once, ignored after), `f1_next_race` (fan-only then forgotten), `random_cat`, `fortune`. `todoist_today` / `linear_assigned` / `wakatime_today` / `slack_unread` pass — people *check these on purpose every day*.
+   - *Repeated-look-value*: would the user still want to see it after 100 splash opens? **Novelty traps fail here** — `iss_position` (fun once, ignored after), `f1_next_race` (fan-only then forgotten), `random_cat`, `fortune`. `todoist_today` / `linear_assigned` / `slack_unread` pass — people *check these on purpose every day*.
 
    **C. Persona name test.** Name in one phrase the user who'd open splash and benefit **every day**. "Anyone with a Todoist account" ✅. "Devs at modern startups using Linear" ✅. "Kids learning about space" ❌ (not a regular shell user). "People who like weather data" ❌ (they check phones). If you can't name a concrete recurring user, demote to ambient/novelty tier.
 
