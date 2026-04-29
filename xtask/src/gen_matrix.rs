@@ -63,10 +63,18 @@ fn rel_path(kind: &str, name: &str) -> String {
     format!("{kind}/{}/{name}.md", family_of(name))
 }
 
-/// Cross-link between two pages. Both live at depth 2 under the reference root
-/// (`<kind>/<family>/<name>.md`), so every hop is `../../<kind>/<family>/<name>.md`.
+/// Same-level link from `matrix.md` (the reference root) to a page. Targets the rendered
+/// route, not the source file: `copy-markdown.mjs` mirrors every `.md` into `dist/`, so a
+/// `.md` href would land on the raw source instead of the Starlight-rendered page.
+fn rel_link(kind: &str, name: &str) -> String {
+    format!("{kind}/{}/{name}/", family_of(name))
+}
+
+/// Cross-link between two pages. Both live at depth 2 under the reference root, so every
+/// hop is `../../<kind>/<family>/<name>/`. Trailing slash, no `.md`: same reason as
+/// `rel_link` — point at the route, not the mirrored source.
 fn cross_link(to_kind: &str, to_name: &str) -> String {
-    format!("../../{}/{}/{to_name}.md", to_kind, family_of(to_name))
+    format!("../../{}/{}/{to_name}/", to_kind, family_of(to_name))
 }
 
 fn family_of(name: &str) -> &str {
@@ -108,7 +116,7 @@ fn overview_fetcher_table(out: &mut String, fetchers: &FetcherRegistry) {
             out,
             "| [`{name}`]({link}) | {kind} | {safety} | {shapes} | {description} |",
             name = f.name(),
-            link = rel_path("fetchers", f.name()),
+            link = rel_link("fetchers", f.name()),
             kind = kind_label(&f),
             safety = safety_label(f.safety()),
             shapes = shapes_list(&f.shapes()),
@@ -127,7 +135,7 @@ fn overview_renderer_table(out: &mut String, renderers: &RenderRegistry) {
             out,
             "| [`{name}`]({link}) | {accepts} | {animates} | {description} |",
             name = r.name(),
-            link = rel_path("renderers", r.name()),
+            link = rel_link("renderers", r.name()),
             accepts = shapes_list(r.accepts()),
             animates = if r.animates() { "yes" } else { "no" },
             description = escape_pipe(r.description()),
