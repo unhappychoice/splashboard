@@ -219,6 +219,17 @@ fn sample_comment_body(shape: Shape) -> Option<Body> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
+        FetchContext {
+            widget_id: "reddit-user-comments".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options,
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn options_parse_max_chars() {
@@ -276,14 +287,14 @@ mod tests {
             80,
             Shape::LinkedTextBlock,
         );
-        let Body::LinkedTextBlock(data) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(data.items[0].text, "r/rust · 9↑  Hello from a comment");
-        assert_eq!(
-            data.items[0].url.as_deref(),
-            Some("https://www.reddit.com/r/rust/comments/abc/post/def/"),
-        );
+        assert!(matches!(&body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(data) = body {
+            assert_eq!(data.items[0].text, "r/rust · 9↑  Hello from a comment");
+            assert_eq!(
+                data.items[0].url.as_deref(),
+                Some("https://www.reddit.com/r/rust/comments/abc/post/def/"),
+            );
+        }
     }
 
     #[test]
@@ -298,10 +309,10 @@ mod tests {
             80,
             Shape::TextBlock,
         );
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert!(t.lines[0].contains(MISSING_BODY_PLACEHOLDER));
+        assert!(matches!(&body, Body::TextBlock(_)));
+        if let Body::TextBlock(text) = body {
+            assert!(text.lines[0].contains(MISSING_BODY_PLACEHOLDER));
+        }
     }
 
     #[test]
@@ -316,12 +327,12 @@ mod tests {
             32,
             Shape::Entries,
         );
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        assert!(e.items[0].key.ends_with('…'));
-        assert_eq!(e.items[0].key.chars().count(), 32);
-        assert_eq!(e.items[0].value.as_deref(), Some("r/rust · 1↑"));
+        assert!(matches!(&body, Body::Entries(_)));
+        if let Body::Entries(entries) = body {
+            assert!(entries.items[0].key.ends_with('…'));
+            assert_eq!(entries.items[0].key.chars().count(), 32);
+            assert_eq!(entries.items[0].value.as_deref(), Some("r/rust · 1↑"));
+        }
     }
 
     #[test]
@@ -336,10 +347,10 @@ mod tests {
             80,
             Shape::LinkedTextBlock,
         );
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items[0].url.is_none());
+        assert!(matches!(&body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(block) = body {
+            assert!(block.items[0].url.is_none());
+        }
     }
 
     #[test]
@@ -400,5 +411,72 @@ mod tests {
         assert!(opts.user.is_none());
         assert!(opts.count.is_none());
         assert!(opts.max_chars.is_none());
+    }
+
+    #[test]
+    fn fetcher_exposes_catalog_metadata_and_samples() {
+        let fetcher = RedditUserCommentsFetcher;
+        assert_eq!(fetcher.name(), "reddit_user_comments");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["user", "count", "max_chars"]
+        );
+        assert!(matches!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_options() {
+        let fetcher = RedditUserCommentsFetcher;
+        let linked = fetcher.cache_key(&ctx(Some(Shape::LinkedTextBlock), None));
+        let entries = fetcher.cache_key(&ctx(Some(Shape::Entries), None));
+        let configured = fetcher.cache_key(&ctx(
+            Some(Shape::LinkedTextBlock),
+            Some(toml::from_str("user = \"spez\"\ncount = 5\nmax_chars = 80").unwrap()),
+        ));
+        assert_ne!(linked, entries);
+        assert_ne!(linked, configured);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options_before_network() {
+        let err = RedditUserCommentsFetcher
+            .fetch(&ctx(
+                Some(Shape::TextBlock),
+                Some(toml::from_str("bogus = true").unwrap()),
+            ))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("unknown field"));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_user_before_network() {
+        let err = RedditUserCommentsFetcher
+            .fetch(&ctx(
+                None,
+                Some(toml::from_str("user = \"/u/\"\ncount = 0\nmax_chars = 999").unwrap()),
+            ))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("user must not be empty"));
     }
 }
