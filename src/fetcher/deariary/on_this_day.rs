@@ -289,6 +289,9 @@ fn render_timeline(hits: &[(usize, ApiEntry)], today: NaiveDate) -> Body {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration;
+
     use super::*;
 
     fn entry(date: &str, title: &str) -> ApiEntry {
@@ -305,6 +308,79 @@ mod tests {
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "deariary-on-this-day".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn fetcher_catalog_surface_matches_contract() {
+        let fetcher = DeariaryOnThisDay;
+        assert_eq!(fetcher.name(), "deariary_on_this_day");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::TextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, "token");
+        assert!(fetcher.description().contains("same calendar day"));
+    }
+
+    #[test]
+    fn cache_key_changes_with_token_shape_and_format() {
+        let fetcher = DeariaryOnThisDay;
+        let base = fetcher.cache_key(&ctx(
+            Some("token = \"alpha\""),
+            Some(Shape::TextBlock),
+            Some("plain"),
+        ));
+        let same = fetcher.cache_key(&ctx(
+            Some("token = \"alpha\""),
+            Some(Shape::TextBlock),
+            Some("plain"),
+        ));
+        let different_token = fetcher.cache_key(&ctx(
+            Some("token = \"beta\""),
+            Some(Shape::TextBlock),
+            Some("plain"),
+        ));
+        let different_shape = fetcher.cache_key(&ctx(
+            Some("token = \"alpha\""),
+            Some(Shape::Timeline),
+            Some("plain"),
+        ));
+        let different_format = fetcher.cache_key(&ctx(
+            Some("token = \"alpha\""),
+            Some(Shape::TextBlock),
+            Some("json"),
+        ));
+
+        assert_eq!(base, same);
+        assert_ne!(base, different_token);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_format);
+        assert!(
+            !fetcher
+                .cache_key(&ctx(Some("bogus = true"), None, None))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -396,6 +472,14 @@ mod tests {
     }
 
     #[test]
+    fn empty_hits_yields_empty_text() {
+        let Body::Text(t) = render_body(&[], Shape::Text, ymd(2026, 4, 27)) else {
+            panic!("expected Text");
+        };
+        assert!(t.value.is_empty());
+    }
+
+    #[test]
     fn empty_hits_yields_warn_badge() {
         let Body::Badge(b) = render_body(&[], Shape::Badge, ymd(2026, 4, 27)) else {
             panic!("expected Badge");
@@ -423,6 +507,64 @@ mod tests {
             panic!("expected MarkdownTextBlock");
         };
         assert!(m.value.contains("**1 month ago**"));
+    }
+
+    #[test]
+    fn unsupported_shape_falls_back_to_text_block() {
+        let hits = vec![(0, entry("2026-03-27", "Recent"))];
+        let Body::TextBlock(t) = render_body(&hits, Shape::Heatmap, ymd(2026, 4, 27)) else {
+            panic!("expected TextBlock");
+        };
+        assert_eq!(t.lines, vec!["1 month ago — Recent".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options() {
+        let fetcher = DeariaryOnThisDay;
+        let err = fetcher
+            .fetch(&ctx(
+                Some("token = \"abc\"\nbogus = true"),
+                Some(Shape::TextBlock),
+                None,
+            ))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown field `bogus`")
+        ));
+    }
+
+    #[test]
+    fn fetch_requires_token_before_network() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        unsafe { std::env::remove_var("DEARIARY_TOKEN") };
+
+        let fetcher = DeariaryOnThisDay;
+        let err = run_async(fetcher.fetch(&ctx(None, Some(Shape::TextBlock), None))).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "deariary token missing: set options.token or DEARIARY_TOKEN"
+        ));
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
+                None => std::env::remove_var("DEARIARY_TOKEN"),
+            }
+        }
+    }
+
+    #[test]
+    fn empty_hits_yields_empty_timeline() {
+        let Body::Timeline(t) = render_body(&[], Shape::Timeline, ymd(2026, 4, 27)) else {
+            panic!("expected Timeline");
+        };
+        assert!(t.events.is_empty());
     }
 
     #[test]
