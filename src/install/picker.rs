@@ -791,3 +791,128 @@ fn draw_footer(frame: &mut Frame, area: Rect, hint: &str) {
         area,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    fn draw_to_buffer(width: u16, height: u16, draw: impl FnOnce(&mut Frame)) -> Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(draw).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn buffer_text(buf: &Buffer) -> String {
+        (0..buf.area.height)
+            .map(|y| {
+                (0..buf.area.width)
+                    .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn theme_options_keep_default_first_and_map_to_known_presets() {
+        let options = theme_options();
+        assert!(matches!(
+            options.first(),
+            Some(ThemeOption {
+                key: None,
+                label: "default",
+                ..
+            })
+        ));
+        assert!(matches!(
+            options.last(),
+            Some(ThemeOption {
+                key: Some("github_light"),
+                ..
+            })
+        ));
+        assert!(
+            options
+                .iter()
+                .skip(1)
+                .all(|option| option.key.and_then(theme_presets::by_name).is_some())
+        );
+        assert_eq!(resolve_theme(None).bg, Theme::default().bg);
+        assert_eq!(
+            resolve_theme(Some("nord")).panel_title,
+            theme_presets::by_name("nord").unwrap().panel_title
+        );
+        assert_eq!(resolve_theme(Some("missing")).text, Theme::default().text);
+    }
+
+    #[test]
+    fn confirmation_screen_renders_summary_and_rc_block() {
+        let summary = Summary {
+            shell: "zsh".into(),
+            home_template: "home_splash".into(),
+            project_template: "project_github".into(),
+            theme: "tokyo_night".into(),
+            bg: false,
+            wait: true,
+            files: vec![
+                PathBuf::from("/tmp/home.dashboard.toml"),
+                PathBuf::from("/tmp/settings.toml"),
+            ],
+            rc_path: Some(PathBuf::from("/tmp/.zshrc")),
+        };
+
+        let buf = draw_to_buffer(100, 20, |frame| draw_confirmation(frame, &summary));
+        let text = buffer_text(&buf);
+
+        assert!(text.contains("Review and confirm"));
+        assert!(text.contains("home_splash"));
+        assert!(text.contains("off (terminal bg shows through)"));
+        assert!(text.contains("Shell rc block:"));
+        assert!(text.contains("/tmp/.zshrc"));
+        assert!(text.contains("Enter / y: write"));
+    }
+
+    #[test]
+    fn template_frame_renders_selected_template_and_preview() {
+        let templates: Vec<&'static Template> = for_context(TemplateContext::Home).collect();
+        let selected = 1;
+        let preview = TemplatePreview::from_body(templates[selected].body).unwrap();
+        let meta = SlotMeta::home();
+
+        let buf = draw_to_buffer(100, 28, |frame| {
+            draw_template_frame(frame, &meta, &templates, selected, Some(&preview));
+        });
+        let text = buffer_text(&buf);
+
+        assert!(text.contains("Pick your home dashboard"));
+        assert!(text.contains("preview"));
+        assert!(text.contains(templates[selected].name));
+        assert!(text.contains("navigate"));
+        assert!(!text.contains("(preview unavailable)"));
+    }
+
+    #[test]
+    fn theme_and_toggle_frames_render_placeholder_and_switch_state() {
+        let options = theme_options();
+        let theme_buf = draw_to_buffer(100, 36, |frame| {
+            draw_theme_frame(frame, &options, 2, None);
+        });
+        let theme_text = buffer_text(&theme_buf);
+        assert!(theme_text.contains("Pick your theme"));
+        assert!(theme_text.contains("(preview unavailable)"));
+        assert!(theme_text.contains(options[2].label));
+
+        let toggle_buf = draw_to_buffer(100, 10, |frame| {
+            draw_toggle_frame(frame, TOGGLE_WAIT, [false, true]);
+        });
+        let toggle_text = buffer_text(&toggle_buf);
+        assert!(toggle_text.contains("Pick your defaults"));
+        assert!(toggle_text.contains("[ ] paint splash background"));
+        assert!(toggle_text.contains("[x] wait for fresh data"));
+        assert!(toggle_text.contains("space toggle"));
+    }
+}
