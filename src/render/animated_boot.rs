@@ -368,6 +368,44 @@ mod tests {
     }
 
     #[test]
+    fn renderer_exposes_description_colors_and_options() {
+        let renderer = AnimatedBootRenderer;
+        assert!(renderer.description().contains("boot log"));
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.option_schemas().len(), OPTION_SCHEMAS.len());
+        assert_eq!(renderer.option_schemas()[0].name, "inner");
+        assert_eq!(renderer.option_schemas()[1].name, "boot_lines");
+        assert_eq!(renderer.option_schemas()[2].name, "duration_ms");
+    }
+
+    #[test]
+    fn active_boot_phase_renders_boot_log_instead_of_inner_payload() {
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: "hello".into(),
+            }),
+        };
+        let spec = RenderSpec::Full {
+            type_name: "animated_boot".into(),
+            options: RenderOptions {
+                duration_ms: Some(600_000),
+                ..RenderOptions::default()
+            }
+            .with_extra("boot_lines", vec!["phase 1".to_string()]),
+        };
+        let registry = super::super::Registry::with_builtins();
+        let _ = process_start();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let buf = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 30, 5);
+        let text = joined_text(&buf);
+        assert!(text.contains("[ OK ] phase 1"), "{text}");
+        assert!(!text.contains("hello"), "{text}");
+    }
+
+    #[test]
     fn renders_without_panic() {
         let payload = Payload {
             icon: None,
