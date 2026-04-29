@@ -974,7 +974,54 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths::TEST_ENV_LOCK;
     use std::time::Duration;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
+
+    const TERMINAL_ENV_KEYS: &[&str] = &[
+        "WT_SESSION",
+        "GHOSTTY_RESOURCES_DIR",
+        "KITTY_WINDOW_ID",
+        "TERM",
+        "ALACRITTY_WINDOW_ID",
+        "ALACRITTY_LOG",
+        "WEZTERM_PANE",
+        "TERM_PROGRAM",
+    ];
 
     fn ctx_with_shape(shape: Option<Shape>) -> FetchContext {
         FetchContext {
@@ -994,6 +1041,231 @@ mod tests {
             options,
             ..Default::default()
         }
+    }
+
+    fn detect_terminal_with(overrides: &[(&'static str, &'static str)]) -> String {
+        let pairs: Vec<_> = TERMINAL_ENV_KEYS
+            .iter()
+            .map(|key| {
+                (
+                    *key,
+                    overrides.iter().find_map(|(override_key, value)| {
+                        (*override_key == *key).then_some(*value)
+                    }),
+                )
+            })
+            .collect();
+        let _guard = EnvGuard::set(&pairs);
+        detect_terminal()
+    }
+
+    fn assert_realtime_contract(
+        fetcher: &dyn RealtimeFetcher,
+        expected_name: &str,
+        expected_shapes: &[Shape],
+        default_shape: Shape,
+        unsupported_shape: Shape,
+        option_count: usize,
+    ) {
+        assert_eq!(fetcher.name(), expected_name);
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(!fetcher.description().is_empty());
+        assert_eq!(fetcher.shapes(), expected_shapes);
+        assert_eq!(fetcher.default_shape(), default_shape);
+        assert_eq!(fetcher.option_schemas().len(), option_count);
+        expected_shapes
+            .iter()
+            .for_each(|shape| assert!(fetcher.sample_body(*shape).is_some()));
+        assert!(fetcher.sample_body(unsupported_shape).is_none());
+    }
+
+    fn assert_cached_contract(
+        fetcher: &dyn Fetcher,
+        expected_name: &str,
+        expected_shapes: &[Shape],
+        unsupported_shape: Shape,
+    ) {
+        assert_eq!(fetcher.name(), expected_name);
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(!fetcher.description().is_empty());
+        assert_eq!(fetcher.shapes(), expected_shapes);
+        assert_eq!(fetcher.default_shape(), expected_shapes[0]);
+        expected_shapes
+            .iter()
+            .for_each(|shape| assert!(fetcher.sample_body(*shape).is_some()));
+        assert!(fetcher.sample_body(unsupported_shape).is_none());
+    }
+
+    #[test]
+    fn system_family_registers_builtin_fetchers() {
+        let realtime_names: Vec<_> = realtime_fetchers()
+            .into_iter()
+            .map(|fetcher| fetcher.name().to_string())
+            .collect();
+        let cached_names: Vec<_> = cached_fetchers()
+            .into_iter()
+            .map(|fetcher| fetcher.name().to_string())
+            .collect();
+        assert_eq!(
+            realtime_names,
+            vec![
+                "system",
+                "system_cpu",
+                "system_memory",
+                "system_uptime",
+                "system_load",
+                "system_processes",
+                "system_battery",
+            ]
+        );
+        assert_eq!(cached_names, vec!["system_disk_usage"]);
+    }
+
+    #[test]
+    fn fetcher_contracts_cover_supported_shapes_and_samples() {
+        assert_realtime_contract(
+            &SystemFetcher::default(),
+            "system",
+            &[Shape::Text, Shape::TextBlock, Shape::Entries],
+            Shape::Entries,
+            Shape::Ratio,
+            1,
+        );
+        assert_realtime_contract(
+            &CpuLoadFetcher::default(),
+            "system_cpu",
+            &[Shape::Ratio, Shape::Text],
+            Shape::Ratio,
+            Shape::Entries,
+            0,
+        );
+        assert_realtime_contract(
+            &MemoryFetcher::default(),
+            "system_memory",
+            &[Shape::Ratio, Shape::Text, Shape::Entries],
+            Shape::Ratio,
+            Shape::Bars,
+            0,
+        );
+        assert_realtime_contract(
+            &UptimeFetcher,
+            "system_uptime",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            0,
+        );
+        assert_realtime_contract(
+            &LoadAverageFetcher,
+            "system_load",
+            &[Shape::Text, Shape::Entries],
+            Shape::Text,
+            Shape::Badge,
+            0,
+        );
+        assert_realtime_contract(
+            &ProcessTopFetcher::default(),
+            "system_processes",
+            &[Shape::Entries, Shape::TextBlock],
+            Shape::Entries,
+            Shape::Ratio,
+            0,
+        );
+        assert_realtime_contract(
+            &BatteryFetcher::default(),
+            "system_battery",
+            &[Shape::Ratio, Shape::Text, Shape::Entries, Shape::Badge],
+            Shape::Ratio,
+            Shape::Bars,
+            2,
+        );
+        assert_cached_contract(
+            &DiskFetcher,
+            "system_disk_usage",
+            &[Shape::Ratio, Shape::Text, Shape::Bars],
+            Shape::Entries,
+        );
+    }
+
+    #[test]
+    fn parse_options_defaults_and_surfaces_invalid_input() {
+        let system: SystemOptions = parse_options(None).unwrap();
+        assert!(system.kind.is_none());
+
+        let battery_raw: toml::Value = toml::from_str("kind = \"percent\"\nindex = 2").unwrap();
+        let battery: BatteryOptions = parse_options(Some(&battery_raw)).unwrap();
+        assert!(matches!(battery.kind, Some(BatteryTextKind::Percent)));
+        assert_eq!(battery.index, Some(2));
+
+        let invalid: toml::Value = toml::from_str("bogus = true").unwrap();
+        let err = parse_options::<BatteryOptions>(Some(&invalid)).unwrap_err();
+        assert!(err.starts_with("invalid options:"));
+    }
+
+    #[test]
+    fn options_placeholder_wraps_the_message_in_warning_text() {
+        let Body::Text(text) = options_placeholder("bad config").body else {
+            panic!("expected text body");
+        };
+        assert_eq!(text.value, "⚠ bad config");
+    }
+
+    #[test]
+    fn detect_terminal_prefers_known_env_markers_and_fallbacks() {
+        assert_eq!(
+            detect_terminal_with(&[("WT_SESSION", "1"), ("TERM_PROGRAM", "Hyper")]),
+            "Windows Terminal"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("GHOSTTY_RESOURCES_DIR", "/tmp/resources")]),
+            "Ghostty"
+        );
+        assert_eq!(detect_terminal_with(&[("TERM", "xterm-kitty")]), "Kitty");
+        assert_eq!(
+            detect_terminal_with(&[("ALACRITTY_LOG", "/tmp/alacritty.log")]),
+            "Alacritty"
+        );
+        assert_eq!(detect_terminal_with(&[("WEZTERM_PANE", "pane")]), "WezTerm");
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "vscode")]),
+            "VS Code"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "CustomTerm")]),
+            "CustomTerm"
+        );
+        assert_eq!(detect_terminal_with(&[]), "terminal");
+    }
+
+    #[test]
+    fn detect_shell_uses_basename_and_fallback() {
+        let _guard = EnvGuard::set(&[("SHELL", Some("/usr/local/bin/fish"))]);
+        assert_eq!(detect_shell(), "fish");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[("SHELL", None)]);
+        assert_eq!(detect_shell(), "shell");
+    }
+
+    #[test]
+    fn resolve_system_kind_covers_each_identity_variant() {
+        let pairs: Vec<_> = TERMINAL_ENV_KEYS
+            .iter()
+            .copied()
+            .map(|key| (key, None))
+            .chain([("SHELL", Some("/bin/zsh")), ("TERM_PROGRAM", Some("Hyper"))])
+            .collect();
+        let _guard = EnvGuard::set(&pairs);
+
+        assert_eq!(resolve_system_kind(SystemKind::Terminal), "Hyper");
+        assert!(!resolve_system_kind(SystemKind::Os).is_empty());
+        assert!(!resolve_system_kind(SystemKind::OsVersion).is_empty());
+        assert!(!resolve_system_kind(SystemKind::Hostname).is_empty());
+        assert_eq!(resolve_system_kind(SystemKind::Shell), "zsh");
+        assert_eq!(
+            resolve_system_kind(SystemKind::Arch),
+            std::env::consts::ARCH
+        );
     }
 
     #[test]
@@ -1050,6 +1322,15 @@ mod tests {
         };
         let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
         assert_eq!(keys, ["used", "total", "free"]);
+    }
+
+    #[test]
+    fn memory_text_shape_formats_used_over_total() {
+        let p = MemoryFetcher::new().compute(&ctx_with_shape(Some(Shape::Text)));
+        let Body::Text(text) = p.body else {
+            panic!("expected text");
+        };
+        assert!(text.value.contains(" / "));
     }
 
     #[test]
@@ -1161,6 +1442,16 @@ mod tests {
         assert!(e.items.len() <= PROCESS_TOP_COUNT);
     }
 
+    #[test]
+    fn process_top_text_block_shape_formats_rows() {
+        let p = ProcessTopFetcher::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
+        let Body::TextBlock(block) = p.body else {
+            panic!("expected text block");
+        };
+        assert!(block.lines.len() <= PROCESS_TOP_COUNT);
+        assert!(block.lines.iter().all(|line| line.ends_with('%')));
+    }
+
     fn snapshot(charge: f64, state: BatteryState, secs: Option<u64>) -> BatterySnapshot {
         BatterySnapshot {
             charge,
@@ -1213,6 +1504,17 @@ mod tests {
     }
 
     #[test]
+    fn battery_state_mapping_and_labels_cover_all_variants() {
+        use starship_battery::State;
+
+        assert_eq!(map_battery_state(State::Charging).label(), "Charging");
+        assert_eq!(map_battery_state(State::Discharging).label(), "Discharging");
+        assert_eq!(map_battery_state(State::Full).label(), "Full");
+        assert_eq!(map_battery_state(State::Empty).label(), "Empty");
+        assert_eq!(map_battery_state(State::Unknown).label(), "Unknown");
+    }
+
+    #[test]
     fn battery_entries_include_optional_fields_only_when_present() {
         let with = snapshot(0.5, BatteryState::Charging, Some(60));
         let mut without = snapshot(0.5, BatteryState::Charging, None);
@@ -1244,6 +1546,23 @@ mod tests {
         assert_eq!(extract(summary), "AC");
         assert_eq!(extract(percent), "100%");
         assert_eq!(extract(time), "—");
+    }
+
+    #[test]
+    fn no_battery_entries_and_badge_use_ac_placeholders() {
+        let Body::Entries(entries) =
+            no_battery_payload(Shape::Entries, BatteryTextKind::Summary).body
+        else {
+            panic!("expected entries");
+        };
+        let Body::Badge(badge) = no_battery_payload(Shape::Badge, BatteryTextKind::Summary).body
+        else {
+            panic!("expected badge");
+        };
+        assert_eq!(entries.items[0].key, "power");
+        assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
+        assert_eq!(badge.status, Status::Ok);
+        assert_eq!(badge.label, "AC");
     }
 
     #[test]
@@ -1283,6 +1602,28 @@ mod tests {
             panic!("expected text placeholder")
         };
         assert!(t.value.starts_with("⚠"));
+    }
+
+    #[test]
+    fn battery_compute_without_manager_uses_no_battery_fallbacks() {
+        let fetcher = BatteryFetcher {
+            manager: Mutex::new(None),
+        };
+
+        let Body::Text(text) = fetcher.compute(&ctx_text(Some("kind = \"percent\""))).body else {
+            panic!("expected text");
+        };
+        let Body::Entries(entries) = fetcher.compute(&ctx_with_shape(Some(Shape::Entries))).body
+        else {
+            panic!("expected entries");
+        };
+        let Body::Badge(badge) = fetcher.compute(&ctx_with_shape(Some(Shape::Badge))).body else {
+            panic!("expected badge");
+        };
+
+        assert_eq!(text.value, "100%");
+        assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
+        assert_eq!(badge.label, "AC");
     }
 
     #[tokio::test]
