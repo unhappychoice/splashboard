@@ -224,7 +224,47 @@ fn short_month(m: u32) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
 
     fn day(date: &str, count: u32) -> Day {
         Day {
@@ -237,6 +277,14 @@ mod tests {
         Week {
             contribution_days: days,
         }
+    }
+
+    fn run_async<F: Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 
     #[test]
@@ -269,5 +317,127 @@ mod tests {
         };
         let series = to_weekly_series(&cal);
         assert_eq!(series.values, vec![3, 7]);
+    }
+
+    #[test]
+    fn fetcher_contract_cache_key_and_samples_cover_supported_shapes() {
+        let fetcher = GithubContributions;
+        let default_key = fetcher.cache_key(&FetchContext::default());
+        let user_key = fetcher.cache_key(&FetchContext {
+            format: Some("json".into()),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::NumberSeries),
+            options: Some(toml::from_str("login = \"octocat\"").unwrap()),
+            ..Default::default()
+        });
+
+        assert_eq!(fetcher.name(), "github_contributions");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("kusa"));
+        assert_eq!(fetcher.shapes(), &[Shape::Heatmap, Shape::NumberSeries]);
+        assert_eq!(fetcher.default_shape(), Shape::Heatmap);
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, "login");
+        assert_eq!(fetcher.option_schemas()[0].default, Some("viewer"));
+        assert!(default_key.starts_with("github_contributions-"));
+        assert_ne!(default_key, user_key);
+
+        let Some(Body::Heatmap(heatmap)) = fetcher.sample_body(Shape::Heatmap) else {
+            panic!("expected heatmap sample");
+        };
+        assert_eq!(heatmap.cells.len(), 7);
+        assert!(heatmap.cells.iter().all(|row| row.len() == 52));
+
+        let Some(Body::NumberSeries(series)) = fetcher.sample_body(Shape::NumberSeries) else {
+            panic!("expected number series sample");
+        };
+        assert_eq!(series.values, vec![3, 4, 7, 5, 11, 9, 13, 8, 6, 15, 12, 18]);
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn heatmap_labels_new_months_and_ignores_invalid_dates() {
+        let cal = Calendar {
+            weeks: vec![
+                week(vec![day("2026-04-01", 4), day("not-a-date", 99)]),
+                week(vec![day("2026-04-08", 2), day("2026-05-01", 7)]),
+                week(vec![day("2026-05-03", 5)]),
+            ],
+        };
+        let heatmap = to_heatmap(&cal);
+
+        assert_eq!(
+            heatmap.col_labels,
+            Some(vec!["Apr".into(), "May".into(), "".into()])
+        );
+        assert_eq!(heatmap.cells[3][0], 4);
+        assert_eq!(heatmap.cells[5][1], 7);
+        assert_eq!(heatmap.cells[0][2], 5);
+    }
+
+    #[test]
+    fn month_helpers_reject_invalid_dates_and_out_of_range_months() {
+        assert_eq!(weekday_index("not-a-date"), None);
+        assert_eq!(short_month(0), "");
+        assert_eq!(short_month(13), "");
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_options() {
+        let err = run_async(GithubContributions.fetch(&FetchContext {
+            timeout: Duration::from_secs(1),
+            options: Some(toml::from_str("bogus = true").unwrap()),
+            ..Default::default()
+        }))
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("invalid options")
+        ));
+    }
+
+    #[test]
+    fn viewer_and_user_helpers_require_token_before_graphql() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+
+        let viewer = run_async(fetch_viewer()).unwrap_err();
+        let user = run_async(fetch_user("octocat")).unwrap_err();
+
+        assert!(matches!(
+            viewer,
+            FetchError::Failed(message) if message.contains("GH_TOKEN / GITHUB_TOKEN not set")
+        ));
+        assert!(matches!(
+            user,
+            FetchError::Failed(message) if message.contains("GH_TOKEN / GITHUB_TOKEN not set")
+        ));
+    }
+
+    #[test]
+    fn fetch_requires_token_for_viewer_and_explicit_user_paths() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+
+        let viewer = run_async(GithubContributions.fetch(&FetchContext {
+            timeout: Duration::from_secs(1),
+            ..Default::default()
+        }))
+        .unwrap_err();
+        let user = run_async(GithubContributions.fetch(&FetchContext {
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::NumberSeries),
+            options: Some(toml::from_str("login = \"octocat\"").unwrap()),
+            ..Default::default()
+        }))
+        .unwrap_err();
+
+        assert!(matches!(
+            viewer,
+            FetchError::Failed(message) if message.contains("GH_TOKEN / GITHUB_TOKEN not set")
+        ));
+        assert!(matches!(
+            user,
+            FetchError::Failed(message) if message.contains("GH_TOKEN / GITHUB_TOKEN not set")
+        ));
     }
 }
