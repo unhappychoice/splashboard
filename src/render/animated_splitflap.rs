@@ -219,7 +219,39 @@ fn process_start() -> Instant {
 mod tests {
     use super::*;
     use crate::payload::{Payload, TextData};
-    use crate::render::{RenderSpec, test_utils::render_to_buffer_with_spec};
+    use crate::render::{
+        Registry, RenderSpec,
+        test_utils::{line_text, render_to_buffer, render_to_buffer_with_spec},
+    };
+    use crate::theme::{self, Theme};
+    use ratatui::{Terminal, backend::TestBackend, widgets::Paragraph};
+
+    fn text_payload(value: &str) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: value.to_string(),
+            }),
+        }
+    }
+
+    #[test]
+    fn exposes_wrapper_contract() {
+        let renderer = AnimatedSplitflapRenderer;
+        assert_eq!(renderer.name(), "animated_splitflap");
+        assert!(renderer.description().contains("departures board"));
+        assert!(renderer.animates());
+        assert_eq!(renderer.color_keys().len(), 2);
+        assert_eq!(renderer.color_keys()[0].name, theme::PANEL_TITLE.name);
+        assert_eq!(renderer.color_keys()[1].name, theme::TEXT.name);
+        assert_eq!(renderer.option_schemas().len(), OPTION_SCHEMAS.len());
+        assert_eq!(renderer.option_schemas()[0].name, "inner");
+        assert_eq!(renderer.option_schemas()[1].name, "duration_ms");
+        assert!(renderer.accepts().contains(&Shape::Text));
+        assert!(renderer.accepts().contains(&Shape::Timeline));
+    }
 
     #[test]
     fn left_cells_settle_before_right_cells() {
@@ -235,15 +267,90 @@ mod tests {
     }
 
     #[test]
-    fn renders_without_panic() {
-        let payload = Payload {
-            icon: None,
-            status: None,
-            format: None,
-            body: Body::Text(TextData {
-                value: "ready".into(),
-            }),
+    fn natural_height_delegates_and_unknown_inner_falls_back_to_one() {
+        let registry = Registry::with_builtins();
+        let renderer = AnimatedSplitflapRenderer;
+        let opts = RenderOptions {
+            style: Some("figlet".into()),
+            ..RenderOptions::default()
+        }
+        .with_extra("inner", "text_ascii");
+        let body = text_payload("ready").body;
+        let expected = registry.get("text_ascii").unwrap().natural_height(
+            &body,
+            &inner_options(&opts),
+            40,
+            &registry,
+        );
+        assert_eq!(
+            renderer.natural_height(&body, &opts, 40, &registry),
+            expected
+        );
+
+        let missing = RenderOptions::default().with_extra("inner", "missing_renderer");
+        assert_eq!(renderer.natural_height(&body, &missing, 40, &registry), 1);
+    }
+
+    #[test]
+    fn render_reports_unknown_and_incompatible_inner() {
+        let payload = text_payload("ready");
+        let registry = Registry::with_builtins();
+        let unknown = RenderSpec::Full {
+            type_name: "animated_splitflap".into(),
+            options: RenderOptions::default().with_extra("inner", "missing_renderer"),
         };
+        let buf = render_to_buffer_with_spec(&payload, Some(&unknown), &registry, 40, 3);
+        assert!(line_text(&buf, 0).contains("unknown inner renderer: missing_renderer"));
+
+        let incompatible = RenderSpec::Full {
+            type_name: "animated_splitflap".into(),
+            options: RenderOptions::default().with_extra("inner", "gauge_circle"),
+        };
+        let buf = render_to_buffer_with_spec(&payload, Some(&incompatible), &registry, 40, 3);
+        assert!(line_text(&buf, 0).contains("cannot display Text"));
+    }
+
+    #[test]
+    fn render_matches_static_inner_once_window_expires() {
+        let payload = text_payload("ready");
+        let spec = RenderSpec::Full {
+            type_name: "animated_splitflap".into(),
+            options: RenderOptions {
+                duration_ms: Some(1),
+                ..RenderOptions::default()
+            },
+        };
+        let expected = render_to_buffer(&payload, 20, 3);
+        let _ = elapsed_since_start_ms();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let actual =
+            render_to_buffer_with_spec(&payload, Some(&spec), &Registry::with_builtins(), 20, 3);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn apply_flap_changes_non_blank_cells_and_preserves_blanks() {
+        let backend = TestBackend::new(3, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                frame.render_widget(Paragraph::new("AB "), area);
+                apply_flap(frame, area, 0, 1_000, &Theme::default());
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert_ne!(buf.cell((1, 0)).unwrap().symbol(), "B");
+        assert_eq!(buf.cell((2, 0)).unwrap().symbol(), " ");
+        assert_eq!(
+            buf.cell((1, 0)).unwrap().style().fg,
+            Some(Theme::default().panel_title)
+        );
+    }
+
+    #[test]
+    fn renders_without_panic() {
+        let payload = text_payload("ready");
         let spec = RenderSpec::Full {
             type_name: "animated_splitflap".into(),
             options: RenderOptions {
@@ -253,7 +360,7 @@ mod tests {
             }
             .with_extra("inner", "text_ascii"),
         };
-        let registry = super::super::Registry::with_builtins();
+        let registry = Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 40, 10);
     }
 }
