@@ -61,7 +61,47 @@ fn remote_name(cwd: &std::path::Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::path::Path;
+    use std::process::Command;
+    use std::time::Duration;
+
     use super::*;
+    use crate::fetcher::git::test_support::make_repo;
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn ctx() -> FetchContext {
+        FetchContext {
+            widget_id: "repo-name".into(),
+            format: None,
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape: Some(Shape::Text),
+            options: None,
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     #[test]
     fn sample_is_non_empty() {
@@ -70,5 +110,94 @@ mod tests {
             Body::Text(d) => assert!(!d.value.is_empty()),
             _ => panic!("expected text sample"),
         }
+    }
+
+    #[test]
+    fn fetcher_metadata_matches_repo_name_contract() {
+        let fetcher = GitRepoName;
+        assert_eq!(fetcher.name(), "git_repo_name");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("hero header"));
+        assert_eq!(fetcher.shapes(), &[Shape::Text]);
+        assert_eq!(fetcher.default_shape(), Shape::Text);
+        assert!(fetcher.cache_key(&ctx()).starts_with("git_repo_name-"));
+    }
+
+    #[test]
+    fn remote_name_prefers_origin_when_multiple_remotes_exist() {
+        let (_tmp, repo) = make_repo();
+        let workdir = repo.workdir().unwrap();
+        run_git(
+            workdir,
+            &[
+                "remote",
+                "add",
+                "upstream",
+                "https://github.com/acme/first.git",
+            ],
+        );
+        run_git(
+            workdir,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "git@github.com:acme/preferred.git",
+            ],
+        );
+
+        assert_eq!(remote_name(workdir), Some("preferred".into()));
+    }
+
+    #[test]
+    fn remote_name_uses_first_remote_when_origin_is_missing() {
+        let (_tmp, repo) = make_repo();
+        let workdir = repo.workdir().unwrap();
+        run_git(
+            workdir,
+            &[
+                "remote",
+                "add",
+                "upstream",
+                "ssh://git@github.com/acme/fallback.git",
+            ],
+        );
+
+        assert_eq!(remote_name(workdir), Some("fallback".into()));
+    }
+
+    #[test]
+    fn remote_name_returns_none_for_non_git_repos_and_non_github_remotes() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(remote_name(tmp.path()).is_none());
+
+        let (_repo_tmp, repo) = make_repo();
+        let workdir = repo.workdir().unwrap();
+        run_git(
+            workdir,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://gitlab.com/acme/project.git",
+            ],
+        );
+
+        assert!(remote_name(workdir).is_none());
+    }
+
+    #[test]
+    fn detect_name_uses_the_workspace_remote() {
+        assert_eq!(detect_name(), Some("splashboard".into()));
+    }
+
+    #[test]
+    fn fetch_returns_workspace_repo_name() {
+        let payload = run_async(GitRepoName.fetch(&ctx())).unwrap();
+        let Body::Text(text) = payload.body else {
+            panic!("expected text payload");
+        };
+
+        assert_eq!(text.value, "splashboard");
     }
 }
