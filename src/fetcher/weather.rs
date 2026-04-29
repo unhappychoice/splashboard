@@ -574,6 +574,117 @@ mod tests {
         assert_eq!(weather_badge(95).status, Status::Error);
     }
 
+    #[test]
+    fn fetcher_metadata_cache_key_and_samples_cover_supported_shapes() {
+        let fetcher = WeatherFetcher;
+        let ctx = FetchContext {
+            widget_id: "weather".into(),
+            timeout: std::time::Duration::from_secs(1),
+            shape: Some(Shape::Entries),
+            ..Default::default()
+        };
+        let with_options = FetchContext {
+            options: Some(
+                toml::from_str("latitude = 35.68\nlongitude = 139.76\nunits = \"imperial\"")
+                    .unwrap(),
+            ),
+            ..ctx.clone()
+        };
+        assert_eq!(fetcher.name(), "weather");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Open-Meteo"));
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["latitude", "longitude", "units"]
+        );
+        assert_eq!(
+            fetcher.shapes(),
+            [
+                Shape::Entries,
+                Shape::Text,
+                Shape::PointSeries,
+                Shape::NumberSeries,
+                Shape::Bars,
+                Shape::Badge,
+            ]
+            .as_slice()
+        );
+        assert_ne!(fetcher.cache_key(&ctx), fetcher.cache_key(&with_options));
+        for &shape in fetcher.shapes() {
+            let body = fetcher.sample_body(shape).unwrap();
+            assert!(matches!(
+                (shape, body),
+                (Shape::Entries, Body::Entries(_))
+                    | (Shape::Text, Body::Text(_))
+                    | (Shape::PointSeries, Body::PointSeries(_))
+                    | (Shape::NumberSeries, Body::NumberSeries(_))
+                    | (Shape::Bars, Body::Bars(_))
+                    | (Shape::Badge, Body::Badge(_))
+            ));
+        }
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        let Some(Body::PointSeries(series)) = fetcher.sample_body(Shape::PointSeries) else {
+            panic!("expected point-series sample");
+        };
+        assert!(text.value.contains("💨"));
+        assert_eq!(series.series[0].name, "temperature (°C)");
+        assert!(fetcher.sample_body(Shape::Calendar).is_none());
+    }
+
+    #[test]
+    fn helper_paths_cover_padding_statuses_and_singletons() {
+        let points = hourly_from(&Hourly {
+            temperature_2m: (0..30).map(|i| i as f64).collect(),
+            precipitation: vec![0.5],
+        });
+        let Body::PointSeries(series) = point_series(&points[..2], Units::Imperial) else {
+            panic!("expected point series");
+        };
+        let Body::Text(text) = payload(Body::Text(TextData { value: "ok".into() })).body else {
+            panic!("expected text payload");
+        };
+        assert_eq!(points.len(), HOURLY_HOURS);
+        assert_eq!(points[1].precipitation, 0.0);
+        assert_eq!(points[23].offset_hours, 23);
+        assert_eq!(series.series[0].name, "temperature (°F)");
+        assert_eq!(text.value, "ok");
+        assert!(std::ptr::eq(http(), http()));
+        assert_eq!(weather_badge(56).label, "freezing");
+        assert_eq!(weather_badge(96).label, "thunderstorm");
+        assert_eq!(
+            [1, 2, 45, 51, 66, 71, 81, 86, 96].map(|code| weather_description(code).1),
+            [
+                "mostly clear",
+                "partly cloudy",
+                "fog",
+                "drizzle",
+                "freezing rain",
+                "snow",
+                "rain showers",
+                "snow showers",
+                "thunderstorm w/ hail",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_missing_options_before_network() {
+        let ctx = FetchContext {
+            widget_id: "weather".into(),
+            timeout: std::time::Duration::from_secs(1),
+            shape: Some(Shape::Text),
+            ..Default::default()
+        };
+        let err = WeatherFetcher.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("latitude")));
+    }
+
     /// Live smoke test — hits Open-Meteo. `#[ignore]` keeps CI offline-safe; run with
     /// `cargo test -- --ignored fetcher::weather::tests::live` to verify real API shape.
     #[tokio::test]
