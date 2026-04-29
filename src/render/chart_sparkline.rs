@@ -176,6 +176,7 @@ mod tests {
     use crate::payload::{NumberSeriesData, Payload};
     use crate::render::test_utils::{line_text, render_to_buffer, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
+    use crate::theme;
 
     fn payload(values: Vec<u64>) -> Payload {
         Payload {
@@ -192,8 +193,30 @@ mod tests {
     }
 
     #[test]
+    fn renderer_contract_exposes_catalog_surface() {
+        let renderer = ChartSparklineRenderer;
+        assert_eq!(renderer.name(), "chart_sparkline");
+        assert_eq!(renderer.accepts(), &[Shape::NumberSeries]);
+        assert_eq!(renderer.color_keys().len(), 2);
+        assert_eq!(renderer.color_keys()[0].name, theme::TEXT.name);
+        assert_eq!(renderer.color_keys()[1].name, theme::TEXT_DIM.name);
+        assert_eq!(renderer.option_schemas().len(), 2);
+        assert_eq!(renderer.option_schemas()[0].name, "label");
+        assert_eq!(renderer.option_schemas()[1].name, "style");
+        assert!(renderer.description().contains("baseline tick"));
+    }
+
+    #[test]
     fn handles_empty_values() {
         let _ = render_to_buffer(&payload(vec![]), 20, 5);
+    }
+
+    #[test]
+    fn split_for_label_clamps_label_width_to_area() {
+        let area = Rect::new(0, 0, 4, 2);
+        let (label_area, chart_area) = split_for_label(area, Some("long-label"));
+        assert_eq!(label_area.width, 4);
+        assert_eq!(chart_area.width, 0);
     }
 
     #[test]
@@ -271,5 +294,41 @@ mod tests {
             joined.contains(LINE_GLYPH_LOW) || joined.contains(LINE_GLYPH_HIGH),
             "no line glyphs: {joined:?}"
         );
+    }
+
+    #[test]
+    fn line_style_uses_midline_baseline_for_zero_values() {
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W =
+            toml::from_str(r#"render = { type = "chart_sparkline", style = "line" }"#).unwrap();
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![0, 8, 0, 4]),
+            Some(&w.render),
+            &registry,
+            4,
+            3,
+        );
+        assert_eq!(buf.cell((0, 1)).unwrap().symbol(), ZERO_BASELINE);
+        assert_eq!(buf.cell((2, 1)).unwrap().symbol(), ZERO_BASELINE);
+    }
+
+    #[test]
+    fn line_style_all_zero_values_falls_back_to_bottom_baseline() {
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W =
+            toml::from_str(r#"render = { type = "chart_sparkline", style = "line" }"#).unwrap();
+        let buf =
+            render_to_buffer_with_spec(&payload(vec![0, 0, 0]), Some(&w.render), &registry, 3, 3);
+        assert_eq!(buf.cell((0, 2)).unwrap().symbol(), ZERO_BASELINE);
+        assert_eq!(buf.cell((1, 2)).unwrap().symbol(), ZERO_BASELINE);
+        assert_eq!(buf.cell((2, 2)).unwrap().symbol(), ZERO_BASELINE);
     }
 }
