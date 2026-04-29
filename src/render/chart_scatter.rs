@@ -142,7 +142,7 @@ fn max(xs: &[f64]) -> f64 {
 mod tests {
     use super::*;
     use crate::payload::{Payload, PointSeries, PointSeriesData};
-    use crate::render::test_utils::render_to_buffer_with_spec;
+    use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
 
     fn payload(series: Vec<PointSeries>) -> Payload {
@@ -154,21 +154,100 @@ mod tests {
         }
     }
 
-    #[test]
-    fn renders_without_panicking() {
-        let s = PointSeries {
-            name: "temp".into(),
-            points: vec![(0.0, 20.0), (1.0, 21.5), (2.0, 19.8)],
-        };
-        let registry = Registry::with_builtins();
-        let spec = RenderSpec::Short("chart_scatter".into());
-        let _ = render_to_buffer_with_spec(&payload(vec![s]), Some(&spec), &registry, 30, 10);
+    fn series(name: &str, points: &[(f64, f64)]) -> PointSeries {
+        PointSeries {
+            name: name.into(),
+            points: points.to_vec(),
+        }
+    }
+
+    fn chart_spec(toml_inline: &str) -> RenderSpec {
+        #[derive(serde::Deserialize)]
+        struct Wrapper {
+            render: RenderSpec,
+        }
+        toml::from_str::<Wrapper>(&format!("render = {toml_inline}"))
+            .unwrap()
+            .render
     }
 
     #[test]
-    fn handles_empty_series() {
+    fn catalog_surface_matches_contract() {
+        let renderer = ChartScatterRenderer;
+        assert_eq!(renderer.name(), "chart_scatter");
+        assert_eq!(renderer.accepts(), &[Shape::PointSeries]);
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.option_schemas().len(), OPTION_SCHEMAS.len());
+        assert_eq!(renderer.option_schemas()[0].name, "axes");
+        assert_eq!(renderer.option_schemas()[1].name, "marker");
+        assert!(renderer.description().contains("each observation matters"));
+    }
+
+    #[test]
+    fn renders_without_panicking() {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("chart_scatter".into());
-        let _ = render_to_buffer_with_spec(&payload(vec![]), Some(&spec), &registry, 30, 10);
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![series(
+                "temp",
+                &[(0.0, 20.0), (1.0, 21.5), (2.0, 19.8)],
+            )]),
+            Some(&spec),
+            &registry,
+            30,
+            10,
+        );
+        let rendered = (0..buf.area.height)
+            .map(|y| line_text(&buf, y))
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(rendered.chars().any(|ch| !ch.is_whitespace()));
+    }
+
+    #[test]
+    fn axes_option_draws_border_block() {
+        let registry = Registry::with_builtins();
+        let spec = chart_spec(r#"{ type = "chart_scatter", axes = true, marker = "braille" }"#);
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![series("temp", &[(0.0, 0.0), (1.0, 1.0), (2.0, 0.5)])]),
+            Some(&spec),
+            &registry,
+            30,
+            8,
+        );
+        let top = line_text(&buf, 0);
+        assert!(top.starts_with('┌'), "missing top-left border: {top:?}");
+        assert!(top.contains('┐'), "missing top-right border: {top:?}");
+    }
+
+    #[test]
+    fn marker_parser_maps_known_and_unknown_values() {
+        assert!(matches!(parse_marker(Some("block")), Marker::Block));
+        assert!(matches!(parse_marker(Some("bar")), Marker::Bar));
+        assert!(matches!(parse_marker(Some("braille")), Marker::Braille));
+        assert!(matches!(
+            parse_marker(Some("half_block")),
+            Marker::HalfBlock
+        ));
+        assert!(matches!(parse_marker(Some("mystery")), Marker::Dot));
+        assert!(matches!(parse_marker(None), Marker::Dot));
+    }
+
+    #[test]
+    fn bounds_fall_back_to_unit_square_when_all_series_are_empty() {
+        assert_eq!(bounds(&[]), ([0.0, 1.0], [0.0, 1.0]));
+        assert_eq!(
+            bounds(&[series("empty", &[]), series("also-empty", &[])]),
+            ([0.0, 1.0], [0.0, 1.0])
+        );
+    }
+
+    #[test]
+    fn bounds_span_all_points_across_every_series() {
+        let data = vec![
+            series("left", &[(-2.0, 3.5), (1.0, 9.0)]),
+            series("right", &[(3.0, 1.5), (0.5, 7.0)]),
+        ];
+        assert_eq!(bounds(&data), ([-2.0, 3.0], [1.5, 9.0]));
     }
 }
