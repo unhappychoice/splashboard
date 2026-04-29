@@ -270,6 +270,9 @@ fn http() -> &'static Client {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration as StdDuration;
+
     use super::*;
 
     fn h(date: &str, local: &str, name: &str) -> Holiday {
@@ -282,6 +285,27 @@ mod tests {
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "calendar-holidays".into(),
+            format: Some("compact".into()),
+            timeout: StdDuration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 
     #[test]
@@ -453,6 +477,61 @@ mod tests {
             assert!(f.sample_body(s).is_some(), "missing sample for {s:?}");
         }
         assert!(f.sample_body(Shape::Heatmap).is_none());
+    }
+
+    #[test]
+    fn fetcher_contract_and_cache_key_cover_catalog_surface() {
+        let fetcher = CalendarHolidaysFetcher;
+        assert_eq!(fetcher.name(), "calendar_holidays");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Calendar);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas()[0].name, "country");
+        assert_eq!(fetcher.option_schemas()[1].name, "language");
+        assert_eq!(fetcher.option_schemas()[2].name, "limit");
+        assert!(fetcher.description().contains("date.nager.at"));
+
+        let default = fetcher.cache_key(&ctx(Some("country = \"JP\""), Some(Shape::Calendar)));
+        let other_country =
+            fetcher.cache_key(&ctx(Some("country = \"US\""), Some(Shape::Calendar)));
+        let other_shape = fetcher.cache_key(&ctx(Some("country = \"JP\""), Some(Shape::Text)));
+
+        assert_ne!(default, other_country);
+        assert_ne!(default, other_shape);
+    }
+
+    #[test]
+    fn http_reuses_the_same_client() {
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_options_before_request() {
+        let fetcher = CalendarHolidaysFetcher;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("country = \"JP\"\nextra = true"),
+            Some(Shape::Calendar),
+        )))
+        .unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid options")));
+    }
+
+    #[test]
+    fn fetch_requires_country_before_request() {
+        let fetcher = CalendarHolidaysFetcher;
+        let err = run_async(fetcher.fetch(&ctx(None, Some(Shape::Text)))).unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("requires `country`")));
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_country_before_request() {
+        let fetcher = CalendarHolidaysFetcher;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("country = \"Japan\"\nlimit = 0"),
+            Some(Shape::TextBlock),
+        )))
+        .unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid country code")));
     }
 
     #[test]
