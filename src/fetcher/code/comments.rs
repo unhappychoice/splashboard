@@ -380,6 +380,15 @@ mod tests {
     use super::super::super::git::test_support::{commit_touching, make_repo};
     use super::*;
 
+    fn ctx(shape: Option<Shape>, raw: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "widget".into(),
+            shape,
+            options: raw.map(|s| toml::from_str(s).unwrap()),
+            ..Default::default()
+        }
+    }
+
     fn lang_stat(code: u64, comments: u64) -> LangStat {
         LangStat { code, comments }
     }
@@ -651,5 +660,111 @@ mod tests {
         ctx.options = Some(toml::from_str(r#"unit = "loc""#).unwrap());
         let b = CodeComments.cache_key(&ctx);
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = CodeComments;
+        let schema_names: Vec<_> = fetcher
+            .option_schemas()
+            .iter()
+            .map(|schema| schema.name)
+            .collect();
+        assert_eq!(fetcher.name(), "code_comments");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Text);
+        assert!(
+            fetcher
+                .description()
+                .contains("Comment-density per language")
+        );
+        assert_eq!(schema_names, vec!["limit", "unit"]);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert!(
+            SHAPES
+                .iter()
+                .copied()
+                .all(|shape| fetcher.sample_body(shape).is_some())
+        );
+        assert!(fetcher.sample_body(Shape::Image).is_none());
+    }
+
+    #[test]
+    fn render_body_falls_back_to_text_for_unsupported_shapes() {
+        let body = render_body(
+            totals(&[("Rust", 800, 200), ("TOML", 90, 10)]),
+            Shape::Image,
+            1,
+            Unit::Percent,
+        );
+        match body {
+            Body::Text(d) => assert_eq!(d.value, "19.1% comments · 210 / 1,100 lines"),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn format_value_kloc_scales_thousands_and_millions() {
+        assert_eq!(format_value(&lang_stat(0, 999), Unit::Kloc), "999");
+        assert_eq!(format_value(&lang_stat(0, 1_234), Unit::Kloc), "1.2k");
+        assert_eq!(format_value(&lang_stat(0, 1_234_567), Unit::Kloc), "1.2M");
+    }
+
+    #[test]
+    fn parse_options_defaults_when_missing() {
+        let opts = parse_options(None).unwrap();
+        assert!(opts.limit.is_none());
+        assert!(opts.unit.is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_options() {
+        let err = CodeComments
+            .fetch(&ctx(None, Some(r#"bogus = true"#)))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("invalid options"));
+    }
+
+    #[tokio::test]
+    async fn fetch_scans_current_repo_for_multiple_shapes() {
+        let text = CodeComments
+            .fetch(&ctx(Some(Shape::Text), None))
+            .await
+            .unwrap();
+        match text.body {
+            Body::Text(d) => assert!(d.value.contains("comments")),
+            _ => panic!(),
+        }
+
+        let badge = CodeComments
+            .fetch(&ctx(Some(Shape::Badge), Some(r#"limit = 1"#)))
+            .await
+            .unwrap();
+        match badge.body {
+            Body::Badge(d) => assert!(!d.label.is_empty()),
+            _ => panic!(),
+        }
+
+        let entries = CodeComments
+            .fetch(&ctx(
+                Some(Shape::Entries),
+                Some(
+                    r#"
+limit = 1
+unit = "kloc"
+"#,
+                ),
+            ))
+            .await
+            .unwrap();
+        match entries.body {
+            Body::Entries(d) => {
+                assert_eq!(d.items.len(), 1);
+                assert!(!d.items[0].key.is_empty());
+                assert!(!d.items[0].value.as_deref().unwrap_or_default().is_empty());
+            }
+            _ => panic!(),
+        }
     }
 }
