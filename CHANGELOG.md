@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-29
+
+### ✨ Features
+
+- feat(config): add auto_home / auto_on_cd toggles to opt out of auto-display ([83f7d42](https://github.com/unhappychoice/splashboard/commit/83f7d42))
+
+### 🐛 Bug Fixes
+
+- fix(xtask): step past OSC 8 link cells in HTML snapshot ([ef8d1f8](https://github.com/unhappychoice/splashboard/commit/ef8d1f8))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.1.0 ([a4d2f46](https://github.com/unhappychoice/splashboard/commit/a4d2f46))
+- test(github): add offline tests for repo_prs fetcher ([0c325ff](https://github.com/unhappychoice/splashboard/commit/0c325ff))
+- test(github): add offline tests for repo_issues fetcher ([74a2726](https://github.com/unhappychoice/splashboard/commit/74a2726))
+- test(hackernews): cover shared HTTP client with offline tests ([23fdc12](https://github.com/unhappychoice/splashboard/commit/23fdc12))
+- test(github): add offline tests for good_first_issues ([30c9eee](https://github.com/unhappychoice/splashboard/commit/30c9eee))
+- test(github): cover recent_releases fetcher ([010c9df](https://github.com/unhappychoice/splashboard/commit/010c9df))
+- test(github): cover shared issue/PR item renderer helper ([9efefd9](https://github.com/unhappychoice/splashboard/commit/9efefd9))
+- chore(gnhf): require English summary/body in loop prompts ([fc5d3bc](https://github.com/unhappychoice/splashboard/commit/fc5d3bc))
+- perf(build): tighten release profile ([7666931](https://github.com/unhappychoice/splashboard/commit/7666931))
+- perf(cli): use sync dispatch and lazy Tokio init ([e6f5d5e](https://github.com/unhappychoice/splashboard/commit/e6f5d5e))
+- chore(gnhf): pass --prevent-sleep off to gnhf ([cf859fc](https://github.com/unhappychoice/splashboard/commit/cf859fc))
+- test(fetcher): cover github_action_status untested branches ([91235c2](https://github.com/unhappychoice/splashboard/commit/91235c2))
+- test(xtask): cover dashboard_snapshot module ([ec3fb0d](https://github.com/unhappychoice/splashboard/commit/ec3fb0d))
+- chore(gnhf): pick a loop via run.sh argument, drop worktree mode ([f6239a6](https://github.com/unhappychoice/splashboard/commit/f6239a6))
+- chore(gnhf): add launcher for parallel overnight loops ([d732532](https://github.com/unhappychoice/splashboard/commit/d732532))
+- chore(gnhf): save overnight loop prompts ([3bbb4ad](https://github.com/unhappychoice/splashboard/commit/3bbb4ad))
+- test(render): add animated_wave regression tests ([6b1d47b](https://github.com/unhappychoice/splashboard/commit/6b1d47b))
+- test(render): add animated_typewriter regression tests ([d821df6](https://github.com/unhappychoice/splashboard/commit/d821df6))
+- test(render): add animated_boot regression tests ([7f7cae4](https://github.com/unhappychoice/splashboard/commit/7f7cae4))
+- test(render): improve text_plain coverage ([96766c6](https://github.com/unhappychoice/splashboard/commit/96766c6))
+- docs(site): preset gallery in showcases + renderer-page previews ([4a8ca0a](https://github.com/unhappychoice/splashboard/commit/4a8ca0a))
+- chore: update flake.nix hashes for v1.0.0 ([8d8a2bb](https://github.com/unhappychoice/splashboard/commit/8d8a2bb))
+
+
 ## [1.0.0] - 2026-04-28
 
 ### ✨ Features
@@ -38,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.0.0 ([d1b1191](https://github.com/unhappychoice/splashboard/commit/d1b1191))
+- chore: bump version to v1.0.0 ([547179a](https://github.com/unhappychoice/splashboard/commit/547179a))
 - docs(secrets): document $HOME/.splashboard/secrets.toml in user guides ([645022b](https://github.com/unhappychoice/splashboard/commit/645022b))
 - refactor(payload,render): model placeholder errors as Body::Error ([530d143](https://github.com/unhappychoice/splashboard/commit/530d143))
 - docs(templates): correct project_codebase TEMPLATES description ([db8e7e2](https://github.com/unhappychoice/splashboard/commit/db8e7e2))

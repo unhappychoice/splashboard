@@ -10,7 +10,7 @@ strip = "symbols"
 
 [package]
 name = "splashboard"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 authors = ["Yuji Ueki <unhappychoice@gmail.com>"]
 description = "A customizable terminal splash screen with plugin-based data sources"
