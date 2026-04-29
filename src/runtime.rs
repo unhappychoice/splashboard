@@ -1754,6 +1754,17 @@ mod tests {
     }
 
     #[test]
+    fn derive_shape_uses_renderer_first_shape_when_fetcher_unknown() {
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let w = widget_with_render("t", "definitely_not_a_fetcher", Some("grid_calendar"));
+        assert_eq!(
+            derive_shape(&w, &registry, &render_registry),
+            Some(Shape::Calendar)
+        );
+    }
+
+    #[test]
     fn partition_by_shape_support_keeps_widget_with_compatible_renderer() {
         let registry = Registry::with_builtins();
         let widgets = vec![widget_with_render(
@@ -1763,6 +1774,15 @@ mod tests {
         )];
         let shapes = single_shape("d", Shape::Ratio);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
+        assert_eq!(valid.len(), 1);
+        assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn partition_by_shape_support_passes_through_when_shape_is_missing() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget_with_render("clock", "clock", Some("text_plain"))];
+        let (valid, invalid) = partition_by_shape_support(&widgets, &HashMap::new(), &registry);
         assert_eq!(valid.len(), 1);
         assert!(invalid.is_empty());
     }
@@ -1862,6 +1882,62 @@ mod tests {
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 3);
         assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn split_by_fetcher_kind_and_compute_realtime_payloads_use_only_realtime_widgets() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget("clock", "clock"), static_widget("static", "cached")];
+        let (cached, realtime) = split_by_fetcher_kind(&widgets, &registry);
+        assert_eq!(
+            cached.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
+            vec!["static"]
+        );
+        assert_eq!(
+            realtime.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
+            vec!["clock"]
+        );
+
+        let payloads = compute_realtime_payloads(
+            &registry,
+            &widgets,
+            &General::default(),
+            &single_shape("clock", Shape::Calendar),
+        );
+        assert_eq!(payloads.len(), 1);
+        assert!(matches!(
+            payloads.get("clock").map(|payload| &payload.body),
+            Some(Body::Calendar(_))
+        ));
+    }
+
+    #[test]
+    fn load_entries_without_cache_returns_empty() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("static", "cached")];
+        let entries = load_entries(
+            None,
+            &registry,
+            &widgets,
+            &General::default(),
+            &HashMap::new(),
+        );
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn render_specs_collect_only_widgets_with_explicit_renderers() {
+        let widgets = vec![
+            widget_with_render("plain", "clock", None),
+            widget_with_render("fancy", "clock", Some("text_plain")),
+        ];
+        let specs = render_specs(&widgets);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(
+            specs.get("fancy").map(RenderSpec::renderer_name),
+            Some("text_plain")
+        );
+        assert!(!specs.contains_key("plain"));
     }
 
     #[test]
