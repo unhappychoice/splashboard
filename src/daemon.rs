@@ -126,7 +126,141 @@ fn detach(_cmd: &mut std::process::Command) {}
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+
     use super::*;
+    use crate::paths::TEST_ENV_LOCK;
+    use tempfile::tempdir;
+
+    struct SplashboardHomeGuard(Option<OsString>);
+
+    impl SplashboardHomeGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::var_os("SPLASHBOARD_HOME");
+            unsafe {
+                std::env::set_var("SPLASHBOARD_HOME", path);
+            }
+            Self(previous)
+        }
+    }
+
+    impl Drop for SplashboardHomeGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                    None => std::env::remove_var("SPLASHBOARD_HOME"),
+                }
+            }
+        }
+    }
+
+    fn minimal_dashboard(id: &str) -> String {
+        format!(
+            r#"
+[[widget]]
+id = "{id}"
+fetcher = "basic_static"
+render = "text_plain"
+
+[[row]]
+[[row.child]]
+widget = "{id}"
+"#
+        )
+    }
+
+    #[test]
+    fn dashboard_source_helpers_preserve_kind_and_local_path() {
+        let local = DashboardSource::Local(PathBuf::from("local.toml"));
+        assert_eq!(local.kind(), DashboardKind::Local);
+        assert_eq!(local.path(), Some(Path::new("local.toml")));
+        assert_eq!(DashboardSource::Home.kind(), DashboardKind::Home);
+        assert_eq!(DashboardSource::Home.path(), None);
+        assert_eq!(DashboardSource::Project.kind(), DashboardKind::Project);
+        assert_eq!(DashboardSource::Project.path(), None);
+    }
+
+    #[test]
+    fn load_dashboard_local_returns_hash_for_valid_file() {
+        let dir = tempdir().unwrap();
+        let local = dir.path().join("local.dashboard.toml");
+        std::fs::write(&local, minimal_dashboard("local")).unwrap();
+
+        let (dashboard, ident) = load_dashboard(DashboardKind::Local, Some(&local)).unwrap();
+        assert_eq!(dashboard.widgets[0].id, "local");
+        let (path, hash) = ident.unwrap();
+        assert_eq!(path, local);
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn home_project_and_settings_loaders_use_files_then_fallbacks() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempdir().unwrap();
+        let _guard = SplashboardHomeGuard::set(dir.path());
+        let default_home = DashboardConfig::default_home();
+        let default_project = DashboardConfig::default_project();
+        let default_settings = SettingsConfig::default_baked();
+
+        let (home_missing, _) = load_dashboard(DashboardKind::Home, None).unwrap();
+        assert_eq!(home_missing.widgets.len(), default_home.widgets.len());
+        assert_eq!(home_missing.rows.len(), default_home.rows.len());
+        let (project_missing, _) = load_dashboard(DashboardKind::Project, None).unwrap();
+        assert_eq!(project_missing.widgets.len(), default_project.widgets.len());
+        assert_eq!(project_missing.rows.len(), default_project.rows.len());
+        assert_eq!(
+            load_settings_or_default().general.auto_home,
+            default_settings.general.auto_home
+        );
+
+        std::fs::write(
+            paths::home_dashboard_path().unwrap(),
+            minimal_dashboard("home"),
+        )
+        .unwrap();
+        std::fs::write(
+            paths::project_dashboard_path().unwrap(),
+            minimal_dashboard("project"),
+        )
+        .unwrap();
+        std::fs::write(
+            paths::settings_path().unwrap(),
+            "[general]\nauto_home = false\nauto_on_cd = false\n",
+        )
+        .unwrap();
+
+        let (home_loaded, ident) = load_dashboard(DashboardKind::Home, None).unwrap();
+        assert_eq!(home_loaded.widgets[0].id, "home");
+        assert!(ident.is_none());
+        let (project_loaded, ident) = load_dashboard(DashboardKind::Project, None).unwrap();
+        assert_eq!(project_loaded.widgets[0].id, "project");
+        assert!(ident.is_none());
+        let loaded_settings = load_settings_or_default();
+        assert!(!loaded_settings.general.auto_home);
+        assert!(!loaded_settings.general.auto_on_cd);
+
+        std::fs::write(paths::home_dashboard_path().unwrap(), "not valid toml").unwrap();
+        std::fs::write(paths::project_dashboard_path().unwrap(), "not valid toml").unwrap();
+        std::fs::write(paths::settings_path().unwrap(), "not valid toml").unwrap();
+
+        let (home_invalid, _) = load_dashboard(DashboardKind::Home, None).unwrap();
+        assert_eq!(home_invalid.widgets.len(), default_home.widgets.len());
+        assert_eq!(home_invalid.rows.len(), default_home.rows.len());
+        let (project_invalid, _) = load_dashboard(DashboardKind::Project, None).unwrap();
+        assert_eq!(project_invalid.widgets.len(), default_project.widgets.len());
+        assert_eq!(project_invalid.rows.len(), default_project.rows.len());
+        let invalid_settings = load_settings_or_default();
+        assert_eq!(
+            invalid_settings.general.auto_home,
+            default_settings.general.auto_home
+        );
+        assert_eq!(
+            invalid_settings.general.auto_on_cd,
+            default_settings.general.auto_on_cd
+        );
+    }
 
     #[tokio::test]
     async fn run_fetch_only_home_uses_baked_default() {
