@@ -19,6 +19,7 @@ pub mod deariary;
 pub mod git;
 pub mod github;
 pub mod hackernews;
+pub mod linear;
 pub mod random_cat;
 pub mod random_dog;
 pub mod random_fortune;
@@ -324,6 +325,9 @@ impl Registry {
             r.register(f);
         }
         for f in hackernews::fetchers() {
+            r.register(f);
+        }
+        for f in linear::fetchers() {
             r.register(f);
         }
         for f in todoist::fetchers() {
