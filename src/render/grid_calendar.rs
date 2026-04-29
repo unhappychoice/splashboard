@@ -3,7 +3,7 @@ use ratatui::{
     backend::TestBackend,
     buffer::Buffer,
     layout::{Alignment, Constraint, Flex, Layout as RatLayout, Position, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     widgets::{
         Widget,
         calendar::{CalendarEventStore, Monthly},
@@ -168,7 +168,18 @@ fn blit(src: &Buffer, dst: &mut Buffer, target: Rect) {
                 src.cell(Position::new(src.area.x + sx, src.area.y + sy)),
                 dst.cell_mut(Position::new(dx, dy)),
             ) {
+                // The offscreen TestBackend buffer starts with all cells at `Color::Reset`,
+                // and ratatui's `Monthly` widget only paints fg on its glyphs. Cloning the
+                // whole cell would overwrite the layout-painted bg (theme.bg or
+                // `bg = "subtle"`) with Reset. Preserve the dst bg unless the src cell set
+                // its own.
+                let preserved_bg = if src_cell.bg == Color::Reset {
+                    dst_cell.bg
+                } else {
+                    src_cell.bg
+                };
                 *dst_cell = src_cell.clone();
+                dst_cell.bg = preserved_bg;
             }
         }
     }
@@ -318,5 +329,42 @@ mod tests {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("grid_calendar".into());
         let _ = render_to_buffer_with_spec(&p, Some(&spec), &registry, 24, 9);
+    }
+
+    #[test]
+    fn preserves_layout_painted_bg() {
+        // Regression: rendering the calendar through the offscreen TestBackend buffer used to
+        // overwrite every dst cell wholesale, including the bg the layout had just painted
+        // (theme.bg or `bg = "subtle"`). The blit must keep the dst bg when the src cell has
+        // no explicit bg of its own.
+        use ratatui::{Terminal, backend::TestBackend, style::Style, widgets::Block};
+        let backend = TestBackend::new(24, 9);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let painted = Color::Rgb(0x12, 0x34, 0x56);
+        let p = payload(2026, 4, Some(21));
+        let Body::Calendar(data) = &p.body else {
+            unreachable!()
+        };
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                f.render_widget(Block::default().style(Style::default().bg(painted)), area);
+                render_calendar(f, area, data, &RenderOptions::default(), &theme);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let mut painted_count = 0u32;
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                if buf.cell((x, y)).unwrap().bg == painted {
+                    painted_count += 1;
+                }
+            }
+        }
+        assert!(
+            painted_count > 0,
+            "expected the layout-painted bg to survive the calendar blit, found 0 cells"
+        );
     }
 }
