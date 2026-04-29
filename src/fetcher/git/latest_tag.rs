@@ -137,8 +137,76 @@ fn entry(key: &str, value: &str) -> Entry {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::make_repo;
+    use std::future::Future;
+    use std::process::Command;
+
+    use super::super::test_support::{commit, make_repo, tag};
     use super::*;
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn ctx(shape: Option<Shape>, timezone: Option<&str>) -> FetchContext {
+        FetchContext {
+            shape,
+            timezone: timezone.map(str::to_string),
+            ..FetchContext::default()
+        }
+    }
+
+    fn dated_commit(repo: &gix::Repository, msg: &str, date: &str) {
+        let path = repo.workdir().expect("workdir");
+        let file = path.join("README.md");
+        let prev = std::fs::read_to_string(&file).unwrap_or_default();
+        std::fs::write(&file, format!("{prev}{msg}\n")).unwrap();
+        let add = Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        assert!(add.status.success(), "git add failed");
+        let commit = Command::new("git")
+            .args(["commit", "-q", "-m", msg])
+            .current_dir(path)
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .output()
+            .unwrap();
+        assert!(commit.status.success(), "git commit failed");
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = GitLatestTag;
+        let text_key = fetcher.cache_key(&ctx(Some(Shape::Text), None));
+        let entries_key = fetcher.cache_key(&ctx(Some(Shape::Entries), None));
+
+        assert_eq!(fetcher.name(), "git_latest_tag");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Most recent git tag"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Text);
+        assert!(text_key.starts_with("git_latest_tag-"));
+        assert_ne!(text_key, entries_key);
+        assert_eq!(
+            fetcher.sample_body(Shape::Text),
+            Some(samples::text("v1.2.3"))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(samples::entries(&[
+                ("tag", "v1.2.3"),
+                ("short", "a1b2c3d"),
+                ("date", "2026-04-14"),
+            ]))
+        );
+        assert!(fetcher.sample_body(Shape::Badge).is_none());
+    }
 
     #[test]
     fn returns_empty_text_when_no_tags() {
@@ -153,8 +221,8 @@ mod tests {
     #[test]
     fn text_shape_emits_tag_name() {
         let (_tmp, repo) = make_repo();
-        super::super::test_support::commit(&repo, "initial");
-        super::super::test_support::tag(&repo, "v0.1.0");
+        commit(&repo, "initial");
+        tag(&repo, "v0.1.0");
         let p = build(&repo, Shape::Text, None, None).unwrap();
         match p.body {
             Body::Text(d) => assert_eq!(d.value, "v0.1.0"),
@@ -165,8 +233,8 @@ mod tests {
     #[test]
     fn entries_shape_has_tag_commit_date() {
         let (_tmp, repo) = make_repo();
-        super::super::test_support::commit(&repo, "initial");
-        super::super::test_support::tag(&repo, "v1.2.3");
+        commit(&repo, "initial");
+        tag(&repo, "v1.2.3");
         let p = build(&repo, Shape::Entries, None, None).unwrap();
         match p.body {
             Body::Entries(d) => {
@@ -178,5 +246,47 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn latest_tag_prefers_newest_commit_time() {
+        let (_tmp, repo) = make_repo();
+        dated_commit(&repo, "oldest", "2026-01-01T00:00:00Z");
+        tag(&repo, "c-oldest");
+        dated_commit(&repo, "older", "2026-01-02T00:00:00Z");
+        tag(&repo, "b-older");
+        dated_commit(&repo, "newest", "2026-01-03T00:00:00Z");
+        tag(&repo, "a-newest");
+
+        let p = build(&repo, Shape::Entries, Some("UTC"), None).unwrap();
+
+        assert!(matches!(
+            p.body,
+            Body::Entries(EntriesData { items })
+                if items[0].value.as_deref() == Some("a-newest")
+                    && items[2].value.as_deref() == Some("2026-01-03")
+        ));
+    }
+
+    #[test]
+    fn fetch_reads_workspace_repo_for_default_and_entries_shapes() {
+        let text = run_async(GitLatestTag.fetch(&ctx(None, None))).unwrap();
+        let entries = run_async(GitLatestTag.fetch(&ctx(Some(Shape::Entries), None))).unwrap();
+
+        assert!(matches!(
+            text.body,
+            Body::Text(d) if !d.value.is_empty()
+        ));
+        assert!(matches!(
+            entries.body,
+            Body::Entries(EntriesData { items })
+                if items.len() == 3 && items[0].key == "tag" && items.iter().all(|item| item.value.is_some())
+        ));
+    }
+
+    #[test]
+    fn iso_date_handles_invalid_timestamp_and_explicit_timezone() {
+        assert_eq!(iso_date(i64::MAX, Some("UTC"), None), "");
+        assert_eq!(iso_date(0, Some("America/Los_Angeles"), None), "1969-12-31");
     }
 }
