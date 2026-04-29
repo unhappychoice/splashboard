@@ -551,6 +551,7 @@ fn to_border_style(b: BorderSpec) -> Option<BorderStyle> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::Size;
 
     #[test]
     fn default_baked_settings_parses() {
@@ -686,6 +687,49 @@ preset = "nord"
         assert!(s.general.wait_for_fresh);
         assert_eq!(s.general.height, Some(24));
         assert_eq!(s.theme.preset.as_deref(), Some("nord"));
+    }
+
+    #[test]
+    fn padding_xy_and_computed_height_cover_size_fallbacks() {
+        assert_eq!(PaddingSpec::Uniform(3).xy(), (3, 3));
+        assert_eq!(PaddingSpec::Axes { x: 4, y: 2 }.xy(), (4, 2));
+
+        let row = |height| RowConfig {
+            height,
+            title: None,
+            title_align: None,
+            border: None,
+            flex: None,
+            bg: None,
+            gap: None,
+            children: vec![],
+        };
+        let config = Config {
+            general: General {
+                padding: Some(PaddingSpec::Axes { x: 9, y: 2 }),
+                ..General::default()
+            },
+            theme: ThemeConfig::default(),
+            widgets: vec![],
+            rows: vec![
+                row(Some(SizeSpec::Length(4))),
+                row(Some(SizeSpec::Min(5))),
+                row(Some(SizeSpec::Max(6))),
+                row(Some(SizeSpec::Fill(7))),
+                row(Some(SizeSpec::Percentage(50))),
+                row(Some(SizeSpec::Auto)),
+                row(None),
+            ],
+        };
+
+        assert_eq!(config.computed_height(), 28);
+    }
+
+    #[test]
+    fn load_or_default_prefixes_non_missing_io_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = SettingsConfig::load_or_default(dir.path()).unwrap_err();
+        assert!(err.starts_with(&format!("{}:", dir.path().display())));
     }
 
     #[test]
@@ -960,6 +1004,117 @@ widget = "a"
             _ => panic!(),
         };
         assert_eq!(cols.len(), 2);
+    }
+
+    #[test]
+    fn helper_mappings_cover_sizes_flex_titles_and_borders() {
+        assert_eq!(to_flex(FlexSpec::Legacy), Flex::Legacy);
+        assert_eq!(to_flex(FlexSpec::Start), Flex::Start);
+        assert_eq!(to_flex(FlexSpec::Center), Flex::Center);
+        assert_eq!(to_flex(FlexSpec::End), Flex::End);
+        assert_eq!(to_flex(FlexSpec::SpaceBetween), Flex::SpaceBetween);
+        assert_eq!(to_flex(FlexSpec::SpaceAround), Flex::SpaceAround);
+
+        assert_eq!(
+            to_title_align(Some(TitleAlignSpec::Center)),
+            TitleAlign::Center
+        );
+        assert_eq!(
+            to_title_align(Some(TitleAlignSpec::Right)),
+            TitleAlign::Right
+        );
+        assert_eq!(to_title_align(Some(TitleAlignSpec::Left)), TitleAlign::Left);
+        assert_eq!(to_title_align(None), TitleAlign::Left);
+
+        assert_eq!(to_border_style(BorderSpec::None), None);
+        assert_eq!(to_border_style(BorderSpec::Plain), Some(BorderStyle::Plain));
+        assert_eq!(
+            to_border_style(BorderSpec::Rounded),
+            Some(BorderStyle::Rounded)
+        );
+        assert_eq!(to_border_style(BorderSpec::Thick), Some(BorderStyle::Thick));
+        assert_eq!(
+            to_border_style(BorderSpec::Double),
+            Some(BorderStyle::Double)
+        );
+        assert_eq!(to_border_style(BorderSpec::Top), Some(BorderStyle::Top));
+
+        assert_eq!(
+            make_child(Some(SizeSpec::Fill(2)), Layout::Empty).size,
+            Size::Fill(2)
+        );
+        assert_eq!(
+            make_child(Some(SizeSpec::Length(3)), Layout::Empty).size,
+            Size::Length(3)
+        );
+        assert_eq!(
+            make_child(Some(SizeSpec::Min(4)), Layout::Empty).size,
+            Size::Min(4)
+        );
+        assert_eq!(
+            make_child(Some(SizeSpec::Max(5)), Layout::Empty).size,
+            Size::Max(5)
+        );
+        assert_eq!(
+            make_child(Some(SizeSpec::Percentage(60)), Layout::Empty).size,
+            Size::Percentage(60)
+        );
+        assert_eq!(
+            make_child(Some(SizeSpec::Auto), Layout::Empty).size,
+            Size::Auto
+        );
+        assert_eq!(make_child(None, Layout::Empty).size, Size::Fill(1));
+    }
+
+    #[test]
+    fn panel_and_git_root_helpers_cover_remaining_branches() {
+        let titled = apply_panel(
+            Layout::widget("hero"),
+            Some("Status"),
+            Some(BorderSpec::Top),
+            Some(TitleAlignSpec::Right),
+        );
+        let Layout::Widget {
+            panel: Some(panel), ..
+        } = titled
+        else {
+            panic!("expected widget with panel");
+        };
+        assert_eq!(panel.title.as_deref(), Some("Status"));
+        assert_eq!(panel.border, BorderStyle::Top);
+        assert_eq!(panel.title_align, TitleAlign::Right);
+
+        let untitled = apply_panel(
+            Layout::widget("chart"),
+            None,
+            Some(BorderSpec::Rounded),
+            Some(TitleAlignSpec::Center),
+        );
+        let Layout::Widget {
+            panel: Some(panel), ..
+        } = untitled
+        else {
+            panic!("expected rounded widget panel");
+        };
+        assert!(panel.title.is_none());
+        assert_eq!(panel.border, BorderStyle::Rounded);
+        assert_eq!(panel.title_align, TitleAlign::Left);
+
+        let chromeless = apply_panel(
+            Layout::widget("clock"),
+            Some("Ignored"),
+            Some(BorderSpec::None),
+            Some(TitleAlignSpec::Center),
+        );
+        assert!(matches!(chromeless, Layout::Widget { panel: None, .. }));
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".git"), "gitdir: ../.git/worktrees/x").unwrap();
+        assert!(is_git_repo_root(dir.path()));
+        assert_eq!(
+            canonicalize_or(&dir.path().join("missing")),
+            dir.path().join("missing")
+        );
     }
 
     #[test]
