@@ -272,6 +272,62 @@ fn remove_stale(dir: &std::path::Path, key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
+        FetchContext {
+            widget_id: "w".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options,
+            ..Default::default()
+        }
+    }
+
+    fn restore_home(previous: Option<String>) {
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+    }
+
+    fn serve_once(
+        status: &str,
+        content_type: &str,
+        body: &[u8],
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let content_type = content_type.to_owned();
+        let body = body.to_vec();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let header = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     #[test]
     fn options_default_when_absent() {
@@ -293,6 +349,25 @@ mod tests {
         let opts: Options = parse_options(Some(&raw)).unwrap();
         assert_eq!(opts.breed.as_deref(), Some("spaniel"));
         assert_eq!(opts.sub_breed.as_deref(), Some("cocker"));
+    }
+
+    #[test]
+    fn fetcher_exposes_catalog_metadata() {
+        let fetcher = RandomDogFetcher;
+        assert_eq!(fetcher.name(), "random_dog");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Image);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["breed", "sub_breed"]
+        );
+        assert!(fetcher.description().contains("dog.ceo"));
+        assert!(fetcher.sample_body(Shape::Image).is_none());
     }
 
     #[test]
@@ -397,6 +472,15 @@ mod tests {
     }
 
     #[test]
+    fn image_extension_detects_webp() {
+        let mut bytes = vec![];
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&[0u8; 4]);
+        bytes.extend_from_slice(b"WEBPVP8 ");
+        assert_eq!(image_extension(&bytes), Some("webp"));
+    }
+
+    #[test]
     fn image_extension_unknown_returns_none() {
         assert!(image_extension(&[0, 0, 0, 0]).is_none());
     }
@@ -433,6 +517,131 @@ mod tests {
                 "stale {ext} not removed"
             );
         }
+    }
+
+    #[test]
+    fn dog_dir_uses_cache_layout_under_env_override() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        assert_eq!(dog_dir(), Some(tmp.path().join("cache").join("dogs")));
+        restore_home(previous);
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_options_before_network() {
+        let err = run_async(RandomDogFetcher.fetch(&ctx(
+            Some(Shape::Image),
+            Some(toml::from_str("bogus = true").unwrap()),
+        )))
+        .unwrap_err();
+        assert!(format!("{err}").contains("unknown field"));
+    }
+
+    #[test]
+    fn fetch_rejects_sub_breed_without_breed_before_network() {
+        let err = run_async(RandomDogFetcher.fetch(&ctx(
+            Some(Shape::Image),
+            Some(toml::from_str("sub_breed = \"cocker\"").unwrap()),
+        )))
+        .unwrap_err();
+        assert_eq!(format!("{err}"), "fetch failed: sub_breed requires breed");
+    }
+
+    #[test]
+    fn fetch_image_url_reads_success_payload() {
+        let body = br#"{"message":"https://images.dog.ceo/breeds/shiba/x.jpg","status":"success"}"#;
+        let (url, server) = serve_once("200 OK", "application/json", body);
+        let image_url = run_async(fetch_image_url(&url)).unwrap();
+        server.join().unwrap();
+        assert_eq!(image_url, "https://images.dog.ceo/breeds/shiba/x.jpg");
+    }
+
+    #[test]
+    fn fetch_image_url_rejects_http_status() {
+        let (url, server) = serve_once("503 Service Unavailable", "application/json", br#"{}"#);
+        let err = run_async(fetch_image_url(&url)).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(
+            format!("{err}"),
+            "fetch failed: dog API 503 Service Unavailable"
+        );
+    }
+
+    #[test]
+    fn fetch_image_url_rejects_invalid_json() {
+        let (url, server) = serve_once("200 OK", "application/json", br#"not-json"#);
+        let err = run_async(fetch_image_url(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(format!("{err}").contains("dog API body"));
+    }
+
+    #[test]
+    fn fetch_image_url_rejects_non_success_api_status() {
+        let body = br#"{"message":"https://images.dog.ceo/breeds/shiba/x.jpg","status":"error"}"#;
+        let (url, server) = serve_once("200 OK", "application/json", body);
+        let err = run_async(fetch_image_url(&url)).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(
+            format!("{err}"),
+            "fetch failed: dog API non-success status: error"
+        );
+    }
+
+    #[test]
+    fn fetch_bytes_reads_small_body() {
+        let bytes = b"\x89PNG\r\n\x1a\nrest";
+        let (url, server) = serve_once("200 OK", "image/png", bytes);
+        let downloaded = run_async(fetch_bytes(&url)).unwrap();
+        server.join().unwrap();
+        assert_eq!(downloaded, bytes);
+    }
+
+    #[test]
+    fn fetch_bytes_rejects_http_status() {
+        let (url, server) = serve_once("404 Not Found", "text/plain", b"missing");
+        let err = run_async(fetch_bytes(&url)).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(format!("{err}"), "fetch failed: dog image 404 Not Found");
+    }
+
+    #[test]
+    fn fetch_bytes_rejects_oversized_body() {
+        let (url, server) = serve_once("200 OK", "image/jpeg", &vec![b'x'; MAX_BYTES + 1]);
+        let err = run_async(fetch_bytes(&url)).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(
+            format!("{err}"),
+            format!("fetch failed: dog image too large: {} bytes", MAX_BYTES + 1)
+        );
+    }
+
+    #[test]
+    fn fetch_bytes_rejects_malformed_url() {
+        let err = run_async(fetch_bytes("https://bad host")).unwrap_err();
+        assert!(format!("{err}").contains("dog image request failed"));
+    }
+
+    #[test]
+    fn fetch_surfaces_cache_dir_creation_failure_before_network() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("not-a-dir");
+        std::fs::write(&file, b"x").unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", &file) };
+        let err = run_async(RandomDogFetcher.fetch(&ctx(
+            Some(Shape::Image),
+            Some(toml::from_str("breed = \"shiba\"").unwrap()),
+        )))
+        .unwrap_err();
+        assert!(format!("{err}").contains("create dog cache dir"));
+        restore_home(previous);
     }
 
     /// Live smoke test — downloads a dog and verifies the file is a real image. `#[ignore]` keeps
