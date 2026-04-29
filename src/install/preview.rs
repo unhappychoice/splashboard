@@ -291,6 +291,14 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    fn widget(id: &str, fetcher: &str) -> WidgetConfig {
+        WidgetConfig {
+            id: id.into(),
+            fetcher: fetcher.into(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn every_template_builds_a_preview() {
         for t in templates::TEMPLATES {
@@ -327,5 +335,201 @@ mod tests {
                 .draw(|frame| preview.draw(frame, frame.area()))
                 .unwrap_or_else(|e| panic!("{name} failed to render: {e}"));
         }
+    }
+
+    #[test]
+    fn invalid_template_returns_none() {
+        assert!(TemplatePreview::from_body("not [valid = toml").is_none());
+    }
+
+    #[test]
+    fn draw_returns_early_for_zero_area() {
+        let preview = TemplatePreview::from_body(templates::TEMPLATES[0].body).unwrap();
+        let backend = TestBackend::new(40, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| preview.draw(frame, Rect::new(0, 0, 0, 0)))
+            .unwrap();
+    }
+
+    #[test]
+    fn build_payloads_uses_static_format_and_sample_bodies() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+
+        let mut static_widget = widget("static", "basic_static");
+        static_widget.format = Some("alpha\nbeta".into());
+        static_widget.render = Some(RenderSpec::Short("list_plain".into()));
+
+        let mut clock_widget = widget("clock", "clock");
+        clock_widget.render = Some(RenderSpec::Short("grid_table".into()));
+
+        let payloads = build_payloads(
+            &[
+                static_widget,
+                clock_widget,
+                widget("missing", "no_such_fetcher"),
+            ],
+            &fetchers,
+            &renderers,
+        );
+
+        assert_eq!(payloads.len(), 2);
+        assert!(matches!(
+            &payloads.get("static").unwrap().body,
+            Body::TextBlock(TextBlockData { lines })
+                if lines == &vec![String::from("alpha"), String::from("beta")]
+        ));
+        assert!(matches!(
+            payloads.get("clock").map(|payload| &payload.body),
+            Some(Body::Entries(_))
+        ));
+        assert!(!payloads.contains_key("missing"));
+    }
+
+    #[test]
+    fn resolve_shape_prefers_shared_shape_and_falls_back_to_renderer_or_default() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+
+        let mut shared = widget("shared", "basic_static");
+        shared.render = Some(RenderSpec::Short("list_plain".into()));
+        assert_eq!(
+            resolve_shape(&shared, &fetchers.get("basic_static").unwrap(), &renderers),
+            Shape::TextBlock
+        );
+
+        let mut mismatch = widget("mismatch", "git_repo_name");
+        mismatch.render = Some(RenderSpec::Short("status_badge".into()));
+        assert_eq!(
+            resolve_shape(
+                &mismatch,
+                &fetchers.get("git_repo_name").unwrap(),
+                &renderers
+            ),
+            Shape::Badge
+        );
+
+        assert_eq!(
+            resolve_shape(
+                &widget("defaulted", "clock"),
+                &fetchers.get("clock").unwrap(),
+                &renderers
+            ),
+            Shape::Text
+        );
+    }
+
+    #[test]
+    fn build_specs_defaults_and_deanimates_wrapped_renderers() {
+        let plain = widget("plain", "basic_static");
+
+        let mut typewriter = widget("typewriter", "basic_static");
+        typewriter.render = Some(RenderSpec::Short("animated_typewriter".into()));
+
+        let mut postfx = widget("postfx", "basic_static");
+        postfx.render = Some(RenderSpec::Full {
+            type_name: "animated_postfx".into(),
+            options: RenderOptions {
+                align: Some("center".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("inner", "list_plain"),
+        });
+
+        let specs = build_specs(&[plain, typewriter, postfx]);
+
+        assert!(matches!(
+            specs.get("plain"),
+            Some(RenderSpec::Short(name)) if name == "text_plain"
+        ));
+        assert!(matches!(
+            specs.get("typewriter"),
+            Some(RenderSpec::Short(name)) if name == "text_plain"
+        ));
+        assert!(matches!(
+            specs.get("postfx"),
+            Some(RenderSpec::Full { type_name, options })
+                if type_name == "list_plain" && options.align.as_deref() == Some("center")
+        ));
+    }
+
+    #[test]
+    fn deanimate_unwraps_wrappers_and_figlet_morph() {
+        for name in [
+            "animated_typewriter",
+            "animated_postfx",
+            "animated_boot",
+            "animated_scanlines",
+            "animated_splitflap",
+            "animated_wave",
+        ] {
+            match deanimate(RenderSpec::Short(name.into())) {
+                RenderSpec::Short(inner) => assert_eq!(inner, "text_plain"),
+                other => panic!("expected short text_plain for {name}, got {other:?}"),
+            }
+        }
+
+        for type_name in [
+            "animated_postfx",
+            "animated_boot",
+            "animated_scanlines",
+            "animated_splitflap",
+            "animated_wave",
+        ] {
+            let spec = RenderSpec::Full {
+                type_name: type_name.into(),
+                options: RenderOptions::default().with_extra("inner", "status_badge"),
+            };
+            assert!(matches!(
+                deanimate(spec),
+                RenderSpec::Full { type_name, .. } if type_name == "status_badge"
+            ));
+        }
+
+        assert!(matches!(
+            deanimate(RenderSpec::Full {
+                type_name: "animated_boot".into(),
+                options: RenderOptions::default(),
+            }),
+            RenderSpec::Full { type_name, .. } if type_name == "text_plain"
+        ));
+
+        assert!(matches!(
+            deanimate(RenderSpec::Short("animated_figlet_morph".into())),
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_ascii"
+                    && options.style.as_deref() == Some("figlet")
+                    && options.extra_str("font") == Some("ansi_shadow")
+        ));
+
+        let spec = RenderSpec::Full {
+            type_name: "animated_figlet_morph".into(),
+            options: RenderOptions {
+                align: Some("right".into()),
+                color: Some("panel_title".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("font_sequence", vec!["small", "doom"]),
+        };
+        assert!(matches!(
+            deanimate(spec),
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_ascii"
+                    && options.style.as_deref() == Some("figlet")
+                    && options.align.as_deref() == Some("right")
+                    && options.color.as_deref() == Some("panel_title")
+                    && options.extra_str("font") == Some("doom")
+        ));
+
+        assert!(matches!(
+            deanimate(RenderSpec::Full {
+                type_name: "animated_figlet_morph".into(),
+                options: RenderOptions::default(),
+            }),
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_ascii"
+                    && options.extra_str("font") == Some("ansi_shadow")
+        ));
     }
 }
