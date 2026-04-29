@@ -235,8 +235,81 @@ fn short_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
     use super::super::test_support::{commit_touching, make_repo};
     use super::*;
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn ctx(shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            shape,
+            format: format.map(str::to_string),
+            ..FetchContext::default()
+        }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = GitChurn;
+        let default_key = fetcher.cache_key(&ctx(None, None));
+        let text_key = fetcher.cache_key(&ctx(Some(Shape::Text), Some("7")));
+        let bars_key = fetcher.cache_key(&ctx(Some(Shape::Bars), Some("30")));
+
+        assert_eq!(fetcher.name(), "git_churn");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Top files by change count"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Entries);
+        assert!(default_key.starts_with("git_churn-"));
+        assert_ne!(default_key, text_key);
+        assert_ne!(text_key, bars_key);
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(samples::entries(&[
+                ("src/main.rs", "42"),
+                ("src/lib.rs", "31"),
+                ("src/render/mod.rs", "18"),
+                ("src/fetcher/mod.rs", "12"),
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Bars),
+            Some(samples::bars(&[
+                ("src/main.rs", 42),
+                ("src/lib.rs", 31),
+                ("src/render/mod.rs", 18),
+                ("src/fetcher/mod.rs", 12),
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(samples::text_block(&[
+                "src/main.rs (42)",
+                "src/lib.rs (31)",
+                "src/render/mod.rs (18)",
+                "src/fetcher/mod.rs (12)",
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::MarkdownTextBlock),
+            Some(samples::markdown(
+                "1. `src/main.rs` — 42\n2. `src/lib.rs` — 31\n3. `src/render/mod.rs` — 18\n4. `src/fetcher/mod.rs` — 12",
+            ))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Text),
+            Some(samples::text("main.rs (42), lib.rs (31), mod.rs (18)"))
+        );
+        assert!(fetcher.sample_body(Shape::Badge).is_none());
+    }
 
     #[test]
     fn empty_repo_returns_empty() {
@@ -354,9 +427,26 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_shape_falls_back_to_entries() {
+        let body = render_body(vec![("src/foo.rs".into(), 3)], Shape::Badge);
+        assert_eq!(
+            body,
+            Body::Entries(EntriesData {
+                items: vec![Entry {
+                    key: "src/foo.rs".into(),
+                    value: Some("3".into()),
+                    status: None,
+                }],
+            })
+        );
+    }
+
+    #[test]
     fn parse_days_defaults_and_parses() {
         assert_eq!(parse_days(None), DEFAULT_DAYS);
         assert_eq!(parse_days(Some("0")), DEFAULT_DAYS);
+        assert_eq!(parse_days(Some(" invalid ")), DEFAULT_DAYS);
+        assert_eq!(parse_days(Some(" 14 ")), 14);
         assert_eq!(parse_days(Some("7")), 7);
     }
 
@@ -364,5 +454,26 @@ mod tests {
     fn short_path_returns_basename() {
         assert_eq!(short_path("a.rs"), "a.rs");
         assert_eq!(short_path("src/foo/bar.rs"), "bar.rs");
+    }
+
+    #[test]
+    fn fetch_reads_workspace_repo_for_default_and_requested_shapes() {
+        let fetcher = GitChurn;
+        let repo = open_repo().unwrap();
+        let ranked = churn(&repo, DEFAULT_DAYS, None).unwrap();
+
+        let default_payload = run_async(fetcher.fetch(&ctx(None, None))).unwrap();
+        let bars_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Bars), Some("30")))).unwrap();
+        let text_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Text), Some("30")))).unwrap();
+
+        assert_eq!(
+            default_payload,
+            payload(render_body(ranked.clone(), Shape::Entries))
+        );
+        assert_eq!(
+            bars_payload,
+            payload(render_body(ranked.clone(), Shape::Bars))
+        );
+        assert_eq!(text_payload, payload(render_body(ranked, Shape::Text)));
     }
 }
