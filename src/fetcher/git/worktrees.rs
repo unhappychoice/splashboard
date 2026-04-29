@@ -126,8 +126,39 @@ fn format_value(branch: &Option<String>, path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+    use std::process::Command;
+    use std::time::Duration;
+
     use super::super::test_support::{commit, make_repo};
     use super::*;
+    use tempfile::tempdir;
+
+    fn context(shape: Shape) -> FetchContext {
+        FetchContext {
+            widget_id: "git-worktrees".into(),
+            format: Some("plain".into()),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape: Some(shape),
+            options: None,
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     #[test]
     fn returns_main_worktree_only_for_plain_repo() {
@@ -166,5 +197,106 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = GitWorktrees;
+        assert_eq!(fetcher.name(), "git_worktrees");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Entries);
+        assert!(fetcher.description().contains("Linked worktrees"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+
+        let entries_key = fetcher.cache_key(&context(Shape::Entries));
+        let text_block_key = fetcher.cache_key(&context(Shape::TextBlock));
+        assert!(entries_key.starts_with("git_worktrees-"));
+        assert_ne!(entries_key, text_block_key);
+    }
+
+    #[test]
+    fn worktrees_include_linked_and_detached_checkouts() {
+        let (_tmp, repo) = make_repo();
+        commit(&repo, "init");
+        let root = repo.workdir().unwrap().to_path_buf();
+        let linked_root = tempdir().unwrap();
+        let feature = linked_root.path().join("feature");
+        let detached = linked_root.path().join("detached");
+        run_git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feat/demo",
+                feature.to_str().unwrap(),
+                "HEAD",
+            ],
+        );
+        run_git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                detached.to_str().unwrap(),
+                "HEAD",
+            ],
+        );
+
+        let repo = gix::discover(&root).unwrap();
+        let list = worktrees(&repo).unwrap();
+        assert_eq!(list.len(), 3);
+
+        let feature_wt = list
+            .iter()
+            .find(|wt| wt.path == feature.display().to_string())
+            .unwrap();
+        assert_eq!(feature_wt.branch.as_deref(), Some("feat/demo"));
+
+        let detached_wt = list
+            .iter()
+            .find(|wt| wt.path == detached.display().to_string())
+            .unwrap();
+        assert!(detached_wt.branch.is_none());
+        assert_ne!(feature_wt.id, detached_wt.id);
+    }
+
+    #[test]
+    fn detached_worktree_output_omits_branch_name() {
+        let text_body = render_body(
+            vec![WorktreeInfo {
+                id: "detached".into(),
+                branch: None,
+                path: "/tmp/detached".into(),
+            }],
+            Shape::TextBlock,
+        );
+        let Body::TextBlock(text) = text_body else {
+            panic!("expected text block");
+        };
+        assert_eq!(text.lines, vec!["detached @ /tmp/detached".to_string()]);
+
+        let entries_body = render_body(
+            vec![WorktreeInfo {
+                id: "detached".into(),
+                branch: None,
+                path: "/tmp/detached".into(),
+            }],
+            Shape::Entries,
+        );
+        let Body::Entries(entries) = entries_body else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].value.as_deref(), Some("/tmp/detached"));
     }
 }
