@@ -132,8 +132,60 @@ fn render_body(commits: Vec<CommitInfo>, shape: Shape) -> Body {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
     use super::super::test_support::{commit, make_repo};
     use super::*;
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn ctx(shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            shape,
+            format: format.map(str::to_string),
+            ..FetchContext::default()
+        }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = GitRecentCommits;
+        let timeline_key = fetcher.cache_key(&ctx(Some(Shape::Timeline), Some("2")));
+        let text_key = fetcher.cache_key(&ctx(Some(Shape::TextBlock), Some("2")));
+        let default_key = fetcher.cache_key(&ctx(None, None));
+
+        assert_eq!(fetcher.name(), "git_recent_commits");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Newest commits on HEAD"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Timeline);
+        assert!(timeline_key.starts_with("git_recent_commits-"));
+        assert_ne!(timeline_key, text_key);
+        assert_ne!(timeline_key, default_key);
+        assert_eq!(
+            fetcher.sample_body(Shape::Timeline),
+            Some(samples::timeline(&[
+                (1_700_000_000, "feat(render): add heatmap", Some("a1b2c3d")),
+                (1_699_990_000, "fix(fetcher): tz fallback", Some("d4e5f6a")),
+                (1_699_900_000, "chore: bump ratatui", Some("e7f8a9b")),
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(samples::text_block(&[
+                "a1b2c3d feat(render): add heatmap",
+                "d4e5f6a fix(fetcher): tz fallback",
+                "e7f8a9b chore: bump ratatui",
+            ]))
+        );
+        assert!(fetcher.sample_body(Shape::Badge).is_none());
+    }
 
     #[test]
     fn empty_repo_returns_empty_timeline() {
@@ -168,13 +220,11 @@ mod tests {
         let (_tmp, repo) = make_repo();
         commit(&repo, "x");
         let body = render_body(recent_commits(&repo, 10).unwrap(), Shape::Timeline);
-        match body {
-            Body::Timeline(d) => {
-                assert_eq!(d.events.len(), 1);
-                assert_eq!(d.events[0].title, "x");
-                assert!(d.events[0].detail.as_deref().unwrap().len() >= 7);
-            }
-            _ => panic!(),
+        assert!(matches!(body, Body::Timeline(_)));
+        if let Body::Timeline(d) = body {
+            assert_eq!(d.events.len(), 1);
+            assert_eq!(d.events[0].title, "x");
+            assert!(d.events[0].detail.as_deref().unwrap().len() >= 7);
         }
     }
 
@@ -183,12 +233,10 @@ mod tests {
         let (_tmp, repo) = make_repo();
         commit(&repo, "hello");
         let body = render_body(recent_commits(&repo, 10).unwrap(), Shape::TextBlock);
-        match body {
-            Body::TextBlock(d) => {
-                assert_eq!(d.lines.len(), 1);
-                assert!(d.lines[0].ends_with(" hello"));
-            }
-            _ => panic!(),
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(d) = body {
+            assert_eq!(d.lines.len(), 1);
+            assert!(d.lines[0].ends_with(" hello"));
         }
     }
 
@@ -204,5 +252,25 @@ mod tests {
     fn parse_limit_parses_number() {
         assert_eq!(parse_limit(Some("3")), 3);
         assert_eq!(parse_limit(Some(" 7 ")), 7);
+    }
+
+    #[test]
+    fn fetch_reads_workspace_repo_for_default_and_text_block_shapes() {
+        let fetcher = GitRecentCommits;
+        let repo = open_repo().unwrap();
+
+        let timeline_ctx = ctx(None, Some("2"));
+        let timeline = run_async(fetcher.fetch(&timeline_ctx)).unwrap();
+        assert_eq!(
+            timeline.body,
+            render_body(recent_commits(&repo, 2).unwrap(), Shape::Timeline)
+        );
+
+        let text_ctx = ctx(Some(Shape::TextBlock), Some(" 3 "));
+        let text = run_async(fetcher.fetch(&text_ctx)).unwrap();
+        assert_eq!(
+            text.body,
+            render_body(recent_commits(&repo, 3).unwrap(), Shape::TextBlock)
+        );
     }
 }
