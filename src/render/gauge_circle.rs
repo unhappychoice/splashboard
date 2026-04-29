@@ -87,7 +87,8 @@ fn render_gauge(frame: &mut Frame, area: Rect, data: &RatioData, theme: &Theme) 
 mod tests {
     use super::*;
     use crate::payload::{Payload, RatioData};
-    use crate::render::test_utils::render_to_buffer;
+    use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
+    use crate::render::{Registry, RenderSpec};
 
     fn payload(value: f64, label: Option<&str>) -> Payload {
         Payload {
@@ -102,14 +103,35 @@ mod tests {
         }
     }
 
+    fn render(value: f64, label: Option<&str>) -> ratatui::buffer::Buffer {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("gauge_circle".into());
+        render_to_buffer_with_spec(&payload(value, label), Some(&spec), &registry, 20, 3)
+    }
+
     #[test]
-    fn renders_without_panicking() {
-        let _ = render_to_buffer(&payload(0.5, Some("CPU")), 20, 5);
+    fn catalog_surface_matches_ratio_renderer_contract() {
+        let renderer = GaugeCircleRenderer;
+        assert_eq!(renderer.name(), "gauge_circle");
+        assert!(renderer.description().contains("Ratio"));
+        assert_eq!(renderer.accepts(), &[Shape::Ratio]);
+        assert_eq!(renderer.color_keys().len(), 1);
+        assert_eq!(renderer.color_keys()[0].name, theme::TEXT.name);
+        assert_eq!(renderer.option_schemas().len(), 2);
+        assert_eq!(renderer.option_schemas()[0].name, "ring_thickness");
+        assert_eq!(renderer.option_schemas()[1].name, "label_position");
+    }
+
+    #[test]
+    fn explicit_renderer_spec_renders_label() {
+        let buf = render(0.5, Some("CPU"));
+        let joined = (0..3).map(|y| line_text(&buf, y)).collect::<String>();
+        assert!(joined.contains("CPU"), "{joined:?}");
     }
 
     #[test]
     fn clamps_out_of_range_value() {
-        let _ = render_to_buffer(&payload(1.7, None), 20, 5);
-        let _ = render_to_buffer(&payload(-0.2, None), 20, 5);
+        let _ = render(1.7, None);
+        let _ = render(-0.2, None);
     }
 }
