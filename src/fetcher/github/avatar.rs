@@ -174,6 +174,8 @@ fn payload(body: Body) -> Payload {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::fetcher::github::client;
 
@@ -214,6 +216,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn ctx(options: Option<&str>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "avatar".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape: Some(Shape::Image),
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    #[test]
+    fn fetcher_contract_exposes_image_surface() {
+        let fetcher = GithubAvatar;
+        assert_eq!(
+            fetcher.description(),
+            "A GitHub user's avatar PNG, downloaded once per week and rendered as an image. Useful as the visual hero next to a `github_user` text block."
+        );
+        assert_eq!(fetcher.shapes(), &[Shape::Image]);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+        assert_eq!(fetcher.option_schemas()[0].name, "user");
+        assert_eq!(fetcher.option_schemas()[1].name, "size");
+        assert_eq!(fetcher.sample_body(Shape::Image), None);
+    }
+
+    #[test]
+    fn cache_key_changes_with_options_and_format() {
+        let fetcher = GithubAvatar;
+        let base = fetcher.cache_key(&ctx(Some("user = 'alice'"), None));
+        let changed_options = fetcher.cache_key(&ctx(Some("user = 'alice'\nsize = 128"), None));
+        let changed_format = fetcher.cache_key(&ctx(Some("user = 'alice'"), Some("raw")));
+        assert_ne!(base, changed_options);
+        assert_ne!(base, changed_format);
+    }
+
+    #[test]
+    fn avatar_dir_lives_under_cache_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _g = EnvGuard::set(&[("SPLASHBOARD_HOME", Some(tmp.path().to_str().unwrap()))]);
+        assert_eq!(avatar_dir(), Some(tmp.path().join("cache").join("avatars")));
+    }
+
+    #[test]
+    fn payload_wraps_body_without_metadata() {
+        let body = Body::Image(ImageData {
+            path: "x.png".into(),
+        });
+        assert_eq!(
+            payload(body.clone()),
+            Payload {
+                icon: None,
+                status: None,
+                format: None,
+                body,
+            }
+        );
     }
 
     #[tokio::test]
@@ -258,6 +320,30 @@ mod tests {
     fn options_reject_unknown_keys() {
         let raw: toml::Value = toml::from_str("bogus = 1").unwrap();
         assert!(parse_options::<Options>(Some(&raw)).is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options() {
+        let fetcher = GithubAvatar;
+        let err = fetcher
+            .fetch(&ctx(Some("bogus = 1"), None))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid options")));
+    }
+
+    #[tokio::test]
+    async fn fetch_uses_default_size_and_surfaces_cache_dir_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("not-a-dir");
+        std::fs::write(&home, "x").unwrap();
+        let _g = EnvGuard::set(&[
+            ("SPLASHBOARD_HOME", Some(home.to_str().unwrap())),
+            ("GITHUB_USER", Some("env-user")),
+        ]);
+        let fetcher = GithubAvatar;
+        let err = fetcher.fetch(&ctx(None, None)).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("create avatar cache dir")));
     }
 
     #[test]
