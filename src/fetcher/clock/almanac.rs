@@ -189,6 +189,47 @@ mod tests {
     }
 
     #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = ClockAlmanacFetcher;
+        assert_eq!(fetcher.name(), "clock_almanac");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("multi-row rollup"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(samples::entries(&[
+                ("moon", "🌖 Waning Gibbous"),
+                ("season", "Spring"),
+                ("zodiac", "♉ Taurus"),
+                ("chinese", "🐎 Horse"),
+                ("iso week", "2026-W17"),
+                ("day of year", "114 of 365"),
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(samples::text_block(&[
+                "moon:        🌖 Waning Gibbous",
+                "season:      Spring",
+                "zodiac:      ♉ Taurus",
+                "chinese:     🐎 Horse",
+                "iso week:    2026-W17",
+                "day of year: 114 of 365",
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Calendar),
+            Some(Body::Calendar(CalendarData {
+                year: 2026,
+                month: 4,
+                day: Some(24),
+                events: Vec::new(),
+            }))
+        );
+        assert_eq!(fetcher.sample_body(Shape::Text), None);
+    }
+
+    #[test]
     fn calendar_shape_pins_today() {
         // Pin both sides to UTC — without this the test was flaky on hosts whose local date
         // differs from UTC at the moment of execution (e.g. JST evening near year-end).
@@ -200,6 +241,32 @@ mod tests {
         assert_eq!(d.year, now.year());
         assert_eq!(d.month, now.month() as u8);
         assert_eq!(d.day, Some(now.day() as u8));
+    }
+
+    #[test]
+    fn text_block_shape_emits_one_line_per_fact() {
+        let payload = ClockAlmanacFetcher.compute(&ctx_utc(Some(Shape::TextBlock)));
+        assert!(matches!(
+            &payload.body,
+            Body::TextBlock(data)
+                if data.lines.len() == 6
+                    && data.lines[0].starts_with("moon: ")
+                    && data.lines[5].starts_with("day of year: ")
+        ));
+    }
+
+    #[test]
+    fn invalid_options_return_placeholder() {
+        let payload = ClockAlmanacFetcher.compute(&FetchContext {
+            options: Some(toml::from_str("unexpected = 1").unwrap()),
+            ..ctx(None)
+        });
+        assert!(matches!(
+            &payload.body,
+            Body::TextBlock(data)
+                if data.lines[0].contains("invalid options")
+                    && data.lines[1] == "check [widget.options] in config"
+        ));
     }
 
     #[test]
