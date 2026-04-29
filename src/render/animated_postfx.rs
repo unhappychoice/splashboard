@@ -14,8 +14,11 @@ use crate::theme::Theme;
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
 
+/// Wrapper Options intentionally lenient on unknown fields: the same `raw` blob carries
+/// inner-renderer keys (e.g. `font` / `pixel_size` for text_ascii), which a strict parse
+/// would reject and silently fall back to defaults, dropping `inner` and turning a figlet
+/// hero into plain text.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 pub(super) struct Options {
     #[serde(default)]
     pub inner: Option<String>,
@@ -370,6 +373,22 @@ mod tests {
             joined.contains("unknown inner"),
             "expected inline error, got {joined:?}"
         );
+    }
+
+    #[test]
+    fn postfx_options_survive_inner_only_extras() {
+        // Regression: project_splash spec inlines `font = "ansi_shadow"` (a text_ascii field)
+        // alongside `inner` and `effect`. With deny_unknown_fields and no catch-all, the
+        // postfx Options parse failed silently, falling back to inner=None — which then
+        // resolved to text_plain instead of the intended text_ascii figlet, producing a
+        // single-line "splashboard" instead of the figlet hero.
+        let opts = RenderOptions::default()
+            .with_extra("inner", "text_ascii")
+            .with_extra("effect", "particle_burst")
+            .with_extra("font", "ansi_shadow");
+        let parsed: Options = opts.parse_specific();
+        assert_eq!(parsed.inner.as_deref(), Some("text_ascii"));
+        assert_eq!(parsed.effect.as_deref(), Some("particle_burst"));
     }
 
     #[test]

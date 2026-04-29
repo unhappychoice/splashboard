@@ -14,8 +14,8 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape, default_renderer_for, shape_of};
 
+/// Lenient on unknown fields: see `animated_postfx::Options` for the rationale.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Options {
     #[serde(default)]
     pub inner: Option<String>,
