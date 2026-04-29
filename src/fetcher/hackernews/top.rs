@@ -229,6 +229,7 @@ fn meta_label(it: &Item) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fetcher::FetchContext;
 
     #[test]
     fn options_default_to_none_for_both_fields() {
@@ -259,6 +260,69 @@ mod tests {
         assert_eq!(Kind::Ask.endpoint(), "askstories");
         assert_eq!(Kind::Show.endpoint(), "showstories");
         assert_eq!(Kind::Job.endpoint(), "jobstories");
+    }
+
+    fn ctx(shape: Shape, options: &str) -> FetchContext {
+        FetchContext {
+            shape: Some(shape),
+            options: Some(toml::from_str(options).unwrap()),
+            ..FetchContext::default()
+        }
+    }
+
+    #[test]
+    fn fetcher_catalog_surface_matches_contract() {
+        let fetcher = HackernewsTopFetcher;
+        assert_eq!(fetcher.name(), "hackernews_top");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+        assert_eq!(fetcher.option_schemas()[0].name, "count");
+        assert_eq!(fetcher.option_schemas()[1].name, "kind");
+        assert!(fetcher.description().contains("front-page listings"));
+    }
+
+    #[test]
+    fn sample_body_supports_each_declared_shape() {
+        let fetcher = HackernewsTopFetcher;
+
+        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
+        let Body::TextBlock(block) = block else {
+            panic!("expected text block");
+        };
+        assert_eq!(block.lines.len(), 3);
+        assert!(block.lines[0].contains("Show HN"));
+
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
+        let Body::LinkedTextBlock(linked) = linked else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(linked.items.len(), 3);
+        assert!(linked.items[0].url.is_some());
+
+        let entries = fetcher.sample_body(Shape::Entries).unwrap();
+        let Body::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].key, "Show HN: I built a thing");
+        assert_eq!(entries.items[0].value.as_deref(), Some("234pt 56c"));
+
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_options() {
+        let fetcher = HackernewsTopFetcher;
+        let base = fetcher.cache_key(&ctx(Shape::LinkedTextBlock, "count = 5\nkind = \"top\""));
+        let same = fetcher.cache_key(&ctx(Shape::LinkedTextBlock, "count = 5\nkind = \"top\""));
+        let different_shape = fetcher.cache_key(&ctx(Shape::Entries, "count = 5\nkind = \"top\""));
+        let different_options =
+            fetcher.cache_key(&ctx(Shape::LinkedTextBlock, "count = 6\nkind = \"show\""));
+
+        assert_eq!(base, same);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_options);
     }
 
     fn item(title: Option<&str>, score: Option<u64>, descendants: Option<u64>) -> Item {
@@ -425,6 +489,32 @@ mod tests {
         assert_eq!(0u32.clamp(MIN_COUNT, MAX_COUNT), MIN_COUNT);
         assert_eq!(999u32.clamp(MIN_COUNT, MAX_COUNT), MAX_COUNT);
         assert_eq!(DEFAULT_COUNT.clamp(MIN_COUNT, MAX_COUNT), DEFAULT_COUNT);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options() {
+        let fetcher = HackernewsTopFetcher;
+        let err = fetcher
+            .fetch(&ctx(Shape::LinkedTextBlock, "count = 3\nbogus = true"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown field `bogus`")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_kind_value() {
+        let fetcher = HackernewsTopFetcher;
+        let err = fetcher
+            .fetch(&ctx(Shape::LinkedTextBlock, "kind = \"frontpage\""))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown variant `frontpage`")
+        ));
     }
 
     /// Live smoke test — hits HN's Firebase API. `#[ignore]` keeps CI offline-safe; run with
