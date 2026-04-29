@@ -242,6 +242,87 @@ trailing\n"
         assert!(rc.exists());
     }
 
+    #[test]
+    fn wire_shell_rc_appends_replaces_and_skips_when_current() {
+        let dir = tempdir().unwrap();
+        let rc = dir.path().join(".bashrc");
+        std::fs::write(&rc, "alias foo=bar").unwrap();
+
+        let appended = wire_shell_rc(Shell::Bash, Some(rc.clone())).unwrap();
+        assert_eq!(appended.action, RcAction::Appended);
+        let appended_contents = std::fs::read_to_string(&rc).unwrap();
+        assert!(appended_contents.starts_with("alias foo=bar\n\n"));
+        assert!(appended_contents.contains("splashboard init bash"));
+
+        let up_to_date = wire_shell_rc(Shell::Bash, Some(rc.clone())).unwrap();
+        assert_eq!(up_to_date.action, RcAction::UpToDate);
+
+        std::fs::write(
+            &rc,
+            format!(
+                "alias foo=bar\n{MARKER_OPEN}\neval \"$(splashboard init zsh)\"\n{MARKER_CLOSE}"
+            ),
+        )
+        .unwrap();
+        let replaced = wire_shell_rc(Shell::Bash, Some(rc.clone())).unwrap();
+        assert_eq!(replaced.action, RcAction::Replaced);
+        let replaced_contents = std::fs::read_to_string(&rc).unwrap();
+        assert!(replaced_contents.contains("splashboard init bash"));
+        assert!(!replaced_contents.contains("splashboard init zsh"));
+    }
+
+    #[test]
+    fn wire_shell_rc_returns_existing_read_error() {
+        let dir = tempdir().unwrap();
+        let result = wire_shell_rc(Shell::Zsh, Some(dir.path().to_path_buf()));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_ne!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn find_block_handles_missing_close_and_missing_trailing_newline() {
+        let missing_close = format!("before\n{MARKER_OPEN}\ninside\n");
+        assert_eq!(find_block(&missing_close), None);
+
+        let without_trailing_newline = format!("before\n{MARKER_OPEN}\ninside\n{MARKER_CLOSE}");
+        let (start, end) = find_block(&without_trailing_newline).unwrap();
+        assert_eq!(
+            &without_trailing_newline[start..end],
+            format!("{MARKER_OPEN}\ninside\n{MARKER_CLOSE}")
+        );
+    }
+
+    #[test]
+    fn report_helpers_cover_unknown_and_display_variants() {
+        let path = PathBuf::from("/tmp/example-rc");
+        let unknown = RcReport {
+            action: RcAction::UnknownPath,
+            rc_path: None,
+        };
+        assert_eq!(unknown.rc_path_display(), "(rc path unknown)");
+        unknown.describe();
+
+        [
+            RcAction::Appended,
+            RcAction::Replaced,
+            RcAction::UnknownPath,
+        ]
+        .into_iter()
+        .map(|action| RcReport {
+            action,
+            rc_path: Some(path.clone()),
+        })
+        .for_each(|report| report.describe());
+    }
+
+    #[test]
+    fn discriminant_covers_each_variant() {
+        assert_eq!(discriminant(&Outcome::UpToDate), "UpToDate");
+        assert_eq!(discriminant(&Outcome::Replaced(String::new())), "Replaced");
+        assert_eq!(discriminant(&Outcome::Appended(String::new())), "Appended");
+    }
+
     fn discriminant(o: &Outcome) -> &'static str {
         match o {
             Outcome::UpToDate => "UpToDate",
