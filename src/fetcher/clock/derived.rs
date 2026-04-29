@@ -290,8 +290,52 @@ mod tests {
     }
 
     #[test]
+    fn fetcher_exposes_catalog_surface() {
+        let fetcher = ClockDerivedFetcher;
+        assert_eq!(fetcher.name(), "clock_derived");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Text);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert!(fetcher.description().contains("moon phase"));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
+    }
+
+    #[test]
+    fn time_of_day_covers_remaining_buckets() {
+        [(6, "morning"), (18, "evening"), (23, "night")]
+            .into_iter()
+            .for_each(|(hour, expected)| assert_eq!(time_of_day(&at(2026, 4, 22, hour)), expected));
+    }
+
+    #[test]
     fn zodiac_april_22_is_taurus() {
         assert!(zodiac(&at(2026, 4, 22, 12)).contains("Taurus"));
+    }
+
+    #[test]
+    fn zodiac_covers_every_sign_boundary() {
+        [
+            ((3, 21), "Aries"),
+            ((4, 20), "Taurus"),
+            ((5, 21), "Gemini"),
+            ((6, 21), "Cancer"),
+            ((7, 23), "Leo"),
+            ((8, 23), "Virgo"),
+            ((9, 23), "Libra"),
+            ((10, 23), "Scorpio"),
+            ((11, 22), "Sagittarius"),
+            ((12, 22), "Capricorn"),
+            ((1, 20), "Aquarius"),
+            ((2, 19), "Pisces"),
+        ]
+        .into_iter()
+        .for_each(|((month, day), expected)| {
+            assert!(zodiac(&at(2026, month, day, 12)).contains(expected));
+        });
     }
 
     #[test]
@@ -300,8 +344,31 @@ mod tests {
     }
 
     #[test]
+    fn moon_phase_covers_january_rollover_and_all_labels() {
+        [
+            ((2026, 1, 6), "New"),
+            ((2026, 1, 10), "Waxing Crescent"),
+            ((2026, 1, 14), "First Quarter"),
+            ((2026, 1, 17), "Waxing Gibbous"),
+            ((2026, 1, 21), "Full"),
+            ((2026, 1, 25), "Waning Gibbous"),
+            ((2026, 1, 1), "Last Quarter"),
+            ((2026, 1, 3), "Waning Crescent"),
+        ]
+        .into_iter()
+        .for_each(|((year, month, day), expected)| {
+            assert!(moon_phase(&at(year, month, day, 0)).contains(expected));
+        });
+    }
+
+    #[test]
     fn season_summer_in_july_north() {
         assert_eq!(season(&at(2026, 7, 1, 0), Hemisphere::North), "Summer");
+    }
+
+    #[test]
+    fn season_autumn_in_october_north() {
+        assert_eq!(season(&at(2026, 10, 1, 0), Hemisphere::North), "Autumn");
     }
 
     #[test]
@@ -317,10 +384,10 @@ mod tests {
     #[test]
     fn season_defaults_to_north_without_option() {
         let p = ClockDerivedFetcher.compute(&ctx("kind = \"season\""));
-        let Body::Text(t) = p.body else {
-            panic!("expected text");
-        };
-        assert!(["Spring", "Summer", "Autumn", "Winter"].contains(&t.value.as_str()));
+        assert!(matches!(&p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(["Spring", "Summer", "Autumn", "Winter"].contains(&t.value.as_str()));
+        }
     }
 
     #[test]
@@ -335,6 +402,11 @@ mod tests {
     #[test]
     fn jp_season_april_22_is_穀雨() {
         assert_eq!(jp_season(&at(2026, 4, 22, 0)), "穀雨");
+    }
+
+    #[test]
+    fn jp_season_before_first_term_keeps_default_label() {
+        assert_eq!(jp_season(&at(2026, 1, 1, 0)), "小寒");
     }
 
     #[test]
@@ -357,11 +429,52 @@ mod tests {
     }
 
     #[test]
+    fn compute_invalid_options_returns_placeholder() {
+        let payload = ClockDerivedFetcher.compute(&ctx("kind = \"not-a-kind\""));
+        assert!(matches!(&payload.body, Body::TextBlock(_)));
+        if let Body::TextBlock(data) = payload.body {
+            assert!(data.lines[0].contains("invalid options"));
+            assert_eq!(data.lines[1], "check [widget.options] in config");
+        }
+    }
+
+    #[test]
+    fn invoke_dispatches_every_supported_kind() {
+        let now = at(2026, 4, 22, 14);
+        assert_eq!(
+            invoke(&now, Kind::TimeOfDay, Hemisphere::North),
+            "afternoon"
+        );
+        assert!(!invoke(&now, Kind::MoonPhase, Hemisphere::North).is_empty());
+        assert!(invoke(&now, Kind::Zodiac, Hemisphere::North).contains("Taurus"));
+        assert!(invoke(&now, Kind::ChineseZodiac, Hemisphere::North).contains("Horse"));
+        assert_eq!(invoke(&now, Kind::Season, Hemisphere::North), "Spring");
+        assert_eq!(invoke(&now, Kind::JpSeason, Hemisphere::North), "穀雨");
+        assert!(
+            ["大安", "赤口", "先勝", "友引", "先負", "仏滅"]
+                .contains(&invoke(&now, Kind::Rokuyou, Hemisphere::North).as_str())
+        );
+        assert_eq!(invoke(&now, Kind::IsoWeek, Hemisphere::North), "2026-W17");
+        assert_eq!(
+            invoke(&now, Kind::DayOfYear, Hemisphere::North),
+            format!("day {}", now.ordinal())
+        );
+        assert_eq!(
+            invoke(&now, Kind::JulianDay, Hemisphere::North),
+            format!("JD {}", common::julian_day(now.date_naive()))
+        );
+        assert_eq!(
+            invoke(&now, Kind::UnixEpoch, Hemisphere::North),
+            now.timestamp().to_string()
+        );
+    }
+
+    #[test]
     fn moon_phase_kind_emits_nonempty_text() {
         let p = ClockDerivedFetcher.compute(&ctx("kind = \"moon_phase\""));
-        match p.body {
-            Body::Text(d) => assert!(!d.value.is_empty()),
-            _ => panic!("expected text"),
+        assert!(matches!(&p.body, Body::Text(_)));
+        if let Body::Text(d) = p.body {
+            assert!(!d.value.is_empty());
         }
     }
 }
