@@ -531,6 +531,57 @@ mod tests {
     }
 
     #[test]
+    fn select_template_requires_name_for_both_contexts() {
+        let home = select_template(None, TemplateContext::Home).unwrap_err();
+        assert!(home.to_string().contains("--home-template"));
+        let project = select_template(None, TemplateContext::Project).unwrap_err();
+        assert!(project.to_string().contains("--project-template"));
+    }
+
+    #[test]
+    fn merge_settings_flags_preserves_explicit_and_default_values() {
+        let explicit = merge_settings_flags(
+            &InstallOptions {
+                bg: Some(false),
+                wait: Some(true),
+                ..Default::default()
+            },
+            Some(Some("tokyo_night")),
+        );
+        assert_eq!(explicit.theme, Some("tokyo_night"));
+        assert!(!explicit.bg);
+        assert!(explicit.wait);
+
+        let default_theme = merge_settings_flags(&InstallOptions::default(), Some(None));
+        assert_eq!(default_theme.theme, None);
+        assert!(default_theme.bg);
+        assert!(!default_theme.wait);
+    }
+
+    #[test]
+    fn catalog_hint_lists_templates_for_requested_context() {
+        let home = catalog_hint(TemplateContext::Home);
+        assert!(home.contains("home_splash"));
+        assert!(!home.contains("project_github"));
+
+        let project = catalog_hint(TemplateContext::Project);
+        assert!(project.contains("project_github"));
+        assert!(!project.contains("home_splash"));
+    }
+
+    #[test]
+    fn destinations_and_parent_dirs_use_expected_paths() {
+        let dir = tempdir().unwrap();
+        let home = dir.path().join("nested").join("splashboard");
+        let dest = Destinations::for_home_dir(&home);
+        assert_eq!(dest.settings, home.join("settings.toml"));
+        assert_eq!(dest.home_dashboard, home.join("home.dashboard.toml"));
+        assert_eq!(dest.project_dashboard, home.join("project.dashboard.toml"));
+        ensure_parent_dirs(&dest).unwrap();
+        assert!(home.exists());
+    }
+
+    #[test]
     fn write_dashboards_creates_missing_files() {
         let dir = tempdir().unwrap();
         let dest = Destinations::for_home_dir(dir.path());
@@ -789,6 +840,75 @@ mod tests {
         ensure_secrets_gitignore(dir.path()).unwrap();
         let second = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn ensure_secrets_gitignore_treats_slashed_entry_as_already_present() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".gitignore");
+        std::fs::write(&path, "node_modules\n/secrets.toml").unwrap();
+        ensure_secrets_gitignore(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "node_modules\n/secrets.toml"
+        );
+    }
+
+    #[test]
+    fn backup_extension_and_labels_cover_all_variants() {
+        assert_eq!(
+            backup_extension(Path::new("home.dashboard.toml")),
+            "toml.bak"
+        );
+        assert_eq!(backup_extension(Path::new("settings")), "bak.bak");
+        assert_eq!(label_for_outcome(WriteOutcome::Created), "created");
+        assert_eq!(label_for_outcome(WriteOutcome::Overwrote), "updated");
+        assert_eq!(label_for_outcome(WriteOutcome::Unchanged), "unchanged");
+    }
+
+    #[test]
+    fn run_rejects_missing_templates_in_non_interactive_mode() {
+        let dir = tempdir().unwrap();
+        let home_dir = dir.path().join("splashboard_home");
+        let home_err = super::run(InstallOptions {
+            shell: Some(Shell::Zsh),
+            project_template: Some("project_github".into()),
+            config_dir: Some(home_dir.clone()),
+            rc_path: Some(dir.path().join(".zshrc")),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(home_err.to_string().contains("--home-template"));
+
+        let project_err = super::run(InstallOptions {
+            shell: Some(Shell::Zsh),
+            home_template: Some("home_splash".into()),
+            config_dir: Some(home_dir),
+            rc_path: Some(dir.path().join(".zshrc")),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(project_err.to_string().contains("--project-template"));
+    }
+
+    #[test]
+    fn run_rejects_unknown_theme_before_writing_files() {
+        let dir = tempdir().unwrap();
+        let home_dir = dir.path().join("splashboard_home");
+        let rc = dir.path().join(".zshrc");
+        let err = super::run(InstallOptions {
+            shell: Some(Shell::Zsh),
+            home_template: Some("home_splash".into()),
+            project_template: Some("project_github".into()),
+            theme: Some("not-a-theme".into()),
+            config_dir: Some(home_dir.clone()),
+            rc_path: Some(rc.clone()),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown theme"));
+        assert!(!home_dir.exists());
+        assert!(!rc.exists());
     }
 
     /// Running `install` twice with identical flags should be a no-op — no backup
