@@ -19,6 +19,7 @@ pub mod deariary;
 pub mod git;
 pub mod github;
 pub mod hackernews;
+pub mod random_cat;
 pub mod random_fortune;
 pub mod random_quote;
 pub mod read_store;
@@ -313,6 +314,7 @@ impl Registry {
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
+        r.register(Arc::new(random_cat::RandomCatFetcher));
         for f in calendar::fetchers() {
             r.register(f);
         }
