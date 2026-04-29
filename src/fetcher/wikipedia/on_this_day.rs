@@ -297,6 +297,8 @@ fn render_body(events: &[EventEntry], shape: Shape, limit: usize) -> Body {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::fetcher::wikipedia::client::{ContentUrls, UrlsByPlatform};
 
@@ -316,6 +318,19 @@ mod tests {
             text: text.into(),
             year,
             pages,
+        }
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "wiki-on-this-day".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
         }
     }
 
@@ -351,6 +366,76 @@ mod tests {
         assert_eq!(Kind::Deaths.endpoint(), "deaths");
         assert_eq!(Kind::Holidays.endpoint(), "holidays");
         assert_eq!(Kind::All.endpoint(), "all");
+    }
+
+    #[test]
+    fn fetcher_contract_cache_key_and_samples_cover_supported_shapes() {
+        let fetcher = WikipediaOnThisDayFetcher;
+        assert_eq!(fetcher.name(), "wikipedia_on_this_day");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 3);
+        assert_eq!(fetcher.option_schemas()[0].name, "kind");
+        assert_eq!(fetcher.option_schemas()[1].name, "limit");
+        assert_eq!(fetcher.option_schemas()[2].name, "lang");
+        assert!(fetcher.description().contains("featured article"));
+
+        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
+        else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(linked.items.len(), 3);
+        assert!(linked.items[0].url.is_some());
+
+        let Some(Body::TextBlock(text_block)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block");
+        };
+        assert_eq!(text_block.lines.len(), 3);
+        assert!(text_block.lines[0].contains("Apollo 11"));
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text");
+        };
+        assert!(text.value.contains("Apollo 11"));
+
+        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
+            panic!("expected timeline");
+        };
+        assert_eq!(timeline.events.len(), 2);
+        assert!(timeline.events[0].title.contains("Apollo 11"));
+
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
+
+        let base = fetcher.cache_key(&ctx(
+            Some("kind = \"selected\"\nlimit = 5\nlang = \"en\""),
+            Some(Shape::LinkedTextBlock),
+            Some("plain"),
+        ));
+        let same = fetcher.cache_key(&ctx(
+            Some("kind = \"selected\"\nlimit = 5\nlang = \"en\""),
+            Some(Shape::LinkedTextBlock),
+            Some("plain"),
+        ));
+        let different_kind = fetcher.cache_key(&ctx(
+            Some("kind = \"events\"\nlimit = 5\nlang = \"en\""),
+            Some(Shape::LinkedTextBlock),
+            Some("plain"),
+        ));
+        let different_shape = fetcher.cache_key(&ctx(
+            Some("kind = \"selected\"\nlimit = 5\nlang = \"en\""),
+            Some(Shape::Timeline),
+            Some("plain"),
+        ));
+        let different_format = fetcher.cache_key(&ctx(
+            Some("kind = \"selected\"\nlimit = 5\nlang = \"en\""),
+            Some(Shape::LinkedTextBlock),
+            Some("json"),
+        ));
+        assert_eq!(base, same);
+        assert_ne!(base, different_kind);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_format);
     }
 
     #[test]
@@ -521,6 +606,24 @@ mod tests {
     }
 
     #[test]
+    fn into_events_covers_non_selected_kinds() {
+        let response = |kind| {
+            OnThisDayResponse {
+                selected: vec![raw_event(Some(1), "selected", vec![])],
+                events: vec![raw_event(Some(2), "event", vec![])],
+                births: vec![raw_event(Some(3), "birth", vec![])],
+                deaths: vec![raw_event(Some(4), "death", vec![])],
+                holidays: vec![raw_event(None, "holiday", vec![])],
+            }
+            .into_events(kind, 2026, 4, 27)
+        };
+        assert_eq!(response(Kind::Events)[0].label, "2 — event");
+        assert_eq!(response(Kind::Births)[0].label, "3 — birth");
+        assert_eq!(response(Kind::Deaths)[0].label, "4 — death");
+        assert_eq!(response(Kind::Holidays)[0].label, "holiday");
+    }
+
+    #[test]
     fn limit_clamps_extremes() {
         assert_eq!(0u32.clamp(MIN_LIMIT, MAX_LIMIT), MIN_LIMIT);
         assert_eq!(999u32.clamp(MIN_LIMIT, MAX_LIMIT), MAX_LIMIT);
@@ -571,6 +674,36 @@ mod tests {
         assert_eq!(t.events[0].timestamp, 12345);
         assert_eq!(t.events[0].title, "1969 — A");
         assert_eq!(t.events[1].timestamp, 67890);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options_before_network() {
+        let fetcher = WikipediaOnThisDayFetcher;
+        let err = fetcher
+            .fetch(&ctx(Some("bogus = true"), Some(Shape::Text), Some("plain")))
+            .await
+            .unwrap_err();
+        let FetchError::Failed(message) = err else {
+            panic!("expected failed error");
+        };
+        assert!(message.contains("unknown field"));
+    }
+
+    #[tokio::test]
+    async fn fetch_surfaces_request_error_for_invalid_lang() {
+        let fetcher = WikipediaOnThisDayFetcher;
+        let err = fetcher
+            .fetch(&ctx(
+                Some("kind = \"births\"\nlimit = 999\nlang = \"bad lang\""),
+                Some(Shape::Text),
+                Some("plain"),
+            ))
+            .await
+            .unwrap_err();
+        let FetchError::Failed(message) = err else {
+            panic!("expected failed error");
+        };
+        assert!(message.contains("wikipedia request failed"));
     }
 
     /// Live smoke test — hits Wikipedia REST API. `#[ignore]` keeps CI offline-safe.
