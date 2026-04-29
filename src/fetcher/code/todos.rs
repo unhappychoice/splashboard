@@ -337,11 +337,21 @@ fn text_summary(total: usize, files: usize) -> Body {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
     use super::super::super::git::test_support::{commit_touching, make_repo};
     use super::*;
 
     fn defaults() -> Vec<String> {
         DEFAULT_MARKERS.iter().map(|s| (*s).into()).collect()
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 
     #[test]
@@ -625,5 +635,122 @@ mod tests {
         assert_eq!(resolve_markers(Some(&empty)), defaults());
         assert_eq!(resolve_markers(Some(&blanks)), defaults());
         assert_eq!(resolve_markers(Some(&custom)), vec!["XXX".to_string()]);
+    }
+
+    #[test]
+    fn fetcher_contract_exposes_catalog_surface_and_samples() {
+        assert_eq!(CodeTodos.name(), "code_todos");
+        assert_eq!(CodeTodos.safety(), Safety::Safe);
+        assert_eq!(CodeTodos.shapes(), SHAPES);
+        assert_eq!(CodeTodos.default_shape(), Shape::Text);
+
+        let schema_names: Vec<_> = CodeTodos.option_schemas().iter().map(|s| s.name).collect();
+        assert_eq!(schema_names, vec!["markers", "limit"]);
+
+        let Body::Text(text) = CodeTodos.sample_body(Shape::Text).unwrap() else {
+            panic!();
+        };
+        assert_eq!(text.value, "12 TODOs in 5 files");
+
+        let Body::TextBlock(block) = CodeTodos.sample_body(Shape::TextBlock).unwrap() else {
+            panic!();
+        };
+        assert_eq!(block.lines.len(), 3);
+
+        let Body::MarkdownTextBlock(markdown) =
+            CodeTodos.sample_body(Shape::MarkdownTextBlock).unwrap()
+        else {
+            panic!();
+        };
+        assert!(markdown.value.contains("TODO: handle empty body"));
+
+        let Body::Entries(entries) = CodeTodos.sample_body(Shape::Entries).unwrap() else {
+            panic!();
+        };
+        assert_eq!(entries.items.len(), 3);
+
+        let Body::Bars(bars) = CodeTodos.sample_body(Shape::Bars).unwrap() else {
+            panic!();
+        };
+        assert_eq!(bars.bars.len(), 3);
+
+        assert!(CodeTodos.sample_body(Shape::Calendar).is_none());
+    }
+
+    #[test]
+    fn matcher_handles_empty_needles_nested_tags_and_unclosed_tags() {
+        assert!(find_marker(b"TODO", b"").is_none());
+        assert!(find_marker(b"TODO", b"TOODO").is_none());
+        assert!(match_marker("// TODO(owner: x", &["TODO"]).is_none());
+        assert!(match_marker("// TODO(owner(team)): x", &["TODO"]).is_some());
+    }
+
+    #[test]
+    fn truncate_preserves_short_snippets() {
+        assert_eq!(truncate("TODO: short", SNIPPET_CHARS), "TODO: short");
+    }
+
+    #[test]
+    fn bars_shape_formats_ranked_counts() {
+        let body = render_body(
+            ScanResult {
+                hits: vec![],
+                total: 3,
+                files_with_hits: 3,
+                file_counts: vec![("b.rs".into(), 2), ("a.rs".into(), 1), ("c.rs".into(), 1)],
+            },
+            Shape::Bars,
+            2,
+        );
+        match body {
+            Body::Bars(d) => assert_eq!(
+                d.bars,
+                vec![
+                    Bar {
+                        label: "b.rs".into(),
+                        value: 2,
+                    },
+                    Bar {
+                        label: "a.rs".into(),
+                        value: 1,
+                    },
+                ]
+            ),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_options() {
+        let ctx = FetchContext {
+            options: Some(toml::from_str("bogus = 1").unwrap()),
+            ..Default::default()
+        };
+        let err = run_async(CodeTodos.fetch(&ctx)).unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid options")));
+    }
+
+    #[test]
+    fn fetch_scans_current_repo_for_default_and_bars_shapes() {
+        let default_ctx = FetchContext::default();
+        let expected = payload(render_body(
+            scan_cwd(&defaults()).unwrap(),
+            Shape::Text,
+            DEFAULT_LIMIT,
+        ));
+        assert_eq!(run_async(CodeTodos.fetch(&default_ctx)).unwrap(), expected);
+
+        let markers = vec!["TODO".to_string()];
+        let bars_ctx = FetchContext {
+            shape: Some(Shape::Bars),
+            options: Some(toml::from_str("markers = [\" TODO \"]\nlimit = 0").unwrap()),
+            ..Default::default()
+        };
+        let expected = payload(render_body(
+            scan_cwd(&markers).unwrap(),
+            Shape::Bars,
+            DEFAULT_LIMIT,
+        ));
+        assert_eq!(run_async(CodeTodos.fetch(&bars_ctx)).unwrap(), expected);
     }
 }
