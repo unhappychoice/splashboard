@@ -159,7 +159,19 @@ struct GqlError {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use serde::Deserialize;
+
     use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct TestPayload {
+        login: String,
+    }
 
     /// Serialises env mutation with other env-touching tests. `GH_TOKEN` / `GITHUB_TOKEN` are
     /// read unconditionally inside `resolve_token`, so two parallel tests racing on the same
@@ -222,5 +234,125 @@ mod tests {
     fn resolve_token_fails_when_both_missing() {
         let _g = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
         assert!(resolve_token().is_err());
+    }
+
+    #[test]
+    fn http_reuses_the_same_client() {
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[test]
+    fn resolve_authenticated_user_returns_cached_login() {
+        let _g = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        clear_authenticated_user_cache();
+        *AUTHENTICATED_USER_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap() = Some("octocat".into());
+
+        assert_eq!(run_async(resolve_authenticated_user()).unwrap(), "octocat");
+        clear_authenticated_user_cache();
+    }
+
+    #[test]
+    fn resolve_authenticated_user_requires_a_token_without_cache() {
+        let _g = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        clear_authenticated_user_cache();
+
+        let err = run_async(resolve_authenticated_user()).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message == "GH_TOKEN / GITHUB_TOKEN not set"
+        ));
+    }
+
+    #[test]
+    fn graphql_requires_a_token_before_sending() {
+        let _g = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+
+        let err = run_async(graphql::<TestPayload>(
+            "query { viewer { login } }",
+            serde_json::json!({}),
+        ))
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message == "GH_TOKEN / GITHUB_TOKEN not set"
+        ));
+    }
+
+    #[test]
+    fn parse_json_deserializes_success_bodies() {
+        let payload = parse_test_payload("200 OK", r#"{"login":"octocat"}"#).unwrap();
+        assert_eq!(payload.login, "octocat");
+    }
+
+    #[test]
+    fn parse_json_surfaces_reported_api_messages() {
+        let err = parse_test_payload("404 Not Found", r#"{"message":"Not Found"}"#).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message == "github 404 Not Found: Not Found"
+        ));
+    }
+
+    #[test]
+    fn parse_json_falls_back_to_status_without_a_message() {
+        let err = parse_test_payload("500 Internal Server Error", "{}").unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message == "github 500 Internal Server Error"
+        ));
+    }
+
+    #[test]
+    fn parse_json_surfaces_json_parse_errors() {
+        let err = parse_test_payload("200 OK", "not-json").unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("github json parse")
+        ));
+    }
+
+    fn parse_test_payload(status: &str, body: &str) -> Result<TestPayload, FetchError> {
+        let (url, server) = serve_once(status, body);
+        let response = run_async(async {
+            let response = http().get(&url).send().await.unwrap();
+            parse_json::<TestPayload>(response).await
+        });
+        server.join().unwrap();
+        response
+    }
+
+    fn serve_once(status: &str, body: &str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 }
