@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-04-29
+
+### 🐛 Bug Fixes
+
+- fix(render): let animated wrappers pass inner-renderer fields through ([80cf479](https://github.com/unhappychoice/splashboard/commit/80cf479))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.1.1 ([d1d8163](https://github.com/unhappychoice/splashboard/commit/d1d8163))
+- chore: update flake.nix hashes for v1.1.0 ([bac3e65](https://github.com/unhappychoice/splashboard/commit/bac3e65))
+
+
 ## [1.1.0] - 2026-04-29
 
 ### ✨ Features
@@ -17,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.1.0 ([a4d2f46](https://github.com/unhappychoice/splashboard/commit/a4d2f46))
+- chore: bump version to v1.1.0 ([8468dac](https://github.com/unhappychoice/splashboard/commit/8468dac))
 - test(github): add offline tests for repo_prs fetcher ([0c325ff](https://github.com/unhappychoice/splashboard/commit/0c325ff))
 - test(github): add offline tests for repo_issues fetcher ([74a2726](https://github.com/unhappychoice/splashboard/commit/74a2726))
 - test(hackernews): cover shared HTTP client with offline tests ([23fdc12](https://github.com/unhappychoice/splashboard/commit/23fdc12))
