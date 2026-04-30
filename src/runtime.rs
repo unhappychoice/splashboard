@@ -1220,6 +1220,37 @@ mod tests {
     }
 
     #[test]
+    fn draw_wrapper_renders_payload_into_terminal() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("via draw"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(40, 3);
+        let mut terminal = make_terminal(backend, 3).unwrap();
+        let theme = Theme::default();
+        let loading = HashMap::new();
+
+        draw(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            &General::default(),
+            (0, 0),
+            0,
+            &loading,
+        )
+        .unwrap();
+
+        let buf = terminal.backend().buffer().clone();
+        let joined: String = (0..buf.area.height).map(|y| row_text(&buf, y)).collect();
+        assert!(joined.contains("via draw"));
+    }
+
+    #[test]
     fn copy_rows_copies_vertical_slice() {
         let mut src = Buffer::empty(Rect::new(0, 0, 4, 4));
         src.set_string(0, 0, "AAAA", Style::default());
@@ -1241,6 +1272,17 @@ mod tests {
         copy_rows(&src, 0..1, &mut dst);
         assert_eq!(dst.cell((2, 5)).unwrap().symbol(), "X");
         assert_eq!(dst.cell((4, 5)).unwrap().symbol(), "Z");
+    }
+
+    #[test]
+    fn copy_rows_stops_when_destination_fills_up() {
+        let mut src = Buffer::empty(Rect::new(0, 0, 4, 3));
+        src.set_string(0, 0, "AAAA", Style::default());
+        src.set_string(0, 1, "BBBB", Style::default());
+        src.set_string(0, 2, "CCCC", Style::default());
+        let mut dst = Buffer::empty(Rect::new(0, 0, 4, 1));
+        copy_rows(&src, 0..3, &mut dst);
+        assert_eq!(row_text(&dst, 0), "AAAA");
     }
 
     #[test]
@@ -1269,6 +1311,23 @@ mod tests {
         );
         assert!(row_text(&buf, 0).starts_with("r0"));
         assert!(row_text(&buf, 5).starts_with("r5"));
+    }
+
+    #[test]
+    fn paint_viewport_bg_leaves_reset_background_untouched() {
+        let backend = TestBackend::new(2, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme {
+            bg: Color::Reset,
+            ..Theme::default()
+        };
+        terminal
+            .draw(|f| paint_viewport_bg(f, f.area(), &theme))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer().cell((0, 0)).unwrap().bg,
+            Color::Reset
+        );
     }
 
     #[test]
@@ -1580,6 +1639,74 @@ mod tests {
         assert!(fresh.is_empty());
     }
 
+    #[tokio::test]
+    async fn fetch_all_returns_payloads_without_cache_storage() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("greeting", "Hi!")];
+
+        let fresh = fetch_all(
+            &registry,
+            None,
+            &widgets,
+            &HashMap::new(),
+            &General::default(),
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert_eq!(fresh.get("greeting"), Some(&text_block_payload(&["Hi!"])));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_ignores_panicking_fetcher_tasks() {
+        struct Panics;
+
+        #[async_trait]
+        impl fetcher::Fetcher for Panics {
+            fn name(&self) -> &str {
+                "panics"
+            }
+            fn safety(&self) -> fetcher::Safety {
+                fetcher::Safety::Safe
+            }
+            fn description(&self) -> &'static str {
+                "test fixture"
+            }
+            fn shapes(&self) -> &[Shape] {
+                &[Shape::Text]
+            }
+            async fn fetch(
+                &self,
+                _: &fetcher::FetchContext,
+            ) -> Result<Payload, fetcher::FetchError> {
+                panic!("join error fixture")
+            }
+        }
+
+        let fixture = Panics;
+        assert_eq!(fetcher::Fetcher::name(&fixture), "panics");
+        assert_eq!(fetcher::Fetcher::safety(&fixture), fetcher::Safety::Safe);
+        assert_eq!(fetcher::Fetcher::description(&fixture), "test fixture");
+        assert_eq!(fetcher::Fetcher::shapes(&fixture), &[Shape::Text]);
+
+        let mut registry = Registry::default();
+        registry.register(std::sync::Arc::new(fixture));
+        let widgets = vec![widget("x", "panics")];
+        let fresh = fetch_all(
+            &registry,
+            None,
+            &widgets,
+            &HashMap::new(),
+            &General::default(),
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(fresh.is_empty());
+    }
+
     /// Returning `Err` from a fetcher must surface a placeholder payload *and* write the failure
     /// to the cache (with `CacheEntryKind::Err` and a short TTL) so the next render sees the `⚠`
     /// instead of stale success data. Regression for #95 — pre-fix this path silently dropped the
@@ -1610,8 +1737,13 @@ mod tests {
             }
         }
 
+        let fixture = Boom;
+        assert_eq!(fetcher::Fetcher::safety(&fixture), fetcher::Safety::Safe);
+        assert_eq!(fetcher::Fetcher::description(&fixture), "test fixture");
+        assert_eq!(fetcher::Fetcher::shapes(&fixture), &[Shape::Text]);
+
         let mut registry = Registry::default();
-        registry.register(std::sync::Arc::new(Boom));
+        registry.register(std::sync::Arc::new(fixture));
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let widgets = vec![widget("x", "boom")];
@@ -1628,17 +1760,12 @@ mod tests {
         .await;
 
         let payload = fresh.get("x").expect("error must surface as a payload");
-        match &payload.body {
-            Body::Error(err) => {
-                assert_eq!(err.kind, crate::payload::ErrorKind::Fetch);
-                assert!(
-                    err.message.contains("boom"),
-                    "error message must appear in the placeholder: {:?}",
-                    err.message
-                );
-            }
-            other => panic!("expected Body::Error error placeholder, got {other:?}"),
-        }
+        assert!(matches!(
+            &payload.body,
+            Body::Error(err)
+                if err.kind == crate::payload::ErrorKind::Fetch
+                    && err.message.contains("boom")
+        ));
 
         let key = registry
             .get_cached("boom")
@@ -1683,8 +1810,13 @@ mod tests {
             }
         }
 
+        let fixture = Slow;
+        assert_eq!(fetcher::Fetcher::safety(&fixture), fetcher::Safety::Safe);
+        assert_eq!(fetcher::Fetcher::description(&fixture), "test fixture");
+        assert_eq!(fetcher::Fetcher::shapes(&fixture), &[Shape::Text]);
+
         let mut registry = Registry::default();
-        registry.register(std::sync::Arc::new(Slow));
+        registry.register(std::sync::Arc::new(fixture));
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let widgets = vec![widget("x", "slow")];
@@ -1701,17 +1833,12 @@ mod tests {
         .await;
 
         let payload = fresh.get("x").expect("timeout must surface as a payload");
-        match &payload.body {
-            Body::Error(err) => {
-                assert_eq!(err.kind, crate::payload::ErrorKind::Timeout);
-                assert!(
-                    err.message.contains("timed out"),
-                    "timeout message must appear: {:?}",
-                    err.message
-                );
-            }
-            other => panic!("expected Body::Error timeout placeholder, got {other:?}"),
-        }
+        assert!(matches!(
+            &payload.body,
+            Body::Error(err)
+                if err.kind == crate::payload::ErrorKind::Timeout
+                    && err.message.contains("timed out")
+        ));
 
         let key = registry
             .get_cached("slow")
@@ -1960,17 +2087,12 @@ mod tests {
             &mut payloads,
         );
         let payload = payloads.get("typo").expect("unknown fetcher must surface");
-        match &payload.body {
-            Body::Error(err) => {
-                assert_eq!(err.kind, crate::payload::ErrorKind::UnknownFetcher);
-                assert!(
-                    err.message.contains("no_such_fetcher"),
-                    "placeholder must mention the unknown fetcher name: {:?}",
-                    err.message
-                );
-            }
-            other => panic!("expected Body::Error placeholder, got {other:?}"),
-        }
+        assert!(matches!(
+            &payload.body,
+            Body::Error(err)
+                if err.kind == crate::payload::ErrorKind::UnknownFetcher
+                    && err.message.contains("no_such_fetcher")
+        ));
     }
 
     #[test]
@@ -2026,27 +2148,18 @@ mod tests {
 
         assert!(entries.contains_key("cached"));
         assert_eq!(payloads.get("cached"), Some(&text_payload("fresh")));
-        assert_eq!(
-            match &payloads.get("locked").unwrap().body {
-                Body::Error(err) => err.kind,
-                other => panic!("expected trust placeholder, got {other:?}"),
-            },
-            ErrorKind::RequiresTrust
-        );
-        assert_eq!(
-            match &payloads.get("typo").unwrap().body {
-                Body::Error(err) => err.kind,
-                other => panic!("expected unknown placeholder, got {other:?}"),
-            },
-            ErrorKind::UnknownFetcher
-        );
-        assert_eq!(
-            match &payloads.get("bad").unwrap().body {
-                Body::Error(err) => err.kind,
-                other => panic!("expected mismatch placeholder, got {other:?}"),
-            },
-            ErrorKind::ShapeMismatch
-        );
+        assert!(matches!(
+            payloads.get("locked").map(|payload| &payload.body),
+            Some(Body::Error(err)) if err.kind == ErrorKind::RequiresTrust
+        ));
+        assert!(matches!(
+            payloads.get("typo").map(|payload| &payload.body),
+            Some(Body::Error(err)) if err.kind == ErrorKind::UnknownFetcher
+        ));
+        assert!(matches!(
+            payloads.get("bad").map(|payload| &payload.body),
+            Some(Body::Error(err)) if err.kind == ErrorKind::ShapeMismatch
+        ));
     }
 
     #[test]
