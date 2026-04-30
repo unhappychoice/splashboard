@@ -257,15 +257,22 @@ mod tests {
         let list = worktrees(&repo).unwrap();
         assert_eq!(list.len(), 3);
 
+        let feature_canon = std::fs::canonicalize(&feature).unwrap();
+        let detached_canon = std::fs::canonicalize(&detached).unwrap();
+        let same_path = |wt: &&WorktreeInfo, canon: &Path| {
+            std::fs::canonicalize(&wt.path)
+                .map(|p| p == canon)
+                .unwrap_or(false)
+        };
         let feature_wt = list
             .iter()
-            .find(|wt| wt.path == feature.display().to_string())
+            .find(|wt| same_path(wt, &feature_canon))
             .unwrap();
         assert_eq!(feature_wt.branch.as_deref(), Some("feat/demo"));
 
         let detached_wt = list
             .iter()
-            .find(|wt| wt.path == detached.display().to_string())
+            .find(|wt| same_path(wt, &detached_canon))
             .unwrap();
         assert!(detached_wt.branch.is_none());
         assert_ne!(feature_wt.id, detached_wt.id);

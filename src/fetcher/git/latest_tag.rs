@@ -269,18 +269,31 @@ mod tests {
     }
 
     #[test]
-    fn fetch_reads_workspace_repo_for_default_and_entries_shapes() {
-        let text = run_async(GitLatestTag.fetch(&ctx(None, None))).unwrap();
-        let entries = run_async(GitLatestTag.fetch(&ctx(Some(Shape::Entries), None))).unwrap();
+    fn fetch_opens_cwd_repo_for_default_and_entries_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit(&repo, "initial");
+        tag(&repo, "v9.9.9");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        assert!(matches!(
-            text.body,
-            Body::Text(d) if !d.value.is_empty()
-        ));
+        let text = run_async(GitLatestTag.fetch(&ctx(None, None)));
+        let entries = run_async(GitLatestTag.fetch(&ctx(Some(Shape::Entries), None)));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        let text = text.unwrap();
+        let entries = entries.unwrap();
+        assert!(matches!(text.body, Body::Text(d) if d.value == "v9.9.9"));
         assert!(matches!(
             entries.body,
             Body::Entries(EntriesData { items })
-                if items.len() == 3 && items[0].key == "tag" && items.iter().all(|item| item.value.is_some())
+                if items.len() == 3
+                    && items[0].key == "tag"
+                    && items[0].value.as_deref() == Some("v9.9.9")
         ));
     }
 
