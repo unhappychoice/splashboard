@@ -535,4 +535,81 @@ mod tests {
         let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 1);
         assert!(line_text(&buf, 0).contains("x"));
     }
+
+    #[test]
+    fn renderer_contract_and_direct_render_cover_catalog_surface() {
+        let renderer = ListTimelineRenderer;
+        assert_eq!(renderer.name(), "list_timeline");
+        assert!(renderer.description().contains("Chronological events"));
+        assert_eq!(renderer.accepts(), &[Shape::Timeline]);
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.option_schemas().len(), OPTION_SCHEMAS.len());
+
+        let body = Body::Timeline(TimelineData {
+            events: vec![TimelineEvent {
+                timestamp: 0,
+                title: "evt".into(),
+                detail: None,
+                status: None,
+            }],
+        });
+        let backend = TestBackend::new(20, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        terminal
+            .draw(|f| {
+                renderer.render(
+                    f,
+                    f.area(),
+                    &body,
+                    &RenderOptions::default(),
+                    &theme,
+                    &registry,
+                )
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(row_text(&buf, 0).contains("evt"));
+    }
+
+    #[test]
+    fn helper_branches_cover_bullet_alignment_and_padding() {
+        let area = Rect::new(10, 3, 20, 2);
+        assert_eq!(bullet_for(None), "");
+        assert_eq!(bullet_for(Some("•")), "• ");
+        assert_eq!(align_rect(area, 0, Some("center")), area);
+        assert_eq!(align_rect(area, 6, Some("center")), Rect::new(17, 3, 6, 2));
+        assert_eq!(align_rect(area, 6, Some("right")), Rect::new(24, 3, 6, 2));
+        assert_eq!(pad_left("3h", 4), "  3h");
+    }
+
+    #[test]
+    fn date_helpers_cover_invalid_and_local_timezone_fallbacks() {
+        let ts = Utc
+            .with_ymd_and_hms(2026, 4, 23, 0, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp();
+        let event_local = Utc
+            .timestamp_opt(ts, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .fixed_offset();
+        let iso_local = t::format_local(&event_local, "%Y-%m-%d", None);
+        let day_local = t::format_local(&event_local, "%b %-d", None);
+
+        assert_eq!(format_iso_date(i64::MAX, Some("UTC"), None), "—");
+        assert_eq!(format_iso_date(ts, Some("bad/tz"), None), iso_local);
+        assert_eq!(format_absolute(i64::MAX, ts, Some("UTC"), None), "—");
+        assert_eq!(
+            format_absolute(ts, i64::MAX, Some("bad/tz"), None),
+            iso_local
+        );
+        assert_eq!(
+            format_absolute(ts, ts + 60, Some("bad/tz"), None),
+            day_local
+        );
+    }
 }
