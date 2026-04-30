@@ -201,44 +201,124 @@ mod tests {
     }
 
     #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = ClockSunriseFetcher;
+        assert_eq!(
+            fetcher.description(),
+            "Today's sunrise and sunset clock times for a configured `lat` / `lon`, computed offline from a NOAA-style approximation (no network). Renders as a one-line `↑ HH:MM  ↓ HH:MM` summary or split sunrise/sunset rows."
+        );
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["lat", "lon", "timezone"]
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Text),
+            Some(samples::text("↑ 05:23  ↓ 18:47"))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(samples::entries(&[
+                ("sunrise", "05:23"),
+                ("sunset", "18:47")
+            ]))
+        );
+        assert_eq!(fetcher.sample_body(Shape::Badge), None);
+    }
+
+    #[test]
     fn missing_latlon_renders_error_text() {
-        let p = ClockSunriseFetcher.compute(&ctx(Some(Shape::Text), ""));
-        match p.body {
-            Body::Text(d) => assert!(d.value.contains("required")),
-            _ => panic!("expected text"),
+        let mut value = String::new();
+        if let Body::Text(data) = ClockSunriseFetcher
+            .compute(&ctx(Some(Shape::Text), ""))
+            .body
+        {
+            value = data.value;
         }
+        assert!(value.contains("required"));
+    }
+
+    #[test]
+    fn invalid_options_return_placeholder_body() {
+        let mut lines = Vec::new();
+        if let Body::TextBlock(data) = ClockSunriseFetcher
+            .compute(&ctx(Some(Shape::Text), "bogus = true"))
+            .body
+        {
+            lines = data.lines;
+        }
+        assert!(lines[0].contains("invalid options"));
+        assert_eq!(lines[1], "check [widget.options] in config");
+    }
+
+    #[test]
+    fn compute_events_requires_lon_when_lat_is_present() {
+        assert_eq!(
+            compute_events(&Options {
+                timezone: None,
+                lat: Some(35.6762),
+                lon: None,
+            }),
+            Err("lon required".into())
+        );
     }
 
     #[test]
     fn tokyo_returns_plausible_times() {
-        let p = ClockSunriseFetcher.compute(&ctx(
-            Some(Shape::Text),
-            r#"lat = 35.6762
+        let mut value = String::new();
+        if let Body::Text(data) = ClockSunriseFetcher
+            .compute(&ctx(
+                Some(Shape::Text),
+                r#"lat = 35.6762
 lon = 139.6503
 timezone = "Asia/Tokyo""#,
-        ));
-        match p.body {
-            Body::Text(d) => {
-                assert!(d.value.contains("↑"));
-                assert!(d.value.contains("↓"));
-            }
-            _ => panic!("expected text"),
+            ))
+            .body
+        {
+            value = data.value;
         }
+        assert!(value.contains("↑"));
+        assert!(value.contains("↓"));
     }
 
     #[test]
     fn entries_shape_emits_sunrise_and_sunset_rows() {
-        let p = ClockSunriseFetcher.compute(&ctx(
-            Some(Shape::Entries),
-            r#"lat = 35.6762
+        let mut keys = Vec::new();
+        if let Body::Entries(data) = ClockSunriseFetcher
+            .compute(&ctx(
+                Some(Shape::Entries),
+                r#"lat = 35.6762
 lon = 139.6503"#,
-        ));
-        match p.body {
-            Body::Entries(d) => {
-                let keys: Vec<_> = d.items.iter().map(|e| e.key.as_str()).collect();
-                assert_eq!(keys, ["sunrise", "sunset"]);
-            }
-            _ => panic!("expected entries"),
+            ))
+            .body
+        {
+            keys = data.items.into_iter().map(|entry| entry.key).collect();
         }
+        assert_eq!(keys, ["sunrise".to_owned(), "sunset".to_owned()]);
+    }
+
+    #[test]
+    fn polar_day_returns_none_for_event_and_solar_events() {
+        let date = NaiveDate::from_ymd_opt(2026, 6, 21).unwrap();
+        let day_of_year =
+            (date - NaiveDate::from_ymd_opt(date.year(), 1, 1).unwrap()).num_days() as f64 + 1.0;
+        assert_eq!(event(day_of_year, 89.9, 0.0, true), None);
+        assert_eq!(event(day_of_year, 89.9, 0.0, false), None);
+        assert_eq!(solar_events(date, 89.9, 0.0), None);
+    }
+
+    #[test]
+    fn to_local_rolls_rounded_minutes_into_next_hour() {
+        let dt = to_local(
+            NaiveDate::from_ymd_opt(2026, 4, 22).unwrap(),
+            5.999,
+            FixedOffset::east_opt(0).unwrap(),
+        );
+        assert_eq!(format_clock(&dt), "06:00");
     }
 }
