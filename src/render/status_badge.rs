@@ -146,8 +146,10 @@ fn parse_align(s: Option<&str>) -> Alignment {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+
     use super::*;
-    use crate::payload::{BadgeData, Payload, Status};
+    use crate::payload::{BadgeData, Payload, Status, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
 
@@ -167,6 +169,18 @@ mod tests {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("status_badge".into());
         render_to_buffer_with_spec(&payload(status, label), Some(&spec), &registry, w, h)
+    }
+
+    fn render_direct(body: &Body, opts: &RenderOptions, w: u16, h: u16) -> Buffer {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let renderer = StatusBadgeRenderer;
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        terminal
+            .draw(|frame| renderer.render(frame, frame.area(), body, opts, &theme, &registry))
+            .unwrap();
+        terminal.backend().buffer().clone()
     }
 
     #[test]
@@ -248,5 +262,47 @@ mod tests {
         let registry = Registry::with_builtins();
         let buf = render_to_buffer_with_spec(&payload(Status::Ok, "ci"), None, &registry, 10, 1);
         assert!(line_text(&buf, 0).contains("ci"));
+    }
+
+    #[test]
+    fn renderer_contract_and_direct_render_cover_catalog_surface() {
+        let renderer = StatusBadgeRenderer;
+        assert_eq!(renderer.name(), "status_badge");
+        assert!(renderer.description().contains("coloured dot"));
+        assert_eq!(renderer.accepts(), &[Shape::Badge]);
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.option_schemas().len(), OPTION_SCHEMAS.len());
+        assert_eq!(renderer.option_schemas()[0].name, "shape");
+
+        let body = Body::Text(TextData {
+            value: "not a badge".into(),
+        });
+        let buf = render_direct(&body, &RenderOptions::default(), 12, 1);
+        assert_eq!(line_text(&buf, 0), " ".repeat(12));
+    }
+
+    #[test]
+    fn padding_and_align_helpers_cover_remaining_badge_branches() {
+        assert_eq!(frame_glyphs(Some("rounded")), ("( ", " )"));
+        assert_eq!(parse_align(Some("center")), Alignment::Center);
+        assert_eq!(parse_align(Some("right")), Alignment::Right);
+
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W =
+            toml::from_str(r#"render = { type = "status_badge", padding = 2, align = "center" }"#)
+                .unwrap();
+        let buf = render_to_buffer_with_spec(
+            &payload(Status::Ok, "ci"),
+            Some(&w.render),
+            &registry,
+            16,
+            1,
+        );
+        let row = line_text(&buf, 0);
+        assert!(row.contains("  ● ci  "));
     }
 }
