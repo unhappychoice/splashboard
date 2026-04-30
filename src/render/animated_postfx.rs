@@ -286,9 +286,63 @@ fn process_start() -> Instant {
 
 #[cfg(test)]
 mod tests {
+    use std::{thread, time::Duration};
+
     use super::*;
     use crate::payload::{Payload, TextData};
-    use crate::render::{RenderSpec, test_utils::render_to_buffer_with_spec};
+    use crate::render::{
+        RenderSpec,
+        test_utils::{line_text, render_to_buffer_with_spec},
+    };
+
+    fn text_payload(value: &str) -> Payload {
+        Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: value.into(),
+            }),
+        }
+    }
+
+    #[test]
+    fn renderer_contract_and_natural_height_cover_wrapper_surface() {
+        let registry = Registry::with_builtins();
+        let renderer = AnimatedPostfxRenderer;
+        let body = text_payload("wave\ncrest").body;
+        let opts = RenderOptions::default();
+        let expected = registry
+            .get(default_renderer_for(Shape::Text))
+            .unwrap()
+            .natural_height(&body, &inner_options(&opts), 20, &registry);
+
+        assert_eq!(renderer.name(), "animated_postfx");
+        assert!(renderer.description().contains("tachyonfx"));
+        assert_eq!(renderer.accepts(), ALL_SHAPES);
+        assert!(renderer.animates());
+        assert_eq!(
+            renderer
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["inner", "effect", "duration_ms"]
+        );
+        assert_eq!(
+            renderer.natural_height(&body, &opts, 20, &registry),
+            expected
+        );
+        assert_eq!(
+            renderer.natural_height(
+                &body,
+                &RenderOptions::default().with_extra("inner", "missing"),
+                20,
+                &registry,
+            ),
+            1
+        );
+    }
 
     #[test]
     fn known_effects_build_without_panic() {
@@ -328,14 +382,7 @@ mod tests {
 
     #[test]
     fn renders_text_without_panic() {
-        let payload = Payload {
-            icon: None,
-            status: None,
-            format: None,
-            body: Body::Text(TextData {
-                value: "hello".into(),
-            }),
-        };
+        let payload = text_payload("hello");
         let spec = RenderSpec::Full {
             type_name: "animated_postfx".into(),
             options: RenderOptions {
@@ -354,25 +401,47 @@ mod tests {
 
     #[test]
     fn unknown_inner_renders_inline_error() {
-        let payload = Payload {
-            icon: None,
-            status: None,
-            format: None,
-            body: Body::Text(TextData { value: "hi".into() }),
-        };
+        let payload = text_payload("hi");
         let spec = RenderSpec::Full {
             type_name: "animated_postfx".into(),
             options: RenderOptions::default().with_extra("inner", "does_not_exist"),
         };
         let registry = super::super::Registry::with_builtins();
         let buf = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 40, 2);
-        let joined: String = (0..2)
-            .map(|y| crate::render::test_utils::line_text(&buf, y))
-            .collect();
-        assert!(
-            joined.contains("unknown inner"),
-            "expected inline error, got {joined:?}"
-        );
+        let joined: String = (0..2).map(|y| line_text(&buf, y)).collect();
+        assert!(joined.contains("unknown inner"));
+    }
+
+    #[test]
+    fn shape_mismatch_inner_renderer_renders_inline_error() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Full {
+            type_name: "animated_postfx".into(),
+            options: RenderOptions::default().with_extra("inner", "chart_line"),
+        };
+        let buf = render_to_buffer_with_spec(&text_payload("wave"), Some(&spec), &registry, 50, 1);
+        assert!(line_text(&buf, 0).contains("cannot display Text"));
+    }
+
+    #[test]
+    fn expired_effect_leaves_default_inner_render_untouched() {
+        let registry = Registry::with_builtins();
+        let payload = text_payload("steady");
+        let spec = RenderSpec::Full {
+            type_name: "animated_postfx".into(),
+            options: RenderOptions {
+                duration_ms: Some(1),
+                ..Default::default()
+            },
+        };
+
+        let _ = process_start();
+        thread::sleep(Duration::from_millis(2));
+
+        let postfx = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 20, 2);
+        let plain = render_to_buffer_with_spec(&payload, None, &registry, 20, 2);
+        assert_eq!(line_text(&postfx, 0), line_text(&plain, 0));
+        assert_eq!(line_text(&postfx, 1), line_text(&plain, 1));
     }
 
     #[test]
