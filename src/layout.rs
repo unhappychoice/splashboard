@@ -672,6 +672,165 @@ mod tests {
     }
 
     #[test]
+    fn builder_helpers_preserve_widget_and_empty_variants() {
+        let widget = Layout::widget("g")
+            .flexed(Flex::End)
+            .with_bg(BgLevel::Subtle);
+        assert!(matches!(
+            widget,
+            Layout::Widget {
+                id,
+                panel: None,
+                bg: BgLevel::Subtle
+            } if id == "g"
+        ));
+
+        let empty = Layout::empty()
+            .titled("ignored")
+            .title_aligned(TitleAlign::Right)
+            .bordered(BorderStyle::Top)
+            .with_bg(BgLevel::Subtle)
+            .flexed(Flex::SpaceAround);
+        assert!(matches!(empty, Layout::Empty));
+    }
+
+    #[test]
+    fn helper_mappings_cover_reset_and_variant_branches() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let theme = Theme {
+            bg_subtle: Color::Reset,
+            ..Theme::default()
+        };
+        let mut terminal = Terminal::new(TestBackend::new(4, 1)).unwrap();
+        terminal
+            .draw(|f| paint_bg(f, f.area(), BgLevel::Subtle, &theme))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer().cell((0, 0)).unwrap().bg,
+            Color::Reset
+        );
+
+        assert_eq!(to_alignment(TitleAlign::Right), Alignment::Right);
+        assert_eq!(to_border_type(BorderStyle::Thick), BorderType::Thick);
+        assert_eq!(to_border_type(BorderStyle::Double), BorderType::Double);
+        assert_eq!(to_ratatui_flex(Flex::Start), RatFlex::Start);
+        assert_eq!(to_ratatui_flex(Flex::End), RatFlex::End);
+        assert_eq!(to_ratatui_flex(Flex::SpaceBetween), RatFlex::SpaceBetween);
+        assert_eq!(to_ratatui_flex(Flex::SpaceAround), RatFlex::SpaceAround);
+
+        let panel = Panel::default().border(BorderStyle::Double);
+        let block = build_block(&panel, &Theme::default());
+        assert_eq!(block.inner(Rect::new(0, 0, 6, 4)), Rect::new(1, 1, 4, 2));
+    }
+
+    #[test]
+    fn heavy_borders_and_right_aligned_titles_render() {
+        let w = widgets(&[("g", text_widget(&["x"]))]);
+
+        let thick = Layout::widget("g")
+            .titled("R")
+            .title_aligned(TitleAlign::Right)
+            .bordered(BorderStyle::Thick);
+        let thick_top = line_text(&render_to_buffer_with(&thick, &w, 12, 4), 0);
+        assert!(thick_top.contains("R"));
+        assert!(thick_top.contains("━"));
+
+        let double = Layout::widget("g").bordered(BorderStyle::Double);
+        let double_top = line_text(&render_to_buffer_with(&double, &w, 12, 4), 0);
+        assert!(double_top.contains("═"));
+    }
+
+    #[test]
+    fn constraint_and_natural_length_helpers_cover_fixed_and_empty_paths() {
+        let registry = Registry::with_builtins();
+        let w = widgets(&[("g", text_widget(&["hello"]))]);
+        let specs = HashMap::new();
+        let parent = Rect::new(0, 0, 12, 6);
+
+        assert_eq!(
+            to_constraint(
+                Size::Min(3),
+                &Layout::Empty,
+                Direction::Vertical,
+                parent,
+                &w,
+                &specs,
+                &registry,
+            ),
+            Constraint::Min(3)
+        );
+        assert_eq!(panel_axis_overhead(&None, Direction::Vertical), 0);
+        assert_eq!(
+            panel_axis_overhead(
+                &Some(Panel::default().border(BorderStyle::Top)),
+                Direction::Vertical,
+            ),
+            1
+        );
+        assert_eq!(
+            panel_axis_overhead(
+                &Some(Panel::default().border(BorderStyle::Double)),
+                Direction::Horizontal,
+            ),
+            2
+        );
+
+        let stack = Layout::rows(vec![
+            Child::length(2, Layout::empty()),
+            Child::min(3, Layout::empty()),
+            Child::max(4, Layout::empty()),
+        ])
+        .bordered(BorderStyle::Top);
+        assert_eq!(
+            natural_length(&stack, Direction::Vertical, parent, &w, &specs, &registry),
+            10
+        );
+        assert_eq!(
+            natural_length(
+                &Layout::empty(),
+                Direction::Vertical,
+                parent,
+                &w,
+                &specs,
+                &registry
+            ),
+            1
+        );
+
+        let widget = Layout::widget("g").bordered(BorderStyle::Double);
+        assert_eq!(
+            natural_length(
+                &widget,
+                Direction::Horizontal,
+                parent,
+                &w,
+                &specs,
+                &registry
+            ),
+            14
+        );
+    }
+
+    #[test]
+    fn widget_natural_uses_default_and_missing_renderer_paths() {
+        let registry = Registry::with_builtins();
+        let payload = text_widget(&["hello"]);
+
+        assert_eq!(
+            widget_natural("g", &payload.body, &HashMap::new(), &registry, 9).0,
+            9
+        );
+
+        let mut specs = HashMap::new();
+        specs.insert("g".into(), RenderSpec::Short("missing_renderer".into()));
+        assert_eq!(
+            widget_natural("g", &payload.body, &specs, &registry, 9),
+            (1, 1)
+        );
+    }
+
+    #[test]
     fn missing_widget_id_renders_nothing() {
         let l = Layout::widget("missing");
         let w: HashMap<WidgetId, Payload> = HashMap::new();
