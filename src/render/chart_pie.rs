@@ -162,6 +162,26 @@ mod tests {
     }
 
     #[test]
+    fn exposes_renderer_contract() {
+        let r = ChartPieRenderer;
+        assert!(r.description().contains("donut = true"));
+        assert!(r.color_keys().iter().map(|k| k.name).eq(["palette_series"]));
+        assert!(
+            r.option_schemas()
+                .iter()
+                .map(|s| s.name)
+                .eq(["legend", "donut"])
+        );
+    }
+
+    #[test]
+    fn legend_position_maps_named_edges() {
+        assert_eq!(legend_position(Some("left")), LegendPosition::Left);
+        assert_eq!(legend_position(Some("top")), LegendPosition::Top);
+        assert_eq!(legend_position(Some("bottom")), LegendPosition::Bottom);
+    }
+
+    #[test]
     fn legend_labels_appear_in_buffer() {
         use crate::render::test_utils::line_text;
         let buf = render(vec![bar("alpha", 10), bar("beta", 20)], 60, 20);
@@ -190,6 +210,23 @@ mod tests {
         assert!(
             !joined.contains("alpha"),
             "legend should be hidden: {joined:?}"
+        );
+    }
+
+    #[test]
+    fn donut_mode_renders_without_panicking() {
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W = toml::from_str(r#"render = { type = "chart_pie", donut = true }"#).unwrap();
+        let _ = render_to_buffer_with_spec(
+            &payload(vec![bar("alpha", 10), bar("beta", 20)]),
+            Some(&w.render),
+            &registry,
+            60,
+            20,
         );
     }
 
