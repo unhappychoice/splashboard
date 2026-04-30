@@ -457,23 +457,36 @@ mod tests {
     }
 
     #[test]
-    fn fetch_reads_workspace_repo_for_default_and_requested_shapes() {
-        let fetcher = GitChurn;
-        let repo = open_repo().unwrap();
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "src/lib.rs", "alpha");
+        commit_touching(&repo, "src/lib.rs", "beta");
+        let workdir = repo.workdir().unwrap().to_path_buf();
         let ranked = churn(&repo, DEFAULT_DAYS, None).unwrap();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        let default_payload = run_async(fetcher.fetch(&ctx(None, None))).unwrap();
-        let bars_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Bars), Some("30")))).unwrap();
-        let text_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Text), Some("30")))).unwrap();
+        let fetcher = GitChurn;
+        let default_payload = run_async(fetcher.fetch(&ctx(None, None)));
+        let bars_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Bars), Some("30"))));
+        let text_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Text), Some("30"))));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
 
         assert_eq!(
-            default_payload,
+            default_payload.unwrap(),
             payload(render_body(ranked.clone(), Shape::Entries))
         );
         assert_eq!(
-            bars_payload,
+            bars_payload.unwrap(),
             payload(render_body(ranked.clone(), Shape::Bars))
         );
-        assert_eq!(text_payload, payload(render_body(ranked, Shape::Text)));
+        assert_eq!(
+            text_payload.unwrap(),
+            payload(render_body(ranked, Shape::Text))
+        );
     }
 }

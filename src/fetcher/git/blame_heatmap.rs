@@ -366,23 +366,32 @@ mod tests {
     }
 
     #[test]
-    fn fetch_reads_workspace_repo_for_default_and_text_shapes() {
-        let fetcher = GitBlameHeatmap;
-        let repo = open_repo().unwrap();
+    fn fetch_reads_cwd_repo_for_default_and_text_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "README.md", "seed");
+        let workdir = repo.workdir().unwrap().to_path_buf();
         let now = local_now();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        let default_payload = run_async(fetcher.fetch(&ctx(None))).unwrap();
-        let text_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Text)))).unwrap();
+        let fetcher = GitBlameHeatmap;
+        let default_payload = run_async(fetcher.fetch(&ctx(None)));
+        let text_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Text))));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
 
         assert_eq!(
-            default_payload,
+            default_payload.unwrap(),
             payload(render_body(
                 churn(&repo, now.date_naive(), *now.offset()).unwrap(),
                 Shape::Heatmap,
             ))
         );
         assert_eq!(
-            text_payload,
+            text_payload.unwrap(),
             payload(render_body(
                 churn(&repo, now.date_naive(), *now.offset()).unwrap(),
                 Shape::Text,

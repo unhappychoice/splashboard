@@ -370,19 +370,30 @@ mod tests {
     }
 
     #[test]
-    fn fetch_reads_workspace_repo_for_default_and_requested_shapes() {
-        let bars = run_async(GitContributors.fetch(&ctx(None, Some("3650")))).unwrap();
-        let entries =
-            run_async(GitContributors.fetch(&ctx(Some(Shape::Entries), Some("3650")))).unwrap();
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit_as(&repo, "first", "alice", "a@example.com");
+        commit_as(&repo, "second", "bob", "b@example.com");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let bars = run_async(GitContributors.fetch(&ctx(None, Some("3650"))));
+        let entries = run_async(GitContributors.fetch(&ctx(Some(Shape::Entries), Some("3650"))));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
 
         assert!(matches!(
-            bars.body,
-            Body::Bars(BarsData { bars }) if !bars.is_empty()
+            bars.unwrap().body,
+            Body::Bars(BarsData { bars }) if bars.len() == 2
         ));
         assert!(matches!(
-            entries.body,
+            entries.unwrap().body,
             Body::Entries(EntriesData { items })
-                if !items.is_empty() && items.iter().all(|item| item.value.is_some())
+                if items.len() == 2 && items.iter().all(|item| item.value.is_some())
         ));
     }
 

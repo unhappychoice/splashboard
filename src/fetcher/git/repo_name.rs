@@ -187,17 +187,53 @@ mod tests {
     }
 
     #[test]
-    fn detect_name_uses_the_workspace_remote() {
-        assert_eq!(detect_name(), Some("splashboard".into()));
+    fn detect_name_picks_up_origin_remote_from_cwd_repo() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        run_git(
+            &workdir,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/acme/isolated.git",
+            ],
+        );
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+        let detected = detect_name();
+        std::env::set_current_dir(prev).unwrap();
+
+        assert_eq!(detected, Some("isolated".into()));
     }
 
     #[test]
-    fn fetch_returns_workspace_repo_name() {
-        let payload = run_async(GitRepoName.fetch(&ctx())).unwrap();
-        let Body::Text(text) = payload.body else {
+    fn fetch_returns_repo_name_from_cwd_repo() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        run_git(
+            &workdir,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "git@github.com:acme/isolated.git",
+            ],
+        );
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+        let payload = run_async(GitRepoName.fetch(&ctx()));
+        std::env::set_current_dir(prev).unwrap();
+
+        let Body::Text(text) = payload.unwrap().body else {
             panic!("expected text payload");
         };
-
-        assert_eq!(text.value, "splashboard");
+        assert_eq!(text.value, "isolated");
     }
 }

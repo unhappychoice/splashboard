@@ -255,19 +255,29 @@ mod tests {
     }
 
     #[test]
-    fn fetch_reads_workspace_repo_for_default_and_text_block_shapes() {
-        let fetcher = GitRecentCommits;
-        let repo = open_repo().unwrap();
+    fn fetch_reads_cwd_repo_for_default_and_text_block_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit(&repo, "alpha");
+        commit(&repo, "beta");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        let timeline_ctx = ctx(None, Some("2"));
-        let timeline = run_async(fetcher.fetch(&timeline_ctx)).unwrap();
+        let fetcher = GitRecentCommits;
+        let timeline = run_async(fetcher.fetch(&ctx(None, Some("2"))));
+        let text = run_async(fetcher.fetch(&ctx(Some(Shape::TextBlock), Some(" 3 "))));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        let timeline = timeline.unwrap();
+        let text = text.unwrap();
         assert_eq!(
             timeline.body,
             render_body(recent_commits(&repo, 2).unwrap(), Shape::Timeline)
         );
-
-        let text_ctx = ctx(Some(Shape::TextBlock), Some(" 3 "));
-        let text = run_async(fetcher.fetch(&text_ctx)).unwrap();
         assert_eq!(
             text.body,
             render_body(recent_commits(&repo, 3).unwrap(), Shape::TextBlock)

@@ -317,6 +317,9 @@ mod tests {
 
     #[test]
     fn repo_for_key_falls_back_to_cwd_remote_when_available() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let expected = resolve_repo(None).unwrap().as_path();
         assert_eq!(repo_for_key(&ctx(None, Some(Shape::Entries))), expected);
     }

@@ -731,26 +731,37 @@ mod tests {
     }
 
     #[test]
-    fn fetch_scans_current_repo_for_default_and_bars_shapes() {
-        let default_ctx = FetchContext::default();
-        let expected = payload(render_body(
-            scan_cwd(&defaults()).unwrap(),
-            Shape::Text,
-            DEFAULT_LIMIT,
-        ));
-        assert_eq!(run_async(CodeTodos.fetch(&default_ctx)).unwrap(), expected);
+    fn fetch_scans_cwd_repo_for_default_and_bars_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = crate::fetcher::git::test_support::make_repo();
+        crate::fetcher::git::test_support::commit_touching(
+            &repo,
+            "src/lib.rs",
+            "// TODO: implement",
+        );
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        let markers = vec!["TODO".to_string()];
+        let default_ctx = FetchContext::default();
+        let default_payload = run_async(CodeTodos.fetch(&default_ctx));
         let bars_ctx = FetchContext {
             shape: Some(Shape::Bars),
             options: Some(toml::from_str("markers = [\" TODO \"]\nlimit = 0").unwrap()),
             ..Default::default()
         };
-        let expected = payload(render_body(
-            scan_cwd(&markers).unwrap(),
-            Shape::Bars,
-            DEFAULT_LIMIT,
-        ));
-        assert_eq!(run_async(CodeTodos.fetch(&bars_ctx)).unwrap(), expected);
+        let bars_payload = run_async(CodeTodos.fetch(&bars_ctx));
+        let expected_default = scan_repo(&repo, &defaults())
+            .map(|s| payload(render_body(s, Shape::Text, DEFAULT_LIMIT)));
+        let markers = vec!["TODO".to_string()];
+        let expected_bars =
+            scan_repo(&repo, &markers).map(|s| payload(render_body(s, Shape::Bars, DEFAULT_LIMIT)));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert_eq!(default_payload.unwrap(), expected_default.unwrap());
+        assert_eq!(bars_payload.unwrap(), expected_bars.unwrap());
     }
 }

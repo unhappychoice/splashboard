@@ -940,30 +940,35 @@ mod tests {
         assert!(matches!(err, FetchError::Failed(msg) if msg.contains("unknown variant")));
     }
 
-    #[tokio::test]
-    async fn fetch_reads_workspace_repo_for_default_and_requested_shapes() {
-        let text = CodeLoc.fetch(&ctx(None, None)).await.unwrap();
-        assert_eq!(
-            text.body,
-            render_body(scan_cwd().unwrap(), Shape::Text, DEFAULT_LIMIT, Unit::Loc)
-        );
-
-        let text_block = CodeLoc
-            .fetch(&ctx(
-                Some(Shape::TextBlock),
-                Some("limit = 0\nunit = \"percent\""),
-            ))
-            .await
+    #[test]
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = crate::fetcher::git::test_support::make_repo();
+        crate::fetcher::git::test_support::commit_touching(&repo, "src/lib.rs", "fn hello() {}");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .unwrap();
-        assert_eq!(
-            text_block.body,
-            render_body(
-                scan_cwd().unwrap(),
-                Shape::TextBlock,
-                DEFAULT_LIMIT,
-                Unit::Percent,
-            )
-        );
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let text = rt.block_on(CodeLoc.fetch(&ctx(None, None)));
+        let text_block = rt.block_on(CodeLoc.fetch(&ctx(
+            Some(Shape::TextBlock),
+            Some("limit = 0\nunit = \"percent\""),
+        )));
+        let expected_text =
+            scan_repo(&repo).map(|t| render_body(t, Shape::Text, DEFAULT_LIMIT, Unit::Loc));
+        let expected_block = scan_repo(&repo)
+            .map(|t| render_body(t, Shape::TextBlock, DEFAULT_LIMIT, Unit::Percent));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert_eq!(text.unwrap().body, expected_text.unwrap());
+        assert_eq!(text_block.unwrap().body, expected_block.unwrap());
     }
 
     #[tokio::test]

@@ -676,44 +676,47 @@ mod tests {
         assert_eq!(measure_file(Metric::Loc, &[0xff, 0xfe]), 0);
     }
 
-    #[tokio::test]
-    async fn fetch_reads_workspace_repo_for_default_and_requested_shapes() {
-        let entries = CodeLargestFiles.fetch(&ctx(None)).await.unwrap();
-        assert_eq!(
-            entries.body,
-            render_body(
-                scan_cwd(Metric::Loc).unwrap(),
-                Shape::Entries,
-                Metric::Loc,
-                DEFAULT_LIMIT
-            )
+    #[test]
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = crate::fetcher::git::test_support::make_repo();
+        crate::fetcher::git::test_support::commit_touching(
+            &repo,
+            "src/lib.rs",
+            "pub fn hello() {}\n",
         );
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        let mut number_series = ctx(Some(Shape::NumberSeries));
-        number_series.options = Some(toml::from_str("metric = \"bytes\"\nlimit = 1").unwrap());
-        let number_series_payload = CodeLargestFiles.fetch(&number_series).await.unwrap();
-        assert_eq!(
-            number_series_payload.body,
-            render_body(
-                scan_cwd(Metric::Bytes).unwrap(),
-                Shape::NumberSeries,
-                Metric::Bytes,
-                1
-            )
-        );
+        let entries = rt.block_on(CodeLargestFiles.fetch(&ctx(None)));
 
-        let mut default_limit = ctx(Some(Shape::NumberSeries));
-        default_limit.options = Some(toml::from_str("limit = 0").unwrap());
-        let default_limit_payload = CodeLargestFiles.fetch(&default_limit).await.unwrap();
-        assert_eq!(
-            default_limit_payload.body,
-            render_body(
-                scan_cwd(Metric::Loc).unwrap(),
-                Shape::NumberSeries,
-                Metric::Loc,
-                DEFAULT_LIMIT,
-            )
-        );
+        let mut number_series_ctx = ctx(Some(Shape::NumberSeries));
+        number_series_ctx.options = Some(toml::from_str("metric = \"bytes\"\nlimit = 1").unwrap());
+        let number_series = rt.block_on(CodeLargestFiles.fetch(&number_series_ctx));
+
+        let mut default_limit_ctx = ctx(Some(Shape::NumberSeries));
+        default_limit_ctx.options = Some(toml::from_str("limit = 0").unwrap());
+        let default_limit = rt.block_on(CodeLargestFiles.fetch(&default_limit_ctx));
+
+        let expected_entries = scan_repo(&repo, Metric::Loc)
+            .map(|s| render_body(s, Shape::Entries, Metric::Loc, DEFAULT_LIMIT));
+        let expected_bytes = scan_repo(&repo, Metric::Bytes)
+            .map(|s| render_body(s, Shape::NumberSeries, Metric::Bytes, 1));
+        let expected_default_limit = scan_repo(&repo, Metric::Loc)
+            .map(|s| render_body(s, Shape::NumberSeries, Metric::Loc, DEFAULT_LIMIT));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert_eq!(entries.unwrap().body, expected_entries.unwrap());
+        assert_eq!(number_series.unwrap().body, expected_bytes.unwrap());
+        assert_eq!(default_limit.unwrap().body, expected_default_limit.unwrap());
     }
 
     #[tokio::test]

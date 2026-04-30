@@ -726,39 +726,48 @@ mod tests {
         assert!(err.to_string().contains("invalid options"));
     }
 
-    #[tokio::test]
-    async fn fetch_scans_current_repo_for_multiple_shapes() {
-        let text = CodeComments
-            .fetch(&ctx(Some(Shape::Text), None))
-            .await
+    #[test]
+    fn fetch_scans_cwd_repo_for_multiple_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = crate::fetcher::git::test_support::make_repo();
+        crate::fetcher::git::test_support::commit_touching(
+            &repo,
+            "src/lib.rs",
+            "// a code comment\nfn main() {}\n",
+        );
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .unwrap();
-        match text.body {
-            Body::Text(d) => assert!(d.value.contains("comments")),
-            _ => panic!(),
-        }
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
 
-        let badge = CodeComments
-            .fetch(&ctx(Some(Shape::Badge), Some(r#"limit = 1"#)))
-            .await
-            .unwrap();
-        match badge.body {
-            Body::Badge(d) => assert!(!d.label.is_empty()),
-            _ => panic!(),
-        }
-
-        let entries = CodeComments
-            .fetch(&ctx(
-                Some(Shape::Entries),
-                Some(
-                    r#"
+        let text = rt.block_on(CodeComments.fetch(&ctx(Some(Shape::Text), None)));
+        let badge = rt.block_on(CodeComments.fetch(&ctx(Some(Shape::Badge), Some(r#"limit = 1"#))));
+        let entries = rt.block_on(CodeComments.fetch(&ctx(
+            Some(Shape::Entries),
+            Some(
+                r#"
 limit = 1
 unit = "kloc"
 "#,
-                ),
-            ))
-            .await
-            .unwrap();
-        match entries.body {
+            ),
+        )));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        match text.unwrap().body {
+            Body::Text(d) => assert!(d.value.contains("comments")),
+            _ => panic!(),
+        }
+        match badge.unwrap().body {
+            Body::Badge(d) => assert!(!d.label.is_empty()),
+            _ => panic!(),
+        }
+        match entries.unwrap().body {
             Body::Entries(d) => {
                 assert_eq!(d.items.len(), 1);
                 assert!(!d.items[0].key.is_empty());
