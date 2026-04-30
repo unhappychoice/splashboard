@@ -24,7 +24,7 @@
       packages = forAllSystems ({ pkgs }: {
         default = pkgs.rustPlatform.buildRustPackage rec {
           pname = "splashboard";
-          version = "1.1.1";
+          version = "1.2.0";
           src = pkgs.fetchFromGitHub {
             owner = "unhappychoice";
             repo = "splashboard";
