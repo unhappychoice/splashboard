@@ -1065,9 +1065,10 @@ fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
 mod tests {
     use super::*;
     use crate::layout::Layout as LayoutTree;
-    use crate::payload::{Body, TextBlockData, TextData};
+    use crate::payload::{Body, ErrorKind, TextBlockData, TextData};
     use async_trait::async_trait;
     use ratatui::{Terminal, backend::TestBackend};
+    use std::ffi::{OsStr, OsString};
 
     fn text_payload(line: &str) -> Payload {
         Payload {
@@ -1097,6 +1098,41 @@ mod tests {
         (0..buf.area.width)
             .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
             .collect()
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: Option<&OsStr>) -> Self {
+            let previous = std::env::var_os(key);
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     #[test]
@@ -1690,6 +1726,76 @@ mod tests {
         assert_eq!(stored.kind, CacheEntryKind::Timeout);
     }
 
+    #[test]
+    fn fetch_and_persist_only_writes_safe_cached_widgets() {
+        let _lock = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join(".splashboard.toml");
+        std::fs::write(&config_path, "").unwrap();
+        let hash = crate::trust::hash_file(&config_path).unwrap();
+        let home = dir.path().join("home");
+        let _home = EnvGuard::set("SPLASHBOARD_HOME", Some(home.as_os_str()));
+        let _trust_all = EnvGuard::set("SPLASHBOARD_TRUST_ALL", None);
+
+        let cached = static_widget("cached", "Hi!");
+        let config = Config {
+            widgets: vec![
+                cached.clone(),
+                widget("clock", "clock"),
+                widget("missing", "no_such_fetcher"),
+                WidgetConfig {
+                    id: "invalid".into(),
+                    fetcher: "basic_static".into(),
+                    render: Some(RenderSpec::Short("grid_calendar".into())),
+                    format: Some("bad".into()),
+                    refresh_interval: Some(60),
+                    ..Default::default()
+                },
+                WidgetConfig {
+                    id: "feed".into(),
+                    fetcher: "rss".into(),
+                    options: Some(
+                        toml::toml! {
+                            url = "https://example.com/feed.xml"
+                        }
+                        .into(),
+                    ),
+                    refresh_interval: Some(60),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(fetch_and_persist(&config, Some((&config_path, &hash))));
+
+        let cache = Cache::open_default().unwrap();
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
+        let key = registry
+            .get_cached("basic_static")
+            .unwrap()
+            .cache_key(&fetch_context(
+                &cached,
+                &General::default(),
+                shapes.get(&cached.id).copied(),
+                Duration::from_secs(0),
+            ));
+        let entry = cache.load(&key).expect("cached widget must be persisted");
+        assert_eq!(entry.kind, CacheEntryKind::Ok);
+        assert_eq!(entry.payload, text_block_payload(&["Hi!"]));
+
+        let json_files = std::fs::read_dir(crate::paths::cache_dir().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("json"))
+            .count();
+        assert_eq!(json_files, 1);
+    }
+
     fn widget_with_render(id: &str, fetcher: &str, renderer: Option<&str>) -> WidgetConfig {
         WidgetConfig {
             id: id.into(),
@@ -1865,6 +1971,82 @@ mod tests {
             }
             other => panic!("expected Body::Error placeholder, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn refresh_payloads_reapplies_gated_unknown_and_shape_mismatch_placeholders() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Some(Cache::open(dir.path().to_path_buf()).unwrap());
+        let registry = Registry::with_builtins();
+        let cached_widget = static_widget("cached", "ignored");
+        let key = registry
+            .get_cached("basic_static")
+            .unwrap()
+            .cache_key(&fetch_context(
+                &cached_widget,
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
+        cache
+            .as_ref()
+            .unwrap()
+            .store(&key, &CacheEntry::new(text_payload("fresh"), 60))
+            .unwrap();
+
+        let gated = vec![widget("locked", "rss")];
+        let unknown = vec![widget("typo", "no_such_fetcher")];
+        let shape_invalid = vec![(
+            widget("bad", "basic_static"),
+            ShapeMismatch {
+                fetcher: "basic_static".into(),
+                requested: Shape::Calendar,
+            },
+        )];
+        let buckets = WidgetBuckets {
+            cached: std::slice::from_ref(&cached_widget),
+            gated: &gated,
+            unknown: &unknown,
+            shape_invalid: &shape_invalid,
+        };
+        let mut payloads = HashMap::from([
+            ("locked".into(), text_payload("stale")),
+            ("typo".into(), text_payload("stale")),
+            ("bad".into(), text_payload("stale")),
+        ]);
+
+        let entries = refresh_payloads(
+            &cache,
+            &registry,
+            &buckets,
+            &General::default(),
+            &HashMap::new(),
+            &mut payloads,
+        );
+
+        assert!(entries.contains_key("cached"));
+        assert_eq!(payloads.get("cached"), Some(&text_payload("fresh")));
+        assert_eq!(
+            match &payloads.get("locked").unwrap().body {
+                Body::Error(err) => err.kind,
+                other => panic!("expected trust placeholder, got {other:?}"),
+            },
+            ErrorKind::RequiresTrust
+        );
+        assert_eq!(
+            match &payloads.get("typo").unwrap().body {
+                Body::Error(err) => err.kind,
+                other => panic!("expected unknown placeholder, got {other:?}"),
+            },
+            ErrorKind::UnknownFetcher
+        );
+        assert_eq!(
+            match &payloads.get("bad").unwrap().body {
+                Body::Error(err) => err.kind,
+                other => panic!("expected mismatch placeholder, got {other:?}"),
+            },
+            ErrorKind::ShapeMismatch
+        );
     }
 
     #[test]
