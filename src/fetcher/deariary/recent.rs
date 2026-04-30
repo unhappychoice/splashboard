@@ -624,10 +624,28 @@ mod tests {
 
     #[test]
     fn fetch_requires_token_before_network() {
+        struct RestoreEnv {
+            key: &'static str,
+            previous: Option<String>,
+        }
+        impl Drop for RestoreEnv {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.previous {
+                        Some(value) => std::env::set_var(self.key, value),
+                        None => std::env::remove_var(self.key),
+                    }
+                }
+            }
+        }
+
         let _lock = crate::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        let _restore = RestoreEnv {
+            key: "DEARIARY_TOKEN",
+            previous: std::env::var("DEARIARY_TOKEN").ok(),
+        };
         unsafe { std::env::remove_var("DEARIARY_TOKEN") };
 
         let fetcher = DeariaryRecent;
@@ -637,12 +655,5 @@ mod tests {
             err,
             FetchError::Failed(msg) if msg == "deariary token missing: set options.token or DEARIARY_TOKEN"
         ));
-
-        unsafe {
-            match previous {
-                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
-                None => std::env::remove_var("DEARIARY_TOKEN"),
-            }
-        }
     }
 }

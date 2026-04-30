@@ -1894,7 +1894,9 @@ mod tests {
             ..Default::default()
         };
 
-        tokio::runtime::Runtime::new()
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .unwrap()
             .block_on(fetch_and_persist(&config, Some((&config_path, &hash))));
 

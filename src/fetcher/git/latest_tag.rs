@@ -40,7 +40,7 @@ impl Fetcher for GitLatestTag {
             Shape::Text => samples::text("v1.2.3"),
             Shape::Entries => samples::entries(&[
                 ("tag", "v1.2.3"),
-                ("short", "a1b2c3d"),
+                ("commit", "a1b2c3d"),
                 ("date", "2026-04-14"),
             ]),
             _ => return None,
@@ -201,7 +201,7 @@ mod tests {
             fetcher.sample_body(Shape::Entries),
             Some(samples::entries(&[
                 ("tag", "v1.2.3"),
-                ("short", "a1b2c3d"),
+                ("commit", "a1b2c3d"),
                 ("date", "2026-04-14"),
             ]))
         );

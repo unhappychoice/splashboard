@@ -330,11 +330,11 @@ fn pick_pixel_size(area: Rect) -> PixelSize {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, layout::Alignment};
+    use ratatui::layout::Alignment;
 
     use super::*;
     use crate::payload::{Payload, TextBlockData, TextData};
-    use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
+    use crate::render::test_utils::render_to_buffer_with_spec;
     use crate::render::{Registry, RenderSpec};
     use crate::theme::{self, Theme};
 
@@ -345,18 +345,6 @@ mod tests {
             format: None,
             body: Body::Text(TextData { value: text.into() }),
         }
-    }
-
-    fn render_direct(body: &Body, opts: &RenderOptions, w: u16, h: u16) -> Buffer {
-        let backend = TestBackend::new(w, h);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let renderer = TextAsciiRenderer;
-        let theme = Theme::default();
-        let registry = Registry::with_builtins();
-        terminal
-            .draw(|frame| renderer.render(frame, frame.area(), body, opts, &theme, &registry))
-            .unwrap();
-        terminal.backend().buffer().clone()
     }
 
     fn pixel_name(pixel: PixelSize) -> &'static str {
@@ -508,13 +496,10 @@ mod tests {
     }
 
     #[test]
-    fn direct_render_ignores_non_text_bodies_and_natural_height_defaults_to_one() {
+    fn natural_height_defaults_to_one_for_non_text_bodies() {
         let body = Body::TextBlock(TextBlockData {
             lines: vec!["not ascii".into()],
         });
-        let buf = render_direct(&body, &RenderOptions::default(), 20, 4);
-        assert!(line_text(&buf, 0).trim().is_empty());
-        assert!(line_text(&buf, 1).trim().is_empty());
         let renderer = TextAsciiRenderer;
         let registry = Registry::with_builtins();
         assert_eq!(

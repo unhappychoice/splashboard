@@ -985,17 +985,16 @@ mod tests {
     impl EnvGuard {
         fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
             let lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let restore = pairs
-                .iter()
-                .map(|(key, value)| {
-                    let previous = std::env::var(key).ok();
-                    match value {
-                        Some(value) => unsafe { std::env::set_var(key, value) },
-                        None => unsafe { std::env::remove_var(key) },
-                    }
-                    (*key, previous)
-                })
-                .collect();
+            let mut restore: Vec<(&'static str, Option<String>)> = Vec::new();
+            for (key, value) in pairs {
+                if !restore.iter().any(|(k, _)| k == key) {
+                    restore.push((*key, std::env::var(key).ok()));
+                }
+                match value {
+                    Some(value) => unsafe { std::env::set_var(key, value) },
+                    None => unsafe { std::env::remove_var(key) },
+                }
+            }
             Self {
                 _lock: lock,
                 restore,

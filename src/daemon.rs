@@ -50,23 +50,29 @@ pub async fn run_fetch_only(kind: DashboardKind, path: Option<&Path>) -> io::Res
 
 pub fn spawn_fetch_daemon(source: &DashboardSource) -> io::Result<Child> {
     let exe = std::env::current_exe()?;
+    let args = fetch_daemon_args(source);
     let mut cmd = Command::new(exe);
-    cmd.arg("fetch-only")
-        .arg("--kind")
-        .arg(match source.kind() {
-            DashboardKind::Local => "local",
-            DashboardKind::Home => "home",
-            DashboardKind::Project => "project",
-        });
-    if let Some(p) = source.path() {
-        cmd.arg("--path").arg(p);
-    }
-    cmd.stdin(Stdio::null())
+    cmd.args(&args)
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(false);
     detach(cmd.as_std_mut());
     cmd.spawn()
+}
+
+pub(crate) fn fetch_daemon_args(source: &DashboardSource) -> Vec<std::ffi::OsString> {
+    let kind = match source.kind() {
+        DashboardKind::Local => "local",
+        DashboardKind::Home => "home",
+        DashboardKind::Project => "project",
+    };
+    let mut args: Vec<std::ffi::OsString> = vec!["fetch-only".into(), "--kind".into(), kind.into()];
+    if let Some(p) = source.path() {
+        args.push("--path".into());
+        args.push(p.as_os_str().to_os_string());
+    }
+    args
 }
 
 fn load_dashboard(
@@ -312,25 +318,31 @@ widget = "{id}"
         assert!(std::fs::read_dir(cache_dir).unwrap().next().is_some());
     }
 
-    #[tokio::test]
-    async fn spawn_fetch_daemon_spawns_children_for_each_dashboard_kind() {
-        let dir = tempdir().unwrap();
-        let local = dir.path().join("local.dashboard.toml");
-        std::fs::write(&local, minimal_dashboard("local")).unwrap();
-        let sources = vec![
-            DashboardSource::Home,
-            DashboardSource::Project,
-            DashboardSource::Local(local),
-        ];
+    #[test]
+    fn fetch_daemon_args_emits_kind_and_optional_path() {
+        let home_args = fetch_daemon_args(&DashboardSource::Home);
+        assert_eq!(home_args, vec!["fetch-only", "--kind", "home"]);
 
-        for source in sources {
-            let mut child = spawn_fetch_daemon(&source).unwrap();
-            let status = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait())
-                .await
-                .unwrap()
-                .unwrap();
-            assert!(!status.success());
-        }
+        let project_args = fetch_daemon_args(&DashboardSource::Project);
+        assert_eq!(project_args, vec!["fetch-only", "--kind", "project"]);
+
+        let local_path = std::path::PathBuf::from("/tmp/local.dashboard.toml");
+        let local_args = fetch_daemon_args(&DashboardSource::Local(local_path.clone()));
+        assert_eq!(local_args.len(), 5);
+        assert_eq!(local_args[0], "fetch-only");
+        assert_eq!(local_args[1], "--kind");
+        assert_eq!(local_args[2], "local");
+        assert_eq!(local_args[3], "--path");
+        assert_eq!(local_args[4], local_path.as_os_str());
+    }
+
+    #[tokio::test]
+    async fn spawn_fetch_daemon_spawns_a_child_process() {
+        let mut child = spawn_fetch_daemon(&DashboardSource::Home).unwrap();
+        // We only assert that a child was spawned; argv correctness is covered by
+        // `fetch_daemon_args_emits_kind_and_optional_path`. The child here runs the test
+        // harness binary, not the real CLI, so its exit status is meaningless.
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
     }
 
     #[test]

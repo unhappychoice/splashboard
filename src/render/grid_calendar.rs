@@ -248,10 +248,15 @@ mod tests {
     }
 
     fn buffer_text(buf: &Buffer) -> String {
-        (0..buf.area.height)
+        (buf.area.top()..buf.area.bottom())
             .map(|y| {
-                (0..buf.area.width)
-                    .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
+                (buf.area.left()..buf.area.right())
+                    .map(|x| {
+                        buf.cell((x, y))
+                            .expect("buffer_text iterates in-bounds coordinates")
+                            .symbol()
+                            .to_string()
+                    })
                     .collect::<String>()
             })
             .collect::<Vec<_>>()
