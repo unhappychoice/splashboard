@@ -161,6 +161,7 @@ mod tests {
 [[widget]]
 id = "{id}"
 fetcher = "basic_static"
+format = "hello {id}"
 render = "text_plain"
 
 [[row]]
@@ -289,6 +290,47 @@ widget = "{id}"
             .await
             .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn run_fetch_only_local_valid_dashboard_persists_cache() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempdir().unwrap();
+        let _guard = SplashboardHomeGuard::set(dir.path());
+        let local = dir.path().join("local.dashboard.toml");
+        std::fs::write(&local, minimal_dashboard("local")).unwrap();
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(run_fetch_only(DashboardKind::Local, Some(&local)))
+            .unwrap();
+
+        let cache_dir = paths::cache_dir().unwrap();
+        assert!(cache_dir.exists());
+        assert!(std::fs::read_dir(cache_dir).unwrap().next().is_some());
+    }
+
+    #[tokio::test]
+    async fn spawn_fetch_daemon_spawns_children_for_each_dashboard_kind() {
+        let dir = tempdir().unwrap();
+        let local = dir.path().join("local.dashboard.toml");
+        std::fs::write(&local, minimal_dashboard("local")).unwrap();
+        let sources = vec![
+            DashboardSource::Home,
+            DashboardSource::Project,
+            DashboardSource::Local(local),
+        ];
+
+        for source in sources {
+            let mut child = spawn_fetch_daemon(&source).unwrap();
+            let status = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(!status.success());
+        }
     }
 
     #[test]
