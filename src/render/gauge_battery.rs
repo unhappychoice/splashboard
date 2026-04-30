@@ -285,9 +285,11 @@ fn level_color(ratio: f64, theme: &Theme) -> Color {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Payload, RatioData};
+    use crate::payload::{Payload, RatioData, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
+    use crate::theme::Theme;
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 
     fn payload(value: f64, label: Option<&str>) -> Payload {
         Payload {
@@ -307,6 +309,18 @@ mod tests {
             Registry::with_builtins(),
             RenderSpec::Short("gauge_battery".into()),
         )
+    }
+
+    fn render_direct(body: &Body, opts: &RenderOptions, w: u16, h: u16) -> Buffer {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let renderer = GaugeBatteryRenderer;
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        terminal
+            .draw(|frame| renderer.render(frame, frame.area(), body, opts, &theme, &registry))
+            .unwrap();
+        terminal.backend().buffer().clone()
     }
 
     #[test]
@@ -356,6 +370,20 @@ mod tests {
     }
 
     #[test]
+    fn boxed_prefix_renders_when_provided() {
+        let (registry, _) = registry_and_spec();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W = toml::from_str(r#"render = { type = "gauge_battery", label = "BAT" }"#).unwrap();
+        let buf =
+            render_to_buffer_with_spec(&payload(0.4, None), Some(&w.render), &registry, 40, 5);
+        let joined: String = (0..5).map(|y| line_text(&buf, y)).collect();
+        assert!(joined.contains("BAT"));
+    }
+
+    #[test]
     fn tone_neutral_is_default_and_uses_text_colour() {
         let theme = Theme::default();
         assert_eq!(tone_color(0.05, None, &theme), theme.text);
@@ -382,6 +410,24 @@ mod tests {
     fn unknown_tone_falls_back_to_neutral() {
         let theme = Theme::default();
         assert_eq!(tone_color(0.05, Some("garbage"), &theme), theme.text);
+    }
+
+    #[test]
+    fn renderer_contract_and_wrong_shape_noop_cover_catalog_surface() {
+        let renderer = GaugeBatteryRenderer;
+        assert_eq!(renderer.name(), "gauge_battery");
+        assert!(renderer.description().contains("Battery silhouette"));
+        assert_eq!(renderer.accepts(), &[Shape::Ratio]);
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.option_schemas().len(), OPTION_SCHEMAS.len());
+        assert_eq!(renderer.option_schemas()[0].name, "label");
+        assert_eq!(renderer.option_schemas()[1].name, "tone");
+
+        let body = Body::Text(TextData {
+            value: "not a ratio".into(),
+        });
+        let buf = render_direct(&body, &RenderOptions::default(), 12, 3);
+        assert_eq!(line_text(&buf, 1), " ".repeat(12));
     }
 
     #[test]
