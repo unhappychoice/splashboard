@@ -187,8 +187,10 @@ fn parse_align(s: Option<&str>) -> Alignment {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+
     use super::*;
-    use crate::payload::{MarkdownTextBlockData, Payload};
+    use crate::payload::{MarkdownTextBlockData, Payload, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
 
@@ -214,6 +216,18 @@ mod tests {
         render_to_buffer_with_spec(payload, Some(&spec()), &Registry::with_builtins(), w, h)
     }
 
+    fn render_direct(body: &Body, opts: &RenderOptions, w: u16, h: u16) -> Buffer {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let renderer = TextMarkdownRenderer;
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        terminal
+            .draw(|frame| renderer.render(frame, frame.area(), body, opts, &theme, &registry))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
     /// Find the first cell on `row` whose printable symbol contains `needle` and return its
     /// foreground colour. Lets style-attribution tests assert colour without coupling to
     /// exact x-positions (heading prefixes, list markers, padding all shift cells).
@@ -232,6 +246,20 @@ mod tests {
     fn renders_plain_paragraph() {
         let buf = render(&md_payload("hello world"), 30, 5);
         assert!(line_text(&buf, 0).contains("hello world"));
+    }
+
+    #[test]
+    fn renderer_exposes_catalog_metadata() {
+        let renderer = TextMarkdownRenderer;
+        assert_eq!(
+            renderer.description(),
+            "Wrapped markdown prose with themed headings, inline code, links, and blockquotes. Pick this when the source string carries Markdown syntax that should render as styled spans rather than literal characters."
+        );
+        assert_eq!(renderer.accepts(), &[Shape::MarkdownTextBlock]);
+        assert_eq!(renderer.option_schemas()[0].name, "align");
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.color_keys()[0].name, theme::TEXT.name);
+        assert_eq!(renderer.color_keys()[4].name, theme::TEXT_DIM.name);
     }
 
     #[test]
@@ -265,6 +293,23 @@ mod tests {
     }
 
     #[test]
+    fn natural_height_defaults_to_one_for_wrong_shape() {
+        let renderer = TextMarkdownRenderer;
+        let registry = Registry::with_builtins();
+        assert_eq!(
+            renderer.natural_height(
+                &Body::Text(TextData {
+                    value: "plain".into(),
+                }),
+                &RenderOptions::default(),
+                30,
+                &registry,
+            ),
+            1
+        );
+    }
+
+    #[test]
     fn does_not_panic_on_narrow_area() {
         let _ = render(
             &md_payload("# Big heading that overflows narrow area"),
@@ -278,7 +323,6 @@ mod tests {
         // Markdown source MUST come in via `MarkdownTextBlock`. A `Text` payload routed to
         // this renderer is a misconfiguration — the dispatcher draws an in-band error
         // instead of letting tui-markdown silently render the plain text.
-        use crate::payload::TextData;
         let p = Payload {
             icon: None,
             status: None,
@@ -289,6 +333,20 @@ mod tests {
         };
         let buf = render(&p, 40, 3);
         assert!(line_text(&buf, 0).to_lowercase().contains("cannot display"));
+    }
+
+    #[test]
+    fn direct_render_ignores_non_markdown_bodies() {
+        let buf = render_direct(
+            &Body::Text(TextData {
+                value: "plain".into(),
+            }),
+            &RenderOptions::default(),
+            20,
+            2,
+        );
+        assert!(line_text(&buf, 0).trim().is_empty());
+        assert!(line_text(&buf, 1).trim().is_empty());
     }
 
     #[test]
@@ -324,5 +382,32 @@ mod tests {
         let theme = Theme::default();
         let buf = render(&md_payload("#### deep heading"), 30, 3);
         assert_eq!(fg_at(&buf, 0, 'd'), theme.text_secondary);
+    }
+
+    #[test]
+    fn stylesheet_covers_remaining_heading_levels_and_code_family() {
+        let theme = Theme::default();
+        let styles = SplashStyleSheet::from(&theme);
+        assert_eq!(styles.heading(2).fg, Some(theme.panel_title));
+        assert!(styles.heading(2).add_modifier.contains(Modifier::BOLD));
+        assert_eq!(styles.heading(3).fg, Some(theme.panel_title));
+        assert!(styles.heading(3).add_modifier.contains(Modifier::ITALIC));
+        assert_eq!(styles.heading(6).fg, Some(theme.text_secondary));
+        assert!(styles.heading(6).add_modifier.contains(Modifier::ITALIC));
+        assert_eq!(styles.code().fg, Some(theme.accent_event));
+        assert_eq!(styles.link().fg, Some(theme.accent_event));
+        assert!(styles.link().add_modifier.contains(Modifier::UNDERLINED));
+        assert_eq!(styles.blockquote().fg, Some(theme.text_secondary));
+        assert!(styles.blockquote().add_modifier.contains(Modifier::ITALIC));
+        assert_eq!(styles.heading_meta().fg, Some(theme.text_dim));
+        assert_eq!(styles.metadata_block().fg, Some(theme.text_dim));
+    }
+
+    #[test]
+    fn parse_align_supports_center_right_and_fallback() {
+        assert_eq!(parse_align(Some("center")), Alignment::Center);
+        assert_eq!(parse_align(Some("right")), Alignment::Right);
+        assert_eq!(parse_align(Some("bogus")), Alignment::Left);
+        assert_eq!(parse_align(None), Alignment::Left);
     }
 }
