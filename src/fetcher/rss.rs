@@ -263,6 +263,7 @@ fn link_for(entry: &Entry) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use std::future::Future;
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -374,6 +375,12 @@ mod tests {
         assert!(validated_url(Some("https://example.com/feed")).is_ok());
     }
 
+    #[test]
+    fn invalid_url_syntax_is_error() {
+        let err = validated_url(Some("http://[::1")).unwrap_err();
+        assert_failed_contains(err, "invalid url");
+    }
+
     const RSS_FIXTURE: &str = r#"<?xml version="1.0"?>
 <rss version="2.0">
   <channel>
@@ -447,6 +454,22 @@ mod tests {
             Some("https://example.com/atom-1")
         );
         assert!(b.items[0].text.contains("Atom one"));
+    }
+
+    #[test]
+    fn line_text_without_date_uses_title_only() {
+        let mut feed = parse(RSS_FIXTURE);
+        feed.entries[0].published = None;
+        feed.entries[0].updated = None;
+        let text = line_text(&feed.entries[0], None, None);
+        assert_eq!(text, "First post");
+    }
+
+    #[test]
+    fn format_short_uses_explicit_timezone() {
+        let dt = Utc.with_ymd_and_hms(2026, 4, 30, 23, 30, 0).unwrap();
+        assert_eq!(format_short(dt, Some("UTC"), None), "Apr 30");
+        assert_eq!(format_short(dt, Some("Asia/Tokyo"), None), "May 01");
     }
 
     #[test]
@@ -655,6 +678,26 @@ mod tests {
             b.items[0].url.as_deref(),
             Some("https://example.com/articles/1")
         );
+    }
+
+    #[test]
+    fn link_falls_back_to_first_non_empty_href_when_no_alternate_exists() {
+        let mut feed = parse(ATOM_FIXTURE);
+        feed.entries[0].links[0].rel = Some("self".into());
+        assert_eq!(
+            link_for(&feed.entries[0]).as_deref(),
+            Some("https://example.com/atom-1")
+        );
+    }
+
+    #[test]
+    fn fetch_bytes_reports_request_failure_for_unreachable_host() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/feed.xml", listener.local_addr().unwrap());
+        drop(listener);
+
+        let err = run_async(fetch_bytes(&validated_url(Some(&url)).unwrap())).unwrap_err();
+        assert_failed_contains(err, "rss request failed");
     }
 
     /// Live smoke test — hits the Rust blog's feed. `#[ignore]` keeps CI offline-safe; run with
