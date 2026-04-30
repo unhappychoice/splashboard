@@ -176,8 +176,81 @@ fn render_body(ranked: Vec<(String, u64)>, shape: Shape) -> Body {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
     use super::super::test_support::{commit_as, make_repo};
     use super::*;
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn ctx(shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            shape,
+            format: format.map(str::to_string),
+            ..FetchContext::default()
+        }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = GitContributors;
+        let text_key = fetcher.cache_key(&ctx(Some(Shape::Text), Some("7")));
+        let bars_key = fetcher.cache_key(&ctx(Some(Shape::Bars), Some("30")));
+
+        assert_eq!(fetcher.name(), "git_contributors");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Top commit authors"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Bars);
+        assert!(text_key.starts_with("git_contributors-"));
+        assert_ne!(text_key, bars_key);
+        assert_eq!(
+            fetcher.sample_body(Shape::Bars),
+            Some(samples::bars(&[
+                ("alice", 42),
+                ("bob", 28),
+                ("charlie", 17),
+                ("dave", 9),
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(samples::entries(&[
+                ("alice", "42"),
+                ("bob", "28"),
+                ("charlie", "17"),
+                ("dave", "9"),
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(samples::text_block(&[
+                "alice  42",
+                "bob  28",
+                "charlie  17",
+                "dave  9",
+            ]))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::MarkdownTextBlock),
+            Some(samples::markdown(
+                "1. **alice** — 42\n2. **bob** — 28\n3. **charlie** — 17\n4. **dave** — 9",
+            ))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Text),
+            Some(samples::text(
+                "alice (42), bob (28), charlie (17), dave (9)"
+            ))
+        );
+        assert!(fetcher.sample_body(Shape::Badge).is_none());
+    }
 
     #[test]
     fn empty_repo_returns_empty() {
@@ -198,70 +271,137 @@ mod tests {
 
     #[test]
     fn bars_shape_from_ranking() {
-        let body = render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Bars);
-        match body {
-            Body::Bars(d) => {
-                assert_eq!(d.bars.len(), 2);
-                assert_eq!(d.bars[0].label, "alice");
-                assert_eq!(d.bars[0].value, 3);
-            }
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Bars),
+            Body::Bars(BarsData {
+                bars: vec![
+                    Bar {
+                        label: "alice".into(),
+                        value: 3,
+                    },
+                    Bar {
+                        label: "bob".into(),
+                        value: 1,
+                    },
+                ],
+            })
+        );
+    }
+
+    #[test]
+    fn entries_shape_uses_name_count_rows() {
+        assert_eq!(
+            render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "alice".into(),
+                        value: Some("3".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "bob".into(),
+                        value: Some("1".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn text_shape_empty_when_empty() {
-        let body = render_body(Vec::new(), Shape::Text);
-        match body {
-            Body::Text(d) => assert!(d.value.is_empty()),
-            _ => panic!(),
-        }
+        assert_eq!(render_body(Vec::new(), Shape::Text), text_body(""));
     }
 
     #[test]
     fn text_shape_joins_with_counts() {
-        let body = render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Text);
-        match body {
-            Body::Text(d) => assert_eq!(d.value, "alice (3), bob (1)"),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(vec![("alice".into(), 3), ("bob".into(), 1)], Shape::Text),
+            text_body("alice (3), bob (1)")
+        );
     }
 
     #[test]
     fn text_block_lists_one_row_per_contributor() {
-        let body = render_body(
-            vec![("alice".into(), 3), ("bob".into(), 1)],
-            Shape::TextBlock,
+        assert_eq!(
+            render_body(
+                vec![("alice".into(), 3), ("bob".into(), 1)],
+                Shape::TextBlock
+            ),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["alice  3".into(), "bob  1".into()],
+            })
         );
-        match body {
-            Body::TextBlock(d) => {
-                assert_eq!(d.lines.len(), 2);
-                assert!(d.lines[0].starts_with("alice"));
-                assert!(d.lines[0].ends_with("3"));
-            }
-            _ => panic!(),
-        }
     }
 
     #[test]
     fn markdown_text_block_emits_numbered_ranking() {
-        let body = render_body(
-            vec![("alice".into(), 3), ("bob".into(), 1)],
-            Shape::MarkdownTextBlock,
+        assert_eq!(
+            render_body(
+                vec![("alice".into(), 3), ("bob".into(), 1)],
+                Shape::MarkdownTextBlock,
+            ),
+            Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: "1. **alice** — 3\n2. **bob** — 1".into(),
+            })
         );
-        match body {
-            Body::MarkdownTextBlock(d) => {
-                assert!(d.value.contains("1. **alice** — 3"));
-                assert!(d.value.contains("2. **bob** — 1"));
-            }
-            _ => panic!(),
-        }
+    }
+
+    #[test]
+    fn ranking_tie_breaks_alphabetically_and_truncates() {
+        let (_tmp, repo) = make_repo();
+        [
+            "zoe", "amy", "luz", "bob", "kai", "eve", "mia", "ian", "ned", "uma", "zzz",
+        ]
+        .into_iter()
+        .for_each(|name| commit_as(&repo, name, name, &format!("{name}@example.com")));
+
+        let ranked = contributors(&repo, 30, None).unwrap();
+        let names: Vec<_> = ranked.into_iter().map(|(name, _)| name).collect();
+
+        assert_eq!(names.len(), MAX_ENTRIES);
+        assert_eq!(
+            names,
+            vec![
+                "amy", "bob", "eve", "ian", "kai", "luz", "mia", "ned", "uma", "zoe",
+            ]
+        );
+    }
+
+    #[test]
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit_as(&repo, "first", "alice", "a@example.com");
+        commit_as(&repo, "second", "bob", "b@example.com");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let bars = run_async(GitContributors.fetch(&ctx(None, Some("3650"))));
+        let entries = run_async(GitContributors.fetch(&ctx(Some(Shape::Entries), Some("3650"))));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert!(matches!(
+            bars.unwrap().body,
+            Body::Bars(BarsData { bars }) if bars.len() == 2
+        ));
+        assert!(matches!(
+            entries.unwrap().body,
+            Body::Entries(EntriesData { items })
+                if items.len() == 2 && items.iter().all(|item| item.value.is_some())
+        ));
     }
 
     #[test]
     fn parse_days_defaults_and_parses() {
         assert_eq!(parse_days(None), DEFAULT_DAYS);
         assert_eq!(parse_days(Some("0")), DEFAULT_DAYS);
+        assert_eq!(parse_days(Some(" 14 ")), 14);
         assert_eq!(parse_days(Some("7")), 7);
     }
 }

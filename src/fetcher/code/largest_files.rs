@@ -349,6 +349,14 @@ mod tests {
     use super::super::super::git::test_support::{commit_touching, make_repo};
     use super::*;
 
+    fn ctx(shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "widget".into(),
+            shape,
+            ..Default::default()
+        }
+    }
+
     fn fixed_scan() -> Scan {
         Scan {
             by_file: vec![
@@ -357,6 +365,28 @@ mod tests {
                 ("src/payload.rs".into(), 640),
             ],
         }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        assert_eq!(CodeLargestFiles.name(), "code_largest_files");
+        assert!(matches!(CodeLargestFiles.safety(), Safety::Safe));
+        assert!(
+            CodeLargestFiles
+                .description()
+                .contains("largest tracked source files")
+        );
+        assert_eq!(CodeLargestFiles.default_shape(), Shape::Entries);
+        assert_eq!(CodeLargestFiles.shapes(), SHAPES);
+        assert_eq!(
+            CodeLargestFiles.option_schemas().len(),
+            OPTION_SCHEMAS.len()
+        );
+        SHAPES.iter().copied().for_each(|shape| {
+            let body = CodeLargestFiles.sample_body(shape).expect("sample body");
+            assert_eq!(crate::render::shape_of(&body), shape);
+        });
+        assert!(CodeLargestFiles.sample_body(Shape::Ratio).is_none());
     }
 
     #[test]
@@ -406,90 +436,128 @@ mod tests {
 
     #[test]
     fn text_headlines_largest_file() {
-        match render_body(fixed_scan(), Shape::Text, Metric::Loc, 10) {
-            Body::Text(d) => assert_eq!(d.value, "src/render/mod.rs (1,234 LOC)"),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Text, Metric::Loc, 10),
+            Body::Text(TextData {
+                value: "src/render/mod.rs (1,234 LOC)".into(),
+            })
+        );
     }
 
     #[test]
     fn text_uses_metric_suffix() {
-        match render_body(fixed_scan(), Shape::Text, Metric::Bytes, 10) {
-            Body::Text(d) => assert_eq!(d.value, "src/render/mod.rs (1,234 bytes)"),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Text, Metric::Bytes, 10),
+            Body::Text(TextData {
+                value: "src/render/mod.rs (1,234 bytes)".into(),
+            })
+        );
     }
 
     #[test]
     fn text_is_empty_when_no_files() {
-        match render_body(Scan::default(), Shape::Text, Metric::Loc, 10) {
-            Body::Text(d) => assert!(d.value.is_empty()),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(Scan::default(), Shape::Text, Metric::Loc, 10),
+            Body::Text(TextData {
+                value: String::new(),
+            })
+        );
     }
 
     #[test]
     fn text_block_lists_ranked_files() {
-        match render_body(fixed_scan(), Shape::TextBlock, Metric::Loc, 10) {
-            Body::TextBlock(d) => assert_eq!(
-                d.lines,
-                vec![
-                    "src/render/mod.rs (1,234)",
-                    "src/fetcher/git/mod.rs (812)",
-                    "src/payload.rs (640)",
-                ]
-            ),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::TextBlock, Metric::Loc, 10),
+            Body::TextBlock(TextBlockData {
+                lines: vec![
+                    "src/render/mod.rs (1,234)".into(),
+                    "src/fetcher/git/mod.rs (812)".into(),
+                    "src/payload.rs (640)".into(),
+                ],
+            })
+        );
     }
 
     #[test]
     fn entries_carry_path_and_count() {
-        match render_body(fixed_scan(), Shape::Entries, Metric::Loc, 10) {
-            Body::Entries(d) => {
-                assert_eq!(d.items[0].key, "src/render/mod.rs");
-                assert_eq!(d.items[0].value.as_deref(), Some("1,234"));
-            }
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Entries, Metric::Loc, 10),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "src/render/mod.rs".into(),
+                        value: Some("1,234".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "src/fetcher/git/mod.rs".into(),
+                        value: Some("812".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "src/payload.rs".into(),
+                        value: Some("640".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn bars_carry_path_and_raw_value() {
-        match render_body(fixed_scan(), Shape::Bars, Metric::Loc, 10) {
-            Body::Bars(d) => {
-                assert_eq!(d.bars[0].label, "src/render/mod.rs");
-                assert_eq!(d.bars[0].value, 1234);
-            }
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Bars, Metric::Loc, 10),
+            Body::Bars(BarsData {
+                bars: vec![
+                    Bar {
+                        label: "src/render/mod.rs".into(),
+                        value: 1234,
+                    },
+                    Bar {
+                        label: "src/fetcher/git/mod.rs".into(),
+                        value: 812,
+                    },
+                    Bar {
+                        label: "src/payload.rs".into(),
+                        value: 640,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn markdown_emphasises_path_with_metric_suffix() {
-        match render_body(fixed_scan(), Shape::MarkdownTextBlock, Metric::Loc, 10) {
-            Body::MarkdownTextBlock(d) => assert_eq!(
-                d.value,
-                "- **src/render/mod.rs** — 1,234 LOC\n- **src/fetcher/git/mod.rs** — 812 LOC\n- **src/payload.rs** — 640 LOC"
-            ),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::MarkdownTextBlock, Metric::Loc, 10),
+            Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: [
+                    "- **src/render/mod.rs** — 1,234 LOC",
+                    "- **src/fetcher/git/mod.rs** — 812 LOC",
+                    "- **src/payload.rs** — 640 LOC",
+                ]
+                .join("\n"),
+            })
+        );
     }
 
     #[test]
     fn number_series_emits_sorted_measures() {
-        match render_body(fixed_scan(), Shape::NumberSeries, Metric::Loc, 10) {
-            Body::NumberSeries(d) => assert_eq!(d.values, vec![1234, 812, 640]),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::NumberSeries, Metric::Loc, 10),
+            Body::NumberSeries(NumberSeriesData {
+                values: vec![1234, 812, 640],
+            })
+        );
     }
 
     #[test]
     fn limit_caps_rendered_rows() {
-        match render_body(fixed_scan(), Shape::Entries, Metric::Loc, 2) {
-            Body::Entries(d) => assert_eq!(d.items.len(), 2),
-            _ => panic!(),
-        }
+        let Body::Entries(d) = render_body(fixed_scan(), Shape::Entries, Metric::Loc, 2) else {
+            unreachable!();
+        };
+        assert_eq!(d.items.len(), 2);
     }
 
     #[test]
@@ -516,24 +584,56 @@ mod tests {
 
     #[test]
     fn badge_label_includes_tier_path_and_count() {
-        match render_body(fixed_scan(), Shape::Badge, Metric::Loc, 10) {
-            Body::Badge(d) => {
-                assert_eq!(d.status, Status::Error);
-                assert_eq!(d.label, "monster · src/render/mod.rs (1,234)");
-            }
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Badge, Metric::Loc, 10),
+            Body::Badge(BadgeData {
+                status: Status::Error,
+                label: "monster · src/render/mod.rs (1,234)".into(),
+            })
+        );
     }
 
     #[test]
     fn badge_handles_empty() {
-        match render_body(Scan::default(), Shape::Badge, Metric::Loc, 10) {
-            Body::Badge(d) => {
-                assert_eq!(d.status, Status::Ok);
-                assert_eq!(d.label, "empty");
-            }
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(Scan::default(), Shape::Badge, Metric::Loc, 10),
+            Body::Badge(BadgeData {
+                status: Status::Ok,
+                label: "empty".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn render_body_covers_empty_variants_and_text_fallback() {
+        assert_eq!(
+            render_body(Scan::default(), Shape::TextBlock, Metric::Loc, 10),
+            Body::TextBlock(TextBlockData { lines: vec![] })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::MarkdownTextBlock, Metric::Loc, 10),
+            Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: String::new(),
+            })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::Entries, Metric::Loc, 10),
+            Body::Entries(EntriesData { items: vec![] })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::Bars, Metric::Loc, 10),
+            Body::Bars(BarsData { bars: vec![] })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::NumberSeries, Metric::Loc, 10),
+            Body::NumberSeries(NumberSeriesData { values: vec![] })
+        );
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Ratio, Metric::Bytes, 10),
+            Body::Text(TextData {
+                value: "src/render/mod.rs (1,234 bytes)".into(),
+            })
+        );
     }
 
     #[test]
@@ -566,5 +666,64 @@ mod tests {
             parse_options(Some(&bytes)).unwrap().metric,
             Some(Metric::Bytes)
         );
+    }
+
+    #[test]
+    fn parse_options_defaults_and_loc_metric_skips_invalid_utf8() {
+        let opts = parse_options(None).unwrap();
+        assert_eq!(opts.metric, None);
+        assert_eq!(opts.limit, None);
+        assert_eq!(measure_file(Metric::Loc, &[0xff, 0xfe]), 0);
+    }
+
+    #[test]
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = crate::fetcher::git::test_support::make_repo();
+        crate::fetcher::git::test_support::commit_touching(
+            &repo,
+            "src/lib.rs",
+            "pub fn hello() {}\n",
+        );
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let entries = rt.block_on(CodeLargestFiles.fetch(&ctx(None)));
+
+        let mut number_series_ctx = ctx(Some(Shape::NumberSeries));
+        number_series_ctx.options = Some(toml::from_str("metric = \"bytes\"\nlimit = 1").unwrap());
+        let number_series = rt.block_on(CodeLargestFiles.fetch(&number_series_ctx));
+
+        let mut default_limit_ctx = ctx(Some(Shape::NumberSeries));
+        default_limit_ctx.options = Some(toml::from_str("limit = 0").unwrap());
+        let default_limit = rt.block_on(CodeLargestFiles.fetch(&default_limit_ctx));
+
+        let expected_entries = scan_repo(&repo, Metric::Loc)
+            .map(|s| render_body(s, Shape::Entries, Metric::Loc, DEFAULT_LIMIT));
+        let expected_bytes = scan_repo(&repo, Metric::Bytes)
+            .map(|s| render_body(s, Shape::NumberSeries, Metric::Bytes, 1));
+        let expected_default_limit = scan_repo(&repo, Metric::Loc)
+            .map(|s| render_body(s, Shape::NumberSeries, Metric::Loc, DEFAULT_LIMIT));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert_eq!(entries.unwrap().body, expected_entries.unwrap());
+        assert_eq!(number_series.unwrap().body, expected_bytes.unwrap());
+        assert_eq!(default_limit.unwrap().body, expected_default_limit.unwrap());
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_options() {
+        let mut bad = ctx(None);
+        bad.options = Some(toml::from_str("unknown = 1").unwrap());
+        let err = CodeLargestFiles.fetch(&bad).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid options")));
     }
 }

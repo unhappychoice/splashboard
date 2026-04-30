@@ -206,12 +206,44 @@ fn entry(key: &str, value: &str, status: Option<PayloadStatus>) -> Entry {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+    use std::process::Command;
+
     use super::super::test_support::{commit, dirty_write, make_repo};
     use super::*;
 
     fn call(repo: &gix::Repository, shape: Shape) -> Body {
         let info = read_status(repo).unwrap();
         render_body(&info, shape)
+    }
+
+    fn info(
+        detached: bool,
+        dirty: bool,
+        ahead: Option<usize>,
+        behind: Option<usize>,
+    ) -> StatusInfo {
+        StatusInfo {
+            branch: "feature/demo".into(),
+            detached,
+            head_short: "abc1234".into(),
+            dirty,
+            ahead,
+            behind,
+        }
+    }
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]
@@ -273,5 +305,116 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn catalog_surface_and_samples_match_status_contract() {
+        let fetcher = GitStatus;
+        let text_key = fetcher.cache_key(&FetchContext {
+            shape: Some(Shape::Text),
+            format: Some("plain".into()),
+            ..FetchContext::default()
+        });
+
+        assert_eq!(fetcher.name(), "git_status");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("ahead/behind"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Entries);
+        assert!(text_key.starts_with("git_status-"));
+        assert_ne!(text_key, fetcher.cache_key(&FetchContext::default()));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Badge),
+            Some(Body::Badge(_))
+        ));
+        assert!(fetcher.sample_body(Shape::TextBlock).is_none());
+    }
+
+    #[test]
+    fn detached_status_uses_short_head_and_clean_badge() {
+        let detached = info(true, false, None, None);
+        let zero_delta = info(false, false, Some(0), Some(0));
+        let entries = build_entries(&detached);
+
+        assert_eq!(entries[0].value.as_deref(), Some("abc1234"));
+        assert!(entries.iter().all(|entry| entry.key != "head"));
+        assert_eq!(format_line(&detached), "detached@abc1234 · clean");
+        assert_eq!(format_line(&zero_delta), "feature/demo · clean");
+        match render_body(&detached, Shape::Badge) {
+            Body::Badge(badge) => {
+                assert_eq!(badge.status, PayloadStatus::Ok);
+                assert_eq!(badge.label, "detached@abc1234 · clean");
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn ahead_and_behind_are_rendered_in_entries_and_text() {
+        let entries = build_entries(&info(false, true, Some(2), Some(1)));
+        let map: std::collections::HashMap<_, _> = entries
+            .iter()
+            .map(|entry| (entry.key.as_str(), entry.value.as_deref().unwrap()))
+            .collect();
+
+        assert_eq!(map.get("branch"), Some(&"feature/demo"));
+        assert_eq!(map.get("head"), Some(&"abc1234"));
+        assert_eq!(map.get("ahead"), Some(&"2"));
+        assert_eq!(map.get("behind"), Some(&"1"));
+        assert_eq!(
+            format_line(&info(false, true, Some(2), Some(1))),
+            "feature/demo ↑2 ↓1 · dirty"
+        );
+        match render_body(&info(false, true, Some(2), Some(1)), Shape::Text) {
+            Body::Text(text) => assert_eq!(text.value, "feature/demo ↑2 ↓1 · dirty"),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn read_status_reports_diverged_tracking_branch_and_detached_head() {
+        let (tmp, repo) = make_repo();
+        let dir = tmp.path();
+
+        commit(&repo, "initial");
+        run_git(dir, &["remote", "add", "origin", "."]);
+        run_git(dir, &["config", "branch.main.remote", "origin"]);
+        run_git(dir, &["config", "branch.main.merge", "refs/heads/main"]);
+        run_git(dir, &["checkout", "-q", "-b", "remote-main"]);
+        commit(&repo, "remote");
+        run_git(
+            dir,
+            &[
+                "update-ref",
+                "refs/remotes/origin/main",
+                "refs/heads/remote-main",
+            ],
+        );
+        run_git(dir, &["checkout", "-q", "main"]);
+        commit(&repo, "local");
+
+        let repo = gix::discover(dir).unwrap();
+        let status = read_status(&repo).unwrap();
+        assert_eq!(status.branch, "main");
+        assert_eq!(status.ahead, Some(1));
+        assert_eq!(status.behind, Some(1));
+        assert!(!status.detached);
+
+        run_git(dir, &["checkout", "-q", "--detach", "HEAD~1"]);
+        let repo = gix::discover(dir).unwrap();
+        let detached = read_status(&repo).unwrap();
+        assert_eq!(detached.branch, "HEAD");
+        assert!(detached.detached);
+        assert!(detached.ahead.is_none());
+        assert!(detached.behind.is_none());
+        assert!(!detached.head_short.is_empty());
     }
 }

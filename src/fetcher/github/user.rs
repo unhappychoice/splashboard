@@ -225,7 +225,47 @@ struct UserInfo {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(current) => unsafe { std::env::set_var(key, current) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(previous) => unsafe { std::env::set_var(key, previous) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
 
     fn info(
         name: Option<&str>,
@@ -245,6 +285,60 @@ mod tests {
             following: 69,
             public_repos: 48,
         }
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "github-user".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn fetcher_metadata_and_samples_cover_supported_shapes() {
+        let fetcher = GithubUser;
+        assert_eq!(fetcher.name(), "github_user");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("GitHub profile data"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, "user");
+        assert_eq!(
+            fetcher.option_schemas()[0].default,
+            Some("authenticated token user")
+        );
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        assert_eq!(text.value, "@unhappychoice · Tokyo, Japan");
+
+        let Some(Body::TextBlock(block)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(block.lines[0], "Yuji Ueki");
+        assert_eq!(block.lines[2], "Tokyo, Japan · member since 2013");
+
+        let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
+            panic!("expected entries sample");
+        };
+        assert_eq!(entries.items[0].key, "name");
+        assert_eq!(entries.items[5].value.as_deref(), Some("420"));
+        assert!(fetcher.sample_body(Shape::Bars).is_none());
     }
 
     #[test]
@@ -286,6 +380,21 @@ mod tests {
     }
 
     #[test]
+    fn entries_fill_missing_optional_fields_with_empty_strings() {
+        let rows = entries(&info(
+            None,
+            None,
+            Some("Tokyo"),
+            None,
+            Some("2013-04-12T13:57:32Z"),
+        ));
+        assert_eq!(rows[0].value.as_deref(), Some(""));
+        assert_eq!(rows[2].value.as_deref(), Some("Tokyo"));
+        assert_eq!(rows[4].value.as_deref(), Some("2013"));
+        assert_eq!(rows[7].value.as_deref(), Some("48"));
+    }
+
+    #[test]
     fn join_year_parses_iso_timestamp() {
         assert_eq!(
             join_year(&Some("2013-04-12T13:57:32Z".into())),
@@ -296,5 +405,139 @@ mod tests {
     #[test]
     fn join_year_none_when_empty() {
         assert_eq!(join_year(&None), None);
+    }
+
+    #[test]
+    fn join_year_rejects_short_values() {
+        assert_eq!(join_year(&Some("202".into())), None);
+    }
+
+    #[test]
+    fn user_for_key_prefers_options_over_env() {
+        let _guard = EnvGuard::set(&[("GITHUB_USER", Some("from-env"))]);
+        assert_eq!(
+            user_for_key(&ctx(Some("user = \"from-options\""), None, None)),
+            "from-options"
+        );
+    }
+
+    #[test]
+    fn user_for_key_falls_back_to_env() {
+        let _guard = EnvGuard::set(&[("GITHUB_USER", Some("from-env"))]);
+        assert_eq!(
+            user_for_key(&ctx(None, Some(Shape::Text), None)),
+            "from-env"
+        );
+    }
+
+    #[test]
+    fn cache_key_is_stable_for_equivalent_context_and_changes_with_user() {
+        let fetcher = GithubUser;
+        let alice = ctx(
+            Some("user = \"alice\""),
+            Some(Shape::Entries),
+            Some("compact"),
+        );
+        let alice_again = ctx(
+            Some("user = \"alice\""),
+            Some(Shape::Entries),
+            Some("compact"),
+        );
+        let bob = ctx(
+            Some("user = \"bob\""),
+            Some(Shape::Entries),
+            Some("compact"),
+        );
+
+        assert_eq!(fetcher.cache_key(&alice), fetcher.cache_key(&alice_again));
+        assert_ne!(fetcher.cache_key(&alice), fetcher.cache_key(&bob));
+    }
+
+    #[test]
+    fn resolve_user_prefers_explicit_value() {
+        let _guard = EnvGuard::set(&[("GITHUB_USER", Some("from-env"))]);
+        assert_eq!(
+            run_async(resolve_user(Some("explicit"))).unwrap(),
+            "explicit"
+        );
+    }
+
+    #[test]
+    fn resolve_user_falls_back_to_env() {
+        let _guard = EnvGuard::set(&[
+            ("GITHUB_USER", Some("from-env")),
+            ("GH_TOKEN", None),
+            ("GITHUB_TOKEN", None),
+        ]);
+        crate::fetcher::github::client::clear_authenticated_user_cache();
+        assert_eq!(run_async(resolve_user(None)).unwrap(), "from-env");
+    }
+
+    #[test]
+    fn resolve_user_reports_missing_auth_without_sources() {
+        let _guard = EnvGuard::set(&[
+            ("GITHUB_USER", None),
+            ("GH_TOKEN", None),
+            ("GITHUB_TOKEN", None),
+        ]);
+        crate::fetcher::github::client::clear_authenticated_user_cache();
+        let err = run_async(resolve_user(None)).expect_err("expected missing auth");
+        assert_eq!(
+            err,
+            "resolve github user: fetch failed: GH_TOKEN / GITHUB_TOKEN not set"
+        );
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_options_before_resolving_user() {
+        let err = run_async(GithubUser.fetch(&ctx(
+            Some("user = \"octocat\"\nbogus = true"),
+            Some(Shape::Text),
+            None,
+        )))
+        .expect_err("invalid options should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert!(message.contains("invalid options"));
+    }
+
+    #[test]
+    fn fetch_without_user_or_token_surfaces_resolution_error() {
+        let _guard = EnvGuard::set(&[
+            ("GITHUB_USER", None),
+            ("GH_TOKEN", None),
+            ("GITHUB_TOKEN", None),
+        ]);
+        crate::fetcher::github::client::clear_authenticated_user_cache();
+        let err = run_async(GithubUser.fetch(&ctx(None, Some(Shape::TextBlock), None)))
+            .expect_err("missing user sources should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert_eq!(
+            message,
+            "resolve github user: fetch failed: GH_TOKEN / GITHUB_TOKEN not set"
+        );
+    }
+
+    #[test]
+    fn fetch_with_explicit_user_surfaces_auth_error_before_network() {
+        let _guard = EnvGuard::set(&[
+            ("GITHUB_USER", None),
+            ("GH_TOKEN", None),
+            ("GITHUB_TOKEN", None),
+        ]);
+        crate::fetcher::github::client::clear_authenticated_user_cache();
+        let err = run_async(GithubUser.fetch(&ctx(
+            Some("user = \"octocat\""),
+            Some(Shape::Entries),
+            Some("compact"),
+        )))
+        .expect_err("missing token should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert_eq!(message, "GH_TOKEN / GITHUB_TOKEN not set");
     }
 }

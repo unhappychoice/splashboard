@@ -331,6 +331,9 @@ mod tests {
 
     #[test]
     fn repo_for_key_falls_back_to_resolved_repo() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         assert_eq!(
             repo_for_key(&ctx(None, Some(Shape::Badge))),
             resolve_repo(None).unwrap().as_path()

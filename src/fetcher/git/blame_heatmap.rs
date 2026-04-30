@@ -227,11 +227,54 @@ fn short_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
     use super::super::test_support::{commit_touching, make_repo};
     use super::*;
 
     fn local_now() -> chrono::DateTime<FixedOffset> {
         t::now_in(None)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn ctx(shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            shape,
+            ..FetchContext::default()
+        }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        let fetcher = GitBlameHeatmap;
+        let default_key = fetcher.cache_key(&ctx(None));
+        let text_key = fetcher.cache_key(&ctx(Some(Shape::Text)));
+
+        assert_eq!(fetcher.name(), "git_blame_heatmap");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Per-file churn"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Heatmap);
+        assert!(default_key.starts_with("git_blame_heatmap-"));
+        assert_ne!(default_key, text_key);
+        assert_eq!(
+            fetcher.sample_body(Shape::Heatmap),
+            Some(samples::heatmap_grid(5, 10))
+        );
+        assert_eq!(
+            fetcher.sample_body(Shape::Text),
+            Some(samples::text(
+                "src/main.rs (18), src/render/mod.rs (12), src/fetcher/mod.rs (9)",
+            ))
+        );
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
     }
 
     #[test]
@@ -279,15 +322,13 @@ mod tests {
             churn(&repo, now.date_naive(), *now.offset()).unwrap(),
             Shape::Text,
         );
-        match body {
-            Body::Text(d) => {
-                assert!(
-                    d.value.starts_with("name.rs ("),
-                    "unexpected text: {:?}",
-                    d.value
-                );
-            }
-            _ => panic!(),
+        assert!(matches!(&body, Body::Text(_)));
+        if let Body::Text(d) = body {
+            assert!(
+                d.value.starts_with("name.rs ("),
+                "unexpected text: {:?}",
+                d.value
+            );
         }
     }
 
@@ -300,12 +341,10 @@ mod tests {
             churn(&repo, now.date_naive(), *now.offset()).unwrap(),
             Shape::Heatmap,
         );
-        match body {
-            Body::Heatmap(d) => {
-                assert_eq!(d.row_labels.as_ref().unwrap(), &vec!["x.rs".to_string()]);
-                assert_eq!(d.cells[0].len(), WEEKS);
-            }
-            _ => panic!(),
+        assert!(matches!(&body, Body::Heatmap(_)));
+        if let Body::Heatmap(d) = body {
+            assert_eq!(d.row_labels.as_ref().unwrap(), &vec!["x.rs".to_string()]);
+            assert_eq!(d.cells[0].len(), WEEKS);
         }
     }
 
@@ -313,5 +352,50 @@ mod tests {
     fn short_path_returns_basename() {
         assert_eq!(short_path("a.rs"), "a.rs");
         assert_eq!(short_path("src/foo/bar.rs"), "bar.rs");
+    }
+
+    #[test]
+    fn week_col_rejects_dates_outside_the_heatmap_window() {
+        let today = NaiveDate::from_ymd_opt(2026, 4, 22).unwrap();
+        let start = grid_start_date(today);
+
+        assert_eq!(week_col(start, start), Some(0));
+        assert_eq!(week_col(today, start), Some(WEEKS - 1));
+        assert!(week_col(start - Duration::days(1), start).is_none());
+        assert!(week_col(start + Duration::days((WEEKS * 7) as i64), start).is_none());
+    }
+
+    #[test]
+    fn fetch_reads_cwd_repo_for_default_and_text_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "README.md", "seed");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let now = local_now();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let fetcher = GitBlameHeatmap;
+        let default_payload = run_async(fetcher.fetch(&ctx(None)));
+        let text_payload = run_async(fetcher.fetch(&ctx(Some(Shape::Text))));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert_eq!(
+            default_payload.unwrap(),
+            payload(render_body(
+                churn(&repo, now.date_naive(), *now.offset()).unwrap(),
+                Shape::Heatmap,
+            ))
+        );
+        assert_eq!(
+            text_payload.unwrap(),
+            payload(render_body(
+                churn(&repo, now.date_naive(), *now.offset()).unwrap(),
+                Shape::Text,
+            ))
+        );
     }
 }

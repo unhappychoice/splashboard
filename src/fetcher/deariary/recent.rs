@@ -285,6 +285,8 @@ fn timestamp_for(e: &ApiEntry) -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use std::{future::Future, time::Duration};
+
     use super::*;
 
     fn entry(date: &str, title: &str) -> ApiEntry {
@@ -311,112 +313,200 @@ mod tests {
         ]
     }
 
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "deariary_recent".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            ..Default::default()
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn fetcher_catalog_surface_matches_contract() {
+        let fetcher = DeariaryRecent;
+        assert_eq!(fetcher.name(), "deariary_recent");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Timeline);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["token", "limit", "tag"]
+        );
+        assert!(fetcher.description().contains("Recent auto-generated"));
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_format_and_options() {
+        let fetcher = DeariaryRecent;
+        let base = fetcher.cache_key(&ctx(
+            Some("token = \"alpha\"\ntag = \"ops\""),
+            Some(Shape::Timeline),
+            Some("plain"),
+        ));
+        assert_eq!(
+            base,
+            fetcher.cache_key(&ctx(
+                Some("token = \"alpha\"\ntag = \"ops\""),
+                Some(Shape::Timeline),
+                Some("plain"),
+            ))
+        );
+        assert_ne!(
+            base,
+            fetcher.cache_key(&ctx(
+                Some("token = \"beta\"\ntag = \"ops\""),
+                Some(Shape::Timeline),
+                Some("plain"),
+            ))
+        );
+        assert_ne!(
+            base,
+            fetcher.cache_key(&ctx(
+                Some("token = \"alpha\"\ntag = \"personal\""),
+                Some(Shape::Timeline),
+                Some("plain"),
+            ))
+        );
+        assert_ne!(
+            base,
+            fetcher.cache_key(&ctx(
+                Some("token = \"alpha\"\ntag = \"ops\""),
+                Some(Shape::TextBlock),
+                Some("plain"),
+            ))
+        );
+        assert_ne!(
+            base,
+            fetcher.cache_key(&ctx(
+                Some("token = \"alpha\"\ntag = \"ops\""),
+                Some(Shape::Timeline),
+                Some("json"),
+            ))
+        );
+        assert!(
+            !fetcher
+                .cache_key(&ctx(Some("bogus = true"), None, None))
+                .is_empty()
+        );
+    }
+
     #[test]
     fn timeline_uses_date_when_generated_at_missing() {
         let entries = fixture();
-        let Body::Timeline(t) = render_body(&entries, Shape::Timeline, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Timeline");
-        };
-        assert_eq!(t.events.len(), 3);
-        assert!(t.events.iter().all(|e| e.timestamp > 0));
-        assert_eq!(t.events[0].title, "My Day");
+        assert!(matches!(
+            render_body(&entries, Shape::Timeline, 10, ymd(2026, 4, 27)),
+            Body::Timeline(TimelineData { events })
+                if events.len() == 3
+                    && events.iter().all(|event| event.timestamp > 0)
+                    && events[0].title == "My Day"
+        ));
     }
 
     #[test]
     fn timeline_prefers_generated_at_when_present() {
         let mut entries = fixture();
         entries[0].generated_at = Some("2026-04-27T08:00:00Z".into());
-        let Body::Timeline(t) = render_body(&entries, Shape::Timeline, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Timeline");
-        };
-        assert_eq!(
-            t.events[0].timestamp,
-            parse_timestamp("2026-04-27T08:00:00Z")
-        );
+        assert!(matches!(
+            render_body(&entries, Shape::Timeline, 10, ymd(2026, 4, 27)),
+            Body::Timeline(TimelineData { events })
+                if events[0].timestamp == parse_timestamp("2026-04-27T08:00:00Z")
+        ));
     }
 
     #[test]
     fn text_includes_count_and_latest_title() {
         let entries = fixture();
-        let Body::Text(t) = render_body(&entries, Shape::Text, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Text");
-        };
-        assert!(t.value.contains("3 entries"));
-        assert!(t.value.contains("My Day"));
+        assert_eq!(
+            render_body(&entries, Shape::Text, 10, ymd(2026, 4, 27)),
+            Body::Text(TextData {
+                value: "📔 3 entries · latest: My Day".into()
+            })
+        );
     }
 
     #[test]
     fn text_block_formats_short_date_and_title() {
         let entries = fixture();
-        let Body::TextBlock(t) = render_body(&entries, Shape::TextBlock, 10, ymd(2026, 4, 27))
-        else {
-            panic!("expected TextBlock");
-        };
-        assert_eq!(t.lines[0], "04/27 · My Day");
+        assert!(matches!(
+            render_body(&entries, Shape::TextBlock, 10, ymd(2026, 4, 27)),
+            Body::TextBlock(TextBlockData { lines }) if lines[0] == "04/27 · My Day"
+        ));
     }
 
     #[test]
     fn linked_text_block_links_each_row_to_its_entry_page() {
         let entries = fixture();
-        let Body::LinkedTextBlock(l) =
-            render_body(&entries, Shape::LinkedTextBlock, 10, ymd(2026, 4, 27))
-        else {
-            panic!("expected LinkedTextBlock");
-        };
-        assert_eq!(l.items.len(), 3);
-        assert_eq!(
-            l.items[0].url.as_deref(),
-            Some("https://app.deariary.com/entries/2026/04/27")
-        );
+        assert!(matches!(
+            render_body(&entries, Shape::LinkedTextBlock, 10, ymd(2026, 4, 27)),
+            Body::LinkedTextBlock(LinkedTextBlockData { items })
+                if items.len() == 3
+                    && items[0].url.as_deref() == Some("https://app.deariary.com/entries/2026/04/27")
+        ));
     }
 
     #[test]
     fn markdown_uses_bold_dates() {
         let entries = fixture();
-        let Body::MarkdownTextBlock(m) =
-            render_body(&entries, Shape::MarkdownTextBlock, 10, ymd(2026, 4, 27))
-        else {
-            panic!("expected MarkdownTextBlock");
-        };
-        assert!(m.value.contains("**04/27**"));
+        assert!(matches!(
+            render_body(&entries, Shape::MarkdownTextBlock, 10, ymd(2026, 4, 27)),
+            Body::MarkdownTextBlock(MarkdownTextBlockData { value }) if value.contains("**04/27**")
+        ));
     }
 
     #[test]
     fn entries_keys_with_iso_date() {
         let entries = fixture();
-        let Body::Entries(e) = render_body(&entries, Shape::Entries, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Entries");
-        };
-        assert_eq!(e.items[0].key, "2026-04-27");
-        assert_eq!(e.items[0].value.as_deref(), Some("My Day"));
+        assert!(matches!(
+            render_body(&entries, Shape::Entries, 10, ymd(2026, 4, 27)),
+            Body::Entries(EntriesData { items })
+                if items[0].key == "2026-04-27" && items[0].value.as_deref() == Some("My Day")
+        ));
     }
 
     #[test]
     fn calendar_marks_entries_for_current_month_only() {
         let mut entries = fixture();
         entries.push(entry("2026-03-15", "Old"));
-        let Body::Calendar(c) = render_body(&entries, Shape::Calendar, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Calendar");
-        };
-        assert_eq!(c.year, 2026);
-        assert_eq!(c.month, 4);
-        assert_eq!(c.events, vec![27, 26, 25]);
+        entries.push(entry("not-a-date", "Broken"));
+        assert_eq!(
+            render_body(&entries, Shape::Calendar, 10, ymd(2026, 4, 27)),
+            Body::Calendar(CalendarData {
+                year: 2026,
+                month: 4,
+                day: Some(27),
+                events: vec![27, 26, 25],
+            })
+        );
     }
 
     #[test]
     fn limit_caps_returned_rows() {
         let entries = fixture();
-        let Body::TextBlock(t) = render_body(&entries, Shape::TextBlock, 2, ymd(2026, 4, 27))
-        else {
-            panic!("expected TextBlock");
-        };
-        assert_eq!(t.lines.len(), 2);
+        assert_eq!(
+            render_body(&entries, Shape::TextBlock, 2, ymd(2026, 4, 27)),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["04/27 · My Day".into(), "04/26 · Sunday".into()],
+            })
+        );
     }
 
     #[test]
     fn text_headline_reports_total_count_not_limit() {
-        // limit governs how many rows the *list* renderers show. A 23-entry cache shown
-        // through a Text headline should still say "23 entries", not the truncated count.
         let entries = vec![
             entry("2026-04-27", "A"),
             entry("2026-04-26", "B"),
@@ -424,13 +514,11 @@ mod tests {
             entry("2026-04-24", "D"),
             entry("2026-04-23", "E"),
         ];
-        let Body::Text(t) = render_body(&entries, Shape::Text, 2, ymd(2026, 4, 27)) else {
-            panic!("expected Text");
-        };
-        assert!(
-            t.value.contains("5 entries"),
-            "headline must use real total: {}",
-            t.value
+        assert_eq!(
+            render_body(&entries, Shape::Text, 2, ymd(2026, 4, 27)),
+            Body::Text(TextData {
+                value: "📔 5 entries · latest: A".into()
+            })
         );
     }
 
@@ -441,26 +529,34 @@ mod tests {
             entry("2026-04-26", "B"),
             entry("2026-04-25", "C"),
         ];
-        let Body::Badge(b) = render_body(&entries, Shape::Badge, 1, ymd(2026, 4, 27)) else {
-            panic!("expected Badge");
-        };
         assert_eq!(
-            b.label, "📔 3 recent",
-            "badge must reflect total entries, not the row limit"
+            render_body(&entries, Shape::Badge, 1, ymd(2026, 4, 27)),
+            Body::Badge(BadgeData {
+                status: Status::Ok,
+                label: "📔 3 recent".into(),
+            })
         );
     }
 
     #[test]
     fn empty_input_yields_empty_body_and_warn_badge() {
-        let Body::Timeline(t) = render_body(&[], Shape::Timeline, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Timeline");
-        };
-        assert!(t.events.is_empty());
-
-        let Body::Badge(b) = render_body(&[], Shape::Badge, 10, ymd(2026, 4, 27)) else {
-            panic!("expected Badge");
-        };
-        assert_eq!(b.status, Status::Warn);
+        assert_eq!(
+            render_body(&[], Shape::Text, 10, ymd(2026, 4, 27)),
+            Body::Text(TextData {
+                value: String::new()
+            })
+        );
+        assert_eq!(
+            render_body(&[], Shape::Timeline, 10, ymd(2026, 4, 27)),
+            Body::Timeline(TimelineData { events: vec![] })
+        );
+        assert_eq!(
+            render_body(&[], Shape::Badge, 10, ymd(2026, 4, 27)),
+            Body::Badge(BadgeData {
+                status: Status::Warn,
+                label: "📔 0 recent".into(),
+            })
+        );
     }
 
     #[test]
@@ -481,5 +577,83 @@ mod tests {
     #[test]
     fn short_date_falls_back_to_raw_when_unparseable() {
         assert_eq!(short_date("not-a-date"), "not-a-date");
+    }
+
+    #[test]
+    fn timestamp_for_filters_invalid_generated_at_and_bad_dates() {
+        let mut valid_date = entry("2026-04-27", "Fallback");
+        valid_date.generated_at = Some("0".into());
+        assert_eq!(
+            timestamp_for(&valid_date),
+            ymd(2026, 4, 27)
+                .and_hms_opt(12, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp()
+        );
+
+        let mut invalid = entry("not-a-date", "Broken");
+        invalid.generated_at = Some("nope".into());
+        assert_eq!(timestamp_for(&invalid), 0);
+    }
+
+    #[test]
+    fn unsupported_shape_falls_back_to_timeline() {
+        let entries = fixture();
+        assert!(matches!(
+            render_body(&entries, Shape::Image, 2, ymd(2026, 4, 27)),
+            Body::Timeline(TimelineData { events }) if events.len() == 2
+        ));
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_options() {
+        let fetcher = DeariaryRecent;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("token = \"abc\"\nbogus = true"),
+            Some(Shape::Timeline),
+            None,
+        )))
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown field `bogus`")
+        ));
+    }
+
+    #[test]
+    fn fetch_requires_token_before_network() {
+        struct RestoreEnv {
+            key: &'static str,
+            previous: Option<String>,
+        }
+        impl Drop for RestoreEnv {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.previous {
+                        Some(value) => std::env::set_var(self.key, value),
+                        None => std::env::remove_var(self.key),
+                    }
+                }
+            }
+        }
+
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _restore = RestoreEnv {
+            key: "DEARIARY_TOKEN",
+            previous: std::env::var("DEARIARY_TOKEN").ok(),
+        };
+        unsafe { std::env::remove_var("DEARIARY_TOKEN") };
+
+        let fetcher = DeariaryRecent;
+        let err = run_async(fetcher.fetch(&ctx(None, Some(Shape::Timeline), None))).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "deariary token missing: set options.token or DEARIARY_TOKEN"
+        ));
     }
 }

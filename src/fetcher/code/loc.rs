@@ -409,8 +409,19 @@ fn format_percent(n: u64, total: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
+
     use super::super::super::git::test_support::{commit_touching, make_repo};
     use super::*;
+
+    fn ctx(shape: Option<Shape>, raw: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "widget".into(),
+            shape,
+            options: raw.map(|value| toml::from_str(value).unwrap()),
+            ..Default::default()
+        }
+    }
 
     fn lang_map(totals: &Totals) -> HashMap<String, u64> {
         totals.by_language.iter().cloned().collect()
@@ -487,6 +498,70 @@ mod tests {
         let labels: Vec<_> = totals.by_language.iter().map(|(l, _)| l.clone()).collect();
         assert_eq!(labels.first().map(String::as_str), Some("Rust"));
         assert_eq!(labels.get(1).map(String::as_str), Some("Python"));
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        assert_eq!(CodeLoc.name(), "code_loc");
+        assert!(matches!(CodeLoc.safety(), Safety::Safe));
+        assert!(CodeLoc.description().contains("Counts lines per language"));
+        assert_eq!(CodeLoc.default_shape(), Shape::Text);
+        assert_eq!(CodeLoc.shapes(), SHAPES);
+        assert_eq!(
+            CodeLoc
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["limit", "unit"]
+        );
+        SHAPES.iter().copied().for_each(|shape| {
+            let body = CodeLoc.sample_body(shape).expect("sample body");
+            assert_eq!(crate::render::shape_of(&body), shape);
+        });
+        assert!(CodeLoc.sample_body(Shape::Calendar).is_none());
+    }
+
+    #[test]
+    fn scan_repo_skips_empty_and_invalid_files_and_sorts_ties_by_name() {
+        let (_tmp, repo) = make_repo();
+        let dir = repo.workdir().expect("workdir");
+        [
+            ("empty.rs", Vec::new()),
+            ("blank.xyz", Vec::new()),
+            ("bad.xyz", vec![0xff, 0xfe]),
+            ("a.js", b"1\n2\n".to_vec()),
+            ("b.py", b"1\n2\n".to_vec()),
+        ]
+        .into_iter()
+        .for_each(|(path, bytes)| std::fs::write(dir.join(path), bytes).unwrap());
+        let add = Command::new("git")
+            .args(["add", "."])
+            .current_dir(dir)
+            .output()
+            .expect("git add");
+        assert!(
+            add.status.success(),
+            "git add failed: {}",
+            String::from_utf8_lossy(&add.stderr)
+        );
+        let commit = Command::new("git")
+            .args(["commit", "-q", "-m", "fixture"])
+            .current_dir(dir)
+            .output()
+            .expect("git commit");
+        assert!(
+            commit.status.success(),
+            "git commit failed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
+
+        let totals = scan_repo(&repo).unwrap();
+        assert_eq!(totals.total_lines, 4);
+        assert_eq!(
+            totals.by_language,
+            vec![("JavaScript".into(), 2), ("Python".into(), 2)]
+        );
     }
 
     #[test]
@@ -852,5 +927,56 @@ mod tests {
             parse_options(Some(&pct_alias)).unwrap().unit,
             Some(Unit::Percent)
         );
+    }
+
+    #[test]
+    fn parse_options_defaults_and_rejects_invalid_unit() {
+        let opts = parse_options(None).unwrap();
+        assert_eq!(opts.limit, None);
+        assert_eq!(opts.unit, None);
+
+        let bad: toml::Value = toml::from_str(r#"unit = "wat""#).unwrap();
+        let err = parse_options(Some(&bad)).unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("unknown variant")));
+    }
+
+    #[test]
+    fn fetch_reads_cwd_repo_for_default_and_requested_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, repo) = crate::fetcher::git::test_support::make_repo();
+        crate::fetcher::git::test_support::commit_touching(&repo, "src/lib.rs", "fn hello() {}");
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workdir).unwrap();
+
+        let text = rt.block_on(CodeLoc.fetch(&ctx(None, None)));
+        let text_block = rt.block_on(CodeLoc.fetch(&ctx(
+            Some(Shape::TextBlock),
+            Some("limit = 0\nunit = \"percent\""),
+        )));
+        let expected_text =
+            scan_repo(&repo).map(|t| render_body(t, Shape::Text, DEFAULT_LIMIT, Unit::Loc));
+        let expected_block = scan_repo(&repo)
+            .map(|t| render_body(t, Shape::TextBlock, DEFAULT_LIMIT, Unit::Percent));
+
+        std::env::set_current_dir(prev_cwd).unwrap();
+
+        assert_eq!(text.unwrap().body, expected_text.unwrap());
+        assert_eq!(text_block.unwrap().body, expected_block.unwrap());
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_options() {
+        let err = CodeLoc
+            .fetch(&ctx(None, Some("unknown = 1")))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("invalid options")));
     }
 }

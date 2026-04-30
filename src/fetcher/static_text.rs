@@ -72,6 +72,12 @@ mod tests {
 
     use super::*;
 
+    fn text_block(lines: &[&str]) -> Body {
+        Body::TextBlock(TextBlockData {
+            lines: lines.iter().map(|line| (*line).to_string()).collect(),
+        })
+    }
+
     fn ctx(format: Option<&str>) -> FetchContext {
         FetchContext {
             widget_id: "x".into(),
@@ -81,17 +87,39 @@ mod tests {
         }
     }
 
-    fn block_lines(p: Payload) -> Vec<String> {
-        match p.body {
-            Body::TextBlock(t) => t.lines,
-            _ => panic!("expected text_block body"),
-        }
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        assert_eq!(StaticText.name(), "basic_static");
+        assert_eq!(StaticText.safety(), Safety::Safe);
+        assert_eq!(StaticText.default_shape(), Shape::TextBlock);
+        assert_eq!(
+            StaticText.shapes(),
+            &[Shape::Text, Shape::TextBlock, Shape::MarkdownTextBlock]
+        );
+        assert!(StaticText.description().contains("MarkdownTextBlock"));
+        assert_eq!(
+            StaticText.sample_body(Shape::Text),
+            Some(Body::Text(TextData {
+                value: "Hello, splashboard!".into(),
+            }))
+        );
+        assert_eq!(
+            StaticText.sample_body(Shape::TextBlock),
+            Some(text_block(&["Hello, splashboard!"]))
+        );
+        assert_eq!(
+            StaticText.sample_body(Shape::MarkdownTextBlock),
+            Some(Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: "# Hello, splashboard!\n\nMarkdown body with **bold** and `code`.".into(),
+            }))
+        );
+        assert_eq!(StaticText.sample_body(Shape::Badge), None);
     }
 
     #[tokio::test]
     async fn single_line_format() {
         let p = StaticText.fetch(&ctx(Some("Hello!"))).await.unwrap();
-        assert_eq!(block_lines(p), vec!["Hello!".to_string()]);
+        assert_eq!(p.body, text_block(&["Hello!"]));
     }
 
     #[tokio::test]
@@ -100,32 +128,25 @@ mod tests {
             .fetch(&ctx(Some("line one\nline two\nline three")))
             .await
             .unwrap();
-        assert_eq!(
-            block_lines(p),
-            vec![
-                "line one".to_string(),
-                "line two".to_string(),
-                "line three".to_string(),
-            ]
-        );
+        assert_eq!(p.body, text_block(&["line one", "line two", "line three"]));
     }
 
     #[tokio::test]
     async fn missing_format_yields_empty_list() {
         let p = StaticText.fetch(&ctx(None)).await.unwrap();
-        assert!(block_lines(p).is_empty());
+        assert_eq!(p.body, text_block(&[]));
     }
 
     #[tokio::test]
     async fn empty_format_yields_empty_list() {
         let p = StaticText.fetch(&ctx(Some(""))).await.unwrap();
-        assert!(block_lines(p).is_empty());
+        assert_eq!(p.body, text_block(&[]));
     }
 
     #[tokio::test]
     async fn trailing_newline_preserves_blank_line() {
         let p = StaticText.fetch(&ctx(Some("a\n"))).await.unwrap();
-        assert_eq!(block_lines(p), vec!["a".to_string(), "".to_string()]);
+        assert_eq!(p.body, text_block(&["a", ""]));
     }
 
     #[tokio::test]
@@ -133,9 +154,24 @@ mod tests {
         let mut c = ctx(Some("line one\nline two"));
         c.shape = Some(Shape::Text);
         let p = StaticText.fetch(&c).await.unwrap();
-        match p.body {
-            Body::Text(t) => assert_eq!(t.value, "line one line two"),
-            _ => panic!("expected text body"),
-        }
+        assert_eq!(
+            p.body,
+            Body::Text(TextData {
+                value: "line one line two".into(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn markdown_shape_preserves_verbatim_source() {
+        let mut c = ctx(Some("# heading\n\nbody"));
+        c.shape = Some(Shape::MarkdownTextBlock);
+        let p = StaticText.fetch(&c).await.unwrap();
+        assert_eq!(
+            p.body,
+            Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: "# heading\n\nbody".into(),
+            })
+        );
     }
 }

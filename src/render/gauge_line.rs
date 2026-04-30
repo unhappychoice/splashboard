@@ -147,9 +147,12 @@ fn numerator(ratio: f64, denominator: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Payload, RatioData};
+    use crate::payload::{Payload, RatioData, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
 
     fn payload(value: f64) -> Payload {
         Payload {
@@ -162,6 +165,26 @@ mod tests {
                 denominator: None,
             }),
         }
+    }
+
+    fn render_direct(body: &Body) -> Buffer {
+        let backend = TestBackend::new(20, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        terminal
+            .draw(|frame| {
+                GaugeLineRenderer.render(
+                    frame,
+                    frame.area(),
+                    body,
+                    &RenderOptions::default(),
+                    &theme,
+                    &registry,
+                )
+            })
+            .unwrap();
+        terminal.backend().buffer().clone()
     }
 
     #[test]
@@ -189,8 +212,8 @@ mod tests {
         let w: W = toml::from_str(r#"render = { type = "gauge_line", label = "year" }"#).unwrap();
         let buf = render_to_buffer_with_spec(&payload(0.32), Some(&w.render), &registry, 40, 1);
         let row = line_text(&buf, 0);
-        assert!(row.starts_with("year:"), "missing prefix: {row:?}");
-        assert!(row.contains("32%"), "missing percent suffix: {row:?}");
+        assert!(row.starts_with("year:"));
+        assert!(row.contains("32%"));
     }
 
     #[test]
@@ -206,5 +229,86 @@ mod tests {
     fn value_format_fraction_falls_back_without_denominator() {
         assert_eq!(format_value(0.50, None, Some("fraction")), "50%");
         assert_eq!(format_value(0.50, Some(10), Some("fraction")), "5 of 10");
+    }
+
+    #[test]
+    fn renderer_contract_and_helper_defaults_are_stable() {
+        let renderer = GaugeLineRenderer;
+        assert_eq!(renderer.name(), "gauge_line");
+        assert!(renderer.description().contains("Single-row progress bar"));
+        assert_eq!(renderer.accepts(), &[Shape::Ratio]);
+        assert_eq!(
+            renderer
+                .color_keys()
+                .iter()
+                .map(|key| key.name)
+                .collect::<Vec<_>>(),
+            vec!["text", "text_dim"]
+        );
+        assert_eq!(
+            renderer
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["label", "value_format"]
+        );
+        assert_eq!(
+            resolve_prefix(
+                &RenderOptions {
+                    label: Some("explicit".into()),
+                    ..RenderOptions::default()
+                },
+                &RatioData {
+                    value: 0.0,
+                    label: Some("payload".into()),
+                    denominator: Some(10),
+                },
+            ),
+            "explicit"
+        );
+        assert_eq!(
+            resolve_prefix(
+                &RenderOptions::default(),
+                &RatioData {
+                    value: 0.0,
+                    label: Some("payload".into()),
+                    denominator: Some(10),
+                },
+            ),
+            "payload"
+        );
+        assert_eq!(
+            resolve_prefix(
+                &RenderOptions::default(),
+                &RatioData {
+                    value: 0.0,
+                    label: None,
+                    denominator: None,
+                },
+            ),
+            ""
+        );
+        assert_eq!(prefix_width(""), 0);
+        assert_eq!(prefix_width("abc"), 5);
+        assert_eq!(numerator(0.35, 10), 4);
+        assert_eq!(format_value(0.35, Some(10), None), "35%");
+        assert_eq!(format_value(0.35, Some(10), Some("unexpected")), "35%");
+    }
+
+    #[test]
+    fn compose_spans_without_prefix_and_wrong_shape_render_noop() {
+        let spans = compose_spans("", "50%", 2, 4, &Theme::default());
+        let text = spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert_eq!(spans.len(), 3);
+        assert_eq!(text, "▓▓░░ 50%");
+
+        let buf = render_direct(&Body::Text(TextData {
+            value: "wrong shape".into(),
+        }));
+        assert_eq!(line_text(&buf, 0).trim(), "");
     }
 }

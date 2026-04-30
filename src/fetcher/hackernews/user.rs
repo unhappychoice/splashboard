@@ -221,10 +221,83 @@ mod tests {
         }
     }
 
+    fn ctx(shape: Shape, options: &str) -> FetchContext {
+        FetchContext {
+            shape: Some(shape),
+            options: Some(toml::from_str(options).unwrap()),
+            ..FetchContext::default()
+        }
+    }
+
     #[test]
     fn options_require_user() {
         let opts: Options = toml::from_str("user = \"pg\"").unwrap();
         assert_eq!(opts.user.as_deref(), Some("pg"));
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("user = \"pg\"\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_catalog_surface_matches_contract() {
+        let fetcher = HackernewsUserFetcher;
+        assert_eq!(fetcher.name(), "hackernews_user");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Entries);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, "user");
+        assert!(fetcher.description().contains("recent stories"));
+    }
+
+    #[test]
+    fn sample_body_supports_each_declared_shape() {
+        let fetcher = HackernewsUserFetcher;
+
+        let text = fetcher.sample_body(Shape::Text).unwrap();
+        let Body::Text(text) = text else {
+            panic!("expected text");
+        };
+        assert!(text.value.contains("@pg"));
+
+        let entries = fetcher.sample_body(Shape::Entries).unwrap();
+        let Body::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].key, "login");
+
+        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
+        let Body::TextBlock(block) = block else {
+            panic!("expected text block");
+        };
+        assert_eq!(block.lines.len(), 4);
+
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
+        let Body::LinkedTextBlock(linked) = linked else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(
+            linked.items[0].url.as_deref(),
+            Some("https://news.ycombinator.com/user?id=pg")
+        );
+
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_options() {
+        let fetcher = HackernewsUserFetcher;
+        let base = fetcher.cache_key(&ctx(Shape::Entries, "user = \"pg\""));
+        let same = fetcher.cache_key(&ctx(Shape::Entries, "user = \"pg\""));
+        let different_shape = fetcher.cache_key(&ctx(Shape::Text, "user = \"pg\""));
+        let different_options = fetcher.cache_key(&ctx(Shape::Entries, "user = \"dang\""));
+
+        assert_eq!(base, same);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_options);
     }
 
     #[test]
@@ -346,5 +419,44 @@ mod tests {
         assert_eq!(info.created, 0);
         assert!(info.about.is_none());
         assert!(info.submitted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options() {
+        let fetcher = HackernewsUserFetcher;
+        let err = fetcher
+            .fetch(&ctx(Shape::Entries, "user = \"pg\"\nbogus = true"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown field `bogus`")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_requires_user_option() {
+        let fetcher = HackernewsUserFetcher;
+        let err = fetcher.fetch(&ctx(Shape::Entries, "")).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "hackernews_user requires `user` option"
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_with_bad_login_surfaces_hn_failure() {
+        let fetcher = HackernewsUserFetcher;
+        let err = fetcher
+            .fetch(&ctx(Shape::LinkedTextBlock, "user = \"bad login\""))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg)
+                if msg.contains("hn request failed")
+                    || msg.contains("hn json parse")
+                    || msg.starts_with("hn ")
+        ));
     }
 }

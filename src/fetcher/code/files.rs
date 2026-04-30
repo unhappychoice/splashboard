@@ -197,6 +197,14 @@ mod tests {
     use super::super::super::git::test_support::{commit_touching, make_repo};
     use super::*;
 
+    fn ctx(shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "widget".into(),
+            shape,
+            ..Default::default()
+        }
+    }
+
     fn fixed_scan() -> Scan {
         Scan {
             file_count: 220,
@@ -207,6 +215,24 @@ mod tests {
                 (ROOT_LABEL.into(), 1),
             ],
         }
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_supported_shapes() {
+        assert_eq!(CodeFiles.name(), "code_files");
+        assert!(matches!(CodeFiles.safety(), Safety::Safe));
+        assert!(CodeFiles.description().contains("top-level directories"));
+        assert_eq!(CodeFiles.default_shape(), Shape::Text);
+        assert_eq!(CodeFiles.shapes(), SHAPES);
+        assert_ne!(
+            CodeFiles.cache_key(&ctx(Some(Shape::Text))),
+            CodeFiles.cache_key(&ctx(Some(Shape::Bars)))
+        );
+        SHAPES.iter().copied().for_each(|shape| {
+            let body = CodeFiles.sample_body(shape).expect("sample body");
+            assert_eq!(crate::render::shape_of(&body), shape);
+        });
+        assert!(CodeFiles.sample_body(Shape::Ratio).is_none());
     }
 
     #[test]
@@ -345,6 +371,54 @@ mod tests {
                 d.value,
                 "- **src** — 180 files\n- **tests** — 30 files\n- **docs** — 9 files\n- **(root)** — 1 file"
             ),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn render_body_uses_text_fallback_and_empty_structural_shapes() {
+        match render_body(fixed_scan(), Shape::Ratio) {
+            Body::Text(d) => assert_eq!(d.value, "220 files"),
+            _ => panic!(),
+        }
+        match render_body(Scan::default(), Shape::Entries) {
+            Body::Entries(d) => assert!(d.items.is_empty()),
+            _ => panic!(),
+        }
+        match render_body(Scan::default(), Shape::Bars) {
+            Body::Bars(d) => assert!(d.bars.is_empty()),
+            _ => panic!(),
+        }
+        match render_body(Scan::default(), Shape::MarkdownTextBlock) {
+            Body::MarkdownTextBlock(d) => assert!(d.value.is_empty()),
+            _ => panic!(),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_scans_current_repo_for_multiple_shapes() {
+        let text = CodeFiles.fetch(&ctx(None)).await.unwrap();
+        match text.body {
+            Body::Text(d) => assert!(d.value.ends_with("files") || d.value.ends_with("file")),
+            _ => panic!(),
+        }
+
+        let entries = CodeFiles.fetch(&ctx(Some(Shape::Entries))).await.unwrap();
+        match entries.body {
+            Body::Entries(d) => {
+                assert!(!d.items.is_empty());
+                assert!(!d.items[0].key.is_empty());
+                assert!(!d.items[0].value.as_deref().unwrap_or_default().is_empty());
+            }
+            _ => panic!(),
+        }
+
+        let markdown = CodeFiles
+            .fetch(&ctx(Some(Shape::MarkdownTextBlock)))
+            .await
+            .unwrap();
+        match markdown.body {
+            Body::MarkdownTextBlock(d) => assert!(d.value.contains("**")),
             _ => panic!(),
         }
     }

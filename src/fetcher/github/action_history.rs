@@ -228,7 +228,68 @@ fn repo_for_key(ctx: &FetchContext) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "action-history".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     fn run(num: u64, created: &str, updated: &str, conclusion: Option<&str>) -> WorkflowRun {
         WorkflowRun {
@@ -239,6 +300,120 @@ mod tests {
             created_at: created.into(),
             updated_at: updated.into(),
         }
+    }
+
+    fn workflow_run(
+        num: u64,
+        status: &str,
+        conclusion: Option<&str>,
+        branch: Option<&str>,
+    ) -> WorkflowRun {
+        WorkflowRun {
+            run_number: num,
+            status: status.into(),
+            conclusion: conclusion.map(String::from),
+            head_branch: branch.map(String::from),
+            created_at: "2026-04-22T10:00:00Z".into(),
+            updated_at: "2026-04-22T10:02:30Z".into(),
+        }
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.repo.is_none());
+        assert!(opts.limit.is_none());
+        assert!(opts.branch.is_none());
+    }
+
+    #[test]
+    fn options_deserialize_repo_limit_and_branch() {
+        let raw: toml::Value =
+            toml::from_str("repo = \"owner/name\"\nlimit = 7\nbranch = \"main\"").unwrap();
+        let opts: Options = raw.try_into().unwrap();
+        assert_eq!(opts.repo.as_deref(), Some("owner/name"));
+        assert_eq!(opts.limit, Some(7));
+        assert_eq!(opts.branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value =
+            toml::from_str("repo = \"owner/name\"\nlimit = 7\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_metadata_and_samples_cover_supported_shapes() {
+        let fetcher = GithubActionHistory;
+        assert_eq!(fetcher.name(), "github_action_history");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Recent CI workflow runs"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::NumberSeries);
+
+        let names = fetcher
+            .option_schemas()
+            .iter()
+            .map(|schema| schema.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["repo", "limit", "branch"]);
+
+        let Some(Body::NumberSeries(number_series)) = fetcher.sample_body(Shape::NumberSeries)
+        else {
+            panic!("expected number series sample");
+        };
+        assert_eq!(number_series.values[0], 1);
+        assert_eq!(number_series.values[2], 0);
+
+        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
+            panic!("expected timeline sample");
+        };
+        assert_eq!(timeline.events[0].title, "#4235 main");
+        assert_eq!(timeline.events[1].detail.as_deref(), Some("failing"));
+
+        let Some(Body::PointSeries(point_series)) = fetcher.sample_body(Shape::PointSeries) else {
+            panic!("expected point series sample");
+        };
+        assert_eq!(point_series.series.len(), 1);
+        assert_eq!(point_series.series[0].name, "ci duration (s)");
+        assert_eq!(point_series.series[0].points[3], (4236.0, 220.0));
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn cache_key_is_stable_and_changes_with_repo_shape_and_format() {
+        let fetcher = GithubActionHistory;
+        let base = ctx(
+            Some("repo = \"owner/name\"\nlimit = 5"),
+            Some(Shape::NumberSeries),
+            Some("compact"),
+        );
+        let same = ctx(
+            Some("repo = \"owner/name\"\nlimit = 5"),
+            Some(Shape::NumberSeries),
+            Some("compact"),
+        );
+        let other_repo = ctx(
+            Some("repo = \"other/name\"\nlimit = 5"),
+            Some(Shape::NumberSeries),
+            Some("compact"),
+        );
+        let other_shape = ctx(
+            Some("repo = \"owner/name\"\nlimit = 5"),
+            Some(Shape::Timeline),
+            Some("compact"),
+        );
+        let other_format = ctx(
+            Some("repo = \"owner/name\"\nlimit = 5"),
+            Some(Shape::NumberSeries),
+            Some("verbose"),
+        );
+
+        assert_eq!(fetcher.cache_key(&base), fetcher.cache_key(&same));
+        assert_ne!(fetcher.cache_key(&base), fetcher.cache_key(&other_repo));
+        assert_ne!(fetcher.cache_key(&base), fetcher.cache_key(&other_shape));
+        assert_ne!(fetcher.cache_key(&base), fetcher.cache_key(&other_format));
     }
 
     #[test]
@@ -258,6 +433,67 @@ mod tests {
         assert!(duration_seconds(&bad).is_none());
         let inverted = run(12, "2026-04-22T10:02:30Z", "2026-04-22T10:00:00Z", None);
         assert!(duration_seconds(&inverted).is_none());
+    }
+
+    #[test]
+    fn status_and_label_cover_success_error_and_in_progress_states() {
+        let success = workflow_run(7, "completed", Some("success"), Some("main"));
+        let failure = workflow_run(8, "completed", Some("startup_failure"), Some("release"));
+        let neutral = workflow_run(9, "completed", None, Some("main"));
+        let queued = workflow_run(10, "queued", Some("failure"), None);
+
+        assert_eq!(status_of(&success), Status::Ok);
+        assert_eq!(label(&success), "success");
+        assert_eq!(status_of(&failure), Status::Error);
+        assert_eq!(label(&failure), "startup_failure");
+        assert_eq!(status_of(&neutral), Status::Warn);
+        assert_eq!(label(&neutral), "completed");
+        assert_eq!(status_of(&queued), Status::Warn);
+        assert_eq!(label(&queued), "queued");
+    }
+
+    #[test]
+    fn number_series_body_reverses_runs_and_marks_only_successes() {
+        let runs = vec![
+            run(
+                3,
+                "2026-04-22T10:04:00Z",
+                "2026-04-22T10:05:00Z",
+                Some("success"),
+            ),
+            run(
+                2,
+                "2026-04-22T10:02:00Z",
+                "2026-04-22T10:03:00Z",
+                Some("failure"),
+            ),
+            run(1, "2026-04-22T10:00:00Z", "2026-04-22T10:01:00Z", None),
+        ];
+        let Body::NumberSeries(data) = render_body(&runs, Shape::NumberSeries) else {
+            panic!("expected number series");
+        };
+        assert_eq!(data.values, vec![0, 0, 1]);
+    }
+
+    #[test]
+    fn timeline_body_uses_branch_fallback_label_and_status() {
+        let runs = vec![
+            workflow_run(10, "queued", Some("failure"), None),
+            workflow_run(9, "completed", None, Some("main")),
+            workflow_run(8, "completed", Some("timed_out"), Some("release")),
+        ];
+        let Body::Timeline(data) = render_body(&runs, Shape::Timeline) else {
+            panic!("expected timeline");
+        };
+        assert_eq!(data.events.len(), 3);
+        assert_eq!(data.events[0].title, "#10 ?");
+        assert_eq!(data.events[0].detail.as_deref(), Some("queued"));
+        assert_eq!(data.events[0].status, Some(Status::Warn));
+        assert_eq!(data.events[1].detail.as_deref(), Some("completed"));
+        assert_eq!(data.events[1].status, Some(Status::Warn));
+        assert_eq!(data.events[2].title, "#8 release");
+        assert_eq!(data.events[2].status, Some(Status::Error));
+        assert_eq!(data.events[2].timestamp, 1_776_852_150);
     }
 
     #[test]
@@ -289,5 +525,48 @@ mod tests {
         assert_eq!(pts[0].1, 180.0);
         assert_eq!(pts[1].0, 1.0);
         assert_eq!(pts[1].1, 100.0);
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_options_before_repo_or_auth_lookup() {
+        let fetcher = GithubActionHistory;
+        let err =
+            run_async(fetcher.fetch(&ctx(Some("limit = \"many\""), Some(Shape::Timeline), None)))
+                .expect_err("invalid options should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert!(message.contains("invalid options"));
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_repo_before_auth_lookup() {
+        let fetcher = GithubActionHistory;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"broken\"\nbranch = \"main\""),
+            Some(Shape::PointSeries),
+            None,
+        )))
+        .expect_err("invalid repo should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert_eq!(message, "invalid repo option: \"broken\"");
+    }
+
+    #[test]
+    fn fetch_without_token_surfaces_auth_error_after_processing_repo_branch_and_limit() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        let fetcher = GithubActionHistory;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"owner/name\"\nlimit = 500\nbranch = \"release\""),
+            Some(Shape::PointSeries),
+            Some("compact"),
+        )))
+        .expect_err("missing token should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert_eq!(message, "GH_TOKEN / GITHUB_TOKEN not set");
     }
 }

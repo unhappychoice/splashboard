@@ -159,6 +159,13 @@ mod tests {
         }
     }
 
+    fn image_path(payload: Payload) -> String {
+        serde_json::to_value(&payload.body).unwrap()["data"]["path"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
     #[test]
     fn dominant_language_picks_max_file_count() {
         let (_tmp, repo) = make_repo();
@@ -227,5 +234,109 @@ mod tests {
         let k2 = CodeLanguageLogo.cache_key(&ctx);
         assert_ne!(k0, k1);
         assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn fetcher_contract_exposes_catalog_surface() {
+        assert_eq!(CodeLanguageLogo.name(), "code_language_logo");
+        assert_eq!(CodeLanguageLogo.safety(), Safety::Safe);
+        assert_eq!(CodeLanguageLogo.shapes(), &[Shape::Image]);
+        let schemas = CodeLanguageLogo.option_schemas();
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, "language");
+        assert_eq!(schemas[0].type_hint, "string");
+        assert_eq!(
+            schemas[0].default,
+            Some("auto-detected from the dominant language in the repo")
+        );
+        assert!(CodeLanguageLogo.description().contains("Devicon PNG"));
+    }
+
+    #[test]
+    fn fetch_with_language_override_emits_bundled_logo_path() {
+        with_home(|| {
+            let payload = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(CodeLanguageLogo.fetch(&FetchContext {
+                    widget_id: "logo".into(),
+                    options: Some(toml::from_str(r#"language = "Rust""#).unwrap()),
+                    ..Default::default()
+                }))
+                .unwrap();
+            let path = image_path(payload);
+            assert!(
+                path.ends_with("rust.png"),
+                "expected rust logo path, got {path}"
+            );
+            assert!(std::path::Path::new(&path).exists());
+        });
+    }
+
+    #[test]
+    fn fetch_with_unknown_language_override_falls_back_to_generic_logo() {
+        with_home(|| {
+            let payload = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(CodeLanguageLogo.fetch(&FetchContext {
+                    widget_id: "logo".into(),
+                    options: Some(toml::from_str(r#"language = "Whitespace""#).unwrap()),
+                    ..Default::default()
+                }))
+                .unwrap();
+            let path = image_path(payload);
+            assert!(
+                path.ends_with("_generic.png"),
+                "expected generic logo path, got {path}"
+            );
+            assert!(std::path::Path::new(&path).exists());
+        });
+    }
+
+    #[test]
+    fn fetch_without_override_uses_detected_repo_language() {
+        with_home(|| {
+            let payload = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(CodeLanguageLogo.fetch(&FetchContext {
+                    widget_id: "logo".into(),
+                    ..Default::default()
+                }))
+                .unwrap();
+            let path = image_path(payload);
+            let (slug, _) = logo_assets::asset_for(detect_dominant_language().unwrap());
+            assert!(
+                path.ends_with(&format!("{slug}.png")),
+                "expected detected logo path for {slug}, got {path}"
+            );
+        });
+    }
+
+    #[test]
+    fn fetch_surfaces_logo_cache_dir_creation_failures() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let broken_home = tmp.path().join("home-file");
+        std::fs::write(&broken_home, "not-a-directory").unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe {
+            std::env::set_var("SPLASHBOARD_HOME", &broken_home);
+        }
+        let err = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CodeLanguageLogo.fetch(&FetchContext {
+                widget_id: "logo".into(),
+                options: Some(toml::from_str(r#"language = "Rust""#).unwrap()),
+                ..Default::default()
+            }))
+            .unwrap_err();
+        unsafe {
+            match previous {
+                Some(v) => std::env::set_var("SPLASHBOARD_HOME", v),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("create logos cache dir")));
     }
 }

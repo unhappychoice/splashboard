@@ -188,6 +188,25 @@ fn remove_stale(dir: &std::path::Path, key: &str) {
 mod tests {
     use super::*;
 
+    fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
+        FetchContext {
+            widget_id: "w".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options,
+            ..Default::default()
+        }
+    }
+
+    fn restore_home(previous: Option<String>) {
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+    }
+
     #[test]
     fn options_default_when_absent() {
         let opts: Options = parse_options(None).unwrap();
@@ -205,6 +224,25 @@ mod tests {
         let raw: toml::Value = toml::from_str("tag = \"cute\"").unwrap();
         let opts: Options = parse_options(Some(&raw)).unwrap();
         assert_eq!(opts.tag.as_deref(), Some("cute"));
+    }
+
+    #[test]
+    fn fetcher_exposes_catalog_metadata() {
+        let fetcher = RandomCatFetcher;
+        assert_eq!(fetcher.name(), "random_cat");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Image);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            fetcher
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["tag"]
+        );
+        assert!(fetcher.description().contains("cataas.com"));
+        assert!(fetcher.sample_body(Shape::Image).is_none());
     }
 
     #[test]
@@ -306,6 +344,58 @@ mod tests {
                 "stale {ext} not removed"
             );
         }
+    }
+
+    #[test]
+    fn cat_dir_uses_cache_layout_under_env_override() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        assert_eq!(cat_dir(), Some(tmp.path().join("cache").join("cats")));
+        restore_home(previous);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options_before_network() {
+        let err = RandomCatFetcher
+            .fetch(&ctx(
+                Some(Shape::Image),
+                Some(toml::from_str("bogus = true").unwrap()),
+            ))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("unknown field"));
+    }
+
+    #[tokio::test]
+    async fn fetch_bytes_rejects_malformed_url() {
+        let err = fetch_bytes("https://bad host").await.unwrap_err();
+        assert!(format!("{err}").contains("cat request failed"));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn fetch_surfaces_cache_dir_creation_failure_before_network() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("not-a-dir");
+        std::fs::write(&file, b"x").unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", &file) };
+        let err = RandomCatFetcher
+            .fetch(&ctx(
+                Some(Shape::Image),
+                Some(toml::from_str("tag = \"cute\"").unwrap()),
+            ))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("create cat cache dir"));
+        restore_home(previous);
     }
 
     /// Live smoke test — downloads a cat and verifies the file is a real image. `#[ignore]` keeps

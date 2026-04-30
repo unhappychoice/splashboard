@@ -133,6 +133,67 @@ mod tests {
     }
 
     #[test]
+    fn helper_branches_cover_inactive_labels() {
+        assert_eq!(business_hours(&at(2026, 4, 25, 10)), (false, "closed"));
+        assert_eq!(weekend(&at(2026, 4, 22, 12)), (false, "weekday"));
+        assert_eq!(night(&at(2026, 4, 22, 12)), (false, "day"));
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = ClockStateFetcher;
+        assert_eq!(fetcher.name(), "clock_state");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("status badge"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert!(matches!(
+            fetcher.sample_body(Shape::Badge),
+            Some(Body::Badge(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn compute_supports_each_non_default_kind() {
+        let weekend_body = ClockStateFetcher.compute(&ctx(r#"kind = "weekend""#)).body;
+        assert!(
+            matches!(
+                weekend_body,
+                Body::Badge(BadgeData { status: Status::Ok, ref label })
+                    if label == "weekend"
+            ) || matches!(
+                weekend_body,
+                Body::Badge(BadgeData { status: Status::Warn, ref label })
+                    if label == "weekday"
+            )
+        );
+
+        let night_body = ClockStateFetcher.compute(&ctx(r#"kind = "night""#)).body;
+        assert!(
+            matches!(
+                night_body,
+                Body::Badge(BadgeData { status: Status::Ok, ref label }) if label == "night"
+            ) || matches!(
+                night_body,
+                Body::Badge(BadgeData { status: Status::Warn, ref label }) if label == "day"
+            )
+        );
+    }
+
+    #[test]
+    fn invalid_options_return_placeholder() {
+        let body = ClockStateFetcher.compute(&ctx("unexpected = 1")).body;
+        assert!(matches!(
+            body,
+            Body::TextBlock(ref data)
+                if data
+                    .lines
+                    .first()
+                    .is_some_and(|line| line.contains("invalid options"))
+        ));
+    }
+
+    #[test]
     fn emits_badge_body() {
         let p = ClockStateFetcher.compute(&ctx(""));
         assert!(matches!(p.body, Body::Badge(_)));

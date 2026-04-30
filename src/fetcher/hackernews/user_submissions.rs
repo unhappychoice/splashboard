@@ -222,6 +222,7 @@ fn link_for(it: &Item) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fetcher::FetchContext;
 
     fn item(item_type: &str, title: Option<&str>) -> Item {
         Item {
@@ -231,6 +232,14 @@ mod tests {
             score: Some(10),
             descendants: Some(2),
             url: None,
+        }
+    }
+
+    fn ctx(shape: Shape, options: &str) -> FetchContext {
+        FetchContext {
+            shape: Some(shape),
+            options: Some(toml::from_str(options).unwrap()),
+            ..FetchContext::default()
         }
     }
 
@@ -345,5 +354,142 @@ mod tests {
         let raw = r#"{"id":"pg","submitted":[1,2,3]}"#;
         let stub: UserStub = serde_json::from_str(raw).unwrap();
         assert_eq!(stub.submitted, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn fetcher_catalog_surface_matches_contract() {
+        let fetcher = HackernewsUserSubmissionsFetcher;
+        assert_eq!(fetcher.name(), "hackernews_user_submissions");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+        assert_eq!(fetcher.option_schemas()[0].name, "user");
+        assert_eq!(fetcher.option_schemas()[1].name, "count");
+        assert!(fetcher.description().contains("comments are excluded"));
+    }
+
+    #[test]
+    fn sample_body_supports_each_declared_shape() {
+        let fetcher = HackernewsUserSubmissionsFetcher;
+
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
+        let Body::LinkedTextBlock(linked) = linked else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(linked.items.len(), 2);
+        assert!(linked.items[0].text.contains("Show HN"));
+
+        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
+        let Body::TextBlock(block) = block else {
+            panic!("expected text block");
+        };
+        assert_eq!(block.lines.len(), 2);
+
+        let entries = fetcher.sample_body(Shape::Entries).unwrap();
+        let Body::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].key, "Show HN: I built a thing");
+
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_options() {
+        let fetcher = HackernewsUserSubmissionsFetcher;
+        let base = fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 5"));
+        let same = fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 5"));
+        let different_shape = fetcher.cache_key(&ctx(Shape::Entries, "user = \"pg\"\ncount = 5"));
+        let different_options =
+            fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 6"));
+
+        assert_eq!(base, same);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_options);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options() {
+        let fetcher = HackernewsUserSubmissionsFetcher;
+        let err = fetcher
+            .fetch(&ctx(
+                Shape::Entries,
+                "user = \"pg\"\ncount = 5\nbogus = true",
+            ))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown field `bogus`")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_requires_user_option() {
+        let fetcher = HackernewsUserSubmissionsFetcher;
+        let err = fetcher
+            .fetch(&ctx(Shape::Entries, "count = 5"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg)
+                if msg == "hackernews_user_submissions requires `user` option"
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_with_bad_login_surfaces_hn_failure() {
+        let fetcher = HackernewsUserSubmissionsFetcher;
+        for raw in ["user = \"bad login\"", "user = \"bad login\"\ncount = 999"] {
+            let err = fetcher
+                .fetch(&ctx(Shape::LinkedTextBlock, raw))
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                err,
+                FetchError::Failed(msg)
+                    if msg.contains("hn request failed")
+                        || msg.contains("hn json parse")
+                        || msg.starts_with("hn ")
+            ));
+        }
+    }
+
+    #[test]
+    fn meta_label_and_links_fall_back_when_fields_are_missing() {
+        let it = Item {
+            id: None,
+            item_type: None,
+            title: None,
+            score: None,
+            descendants: None,
+            url: None,
+        };
+        assert_eq!(title_or_placeholder(&it), "(no title)");
+        assert_eq!(meta_label(&it), "0pt 0c");
+        assert_eq!(link_for(&it), None);
+    }
+
+    #[test]
+    fn entries_shape_marks_rows_as_plain_status() {
+        let body = render_body(&[item("story", Some("hello"))], Shape::Entries);
+        let Body::Entries(entries) = body else {
+            panic!("expected entries");
+        };
+        assert!(entries.items.iter().all(|entry| entry.status.is_none()));
+        assert!(
+            entries
+                .items
+                .iter()
+                .all(|entry| entry.value.as_deref() == Some("10pt 2c"))
+        );
+    }
+
+    #[test]
+    fn user_stub_defaults_missing_submitted_to_empty() {
+        let stub: UserStub = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(stub.submitted.is_empty());
     }
 }

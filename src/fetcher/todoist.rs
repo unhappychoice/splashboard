@@ -584,6 +584,106 @@ mod tests {
         parse_options(Some(&value)).unwrap()
     }
 
+    fn ctx(shape: Option<Shape>, raw: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "todo".into(),
+            timeout: Duration::from_secs(1),
+            shape,
+            options: raw.map(|s| toml::from_str(s).unwrap()),
+            ..Default::default()
+        }
+    }
+
+    fn fixed_now() -> DateTime<FixedOffset> {
+        DateTime::parse_from_rfc3339("2026-04-22T10:00:00+09:00").unwrap()
+    }
+
+    fn task(
+        content: &str,
+        priority: u8,
+        due_label: Option<&str>,
+        due_sort_key: Option<i64>,
+        timeline_ts: Option<i64>,
+        is_overdue: bool,
+    ) -> TaskView {
+        TaskView {
+            content: content.into(),
+            priority,
+            url: task_link(content),
+            due_label: due_label.map(String::from),
+            due_sort_key,
+            timeline_ts,
+            is_overdue,
+        }
+    }
+
+    #[test]
+    fn fetchers_registry_exposes_todoist_tasks() {
+        let fetchers = fetchers();
+        let names: Vec<_> = fetchers.iter().map(|fetcher| fetcher.name()).collect();
+        assert_eq!(names, vec!["todoist_tasks"]);
+    }
+
+    #[test]
+    fn sample_body_covers_supported_shapes_and_default_shape() {
+        let fetcher = TodoistTasks;
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert!(
+            SHAPES
+                .iter()
+                .all(|shape| fetcher.sample_body(*shape).is_some())
+        );
+        assert!(fetcher.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_format_and_options() {
+        let mut base = ctx(Some(Shape::TextBlock), None);
+        let key = TodoistTasks.cache_key(&base);
+        base.shape = Some(Shape::Badge);
+        assert_ne!(key, TodoistTasks.cache_key(&base));
+
+        let mut format_ctx = ctx(Some(Shape::TextBlock), None);
+        let original = TodoistTasks.cache_key(&format_ctx);
+        format_ctx.format = Some("compact".into());
+        assert_ne!(original, TodoistTasks.cache_key(&format_ctx));
+
+        let mut opts_ctx = ctx(Some(Shape::TextBlock), None);
+        let no_opts = TodoistTasks.cache_key(&opts_ctx);
+        opts_ctx.options = Some(toml::from_str("filter_due = \"today\"").unwrap());
+        assert_ne!(no_opts, TodoistTasks.cache_key(&opts_ctx));
+    }
+
+    #[test]
+    fn parse_options_supports_aliases_and_defaults() {
+        let raw: toml::Value = toml::from_str(
+            "token = \"abc\"\ndue = \"overdue\"\ninclude_overdue = false\nprojects = [\"Work\"]\nlabels = [\"ops\"]\npriorities = [4]\nmax_items = 5",
+        )
+        .unwrap();
+        let opts = parse_options(Some(&raw)).unwrap();
+        assert_eq!(opts.token.as_deref(), Some("abc"));
+        assert!(matches!(opts.filter_due, Some(DueWindow::Overdue)));
+        assert_eq!(opts.filter_include_overdue, Some(false));
+        assert_eq!(opts.filter_projects, Some(vec!["Work".into()]));
+        assert_eq!(opts.filter_labels, Some(vec!["ops".into()]));
+        assert_eq!(opts.filter_priorities, Some(vec![4]));
+        assert_eq!(opts.max_items, Some(5));
+        assert!(parse_options(None).is_ok());
+    }
+
+    #[test]
+    fn todoist_error_prefers_structured_message_then_plain_text() {
+        let status = reqwest::StatusCode::UNAUTHORIZED;
+        let json_error = todoist_error(status, br#"{"error":"bad token"}"#);
+        let json_message = todoist_error(status, br#"{"message":"fallback"}"#);
+        let plain = todoist_error(status, b" permission denied ");
+        let empty = todoist_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR, b"");
+        assert!(json_error.contains("bad token"));
+        assert!(json_message.contains("fallback"));
+        assert!(plain.contains("permission denied"));
+        assert_eq!(empty, "todoist 500 Internal Server Error");
+    }
+
     #[test]
     fn build_filter_from_structured_options() {
         let opts = options(
@@ -614,6 +714,25 @@ mod tests {
     }
 
     #[test]
+    fn helper_clauses_trim_quote_and_join_values() {
+        let projects = vec!["Work".into(), "Client A".into(), "\"Core\"".into()];
+        let priorities = vec![0, 2, 4, 9];
+        let clause = scoped_or_clause('#', Some(projects.as_slice()));
+        assert_eq!(
+            clause,
+            Some("(#Work | #\"Client A\" | #\"\\\"Core\\\"\")".into())
+        );
+        assert_eq!(
+            priorities_clause(Some(priorities.as_slice())),
+            Some("(p2 | p4)".into())
+        );
+        assert_eq!(or_clause(&[]), None);
+        assert_eq!(or_clause(&["solo".into()]), Some("solo".into()));
+        assert_eq!(escape_filter_atom("plain_value-1"), "plain_value-1");
+        assert_eq!(escape_filter_atom("needs space"), "\"needs space\"");
+    }
+
+    #[test]
     fn parse_due_labels_relative_days() {
         let now = t::now_in(None);
         let today_date = now.date_naive();
@@ -637,6 +756,82 @@ mod tests {
     }
 
     #[test]
+    fn parse_due_datetime_branch_uses_timestamp_and_timezone() {
+        let now = fixed_now();
+        let due = ApiDue {
+            date: "2026-04-30".into(),
+            datetime: Some("2026-04-22T00:30:00Z".into()),
+        };
+        let expected = parse_rfc3339_timestamp("2026-04-22T00:30:00Z").unwrap();
+        assert_eq!(
+            parse_due(&due, &now),
+            (Some("today".into()), Some(expected), Some(expected), true)
+        );
+    }
+
+    #[test]
+    fn parse_due_invalid_values_return_empty_tuple() {
+        let now = fixed_now();
+        let due = ApiDue {
+            date: "not-a-date".into(),
+            datetime: Some("not-a-timestamp".into()),
+        };
+        assert_eq!(parse_due(&due, &now), (None, None, None, false));
+    }
+
+    #[test]
+    fn to_task_view_clamps_priority_and_falls_back_to_created_timestamp() {
+        let now = fixed_now();
+        let task = ApiTask {
+            id: "42".into(),
+            content: "Fix flaky CI".into(),
+            priority: 9,
+            created_at: Some("2026-04-21T00:00:00Z".into()),
+            due: None,
+        };
+        let view = to_task_view(task, &now);
+        assert_eq!(view.priority, 4);
+        assert_eq!(
+            view.url.as_deref(),
+            Some("https://app.todoist.com/app/task/42")
+        );
+        assert!(view.due_label.is_none());
+        assert!(view.due_sort_key.is_none());
+        assert_eq!(
+            view.timeline_ts,
+            parse_rfc3339_timestamp("2026-04-21T00:00:00Z")
+        );
+        assert!(!view.is_overdue);
+    }
+
+    #[test]
+    fn cmp_views_orders_by_due_priority_then_content() {
+        let mut tasks = vec![
+            task("b-task", 2, Some("today"), Some(20), Some(20), false),
+            task("a-task", 4, Some("today"), Some(20), Some(20), false),
+            task("late-task", 4, Some("tomorrow"), Some(30), Some(30), false),
+        ];
+        tasks.sort_by(cmp_views);
+        let ordered: Vec<_> = tasks.into_iter().map(|task| task.content).collect();
+        assert_eq!(ordered, vec!["a-task", "b-task", "late-task"]);
+    }
+
+    #[test]
+    fn badge_status_covers_ok_warn_and_error_states() {
+        assert_eq!(badge_status(0, 0), Status::Ok);
+        assert_eq!(badge_status(2, 0), Status::Warn);
+        assert_eq!(badge_status(2, 1), Status::Error);
+    }
+
+    #[test]
+    fn task_helpers_format_meta_and_links() {
+        let no_due = task("Fix bug", 3, None, None, None, false);
+        assert_eq!(task_meta(&no_due), "no due · P3");
+        assert_eq!(task_line(&no_due), "no due · P3 Fix bug");
+        assert!(task_link("").is_none());
+    }
+
+    #[test]
     fn render_badge_reflects_overdue_status() {
         let tasks = vec![TaskView {
             content: "Fix bug".into(),
@@ -653,6 +848,38 @@ mod tests {
         };
         assert_eq!(b.status, Status::Error);
         assert!(b.label.contains("overdue"));
+    }
+
+    #[test]
+    fn render_text_entries_and_timeline_respect_limits_and_metadata() {
+        let tasks = vec![
+            task("Overdue fix", 4, Some("overdue"), Some(1), Some(1), true),
+            task("Future task", 2, Some("tomorrow"), Some(2), None, false),
+        ];
+
+        let Body::Text(text) = render_body(&tasks, Shape::Text, 10) else {
+            panic!("expected text");
+        };
+        assert_eq!(text.value, "todo 2 tasks (1 overdue)");
+
+        let Body::Entries(entries) = render_body(&tasks, Shape::Entries, 1) else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items.len(), 1);
+        assert_eq!(entries.items[0].key, "Overdue fix");
+        assert_eq!(entries.items[0].value.as_deref(), Some("overdue · P4"));
+
+        let Body::Timeline(timeline) = render_body(&tasks, Shape::Timeline, 10) else {
+            panic!("expected timeline");
+        };
+        assert_eq!(timeline.events.len(), 1);
+        assert_eq!(timeline.events[0].title, "Overdue fix");
+        assert_eq!(timeline.events[0].status, Some(Status::Error));
+
+        let Body::TextBlock(block) = render_body(&tasks, Shape::TextBlock, 10) else {
+            panic!("expected text block");
+        };
+        assert_eq!(block.lines[0], "overdue · P4 Overdue fix");
     }
 
     #[test]
@@ -675,5 +902,66 @@ mod tests {
             b.items[0].url.as_deref(),
             Some("https://app.todoist.com/app/task/42")
         );
+    }
+
+    #[test]
+    fn resolve_token_prefers_config_then_env_and_errors_when_missing() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("TODOIST_TOKEN").ok();
+        unsafe {
+            std::env::set_var("TODOIST_TOKEN", "env-token");
+        }
+        assert_eq!(resolve_token(Some("config-token")).unwrap(), "config-token");
+        assert_eq!(resolve_token(Some("")).unwrap(), "env-token");
+        unsafe {
+            std::env::remove_var("TODOIST_TOKEN");
+        }
+        assert!(matches!(
+            resolve_token(None),
+            Err(FetchError::Failed(msg)) if msg.contains("todoist token missing")
+        ));
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("TODOIST_TOKEN", value),
+                None => std::env::remove_var("TODOIST_TOKEN"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_options_before_network() {
+        let err = TodoistTasks
+            .fetch(&ctx(Some(Shape::Text), Some("bogus = 1")))
+            .await;
+        assert!(matches!(
+            err,
+            Err(FetchError::Failed(msg)) if msg.contains("invalid options")
+        ));
+    }
+
+    #[test]
+    fn fetch_reports_missing_token_before_network() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("TODOIST_TOKEN").ok();
+        unsafe {
+            std::env::remove_var("TODOIST_TOKEN");
+        }
+        let err = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(TodoistTasks.fetch(&ctx(Some(Shape::Text), Some("max_items = 500"))));
+        assert!(matches!(
+            err,
+            Err(FetchError::Failed(msg)) if msg.contains("todoist token missing")
+        ));
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("TODOIST_TOKEN", value),
+                None => std::env::remove_var("TODOIST_TOKEN"),
+            }
+        }
     }
 }

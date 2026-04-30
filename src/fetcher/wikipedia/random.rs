@@ -93,7 +93,22 @@ async fn fetch_random(lang: &str) -> Result<PageSummary, FetchError> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            widget_id: "wiki-random".into(),
+            format: Some("compact".into()),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
 
     #[test]
     fn options_default_lang_to_none() {
@@ -111,6 +126,72 @@ mod tests {
     fn options_reject_unknown_keys() {
         let raw: toml::Value = toml::from_str("lang = \"en\"\nbogus = 1").unwrap();
         assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_metadata_samples_and_cache_key_cover_supported_shapes() {
+        let fetcher = WikipediaRandomFetcher;
+        assert_eq!(fetcher.name(), "wikipedia_random");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("random endpoint"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, "lang");
+
+        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
+        else {
+            panic!("expected linked text block sample");
+        };
+        assert_eq!(linked.items[0].text, "Quokka");
+        assert_eq!(
+            linked.items[0].url.as_deref(),
+            Some("https://en.wikipedia.org/wiki/Quokka")
+        );
+
+        let Some(Body::TextBlock(text_block)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(text_block.lines[0], "Quokka");
+        assert!(text_block.lines[1].contains("small macropod"));
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        assert!(text.value.starts_with("Quokka:"));
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
+
+        let a = fetcher.cache_key(&ctx(Some("lang = \"en\""), Some(Shape::TextBlock)));
+        let b = fetcher.cache_key(&ctx(Some("lang = \"ja\""), Some(Shape::TextBlock)));
+        let c = fetcher.cache_key(&ctx(Some("lang = \"en\""), Some(Shape::Text)));
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options_before_network() {
+        let fetcher = WikipediaRandomFetcher;
+        let err = fetcher
+            .fetch(&ctx(Some("bogus = true"), Some(Shape::Text)))
+            .await
+            .unwrap_err();
+        let FetchError::Failed(message) = err else {
+            panic!("expected failed error");
+        };
+        assert!(message.contains("unknown field"));
+    }
+
+    #[tokio::test]
+    async fn fetch_surfaces_request_error_for_invalid_lang() {
+        let fetcher = WikipediaRandomFetcher;
+        let err = fetcher
+            .fetch(&ctx(Some("lang = \"bad lang\""), Some(Shape::Text)))
+            .await
+            .unwrap_err();
+        let FetchError::Failed(message) = err else {
+            panic!("expected failed error");
+        };
+        assert!(message.contains("wikipedia request failed"));
     }
 
     /// Live smoke test — hits Wikipedia REST API.

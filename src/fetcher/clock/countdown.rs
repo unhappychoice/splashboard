@@ -319,6 +319,12 @@ mod tests {
 
     use super::*;
 
+    fn at(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> DateTime<FixedOffset> {
+        Utc.with_ymd_and_hms(y, m, d, h, min, s)
+            .unwrap()
+            .fixed_offset()
+    }
+
     fn ctx(shape: Option<Shape>, options: &str) -> FetchContext {
         FetchContext {
             widget_id: "c".into(),
@@ -327,6 +333,57 @@ mod tests {
             options: Some(toml::from_str(options).unwrap()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn catalog_surface_matches_countdown_contract() {
+        let fetcher = ClockCountdownFetcher;
+        let schemas = fetcher.option_schemas();
+        assert_eq!(fetcher.name(), "clock_countdown");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Time remaining"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(
+            schemas.iter().map(|schema| schema.name).collect::<Vec<_>>(),
+            vec![
+                "timezone",
+                "target",
+                "target_label",
+                "targets",
+                "window_days"
+            ]
+        );
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Calendar),
+            Some(Body::Calendar(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Badge).is_none());
+    }
+
+    #[test]
+    fn invalid_options_return_placeholder_body() {
+        let p = ClockCountdownFetcher.compute(&ctx(Some(Shape::Text), "bogus = true"));
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder text block")
+        };
+        assert!(d.lines[0].contains("invalid options"));
+        assert_eq!(d.lines[1], "check [widget.options] in config");
     }
 
     #[test]
@@ -348,6 +405,36 @@ mod tests {
             Body::Entries(d) => assert_eq!(d.items.len(), 2),
             _ => panic!("expected entries"),
         }
+    }
+
+    #[test]
+    fn entries_and_text_block_without_targets_fall_back_to_single_text_body() {
+        let entries = ClockCountdownFetcher.compute(&ctx(
+            Some(Shape::Entries),
+            "target = \"invalid\"\ntarget_label = \"Ship\"",
+        ));
+        let Body::Text(text) = entries.body else {
+            panic!("expected text fallback")
+        };
+        assert_eq!(text.value, "Ship: invalid target");
+
+        let block = ClockCountdownFetcher.compute(&ctx(Some(Shape::TextBlock), ""));
+        let Body::Text(text) = block.body else {
+            panic!("expected text fallback")
+        };
+        assert_eq!(text.value, "no target configured");
+    }
+
+    #[test]
+    fn multi_target_text_block_formats_each_target_line() {
+        let p = ClockCountdownFetcher.compute(&ctx(
+            Some(Shape::TextBlock),
+            r#"targets = [{label = "A", target = "invalid"}, {label = "B", target = "2000-01-01"}]"#,
+        ));
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected text block")
+        };
+        assert_eq!(d.lines, vec!["A: invalid target", "B: passed"]);
     }
 
     #[test]
@@ -410,6 +497,72 @@ mod tests {
         };
         assert_eq!(d.value, 0.0);
         assert_eq!(d.label.as_deref(), Some("no target configured"));
+    }
+
+    #[test]
+    fn ratio_body_uses_first_target_label_and_handles_invalid_targets() {
+        let now = at(2026, 1, 1, 0, 0, 0);
+        let targets = Some(vec![TargetEntry {
+            label: "Ship".into(),
+            target: "2026-01-16".into(),
+        }]);
+        let Body::Ratio(ratio) = ratio_body(&now, Some("2026-01-16"), None, &targets, 30) else {
+            panic!("expected ratio")
+        };
+        assert!((ratio.value - 0.5).abs() < 1e-6);
+        assert_eq!(ratio.label.as_deref(), Some("Ship · 15d 0h"));
+
+        let Body::Ratio(invalid) = ratio_body(&now, Some("not-a-date"), None, &None, 30) else {
+            panic!("expected ratio")
+        };
+        assert_eq!(invalid.value, 0.0);
+        assert_eq!(invalid.label.as_deref(), Some("invalid target"));
+    }
+
+    #[test]
+    fn approach_ratio_returns_zero_for_non_positive_window() {
+        let now = at(2026, 1, 1, 0, 0, 0);
+        let target = at(2026, 1, 2, 0, 0, 0);
+        assert_eq!(approach_ratio(&now, &target, 0), 0.0);
+    }
+
+    #[test]
+    fn calendar_body_falls_back_to_now_and_filters_invalid_or_other_month_targets() {
+        let now = at(2026, 4, 15, 0, 0, 0);
+        let targets = Some(vec![
+            TargetEntry {
+                label: "A".into(),
+                target: "2026-04-29".into(),
+            },
+            TargetEntry {
+                label: "B".into(),
+                target: "invalid".into(),
+            },
+            TargetEntry {
+                label: "C".into(),
+                target: "2026-05-01".into(),
+            },
+        ]);
+        let Body::Calendar(calendar) = calendar_body(&now, None, &targets) else {
+            panic!("expected calendar")
+        };
+        assert_eq!(calendar.year, 2026);
+        assert_eq!(calendar.month, 4);
+        assert_eq!(calendar.day, Some(15));
+        assert_eq!(calendar.events, vec![29]);
+    }
+
+    #[test]
+    fn parse_target_accepts_rfc3339_and_date_only() {
+        assert_eq!(parse_target("2026-12-31"), Some(at(2026, 12, 31, 0, 0, 0)));
+        assert_eq!(
+            parse_target("2026-12-31T18:00:00+09:00")
+                .unwrap()
+                .offset()
+                .local_minus_utc(),
+            9 * 60 * 60
+        );
+        assert!(parse_target("not-a-date").is_none());
     }
 
     #[test]

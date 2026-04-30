@@ -1065,9 +1065,10 @@ fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
 mod tests {
     use super::*;
     use crate::layout::Layout as LayoutTree;
-    use crate::payload::{Body, TextBlockData, TextData};
+    use crate::payload::{Body, ErrorKind, TextBlockData, TextData};
     use async_trait::async_trait;
     use ratatui::{Terminal, backend::TestBackend};
+    use std::ffi::{OsStr, OsString};
 
     fn text_payload(line: &str) -> Payload {
         Payload {
@@ -1097,6 +1098,41 @@ mod tests {
         (0..buf.area.width)
             .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
             .collect()
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: Option<&OsStr>) -> Self {
+            let previous = std::env::var_os(key);
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     #[test]
@@ -1184,6 +1220,37 @@ mod tests {
     }
 
     #[test]
+    fn draw_wrapper_renders_payload_into_terminal() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("via draw"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(40, 3);
+        let mut terminal = make_terminal(backend, 3).unwrap();
+        let theme = Theme::default();
+        let loading = HashMap::new();
+
+        draw(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            &General::default(),
+            (0, 0),
+            0,
+            &loading,
+        )
+        .unwrap();
+
+        let buf = terminal.backend().buffer().clone();
+        let joined: String = (0..buf.area.height).map(|y| row_text(&buf, y)).collect();
+        assert!(joined.contains("via draw"));
+    }
+
+    #[test]
     fn copy_rows_copies_vertical_slice() {
         let mut src = Buffer::empty(Rect::new(0, 0, 4, 4));
         src.set_string(0, 0, "AAAA", Style::default());
@@ -1205,6 +1272,17 @@ mod tests {
         copy_rows(&src, 0..1, &mut dst);
         assert_eq!(dst.cell((2, 5)).unwrap().symbol(), "X");
         assert_eq!(dst.cell((4, 5)).unwrap().symbol(), "Z");
+    }
+
+    #[test]
+    fn copy_rows_stops_when_destination_fills_up() {
+        let mut src = Buffer::empty(Rect::new(0, 0, 4, 3));
+        src.set_string(0, 0, "AAAA", Style::default());
+        src.set_string(0, 1, "BBBB", Style::default());
+        src.set_string(0, 2, "CCCC", Style::default());
+        let mut dst = Buffer::empty(Rect::new(0, 0, 4, 1));
+        copy_rows(&src, 0..3, &mut dst);
+        assert_eq!(row_text(&dst, 0), "AAAA");
     }
 
     #[test]
@@ -1233,6 +1311,23 @@ mod tests {
         );
         assert!(row_text(&buf, 0).starts_with("r0"));
         assert!(row_text(&buf, 5).starts_with("r5"));
+    }
+
+    #[test]
+    fn paint_viewport_bg_leaves_reset_background_untouched() {
+        let backend = TestBackend::new(2, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme {
+            bg: Color::Reset,
+            ..Theme::default()
+        };
+        terminal
+            .draw(|f| paint_viewport_bg(f, f.area(), &theme))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer().cell((0, 0)).unwrap().bg,
+            Color::Reset
+        );
     }
 
     #[test]
@@ -1544,6 +1639,74 @@ mod tests {
         assert!(fresh.is_empty());
     }
 
+    #[tokio::test]
+    async fn fetch_all_returns_payloads_without_cache_storage() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("greeting", "Hi!")];
+
+        let fresh = fetch_all(
+            &registry,
+            None,
+            &widgets,
+            &HashMap::new(),
+            &General::default(),
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert_eq!(fresh.get("greeting"), Some(&text_block_payload(&["Hi!"])));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_ignores_panicking_fetcher_tasks() {
+        struct Panics;
+
+        #[async_trait]
+        impl fetcher::Fetcher for Panics {
+            fn name(&self) -> &str {
+                "panics"
+            }
+            fn safety(&self) -> fetcher::Safety {
+                fetcher::Safety::Safe
+            }
+            fn description(&self) -> &'static str {
+                "test fixture"
+            }
+            fn shapes(&self) -> &[Shape] {
+                &[Shape::Text]
+            }
+            async fn fetch(
+                &self,
+                _: &fetcher::FetchContext,
+            ) -> Result<Payload, fetcher::FetchError> {
+                panic!("join error fixture")
+            }
+        }
+
+        let fixture = Panics;
+        assert_eq!(fetcher::Fetcher::name(&fixture), "panics");
+        assert_eq!(fetcher::Fetcher::safety(&fixture), fetcher::Safety::Safe);
+        assert_eq!(fetcher::Fetcher::description(&fixture), "test fixture");
+        assert_eq!(fetcher::Fetcher::shapes(&fixture), &[Shape::Text]);
+
+        let mut registry = Registry::default();
+        registry.register(std::sync::Arc::new(fixture));
+        let widgets = vec![widget("x", "panics")];
+        let fresh = fetch_all(
+            &registry,
+            None,
+            &widgets,
+            &HashMap::new(),
+            &General::default(),
+            &HashMap::new(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(fresh.is_empty());
+    }
+
     /// Returning `Err` from a fetcher must surface a placeholder payload *and* write the failure
     /// to the cache (with `CacheEntryKind::Err` and a short TTL) so the next render sees the `⚠`
     /// instead of stale success data. Regression for #95 — pre-fix this path silently dropped the
@@ -1574,8 +1737,13 @@ mod tests {
             }
         }
 
+        let fixture = Boom;
+        assert_eq!(fetcher::Fetcher::safety(&fixture), fetcher::Safety::Safe);
+        assert_eq!(fetcher::Fetcher::description(&fixture), "test fixture");
+        assert_eq!(fetcher::Fetcher::shapes(&fixture), &[Shape::Text]);
+
         let mut registry = Registry::default();
-        registry.register(std::sync::Arc::new(Boom));
+        registry.register(std::sync::Arc::new(fixture));
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let widgets = vec![widget("x", "boom")];
@@ -1592,17 +1760,12 @@ mod tests {
         .await;
 
         let payload = fresh.get("x").expect("error must surface as a payload");
-        match &payload.body {
-            Body::Error(err) => {
-                assert_eq!(err.kind, crate::payload::ErrorKind::Fetch);
-                assert!(
-                    err.message.contains("boom"),
-                    "error message must appear in the placeholder: {:?}",
-                    err.message
-                );
-            }
-            other => panic!("expected Body::Error error placeholder, got {other:?}"),
-        }
+        assert!(matches!(
+            &payload.body,
+            Body::Error(err)
+                if err.kind == crate::payload::ErrorKind::Fetch
+                    && err.message.contains("boom")
+        ));
 
         let key = registry
             .get_cached("boom")
@@ -1647,8 +1810,13 @@ mod tests {
             }
         }
 
+        let fixture = Slow;
+        assert_eq!(fetcher::Fetcher::safety(&fixture), fetcher::Safety::Safe);
+        assert_eq!(fetcher::Fetcher::description(&fixture), "test fixture");
+        assert_eq!(fetcher::Fetcher::shapes(&fixture), &[Shape::Text]);
+
         let mut registry = Registry::default();
-        registry.register(std::sync::Arc::new(Slow));
+        registry.register(std::sync::Arc::new(fixture));
         let dir = tempfile::tempdir().unwrap();
         let cache = Cache::open(dir.path().to_path_buf()).unwrap();
         let widgets = vec![widget("x", "slow")];
@@ -1665,17 +1833,12 @@ mod tests {
         .await;
 
         let payload = fresh.get("x").expect("timeout must surface as a payload");
-        match &payload.body {
-            Body::Error(err) => {
-                assert_eq!(err.kind, crate::payload::ErrorKind::Timeout);
-                assert!(
-                    err.message.contains("timed out"),
-                    "timeout message must appear: {:?}",
-                    err.message
-                );
-            }
-            other => panic!("expected Body::Error timeout placeholder, got {other:?}"),
-        }
+        assert!(matches!(
+            &payload.body,
+            Body::Error(err)
+                if err.kind == crate::payload::ErrorKind::Timeout
+                    && err.message.contains("timed out")
+        ));
 
         let key = registry
             .get_cached("slow")
@@ -1688,6 +1851,78 @@ mod tests {
             ));
         let stored = cache.load(&key).expect("timeout entry must be cached");
         assert_eq!(stored.kind, CacheEntryKind::Timeout);
+    }
+
+    #[test]
+    fn fetch_and_persist_only_writes_safe_cached_widgets() {
+        let _lock = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join(".splashboard.toml");
+        std::fs::write(&config_path, "").unwrap();
+        let hash = crate::trust::hash_file(&config_path).unwrap();
+        let home = dir.path().join("home");
+        let _home = EnvGuard::set("SPLASHBOARD_HOME", Some(home.as_os_str()));
+        let _trust_all = EnvGuard::set("SPLASHBOARD_TRUST_ALL", None);
+
+        let cached = static_widget("cached", "Hi!");
+        let config = Config {
+            widgets: vec![
+                cached.clone(),
+                widget("clock", "clock"),
+                widget("missing", "no_such_fetcher"),
+                WidgetConfig {
+                    id: "invalid".into(),
+                    fetcher: "basic_static".into(),
+                    render: Some(RenderSpec::Short("grid_calendar".into())),
+                    format: Some("bad".into()),
+                    refresh_interval: Some(60),
+                    ..Default::default()
+                },
+                WidgetConfig {
+                    id: "feed".into(),
+                    fetcher: "rss".into(),
+                    options: Some(
+                        toml::toml! {
+                            url = "https://example.com/feed.xml"
+                        }
+                        .into(),
+                    ),
+                    refresh_interval: Some(60),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fetch_and_persist(&config, Some((&config_path, &hash))));
+
+        let cache = Cache::open_default().unwrap();
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
+        let key = registry
+            .get_cached("basic_static")
+            .unwrap()
+            .cache_key(&fetch_context(
+                &cached,
+                &General::default(),
+                shapes.get(&cached.id).copied(),
+                Duration::from_secs(0),
+            ));
+        let entry = cache.load(&key).expect("cached widget must be persisted");
+        assert_eq!(entry.kind, CacheEntryKind::Ok);
+        assert_eq!(entry.payload, text_block_payload(&["Hi!"]));
+
+        let json_files = std::fs::read_dir(crate::paths::cache_dir().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("json"))
+            .count();
+        assert_eq!(json_files, 1);
     }
 
     fn widget_with_render(id: &str, fetcher: &str, renderer: Option<&str>) -> WidgetConfig {
@@ -1754,6 +1989,17 @@ mod tests {
     }
 
     #[test]
+    fn derive_shape_uses_renderer_first_shape_when_fetcher_unknown() {
+        let registry = Registry::with_builtins();
+        let render_registry = render::Registry::with_builtins();
+        let w = widget_with_render("t", "definitely_not_a_fetcher", Some("grid_calendar"));
+        assert_eq!(
+            derive_shape(&w, &registry, &render_registry),
+            Some(Shape::Calendar)
+        );
+    }
+
+    #[test]
     fn partition_by_shape_support_keeps_widget_with_compatible_renderer() {
         let registry = Registry::with_builtins();
         let widgets = vec![widget_with_render(
@@ -1763,6 +2009,15 @@ mod tests {
         )];
         let shapes = single_shape("d", Shape::Ratio);
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
+        assert_eq!(valid.len(), 1);
+        assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn partition_by_shape_support_passes_through_when_shape_is_missing() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget_with_render("clock", "clock", Some("text_plain"))];
+        let (valid, invalid) = partition_by_shape_support(&widgets, &HashMap::new(), &registry);
         assert_eq!(valid.len(), 1);
         assert!(invalid.is_empty());
     }
@@ -1834,17 +2089,79 @@ mod tests {
             &mut payloads,
         );
         let payload = payloads.get("typo").expect("unknown fetcher must surface");
-        match &payload.body {
-            Body::Error(err) => {
-                assert_eq!(err.kind, crate::payload::ErrorKind::UnknownFetcher);
-                assert!(
-                    err.message.contains("no_such_fetcher"),
-                    "placeholder must mention the unknown fetcher name: {:?}",
-                    err.message
-                );
-            }
-            other => panic!("expected Body::Error placeholder, got {other:?}"),
-        }
+        assert!(matches!(
+            &payload.body,
+            Body::Error(err)
+                if err.kind == crate::payload::ErrorKind::UnknownFetcher
+                    && err.message.contains("no_such_fetcher")
+        ));
+    }
+
+    #[test]
+    fn refresh_payloads_reapplies_gated_unknown_and_shape_mismatch_placeholders() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Some(Cache::open(dir.path().to_path_buf()).unwrap());
+        let registry = Registry::with_builtins();
+        let cached_widget = static_widget("cached", "ignored");
+        let key = registry
+            .get_cached("basic_static")
+            .unwrap()
+            .cache_key(&fetch_context(
+                &cached_widget,
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
+        cache
+            .as_ref()
+            .unwrap()
+            .store(&key, &CacheEntry::new(text_payload("fresh"), 60))
+            .unwrap();
+
+        let gated = vec![widget("locked", "rss")];
+        let unknown = vec![widget("typo", "no_such_fetcher")];
+        let shape_invalid = vec![(
+            widget("bad", "basic_static"),
+            ShapeMismatch {
+                fetcher: "basic_static".into(),
+                requested: Shape::Calendar,
+            },
+        )];
+        let buckets = WidgetBuckets {
+            cached: std::slice::from_ref(&cached_widget),
+            gated: &gated,
+            unknown: &unknown,
+            shape_invalid: &shape_invalid,
+        };
+        let mut payloads = HashMap::from([
+            ("locked".into(), text_payload("stale")),
+            ("typo".into(), text_payload("stale")),
+            ("bad".into(), text_payload("stale")),
+        ]);
+
+        let entries = refresh_payloads(
+            &cache,
+            &registry,
+            &buckets,
+            &General::default(),
+            &HashMap::new(),
+            &mut payloads,
+        );
+
+        assert!(entries.contains_key("cached"));
+        assert_eq!(payloads.get("cached"), Some(&text_payload("fresh")));
+        assert!(matches!(
+            payloads.get("locked").map(|payload| &payload.body),
+            Some(Body::Error(err)) if err.kind == ErrorKind::RequiresTrust
+        ));
+        assert!(matches!(
+            payloads.get("typo").map(|payload| &payload.body),
+            Some(Body::Error(err)) if err.kind == ErrorKind::UnknownFetcher
+        ));
+        assert!(matches!(
+            payloads.get("bad").map(|payload| &payload.body),
+            Some(Body::Error(err)) if err.kind == ErrorKind::ShapeMismatch
+        ));
     }
 
     #[test]
@@ -1862,6 +2179,62 @@ mod tests {
         let (valid, invalid) = partition_by_shape_support(&widgets, &shapes, &registry);
         assert_eq!(valid.len(), 3);
         assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn split_by_fetcher_kind_and_compute_realtime_payloads_use_only_realtime_widgets() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![widget("clock", "clock"), static_widget("static", "cached")];
+        let (cached, realtime) = split_by_fetcher_kind(&widgets, &registry);
+        assert_eq!(
+            cached.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
+            vec!["static"]
+        );
+        assert_eq!(
+            realtime.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
+            vec!["clock"]
+        );
+
+        let payloads = compute_realtime_payloads(
+            &registry,
+            &widgets,
+            &General::default(),
+            &single_shape("clock", Shape::Calendar),
+        );
+        assert_eq!(payloads.len(), 1);
+        assert!(matches!(
+            payloads.get("clock").map(|payload| &payload.body),
+            Some(Body::Calendar(_))
+        ));
+    }
+
+    #[test]
+    fn load_entries_without_cache_returns_empty() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("static", "cached")];
+        let entries = load_entries(
+            None,
+            &registry,
+            &widgets,
+            &General::default(),
+            &HashMap::new(),
+        );
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn render_specs_collect_only_widgets_with_explicit_renderers() {
+        let widgets = vec![
+            widget_with_render("plain", "clock", None),
+            widget_with_render("fancy", "clock", Some("text_plain")),
+        ];
+        let specs = render_specs(&widgets);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(
+            specs.get("fancy").map(RenderSpec::renderer_name),
+            Some("text_plain")
+        );
+        assert!(!specs.contains_key("plain"));
     }
 
     #[test]

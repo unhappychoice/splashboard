@@ -247,6 +247,112 @@ mod tests {
         }
     }
 
+    fn buffer_text(buf: &Buffer) -> String {
+        (buf.area.top()..buf.area.bottom())
+            .map(|y| {
+                (buf.area.left()..buf.area.right())
+                    .map(|x| {
+                        buf.cell((x, y))
+                            .expect("buffer_text iterates in-bounds coordinates")
+                            .symbol()
+                            .to_string()
+                    })
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn renderer_contract_and_helpers_cover_calendar_surface() {
+        let renderer = GridCalendarRenderer;
+        let months = [
+            Month::January,
+            Month::February,
+            Month::March,
+            Month::April,
+            Month::May,
+            Month::June,
+            Month::July,
+            Month::August,
+            Month::September,
+            Month::October,
+            Month::November,
+            Month::December,
+        ];
+        assert_eq!(renderer.name(), "grid_calendar");
+        assert!(renderer.description().contains("Month-view grid"));
+        assert_eq!(renderer.accepts(), &[Shape::Calendar]);
+        assert_eq!(
+            renderer
+                .color_keys()
+                .iter()
+                .map(|key| key.name)
+                .collect::<Vec<_>>(),
+            COLOR_KEYS.iter().map(|key| key.name).collect::<Vec<_>>()
+        );
+        assert_eq!(renderer.option_schemas().len(), 2);
+        assert_eq!(renderer.option_schemas()[0].name, "week_start");
+        assert_eq!(renderer.option_schemas()[1].name, "marker");
+        assert_eq!(to_alignment(Some("center")), Alignment::Center);
+        assert_eq!(to_alignment(Some("right")), Alignment::Right);
+        assert_eq!(to_alignment(Some("bogus")), Alignment::Left);
+        assert!(
+            months
+                .iter()
+                .enumerate()
+                .all(|(idx, month)| month_from_u8(idx as u8 + 1) == Some(*month))
+        );
+        assert_eq!(month_from_u8(0), None);
+        assert_eq!(month_from_u8(13), None);
+    }
+
+    #[test]
+    fn aligned_area_respects_available_width_and_alignment() {
+        let area = Rect {
+            x: 4,
+            y: 1,
+            width: 30,
+            height: 8,
+        };
+        assert_eq!(
+            aligned_area(area, None),
+            Rect {
+                width: MONTHLY_GRID_WIDTH,
+                ..area
+            }
+        );
+        assert_eq!(
+            aligned_area(area, Some("center")),
+            Rect {
+                x: 9,
+                width: MONTHLY_GRID_WIDTH,
+                ..area
+            }
+        );
+        assert_eq!(
+            aligned_area(area, Some("right")),
+            Rect {
+                x: 13,
+                width: MONTHLY_GRID_WIDTH,
+                ..area
+            }
+        );
+        assert_eq!(
+            aligned_area(
+                Rect {
+                    width: MONTHLY_GRID_WIDTH,
+                    ..area
+                },
+                Some("center")
+            ),
+            Rect {
+                width: MONTHLY_GRID_WIDTH,
+                ..area
+            }
+        );
+    }
+
     #[test]
     fn renders_a_month() {
         let registry = Registry::with_builtins();
@@ -287,25 +393,20 @@ mod tests {
             terminal.insert_before(8, |_| {}).unwrap();
         }
         let theme = Theme::default();
-        let p = payload(2026, 4, Some(25));
-        let Body::Calendar(data) = &p.body else {
-            unreachable!()
+        let data = CalendarData {
+            year: 2026,
+            month: 4,
+            day: Some(25),
+            events: Vec::new(),
         };
         terminal
             .draw(|f| {
                 let area = f.area();
-                render_calendar(f, area, data, &RenderOptions::default(), &theme);
+                render_calendar(f, area, &data, &RenderOptions::default(), &theme);
             })
             .unwrap();
         let buf = terminal.backend().buffer().clone();
-        let mut dump = String::new();
-        for y in 0..buf.area.height {
-            let row: String = (0..buf.area.width)
-                .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
-                .collect();
-            dump.push_str(&row);
-            dump.push('\n');
-        }
+        let dump = buffer_text(&buf);
         assert!(dump.contains("April"), "expected month header:\n{dump}");
         assert!(
             dump.contains("25"),
@@ -332,6 +433,45 @@ mod tests {
     }
 
     #[test]
+    fn renderer_accepts_reserved_options_and_invalid_day_noops() {
+        let backend = TestBackend::new(24, 9);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let renderer = GridCalendarRenderer;
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        let data = CalendarData {
+            year: 2026,
+            month: 4,
+            day: Some(21),
+            events: vec![5, 31],
+        };
+        let body = Body::Calendar(data.clone());
+        let opts = RenderOptions::default()
+            .with_extra("week_start", "mon")
+            .with_extra("marker", "*");
+        terminal
+            .draw(|f| renderer.render(f, f.area(), &body, &opts, &theme, &registry))
+            .unwrap();
+        assert!(buffer_text(terminal.backend().buffer()).contains("April"));
+
+        terminal
+            .draw(|f| {
+                render_calendar(
+                    f,
+                    f.area(),
+                    &CalendarData {
+                        day: Some(31),
+                        ..data
+                    },
+                    &RenderOptions::default(),
+                    &theme,
+                );
+            })
+            .unwrap();
+        assert!(!buffer_text(terminal.backend().buffer()).contains("April"));
+    }
+
+    #[test]
     fn preserves_layout_painted_bg() {
         // Regression: rendering the calendar through the offscreen TestBackend buffer used to
         // overwrite every dst cell wholesale, including the bg the layout had just painted
@@ -342,15 +482,17 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let theme = Theme::default();
         let painted = Color::Rgb(0x12, 0x34, 0x56);
-        let p = payload(2026, 4, Some(21));
-        let Body::Calendar(data) = &p.body else {
-            unreachable!()
+        let data = CalendarData {
+            year: 2026,
+            month: 4,
+            day: Some(21),
+            events: Vec::new(),
         };
         terminal
             .draw(|f| {
                 let area = f.area();
                 f.render_widget(Block::default().style(Style::default().bg(painted)), area);
-                render_calendar(f, area, data, &RenderOptions::default(), &theme);
+                render_calendar(f, area, &data, &RenderOptions::default(), &theme);
             })
             .unwrap();
         let buf = terminal.backend().buffer().clone();
@@ -366,5 +508,43 @@ mod tests {
             painted_count > 0,
             "expected the layout-painted bg to survive the calendar blit, found 0 cells"
         );
+    }
+
+    #[test]
+    fn blit_clips_to_target_and_uses_explicit_src_bg() {
+        let mut src = Buffer::empty(Rect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 2,
+        });
+        let mut dst = Buffer::empty(Rect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 1,
+        });
+        src.cell_mut((0, 0))
+            .unwrap()
+            .set_symbol("A")
+            .set_style(Style::default().bg(Color::Green));
+        src.cell_mut((1, 0)).unwrap().set_symbol("B");
+        src.cell_mut((0, 1)).unwrap().set_symbol("C");
+        dst.cell_mut((1, 0))
+            .unwrap()
+            .set_style(Style::default().bg(Color::Blue));
+        blit(
+            &src,
+            &mut dst,
+            Rect {
+                x: 1,
+                y: 0,
+                width: 2,
+                height: 2,
+            },
+        );
+        assert_eq!(dst.cell((0, 0)).unwrap().symbol(), " ");
+        assert_eq!(dst.cell((1, 0)).unwrap().symbol(), "A");
+        assert_eq!(dst.cell((1, 0)).unwrap().bg, Color::Green);
     }
 }

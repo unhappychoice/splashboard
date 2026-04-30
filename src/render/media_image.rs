@@ -193,9 +193,13 @@ fn load_image(path: &str) -> Result<DynamicImage, String> {
 
 #[cfg(test)]
 mod tests {
+    use image::{Rgba, RgbaImage};
+    use ratatui::{Terminal, backend::TestBackend};
+
     use super::*;
-    use crate::payload::{ImageData, Payload};
+    use crate::payload::{ImageData, Payload, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer};
+    use crate::theme::Theme;
 
     fn payload(path: &str) -> Payload {
         Payload {
@@ -207,6 +211,19 @@ mod tests {
     }
 
     #[test]
+    fn renderer_contract_exposes_image_surface() {
+        let renderer = MediaImageRenderer;
+        assert_eq!(renderer.name(), "media_image");
+        assert!(renderer.description().contains("kitty"));
+        assert_eq!(renderer.accepts(), &[Shape::Image]);
+        assert_eq!(renderer.color_keys().len(), 1);
+        assert_eq!(renderer.color_keys()[0].name, theme::TEXT.name);
+        assert_eq!(renderer.option_schemas().len(), 5);
+        assert_eq!(renderer.option_schemas()[0].name, "align");
+        assert_eq!(renderer.option_schemas()[1].name, "fit");
+    }
+
+    #[test]
     fn falls_back_to_text_when_path_missing() {
         let buf = render_to_buffer(&payload("/does/not/exist.png"), 40, 5);
         let content: String = (0..5)
@@ -214,6 +231,80 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(content.contains("image"));
+    }
+
+    #[test]
+    fn render_ignores_non_image_body() {
+        let backend = TestBackend::new(8, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                MediaImageRenderer.render(
+                    frame,
+                    frame.area(),
+                    &Body::Text(TextData {
+                        value: "ignored".into(),
+                    }),
+                    &RenderOptions::default(),
+                    &Theme::default(),
+                    &Registry::with_builtins(),
+                );
+            })
+            .unwrap();
+        let rendered = terminal.backend().buffer().clone();
+        let content: String = (0..rendered.area.height)
+            .map(|y| line_text(&rendered, y))
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(content.trim().is_empty());
+    }
+
+    #[test]
+    fn valid_png_renders_without_error_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.png");
+        RgbaImage::from_pixel(2, 2, Rgba([255, 0, 0, 255]))
+            .save(&path)
+            .unwrap();
+
+        let backend = TestBackend::new(8, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                assert!(
+                    render_image(
+                        frame,
+                        frame.area(),
+                        path.to_str().unwrap(),
+                        &RenderOptions::default()
+                    )
+                    .is_ok()
+                );
+            })
+            .unwrap();
+        let rendered = terminal.backend().buffer().clone();
+        let content: String = (0..rendered.area.height)
+            .map(|y| line_text(&rendered, y))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let painted = (0..rendered.area.height).any(|y| {
+            (0..rendered.area.width).any(|x| {
+                let style = rendered.cell((x, y)).unwrap().style();
+                style.fg.is_some() || style.bg.is_some()
+            })
+        });
+
+        assert!(!content.contains("[image"));
+        assert!(painted);
+    }
+
+    #[test]
+    fn load_image_reports_decode_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("not-an-image.png");
+        std::fs::write(&path, "plain text").unwrap();
+        let err = load_image(path.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("image decode"));
     }
 
     #[test]

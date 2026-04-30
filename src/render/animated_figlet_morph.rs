@@ -202,9 +202,44 @@ fn process_start() -> Instant {
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+    use std::time::Duration;
+
+    use ratatui::{Terminal, backend::TestBackend};
+
     use super::*;
     use crate::payload::{Payload, TextData};
-    use crate::render::{RenderSpec, test_utils::render_to_buffer_with_spec};
+    use crate::render::{
+        RenderSpec,
+        test_utils::{line_text, render_to_buffer_with_spec},
+    };
+    use crate::theme::Theme;
+
+    fn text_body() -> Body {
+        Body::Text(TextData { value: "hi".into() })
+    }
+
+    #[test]
+    fn renderer_contract_exposes_description_theme_keys_and_options() {
+        let renderer = AnimatedFigletMorphRenderer;
+        assert!(renderer.description().contains("crossfading"));
+        assert_eq!(
+            renderer
+                .color_keys()
+                .iter()
+                .map(|key| key.name)
+                .collect::<Vec<_>>(),
+            vec!["text", "panel_title"]
+        );
+        assert_eq!(
+            renderer
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            vec!["font_sequence", "duration_ms", "color", "align"]
+        );
+    }
 
     #[test]
     fn phase_for_picks_last_on_overflow() {
@@ -227,6 +262,11 @@ mod tests {
     }
 
     #[test]
+    fn phase_for_guards_zero_length_phases() {
+        assert_eq!(phase_for(0, 2, 3), (2, 0, 1));
+    }
+
+    #[test]
     fn sequence_falls_back_to_default_when_empty() {
         let opts = RenderOptions::default().with_extra("font_sequence", Vec::<String>::new());
         let want: Vec<String> = DEFAULT_SEQUENCE.iter().map(|s| (*s).to_string()).collect();
@@ -234,21 +274,107 @@ mod tests {
     }
 
     #[test]
-    fn renders_without_panic() {
+    fn sequence_uses_custom_font_sequence_when_present() {
+        let opts = RenderOptions::default().with_extra("font_sequence", vec!["small", "doom"]);
+        assert_eq!(
+            sequence(&opts),
+            vec!["small".to_string(), "doom".to_string()]
+        );
+    }
+
+    #[test]
+    fn natural_height_returns_one_without_text_ascii() {
+        let renderer = AnimatedFigletMorphRenderer;
+        assert_eq!(
+            renderer.natural_height(
+                &text_body(),
+                &RenderOptions::default(),
+                60,
+                &Registry::default()
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn natural_height_uses_tallest_font_in_sequence() {
+        let renderer = AnimatedFigletMorphRenderer;
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default().with_extra("font_sequence", vec!["small", "banner"]);
+        let text_ascii = registry.get("text_ascii").unwrap();
+        let expected = ["small", "banner"]
+            .into_iter()
+            .map(|font| {
+                text_ascii.natural_height(
+                    &text_body(),
+                    &text_ascii_opts(&opts, font),
+                    60,
+                    &registry,
+                )
+            })
+            .max()
+            .unwrap();
+        assert_eq!(
+            renderer.natural_height(&text_body(), &opts, 60, &registry),
+            expected
+        );
+    }
+
+    #[test]
+    fn text_ascii_opts_forward_common_fields_and_font() {
+        let opts = RenderOptions {
+            align: Some("center".into()),
+            color: Some("panel_title".into()),
+            ..RenderOptions::default()
+        };
+        let forwarded = text_ascii_opts(&opts, "doom");
+        assert_eq!(forwarded.style.as_deref(), Some("figlet"));
+        assert_eq!(forwarded.align.as_deref(), Some("center"));
+        assert_eq!(forwarded.color.as_deref(), Some("panel_title"));
+        assert_eq!(forwarded.extra_str("font"), Some("doom"));
+    }
+
+    #[test]
+    fn render_returns_early_when_registry_lacks_text_ascii() {
+        let body = text_body();
+        let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        terminal
+            .draw(|frame| {
+                render_morph(
+                    frame,
+                    frame.area(),
+                    &body,
+                    &RenderOptions::default(),
+                    &Theme::default(),
+                    &Registry::default(),
+                );
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        assert!(line_text(&buffer, 0).trim().is_empty());
+    }
+
+    #[test]
+    fn render_skips_crossfade_after_duration_has_elapsed() {
+        process_start();
+        thread::sleep(Duration::from_millis(2));
         let payload = Payload {
             icon: None,
             status: None,
             format: None,
-            body: Body::Text(TextData { value: "hi".into() }),
+            body: text_body(),
         };
         let spec = RenderSpec::Full {
             type_name: "animated_figlet_morph".into(),
             options: RenderOptions {
-                duration_ms: Some(400),
+                duration_ms: Some(1),
                 ..RenderOptions::default()
             },
         };
         let registry = super::super::Registry::with_builtins();
-        let _ = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 60, 14);
+        let buffer = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 60, 14);
+        let has_visible_text =
+            (0..buffer.area.height).any(|y| !line_text(&buffer, y).trim().is_empty());
+        assert!(has_visible_text);
     }
 }

@@ -164,7 +164,46 @@ fn payload(body: Body) -> Payload {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
 
     #[test]
     fn metadata_as_text_joins_non_empty_fields_with_middot() {
@@ -206,6 +245,94 @@ mod tests {
             Body::Entries(d) => assert_eq!(d.items.len(), 3),
             _ => panic!("expected entries sample"),
         }
+    }
+
+    #[test]
+    fn metadata_as_lines_preserves_visible_order() {
+        let m = Metadata {
+            slug: Some("foo/bar".into()),
+            description: Some("a thing".into()),
+            license: Some("ISC".into()),
+        };
+        assert_eq!(m.as_lines(), vec!["foo/bar", "a thing", "ISC"]);
+    }
+
+    #[test]
+    fn fetcher_metadata_cache_key_and_samples_match_contract() {
+        let fetcher = GithubRepo;
+        let default_key = fetcher.cache_key(&FetchContext::default());
+        let shaped_key = fetcher.cache_key(&FetchContext {
+            format: Some("markdown".into()),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::Text),
+            ..Default::default()
+        });
+
+        assert_eq!(fetcher.name(), "github_repo");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("SPDX license"));
+        assert_eq!(
+            fetcher.shapes(),
+            &[Shape::Entries, Shape::TextBlock, Shape::Text]
+        );
+        assert_eq!(fetcher.default_shape(), Shape::Entries);
+        assert_eq!(default_key, shaped_key);
+        assert!(default_key.starts_with("github_repo-"));
+
+        let Some(Body::TextBlock(block)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(
+            block.lines,
+            vec![
+                "unhappychoice/splashboard",
+                "terminal splash renderer",
+                "ISC"
+            ]
+        );
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        assert_eq!(
+            text.value,
+            "unhappychoice/splashboard · terminal splash renderer · ISC"
+        );
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
+    }
+
+    #[test]
+    fn entry_and_payload_helpers_preserve_body_shape() {
+        let row = entry("slug", "foo/bar");
+        assert_eq!(row.key, "slug");
+        assert_eq!(row.value.as_deref(), Some("foo/bar"));
+        assert!(row.status.is_none());
+
+        let wrapped = payload(Body::Text(TextData {
+            value: "foo/bar".into(),
+        }));
+        assert!(wrapped.icon.is_none());
+        assert!(wrapped.status.is_none());
+        assert!(wrapped.format.is_none());
+        assert!(matches!(wrapped.body, Body::Text(_)));
+    }
+
+    #[tokio::test]
+    async fn fetch_without_token_returns_auth_error_after_repo_resolution() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        let err = GithubRepo
+            .fetch(&FetchContext {
+                timeout: Duration::from_secs(1),
+                shape: Some(Shape::Text),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("GH_TOKEN / GITHUB_TOKEN not set")
+        ));
     }
 
     #[test]

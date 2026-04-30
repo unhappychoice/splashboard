@@ -250,4 +250,71 @@ mod tests {
             _ => panic!("expected ratio"),
         }
     }
+
+    #[test]
+    fn catalog_surface_matches_ratio_contract() {
+        let fetcher = ClockRatioFetcher;
+        let schemas = fetcher.option_schemas();
+        assert_eq!(fetcher.name(), "clock_ratio");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("progress-bar"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(schemas.len(), 2);
+        assert_eq!(schemas[0].name, "timezone");
+        assert_eq!(schemas[1].name, "period");
+        assert!(matches!(
+            fetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn invalid_options_return_placeholder_body() {
+        let p = ClockRatioFetcher.compute(&ctx("bogus = true"));
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder text block");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+        assert_eq!(d.lines[1], "check [widget.options] in config");
+    }
+
+    #[test]
+    fn total_units_cover_longer_period_lengths() {
+        let now = at(2024, 2, 29, 12, 30);
+        assert_eq!(total_units(&now, Period::Hour), 60);
+        assert_eq!(total_units(&now, Period::Week), 7);
+        assert_eq!(total_units(&now, Period::Month), 29);
+        assert_eq!(total_units(&now, Period::Quarter), 91);
+        assert_eq!(total_units(&now, Period::Year), 366);
+    }
+
+    #[test]
+    fn fraction_labels_cover_remaining_periods() {
+        let now = at(2026, 4, 22, 6, 0);
+        let hour = fraction(&now, Period::Hour);
+        let week = fraction(&now, Period::Week);
+        let month = fraction(&now, Period::Month);
+        let quarter = fraction(&now, Period::Quarter);
+        assert_eq!(hour.1, "hour");
+        assert_eq!(week.1, "week");
+        assert_eq!(month.1, "month");
+        assert_eq!(quarter.1, "quarter");
+        assert!((0.0..=1.0).contains(&hour.0));
+        assert!((0.0..=1.0).contains(&week.0));
+        assert!((0.0..=1.0).contains(&month.0));
+        assert!((0.0..=1.0).contains(&quarter.0));
+    }
+
+    #[test]
+    fn next_month_start_rolls_over_year_boundary() {
+        assert_eq!(
+            next_month_start(2026, 4),
+            NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()
+        );
+        assert_eq!(
+            next_month_start(2026, 12),
+            NaiveDate::from_ymd_opt(2027, 1, 1).unwrap()
+        );
+    }
 }

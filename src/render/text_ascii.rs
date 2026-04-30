@@ -330,10 +330,13 @@ fn pick_pixel_size(area: Rect) -> PixelSize {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::layout::Alignment;
+
     use super::*;
-    use crate::payload::{Payload, TextData};
+    use crate::payload::{Payload, TextBlockData, TextData};
     use crate::render::test_utils::render_to_buffer_with_spec;
     use crate::render::{Registry, RenderSpec};
+    use crate::theme::{self, Theme};
 
     fn payload(text: &str) -> Payload {
         Payload {
@@ -344,11 +347,35 @@ mod tests {
         }
     }
 
+    fn pixel_name(pixel: PixelSize) -> &'static str {
+        match pixel {
+            PixelSize::Full => "full",
+            PixelSize::Quadrant => "quadrant",
+            PixelSize::Sextant => "sextant",
+            _ => "other",
+        }
+    }
+
     #[test]
     fn default_style_uses_blocks() {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("text_ascii".into());
         let _ = render_to_buffer_with_spec(&payload("12:34"), Some(&spec), &registry, 40, 10);
+    }
+
+    #[test]
+    fn renderer_exposes_docs_metadata() {
+        let renderer = TextAsciiRenderer;
+        assert_eq!(
+            renderer.description(),
+            "Chunky multi-row big-text via half-block glyphs (`style = \"blocks\"`) or classic FIGlet ASCII art (`style = \"figlet\"`). The hero treatment for short strings like a clock or greeting; use `text_plain` for anything multi-line."
+        );
+        assert_eq!(renderer.accepts(), &[Shape::Text]);
+        assert_eq!(renderer.option_schemas()[0].name, "style");
+        assert_eq!(renderer.option_schemas()[4].name, "align");
+        assert_eq!(renderer.color_keys().len(), COLOR_KEYS.len());
+        assert_eq!(renderer.color_keys()[0].name, theme::TEXT.name);
+        assert_eq!(renderer.color_keys()[1].name, theme::PANEL_TITLE.name);
     }
 
     #[test]
@@ -378,7 +405,7 @@ mod tests {
             "doom",
         ] {
             let text = figlet_wrapped("hi", Some(name), 200, 200);
-            assert!(!text.is_empty(), "font {name} produced empty output");
+            assert!(!text.is_empty());
         }
     }
 
@@ -400,7 +427,7 @@ mod tests {
         let wrapped = figlet_wrapped("Windows Terminal", Some("ansi_shadow"), 60, 200)
             .lines()
             .count();
-        assert!(wrapped > joined, "expected wrap to produce more lines");
+        assert!(wrapped > joined);
     }
 
     #[test]
@@ -422,7 +449,6 @@ mod tests {
 
     #[test]
     fn color_option_resolves_theme_token() {
-        use crate::theme::Theme;
         let theme = Theme::default();
         let opts = RenderOptions {
             color: Some("panel_title".into()),
@@ -437,16 +463,59 @@ mod tests {
     }
 
     #[test]
-    fn parse_pixel_size_accepts_known_values() {
-        assert!(matches!(parse_pixel_size("full"), Some(PixelSize::Full)));
-        assert!(matches!(
-            parse_pixel_size("quadrant"),
-            Some(PixelSize::Quadrant)
-        ));
-        assert!(matches!(
-            parse_pixel_size("sextant"),
-            Some(PixelSize::Sextant)
-        ));
+    fn helper_branches_cover_geometry_alignment_and_pixel_size() {
+        assert_eq!(blocks_height(Some("full")), 8);
+        assert_eq!(blocks_height(Some("quadrant")), 4);
+        assert_eq!(blocks_height(Some("sextant")), 3);
+        assert_eq!(blocks_height(Some("bogus")), 4);
+        assert_eq!(blocks_width("hi", PixelSize::Sextant), 8);
+        let area = Rect::new(2, 3, 20, 4);
+        assert_eq!(align_rect(area, 8, Some("center")), Rect::new(8, 3, 8, 4));
+        assert_eq!(align_rect(area, 8, Some("right")), Rect::new(14, 3, 8, 4));
+        assert_eq!(align_rect(area, 0, Some("center")), area);
+        assert_eq!(align_rect(area, area.width, Some("right")), area);
+        assert_eq!(parse_alignment(Some("center")), Alignment::Center);
+        assert_eq!(parse_alignment(Some("right")), Alignment::Right);
+        assert_eq!(parse_alignment(Some("bogus")), Alignment::Left);
+        assert_eq!(pixel_name(pick_pixel_size(Rect::new(0, 0, 20, 8))), "full");
+        assert_eq!(
+            pixel_name(pick_pixel_size(Rect::new(0, 0, 20, 4))),
+            "quadrant"
+        );
+        assert_eq!(
+            pixel_name(pick_pixel_size(Rect::new(0, 0, 20, 2))),
+            "sextant"
+        );
+        assert_eq!(pixel_name(parse_pixel_size("full").unwrap()), "full");
+        assert_eq!(
+            pixel_name(parse_pixel_size("quadrant").unwrap()),
+            "quadrant"
+        );
+        assert_eq!(pixel_name(parse_pixel_size("sextant").unwrap()), "sextant");
         assert!(parse_pixel_size("bogus").is_none());
+    }
+
+    #[test]
+    fn natural_height_defaults_to_one_for_non_text_bodies() {
+        let body = Body::TextBlock(TextBlockData {
+            lines: vec!["not ascii".into()],
+        });
+        let renderer = TextAsciiRenderer;
+        let registry = Registry::with_builtins();
+        assert_eq!(
+            renderer.natural_height(&body, &RenderOptions::default(), 20, &registry),
+            1
+        );
+    }
+
+    #[test]
+    fn natural_height_uses_blocks_height_when_not_figlet() {
+        let renderer = TextAsciiRenderer;
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default().with_extra("pixel_size", "full");
+        assert_eq!(
+            renderer.natural_height(&payload("HI").body, &opts, 20, &registry),
+            8
+        );
     }
 }

@@ -310,6 +310,7 @@ mod tests {
     use crate::payload::{HeatmapData, Payload};
     use crate::render::test_utils::render_to_buffer_with_spec;
     use crate::render::{Registry, RenderSpec};
+    use ratatui::{buffer::Buffer, layout::Rect};
 
     fn payload(cells: Vec<Vec<u32>>) -> Payload {
         Payload {
@@ -332,9 +333,42 @@ mod tests {
     }
 
     #[test]
+    fn renderer_contract_exposes_heatmap_surface() {
+        let renderer = GridHeatmapRenderer;
+        assert_eq!(renderer.name(), "grid_heatmap");
+        assert_eq!(renderer.accepts(), [Shape::Heatmap]);
+        assert_eq!(
+            renderer
+                .color_keys()
+                .iter()
+                .map(|key| key.name)
+                .collect::<Vec<_>>(),
+            COLOR_KEYS.iter().map(|key| key.name).collect::<Vec<_>>(),
+        );
+        assert_eq!(
+            renderer
+                .option_schemas()
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+            OPTION_SCHEMAS
+                .iter()
+                .map(|schema| schema.name)
+                .collect::<Vec<_>>(),
+        );
+        assert!(renderer.description().contains("GitHub-contribution-style"));
+    }
+
+    #[test]
     fn empty_cells_no_panic() {
         let _ = render(vec![], 20, 7);
         let _ = render(vec![vec![]], 20, 7);
+    }
+
+    #[test]
+    fn zero_area_noops_without_panicking() {
+        let _ = render(vec![vec![1]], 0, 1);
+        let _ = render(vec![vec![1]], 2, 0);
     }
 
     #[test]
@@ -492,6 +526,34 @@ mod tests {
     }
 
     #[test]
+    fn align_right_shifts_grid_to_far_edge() {
+        let cells = vec![vec![5u32; 5]];
+        let p = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Heatmap(HeatmapData {
+                cells,
+                thresholds: None,
+                row_labels: None,
+                col_labels: None,
+            }),
+        };
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Full {
+            type_name: "grid_heatmap".into(),
+            options: RenderOptions {
+                align: Some("right".into()),
+                ..Default::default()
+            },
+        };
+        let buf = render_to_buffer_with_spec(&p, Some(&spec), &registry, 20, 1);
+        assert_eq!(buf.cell((9, 0)).unwrap().symbol(), " ");
+        assert_eq!(buf.cell((10, 0)).unwrap().symbol(), CELL_GLYPH);
+        assert_eq!(buf.cell((18, 0)).unwrap().symbol(), CELL_GLYPH);
+    }
+
+    #[test]
     fn align_defaults_to_left() {
         let cells = vec![vec![5u32; 5]];
         let p = Payload {
@@ -522,5 +584,40 @@ mod tests {
         };
         let t = resolve_thresholds(&data);
         assert_eq!(t, vec![2, 4, 6, 8]);
+    }
+
+    #[test]
+    fn short_threshold_lists_are_padded_monotonically() {
+        let data = HeatmapData {
+            cells: vec![vec![0, 5, 10]],
+            thresholds: Some(vec![7]),
+            row_labels: None,
+            col_labels: None,
+        };
+        assert_eq!(resolve_thresholds(&data), vec![7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn paint_col_labels_handles_missing_and_short_label_vectors() {
+        let theme = Theme::default();
+        let area = Rect::new(0, 0, 6, 1);
+        let data_without_labels = HeatmapData {
+            cells: vec![vec![1, 1, 1]],
+            thresholds: None,
+            row_labels: None,
+            col_labels: None,
+        };
+        let data_with_short_labels = HeatmapData {
+            cells: vec![vec![1, 1, 1]],
+            thresholds: None,
+            row_labels: None,
+            col_labels: Some(vec!["A".into()]),
+        };
+        let mut buf = Buffer::empty(area);
+
+        paint_col_labels(&mut buf, area, &data_without_labels, 3, 0, &theme);
+        paint_col_labels(&mut buf, area, &data_with_short_labels, 3, 0, &theme);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "A");
     }
 }

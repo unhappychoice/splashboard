@@ -217,10 +217,139 @@ fn repo_for_key(ctx: &FetchContext) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::time::Duration;
+
     use super::*;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
 
     fn raw(pairs: &[(&str, u64)]) -> BTreeMap<String, u64> {
         pairs.iter().map(|(k, v)| ((*k).into(), *v)).collect()
+    }
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>, format: Option<&str>) -> FetchContext {
+        FetchContext {
+            widget_id: "github-languages".into(),
+            format: format.map(str::to_string),
+            timeout: Duration::from_secs(1),
+            file_format: None,
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            timezone: None,
+            locale: None,
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn options_default_to_none() {
+        let opts = Options::default();
+        assert!(opts.repo.is_none());
+        assert!(opts.limit.is_none());
+    }
+
+    #[test]
+    fn options_deserialize_repo_and_limit() {
+        let raw: toml::Value = toml::from_str("repo = \"foo/bar\"\nlimit = 7").unwrap();
+        let opts: Options = raw.try_into().unwrap();
+        assert_eq!(opts.repo.as_deref(), Some("foo/bar"));
+        assert_eq!(opts.limit, Some(7));
+    }
+
+    #[test]
+    fn options_reject_unknown_keys() {
+        let raw: toml::Value = toml::from_str("repo = \"foo/bar\"\nbogus = true").unwrap();
+        assert!(raw.try_into::<Options>().is_err());
+    }
+
+    #[test]
+    fn fetcher_metadata_and_samples_cover_supported_shapes() {
+        let fetcher = GithubLanguages;
+        assert_eq!(fetcher.name(), "github_languages");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(
+            fetcher
+                .description()
+                .contains("Language byte-count breakdown")
+        );
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::Bars);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+        assert_eq!(fetcher.option_schemas()[0].name, "repo");
+        assert_eq!(fetcher.option_schemas()[1].name, "limit");
+
+        let Some(Body::Bars(bars)) = fetcher.sample_body(Shape::Bars) else {
+            panic!("expected bars sample");
+        };
+        assert_eq!(bars.bars[0].label, "Rust");
+        assert_eq!(bars.bars[1].value, 8_000);
+
+        let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
+            panic!("expected entries sample");
+        };
+        assert_eq!(entries.items[0].key, "Rust");
+        assert_eq!(entries.items[1].value.as_deref(), Some("8%"));
+
+        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(text.lines[2], "Shell  5.0%");
+
+        let Some(Body::MarkdownTextBlock(markdown)) = fetcher.sample_body(Shape::MarkdownTextBlock)
+        else {
+            panic!("expected markdown sample");
+        };
+        assert!(markdown.value.contains("**Rust**"));
+        assert!(markdown.value.contains("8.0%"));
+
+        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
+            panic!("expected text sample");
+        };
+        assert_eq!(text.value, "Rust 87% · TOML 8% · Shell 5%");
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
@@ -253,6 +382,12 @@ mod tests {
         let sorted = top_n(input, 5);
         assert_eq!(sorted.len(), 2);
         assert!(sorted.iter().all(|(k, _)| k != "other"));
+    }
+
+    #[test]
+    fn top_n_limit_one_collapses_everything_into_other() {
+        let input = raw(&[("A", 1000), ("B", 100), ("C", 10)]);
+        assert_eq!(top_n(input, 1), vec![("other".into(), 1110)]);
     }
 
     #[test]
@@ -293,6 +428,11 @@ mod tests {
     }
 
     #[test]
+    fn format_percent_short_guards_zero_total() {
+        assert_eq!(format_percent_short(0, 0), "0%");
+    }
+
+    #[test]
     fn build_body_text_emits_text_value() {
         let body = build_body(raw(&[("Rust", 870), ("TOML", 130)]), Shape::Text, 10);
         match body {
@@ -312,5 +452,130 @@ mod tests {
             }
             _ => panic!("expected bars"),
         }
+    }
+
+    #[test]
+    fn build_body_structural_and_textual_variants_cover_shape_branches() {
+        let input = raw(&[("Rust", 870), ("TOML", 130)]);
+
+        let entries = build_body(input.clone(), Shape::Entries, 10);
+        let text_block = build_body(input.clone(), Shape::TextBlock, 10);
+        let markdown = build_body(input, Shape::MarkdownTextBlock, 10);
+
+        let Body::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].value.as_deref(), Some("87.0%"));
+
+        let Body::TextBlock(text_block) = text_block else {
+            panic!("expected text block");
+        };
+        assert_eq!(text_block.lines[1], "TOML  13.0%");
+
+        let Body::MarkdownTextBlock(markdown) = markdown else {
+            panic!("expected markdown");
+        };
+        assert!(markdown.value.contains("- **Rust**"));
+    }
+
+    #[test]
+    fn cache_key_changes_with_repo_shape_and_format() {
+        let fetcher = GithubLanguages;
+        let base = ctx(
+            Some("repo = \"foo/bar\"\nlimit = 6"),
+            Some(Shape::Bars),
+            Some("compact"),
+        );
+        let same = ctx(
+            Some("repo = \"foo/bar\"\nlimit = 6"),
+            Some(Shape::Bars),
+            Some("compact"),
+        );
+        let other_repo = ctx(
+            Some("repo = \"foo/baz\"\nlimit = 6"),
+            Some(Shape::Bars),
+            Some("compact"),
+        );
+        let other_shape = ctx(
+            Some("repo = \"foo/bar\"\nlimit = 6"),
+            Some(Shape::Text),
+            Some("compact"),
+        );
+        let other_format = ctx(
+            Some("repo = \"foo/bar\"\nlimit = 6"),
+            Some(Shape::Bars),
+            Some("markdown"),
+        );
+
+        assert_eq!(fetcher.cache_key(&base), fetcher.cache_key(&same));
+        assert_ne!(fetcher.cache_key(&base), fetcher.cache_key(&other_repo));
+        assert_ne!(fetcher.cache_key(&base), fetcher.cache_key(&other_shape));
+        assert_ne!(fetcher.cache_key(&base), fetcher.cache_key(&other_format));
+    }
+
+    #[test]
+    fn repo_for_key_prefers_explicit_repo_option() {
+        assert_eq!(
+            repo_for_key(&ctx(Some("repo = \"foo/bar\""), None, None)),
+            "foo/bar"
+        );
+    }
+
+    #[test]
+    fn repo_for_key_falls_back_to_resolved_repo() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let expected = resolve_repo(None).unwrap().as_path();
+        assert_eq!(
+            repo_for_key(&ctx(None, Some(Shape::Entries), None)),
+            expected
+        );
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_options_before_repo_resolution() {
+        let fetcher = GithubLanguages;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"foo/bar\"\nlimit = \"many\""),
+            Some(Shape::Bars),
+            None,
+        )))
+        .expect_err("invalid options should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert!(message.contains("invalid options"));
+    }
+
+    #[test]
+    fn fetch_rejects_invalid_repo_before_auth_lookup() {
+        let fetcher = GithubLanguages;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"broken\"\nlimit = 99"),
+            Some(Shape::Entries),
+            None,
+        )))
+        .expect_err("invalid repo should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert_eq!(message, "invalid repo option: \"broken\"");
+    }
+
+    #[test]
+    fn fetch_without_token_surfaces_auth_error_after_repo_resolution() {
+        let _guard = EnvGuard::set(&[("GH_TOKEN", None), ("GITHUB_TOKEN", None)]);
+        let fetcher = GithubLanguages;
+        let err = run_async(fetcher.fetch(&ctx(
+            Some("repo = \"foo/bar\"\nlimit = 99"),
+            Some(Shape::TextBlock),
+            Some("compact"),
+        )))
+        .expect_err("missing token should fail");
+        let FetchError::Failed(message) = err else {
+            panic!("expected fetch failure");
+        };
+        assert_eq!(message, "GH_TOKEN / GITHUB_TOKEN not set");
     }
 }

@@ -596,11 +596,65 @@ fn render_error(frame: &mut Frame, area: Rect, msg: &str, theme: &Theme) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+
     use super::*;
 
     #[derive(serde::Deserialize)]
     struct Wrapper {
         render: RenderSpec,
+    }
+
+    struct DefaultingRenderer;
+
+    impl Renderer for DefaultingRenderer {
+        fn name(&self) -> &str {
+            "test_defaults"
+        }
+
+        fn description(&self) -> &'static str {
+            "Test renderer"
+        }
+
+        fn accepts(&self) -> &[Shape] {
+            &[Shape::Text]
+        }
+
+        fn render(
+            &self,
+            frame: &mut Frame,
+            area: Rect,
+            _body: &Body,
+            opts: &RenderOptions,
+            _theme: &Theme,
+            _registry: &Registry,
+        ) {
+            let text = format!(
+                "{}|{}",
+                opts.timezone.as_deref().unwrap_or("-"),
+                opts.locale.as_deref().unwrap_or("-")
+            );
+            frame.render_widget(ratatui::widgets::Paragraph::new(text), area);
+        }
+    }
+
+    fn render_to_buffer_with_general(
+        payload: &crate::payload::Payload,
+        spec: Option<&RenderSpec>,
+        registry: &Registry,
+        general: &crate::config::General,
+        width: u16,
+        height: u16,
+    ) -> Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        terminal
+            .draw(|f| render_payload(f, f.area(), payload, spec, registry, &theme, general))
+            .unwrap();
+        terminal.backend().buffer().clone()
     }
 
     #[test]
@@ -680,6 +734,7 @@ mod tests {
             Shape::Text,
             Shape::TextBlock,
             Shape::MarkdownTextBlock,
+            Shape::LinkedTextBlock,
             Shape::Entries,
             Shape::Ratio,
             Shape::NumberSeries,
@@ -693,12 +748,78 @@ mod tests {
         ] {
             let name = default_renderer_for(s);
             let r = Registry::with_builtins();
-            let renderer = r.get(name).unwrap_or_else(|| panic!("no renderer {name}"));
-            assert!(
-                renderer.accepts().contains(&s),
-                "default renderer {name} doesn't accept its shape {s:?}"
-            );
+            let renderer = r.get(name).unwrap();
+            assert!(renderer.accepts().contains(&s));
         }
+    }
+
+    #[test]
+    fn shape_helpers_cover_error_variant_and_fallback_renderer() {
+        use crate::payload::{ErrorData, ErrorKind};
+
+        let body = Body::Error(ErrorData {
+            kind: ErrorKind::Fetch,
+            message: "boom".into(),
+            detail: None,
+        });
+
+        assert_eq!(shape_of(&body), Shape::Error);
+        assert_eq!(Shape::Error.as_str(), "error");
+        assert_eq!(default_renderer_for(Shape::Error), "text_plain");
+    }
+
+    #[test]
+    fn render_options_extra_helpers_round_trip() {
+        let opts = RenderOptions::default()
+            .with_extra("inner", "text_ascii")
+            .with_extra("font_sequence", vec!["small", "standard"]);
+
+        assert_eq!(opts.extra_str("inner"), Some("text_ascii"));
+        assert_eq!(
+            opts.extra_string_array("font_sequence"),
+            Some(vec!["small".to_string(), "standard".to_string()])
+        );
+        assert_eq!(opts.clone().without_extra("inner").extra_str("inner"), None);
+    }
+
+    #[test]
+    fn renderer_trait_defaults_and_general_fallbacks_work() {
+        use crate::payload::{Payload, TextData};
+        use crate::render::test_utils::line_text;
+
+        let renderer = DefaultingRenderer;
+        assert!(renderer.option_schemas().is_empty());
+        assert!(renderer.color_keys().is_empty());
+        assert_eq!(
+            renderer.natural_height(
+                &Body::Text(TextData { value: "x".into() }),
+                &RenderOptions::default(),
+                40,
+                &Registry::default(),
+            ),
+            1
+        );
+
+        let mut registry = Registry::default();
+        registry.register(Arc::new(DefaultingRenderer));
+
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: "hello".into(),
+            }),
+        };
+        let spec = RenderSpec::Short("test_defaults".into());
+        let general = crate::config::General {
+            timezone: Some("UTC".into()),
+            locale: Some("ja_JP".into()),
+            ..Default::default()
+        };
+        let buf = render_to_buffer_with_general(&payload, Some(&spec), &registry, &general, 24, 1);
+
+        assert!(line_text(&buf, 0).contains("UTC|ja_JP"));
     }
 
     #[test]
@@ -831,6 +952,77 @@ mod tests {
     }
 
     #[test]
+    fn single_line_empty_placeholder_renders_caption() {
+        use crate::payload::{Payload, TextData};
+        use crate::render::test_utils::line_text;
+
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: String::new(),
+            }),
+        };
+
+        let buf = render_to_buffer_with_general(
+            &payload,
+            None,
+            &Registry::with_builtins(),
+            &crate::config::General::default(),
+            24,
+            1,
+        );
+
+        assert!(line_text(&buf, 0).contains("nothing here yet"));
+    }
+
+    #[test]
+    fn unknown_renderer_and_error_without_detail_render_inline_messages() {
+        use crate::payload::{Body, ErrorData, ErrorKind, Payload, TextData};
+        use crate::render::test_utils::line_text;
+
+        let text_payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData {
+                value: "hello".into(),
+            }),
+        };
+        let unknown = RenderSpec::Short("missing".into());
+        let unknown_buf = render_to_buffer_with_general(
+            &text_payload,
+            Some(&unknown),
+            &Registry::with_builtins(),
+            &crate::config::General::default(),
+            32,
+            1,
+        );
+        assert!(line_text(&unknown_buf, 0).contains("unknown renderer: missing"));
+
+        let error_payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Error(ErrorData {
+                kind: ErrorKind::Fetch,
+                message: "fetch failed".into(),
+                detail: None,
+            }),
+        };
+        let error_buf = render_to_buffer_with_general(
+            &error_payload,
+            Some(&RenderSpec::Short("chart_bar".into())),
+            &Registry::with_builtins(),
+            &crate::config::General::default(),
+            32,
+            1,
+        );
+        assert!(line_text(&error_buf, 0).contains("fetch failed"));
+    }
+
+    #[test]
     fn text_shape_has_multiple_renderers() {
         // The point of the whole registry: one shape, many renderers. `Text` is consumed by both
         // the plain `text_plain` renderer and the `text_ascii` renderer — users pick via config.
@@ -847,5 +1039,34 @@ mod tests {
                 .accepts()
                 .contains(&Shape::Text)
         );
+    }
+
+    #[test]
+    fn any_widget_animates_only_for_explicit_animated_specs() {
+        let registry = Registry::with_builtins();
+        let plain = crate::config::WidgetConfig {
+            id: "plain".into(),
+            fetcher: "basic_static".into(),
+            render: None,
+            format: None,
+            refresh_interval: None,
+            file_format: None,
+            options: None,
+        };
+        let unknown = crate::config::WidgetConfig {
+            render: Some(RenderSpec::Short("missing".into())),
+            ..plain.clone()
+        };
+        let animated = crate::config::WidgetConfig {
+            render: Some(RenderSpec::Short("animated_wave".into())),
+            ..plain.clone()
+        };
+
+        assert!(!any_widget_animates(
+            std::slice::from_ref(&plain),
+            &registry
+        ));
+        assert!(!any_widget_animates(&[unknown], &registry));
+        assert!(any_widget_animates(&[plain, animated], &registry));
     }
 }

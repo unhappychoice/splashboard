@@ -177,11 +177,44 @@ fn flatten_by_day(grid: &[Vec<u32>]) -> Vec<u64> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration as StdDuration;
+
     use super::super::test_support::{commit, make_repo};
     use super::*;
 
     fn any_weekday() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 4, 22).unwrap()
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = GitCommitsActivity;
+        assert_eq!(fetcher.name(), "git_commits_activity");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::Heatmap);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert!(
+            fetcher
+                .description()
+                .contains("GitHub-style commit calendar")
+        );
+
+        let Body::Heatmap(sample) = fetcher.sample_body(Shape::Heatmap).unwrap() else {
+            panic!("expected heatmap sample");
+        };
+        assert_eq!(sample.cells.len(), 7);
+
+        let Body::NumberSeries(sample) = fetcher.sample_body(Shape::NumberSeries).unwrap() else {
+            panic!("expected number series sample");
+        };
+        assert_eq!(sample.values.len(), 20);
+
+        let Body::Text(sample) = fetcher.sample_body(Shape::Text).unwrap() else {
+            panic!("expected text sample");
+        };
+        assert!(sample.value.contains("commits this month"));
+
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
@@ -263,5 +296,66 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn month_labels_mark_first_visible_month_boundaries() {
+        let labels = month_labels(NaiveDate::from_ymd_opt(2026, 1, 25).unwrap());
+        assert_eq!(labels[0], "");
+        assert_eq!(labels[1], "Feb");
+        assert_eq!(labels[5], "Mar");
+        assert_eq!(short_month(99), "");
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_format() {
+        let fetcher = GitCommitsActivity;
+        let base = fetcher.cache_key(&FetchContext {
+            shape: Some(Shape::Heatmap),
+            format: Some("plain".into()),
+            timeout: StdDuration::from_secs(1),
+            ..FetchContext::default()
+        });
+        let same = fetcher.cache_key(&FetchContext {
+            shape: Some(Shape::Heatmap),
+            format: Some("plain".into()),
+            timeout: StdDuration::from_secs(1),
+            ..FetchContext::default()
+        });
+        let different_shape = fetcher.cache_key(&FetchContext {
+            shape: Some(Shape::NumberSeries),
+            format: Some("plain".into()),
+            timeout: StdDuration::from_secs(1),
+            ..FetchContext::default()
+        });
+        let different_format = fetcher.cache_key(&FetchContext {
+            shape: Some(Shape::Heatmap),
+            format: Some("json".into()),
+            timeout: StdDuration::from_secs(1),
+            ..FetchContext::default()
+        });
+        assert_eq!(base, same);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_format);
+    }
+
+    #[test]
+    fn fetch_defaults_to_heatmap_shape() {
+        let fetcher = GitCommitsActivity;
+        let payload = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fetcher.fetch(&FetchContext {
+                timeout: StdDuration::from_secs(1),
+                ..FetchContext::default()
+            }))
+            .unwrap();
+        let Body::Heatmap(data) = payload.body else {
+            panic!("expected default heatmap body");
+        };
+        assert_eq!(data.cells.len(), DAYS_PER_WEEK);
+        assert_eq!(data.cells[0].len(), WEEKS);
+        assert_eq!(data.col_labels.as_ref().unwrap().len(), WEEKS);
     }
 }

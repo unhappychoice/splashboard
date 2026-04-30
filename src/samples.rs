@@ -178,3 +178,41 @@ pub fn timeline(events: &[(i64, &str, Option<&str>)]) -> Body {
             .collect(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::shape_of;
+
+    #[test]
+    fn canonical_sample_matches_requested_shape() {
+        [
+            Shape::Text,
+            Shape::TextBlock,
+            Shape::MarkdownTextBlock,
+            Shape::LinkedTextBlock,
+            Shape::Entries,
+            Shape::Ratio,
+            Shape::NumberSeries,
+            Shape::PointSeries,
+            Shape::Bars,
+            Shape::Calendar,
+            Shape::Heatmap,
+            Shape::Badge,
+            Shape::Timeline,
+        ]
+        .into_iter()
+        .for_each(|shape| {
+            let body = canonical_sample(shape)
+                .unwrap_or_else(|| panic!("missing sample for {}", shape.as_str()));
+            assert_eq!(shape_of(&body), shape);
+        });
+    }
+
+    #[test]
+    fn canonical_sample_skips_non_portable_shapes() {
+        [Shape::Image, Shape::Error]
+            .into_iter()
+            .for_each(|shape| assert!(canonical_sample(shape).is_none()));
+    }
+}

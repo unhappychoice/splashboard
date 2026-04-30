@@ -216,12 +216,21 @@ fn decode_entities(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fetcher::FetchContext;
 
     fn comment(id: u64, text: &str) -> Item {
         Item {
             id: Some(id),
             item_type: Some("comment".into()),
             text: Some(text.into()),
+        }
+    }
+
+    fn ctx(shape: Shape, options: &str) -> FetchContext {
+        FetchContext {
+            shape: Some(shape),
+            options: Some(toml::from_str(options).unwrap()),
+            ..FetchContext::default()
         }
     }
 
@@ -332,5 +341,123 @@ mod tests {
         // Entries isn't in SHAPES; render_body should default to the TextBlock branch.
         let body = render_body(&[comment(1, "hi")], Shape::Entries);
         assert!(matches!(body, Body::TextBlock(_)));
+    }
+
+    #[test]
+    fn item_deserializes_real_comment_payload() {
+        let raw = r#"{"id":42,"type":"comment","text":"<p>hi &amp; bye</p>"}"#;
+        let it: Item = serde_json::from_str(raw).unwrap();
+        assert_eq!(it.id, Some(42));
+        assert_eq!(it.item_type.as_deref(), Some("comment"));
+        assert_eq!(it.text.as_deref(), Some("<p>hi &amp; bye</p>"));
+    }
+
+    #[test]
+    fn user_stub_defaults_missing_submitted_to_empty() {
+        let stub: UserStub = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(stub.submitted.is_empty());
+    }
+
+    #[test]
+    fn user_stub_deserializes_partial_payload() {
+        let raw = r#"{"id":"pg","submitted":[1,2,3]}"#;
+        let stub: UserStub = serde_json::from_str(raw).unwrap();
+        assert_eq!(stub.submitted, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn fetcher_catalog_surface_matches_contract() {
+        let fetcher = HackernewsUserCommentsFetcher;
+        assert_eq!(fetcher.name(), "hackernews_user_comments");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), 2);
+        assert_eq!(fetcher.option_schemas()[0].name, "user");
+        assert_eq!(fetcher.option_schemas()[1].name, "count");
+        assert!(fetcher.description().contains("linked to the comment page"));
+    }
+
+    #[test]
+    fn sample_body_supports_each_declared_shape() {
+        let fetcher = HackernewsUserCommentsFetcher;
+
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
+        let Body::LinkedTextBlock(linked) = linked else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(linked.items.len(), 2);
+        assert!(linked.items[0].text.contains("rate limiter"));
+
+        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
+        let Body::TextBlock(block) = block else {
+            panic!("expected text block");
+        };
+        assert_eq!(block.lines.len(), 2);
+
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_options() {
+        let fetcher = HackernewsUserCommentsFetcher;
+        let base = fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 5"));
+        let same = fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 5"));
+        let different_shape =
+            fetcher.cache_key(&ctx(Shape::LinkedTextBlock, "user = \"pg\"\ncount = 5"));
+        let different_options =
+            fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 6"));
+
+        assert_eq!(base, same);
+        assert_ne!(base, different_shape);
+        assert_ne!(base, different_options);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options() {
+        let fetcher = HackernewsUserCommentsFetcher;
+        let err = fetcher
+            .fetch(&ctx(
+                Shape::TextBlock,
+                "user = \"pg\"\ncount = 5\nbogus = true",
+            ))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("unknown field `bogus`")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_requires_user_option() {
+        let fetcher = HackernewsUserCommentsFetcher;
+        let err = fetcher
+            .fetch(&ctx(Shape::TextBlock, "count = 5"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg)
+                if msg == "hackernews_user_comments requires `user` option"
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_with_bad_login_surfaces_hn_failure() {
+        let fetcher = HackernewsUserCommentsFetcher;
+        for raw in ["user = \"bad login\"", "user = \"bad login\"\ncount = 999"] {
+            let err = fetcher
+                .fetch(&ctx(Shape::LinkedTextBlock, raw))
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                err,
+                FetchError::Failed(msg)
+                    if msg.contains("hn request failed")
+                        || msg.contains("hn json parse")
+                        || msg.starts_with("hn ")
+            ));
+        }
     }
 }

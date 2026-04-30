@@ -187,6 +187,7 @@ mod tests {
     use crate::fetcher::{FetchContext, FetchError, Fetcher, RealtimeFetcher};
     use crate::render::Shape;
     use async_trait::async_trait;
+    use std::ffi::{OsStr, OsString};
     use std::sync::Arc;
 
     struct FakeFetcher {
@@ -255,6 +256,41 @@ mod tests {
         }
     }
 
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: Option<&OsStr>) -> Self {
+            let previous = std::env::var_os(key);
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn hash_file_is_deterministic() {
         let dir = tempfile::tempdir().unwrap();
@@ -287,13 +323,33 @@ mod tests {
     }
 
     #[test]
+    fn load_dashboard_and_hash_rejects_invalid_utf8() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(".splashboard.toml");
+        std::fs::write(&p, [0xff]).unwrap();
+        assert!(load_dashboard_and_hash(&p).is_err());
+    }
+
+    #[test]
+    fn load_dashboard_and_hash_rejects_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(".splashboard.toml");
+        std::fs::write(&p, "[widgets").unwrap();
+        assert!(load_dashboard_and_hash(&p).is_err());
+    }
+
+    #[test]
     fn decide_none_ident_is_implicitly_trusted() {
+        let _lock = lock_env();
+        let _guard = EnvGuard::set(TRUST_ALL_ENV, None);
         let store = TrustStore::default();
         assert_eq!(store.decide(None), TrustDecision::ImplicitlyTrusted);
     }
 
     #[test]
     fn decide_unlisted_local_config_is_untrusted() {
+        let _lock = lock_env();
+        let _guard = EnvGuard::set(TRUST_ALL_ENV, None);
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(".splashboard.toml");
         std::fs::write(&p, "").unwrap();
@@ -303,7 +359,24 @@ mod tests {
     }
 
     #[test]
+    fn decide_honors_trust_all_override() {
+        let _lock = lock_env();
+        let _guard = EnvGuard::set(TRUST_ALL_ENV, Some(OsStr::new("true")));
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(".splashboard.toml");
+        std::fs::write(&p, "").unwrap();
+        let hash = hash_file(&p).unwrap();
+        let store = TrustStore::default();
+        assert_eq!(
+            store.decide(Some((&p, &hash))),
+            TrustDecision::ImplicitlyTrusted
+        );
+    }
+
+    #[test]
     fn decide_trusted_after_explicit_trust() {
+        let _lock = lock_env();
+        let _guard = EnvGuard::set(TRUST_ALL_ENV, None);
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(".splashboard.toml");
         std::fs::write(&p, "hello").unwrap();
@@ -320,6 +393,8 @@ mod tests {
 
     #[test]
     fn decide_rejects_mismatched_hash_even_if_path_matches() {
+        let _lock = lock_env();
+        let _guard = EnvGuard::set(TRUST_ALL_ENV, None);
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(".splashboard.toml");
         std::fs::write(&p, "original").unwrap();
@@ -340,6 +415,8 @@ mod tests {
 
     #[test]
     fn home_backed_source_is_implicitly_trusted_via_none_ident() {
+        let _lock = lock_env();
+        let _guard = EnvGuard::set(TRUST_ALL_ENV, None);
         // HOME-backed sources (settings.toml, home.dashboard.toml, project.dashboard.toml) are
         // implicitly trusted by the caller passing `ident = None`. A local dashboard with the
         // same on-disk bytes is NOT auto-trusted — the gate is caller-driven, not path-driven.
@@ -419,6 +496,67 @@ mod tests {
         let s = toml::to_string(&store).unwrap();
         let back: TrustStore = toml::from_str(&s).unwrap();
         assert_eq!(back.entries, store.entries);
+    }
+
+    #[test]
+    fn load_returns_default_for_missing_or_corrupt_store() {
+        let _lock = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join(".splashboard");
+        let _guard = EnvGuard::set("SPLASHBOARD_HOME", Some(home.as_os_str()));
+
+        assert!(TrustStore::load().list().is_empty());
+
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("trust.toml"), "not = [valid").unwrap();
+        assert!(TrustStore::load().list().is_empty());
+    }
+
+    #[test]
+    fn save_and_load_round_trip_via_store_path() {
+        let _lock = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join(".splashboard");
+        let _guard = EnvGuard::set("SPLASHBOARD_HOME", Some(home.as_os_str()));
+        let store = TrustStore {
+            entries: vec![TrustEntry {
+                path: dir.path().join(".splashboard.toml"),
+                sha256: "a".repeat(64),
+            }],
+        };
+
+        store.save().unwrap();
+
+        assert!(home.join("trust.toml").exists());
+        assert_eq!(TrustStore::load().list(), store.list());
+    }
+
+    #[test]
+    fn trust_replaces_existing_entry_and_revoke_persists_removal() {
+        let _lock = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join(".splashboard");
+        let _guard = EnvGuard::set("SPLASHBOARD_HOME", Some(home.as_os_str()));
+        let dashboard = dir.path().join(".splashboard.toml");
+        let mut store = TrustStore::default();
+
+        std::fs::write(&dashboard, "alpha").unwrap();
+        store
+            .trust(&dashboard, hash_file(&dashboard).unwrap())
+            .unwrap();
+
+        std::fs::write(&dashboard, "beta").unwrap();
+        let latest_hash = hash_file(&dashboard).unwrap();
+        store.trust(&dashboard, latest_hash.clone()).unwrap();
+
+        assert_eq!(store.list().len(), 1);
+        assert_eq!(store.list()[0].path, dashboard.canonicalize().unwrap());
+        assert_eq!(store.list()[0].sha256, latest_hash);
+        assert_eq!(TrustStore::load().list(), store.list());
+
+        assert!(store.revoke(&dashboard).unwrap());
+        assert!(TrustStore::load().list().is_empty());
+        assert!(!store.revoke(&dir.path().join("missing.toml")).unwrap());
     }
 
     #[test]

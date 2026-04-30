@@ -380,6 +380,18 @@ fn error_message(status: StatusCode, body: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    fn sample_entry(date: &str, title: &str) -> ApiEntry {
+        ApiEntry {
+            date: date.into(),
+            title: title.into(),
+            content: None,
+            tags: vec![],
+            sources: vec![],
+            generated_at: None,
+            word_count: None,
+        }
+    }
+
     #[test]
     fn entries_response_accepts_bare_array() {
         let raw = r#"[{"date":"2026-04-27","title":"Hello"}]"#;
@@ -528,6 +540,12 @@ mod tests {
         assert!(extra.starts_with(&format!("{scope}|")), "got: {extra:?}");
     }
 
+    #[test]
+    fn strip_token_field_preserves_non_table_values() {
+        let value = toml::Value::String("plain".into());
+        assert_eq!(strip_token_field(&value), value);
+    }
+
     #[tokio::test]
     async fn entry_slot_returns_same_arc_for_same_token_and_date() {
         let a = entry_slot("tok-A", "2026-04-27");
@@ -566,6 +584,38 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn cached_get_entry_reuses_fresh_slot_value() {
+        let token = "tok-cache-entry";
+        let date = "2026-04-28";
+        let entry = sample_entry(date, "Cached");
+        let slot = entry_slot(token, date);
+        *slot.lock().await = Some(CacheSlot {
+            expires: Instant::now() + RESPONSE_TTL,
+            value: Some(entry.clone()),
+        });
+        let cached = cached_get_entry(token, date).await.unwrap();
+        assert_eq!(cached.unwrap().title, entry.title);
+    }
+
+    #[tokio::test]
+    async fn cached_get_entries_reuses_fresh_slot_value() {
+        let token = "tok-cache-list";
+        let tag = "travel";
+        let entries = vec![
+            sample_entry("2026-04-28", "First"),
+            sample_entry("2026-04-27", "Second"),
+        ];
+        let slot = list_slot(token, tag);
+        *slot.lock().await = Some(CacheSlot {
+            expires: Instant::now() + RESPONSE_TTL,
+            value: entries.clone(),
+        });
+        let cached = cached_get_entries(token, Some(tag)).await.unwrap();
+        assert_eq!(cached.len(), entries.len());
+        assert_eq!(cached[0].title, entries[0].title);
+    }
+
     #[test]
     fn resolve_token_trims_whitespace() {
         let token = resolve_token(Some("  abc  ")).unwrap();
@@ -573,16 +623,67 @@ mod tests {
     }
 
     #[test]
-    fn resolve_token_rejects_whitespace_only_config_value() {
-        // Whitespace-only config doesn't take precedence; falls through to env (which we
-        // don't set here in the unit test, so this should fail). Asserts the trim-and-empty
-        // check kicks in.
-        let result = resolve_token(Some("   "));
-        // Either falls back to env (if DEARIARY_TOKEN is set in CI) or errors. We just need
-        // the config value not to be returned verbatim.
-        if let Ok(t) = result {
-            assert!(!t.trim().is_empty(), "should not return whitespace-only");
-            assert_ne!(t, "   ");
+    fn resolve_token_falls_back_to_env_and_trims_whitespace() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        unsafe { std::env::set_var("DEARIARY_TOKEN", "  env-token  ") };
+        let token = resolve_token(None).unwrap();
+        assert_eq!(token, "env-token");
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
+                None => std::env::remove_var("DEARIARY_TOKEN"),
+            }
         }
+    }
+
+    #[test]
+    fn resolve_token_whitespace_config_falls_back_to_env() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        unsafe { std::env::set_var("DEARIARY_TOKEN", "env-token") };
+        let token = resolve_token(Some("   ")).unwrap();
+        assert_eq!(token, "env-token");
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
+                None => std::env::remove_var("DEARIARY_TOKEN"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn acquire_permit_succeeds_from_shared_semaphore() {
+        assert!(std::ptr::eq(http(), http()));
+        assert!(std::ptr::eq(semaphore(), semaphore()));
+        let _permit = acquire_permit().await.unwrap();
+    }
+
+    #[test]
+    fn parse_retry_after_parses_seconds_and_defaults_on_invalid() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "7".parse().unwrap());
+        assert_eq!(parse_retry_after(&headers), Duration::from_secs(7));
+        headers.insert(reqwest::header::RETRY_AFTER, "bad".parse().unwrap());
+        assert_eq!(parse_retry_after(&headers), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn header_str_returns_owned_utf8_values_only() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("X-RateLimit-Limit", "120".parse().unwrap());
+        headers.insert(
+            "X-Binary",
+            reqwest::header::HeaderValue::from_bytes(b"\xff").unwrap(),
+        );
+        assert_eq!(
+            header_str(&headers, "X-RateLimit-Limit").as_deref(),
+            Some("120")
+        );
+        assert!(header_str(&headers, "X-Binary").is_none());
     }
 }

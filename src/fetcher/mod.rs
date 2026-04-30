@@ -521,6 +521,96 @@ mod tests {
         assert_eq!(f.safety(), Safety::Network);
     }
 
+    #[test]
+    fn fetch_error_display_covers_both_variants() {
+        assert_eq!(
+            FetchError::Unknown("clock".into()).to_string(),
+            "unknown fetcher: clock"
+        );
+        assert_eq!(
+            FetchError::Failed("boom".into()).to_string(),
+            "fetch failed: boom"
+        );
+    }
+
+    #[test]
+    fn cached_fetcher_defaults_and_registry_helpers_surface_contract() {
+        let mut r = Registry::default();
+        r.register(Arc::new(Dummy("cached", Safety::Safe)));
+        let entry = r.get("cached").expect("cached entry must exist");
+        let cached = r.get_cached("cached").expect("cached fetcher must unwrap");
+
+        assert_eq!(entry.name(), "cached");
+        assert_eq!(entry.description(), "test fixture");
+        assert_eq!(entry.shapes(), vec![Shape::Text]);
+        assert_eq!(entry.default_shape(), Shape::Text);
+        assert!(entry.option_schemas().is_empty());
+        assert!(matches!(
+            entry.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert_eq!(cached.default_shape(), Shape::Text);
+        assert_eq!(
+            cached.cache_key(&ctx_with(Some("hi"))),
+            default_cache_key("cached", &ctx_with(Some("hi")))
+        );
+        assert!(cached.option_schemas().is_empty());
+        assert!(matches!(
+            cached.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert!(r.get_cached("missing").is_none());
+        assert_eq!(r.names(), vec!["cached"]);
+    }
+
+    #[test]
+    fn realtime_fetcher_defaults_and_registry_helpers_surface_contract() {
+        let mut r = Registry::default();
+        r.register_realtime(Arc::new(DummyRealtime("rt", Safety::Exec)));
+        let entry = r.get("rt").expect("realtime entry must exist");
+        let realtime = r.get_realtime("rt").expect("realtime fetcher must unwrap");
+
+        assert_eq!(entry.name(), "rt");
+        assert_eq!(entry.safety(), Safety::Exec);
+        assert_eq!(entry.description(), "test fixture");
+        assert_eq!(entry.shapes(), vec![Shape::Text]);
+        assert_eq!(entry.default_shape(), Shape::Text);
+        assert!(entry.option_schemas().is_empty());
+        assert!(matches!(
+            entry.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert_eq!(realtime.default_shape(), Shape::Text);
+        assert!(realtime.option_schemas().is_empty());
+        assert!(matches!(
+            realtime.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert!(matches!(
+            realtime.compute(&FetchContext::default()).body,
+            Body::Text(_)
+        ));
+        assert!(r.get_realtime("missing").is_none());
+    }
+
+    #[test]
+    fn registry_names_and_sorted_reflect_registration_order_independently() {
+        let mut r = Registry::default();
+        r.register(Arc::new(Dummy("bravo", Safety::Safe)));
+        r.register_realtime(Arc::new(DummyRealtime("alpha", Safety::Safe)));
+
+        let mut names = r.names();
+        names.sort_unstable();
+        assert_eq!(names, vec!["alpha", "bravo"]);
+
+        let sorted = r
+            .sorted()
+            .into_iter()
+            .map(|fetcher| fetcher.name().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(sorted, vec!["alpha".to_string(), "bravo".to_string()]);
+    }
+
     fn ctx_with(format: Option<&str>) -> FetchContext {
         FetchContext {
             widget_id: "w".into(),
