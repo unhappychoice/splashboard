@@ -384,6 +384,21 @@ height = { length = 1 }
     }
 
     #[test]
+    fn resolve_shape_falls_back_to_fetcher_default_when_renderer_is_unknown() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+        let fetcher = fetchers.get("basic_static").unwrap();
+
+        let mut unknown = widget("unknown", "basic_static");
+        unknown.render = Some(RenderSpec::Short("not_a_renderer".into()));
+
+        assert_eq!(
+            resolve_shape(&unknown, &fetcher, &renderers),
+            Some(fetcher.default_shape())
+        );
+    }
+
+    #[test]
     fn override_from_format_only_applies_to_basic_static_text_shapes() {
         let mut static_widget = widget("static", "basic_static");
         static_widget.format = Some("alpha\nbeta".into());
@@ -470,6 +485,26 @@ height = { length = 1 }
     }
 
     #[test]
+    fn deanimate_preserves_full_typewriter_options() {
+        let spec = RenderSpec::Full {
+            type_name: "animated_typewriter".into(),
+            options: RenderOptions {
+                align: Some("center".into()),
+                color: Some("panel_title".into()),
+                ..RenderOptions::default()
+            },
+        };
+
+        assert!(matches!(
+            deanimate(spec),
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_plain"
+                    && options.align.as_deref() == Some("center")
+                    && options.color.as_deref() == Some("panel_title")
+        ));
+    }
+
+    #[test]
     fn deanimate_figlet_morph_uses_last_font_and_preserves_style_options() {
         let spec = RenderSpec::Full {
             type_name: "animated_figlet_morph".into(),
@@ -491,6 +526,17 @@ height = { length = 1 }
                     && options.align.as_deref() == Some("right")
                     && options.color.as_deref() == Some("panel_title")
                     && options.extra_str("font") == Some("doom")
+        ));
+    }
+
+    #[test]
+    fn deanimate_short_figlet_morph_uses_default_resting_font() {
+        assert!(matches!(
+            deanimate(RenderSpec::Short("animated_figlet_morph".into())),
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_ascii"
+                    && options.style.as_deref() == Some("figlet")
+                    && options.extra_str("font") == Some("ansi_shadow")
         ));
     }
 }
