@@ -139,26 +139,28 @@ mod tests {
         assert_eq!(fetcher.option_schemas().len(), 1);
         assert_eq!(fetcher.option_schemas()[0].name, "lang");
 
-        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
-        else {
-            panic!("expected linked text block sample");
-        };
-        assert_eq!(linked.items[0].text, "Quokka");
-        assert_eq!(
-            linked.items[0].url.as_deref(),
-            Some("https://en.wikipedia.org/wiki/Quokka")
-        );
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock);
+        assert!(matches!(linked, Some(Body::LinkedTextBlock(_))));
+        if let Some(Body::LinkedTextBlock(linked)) = linked {
+            assert_eq!(linked.items[0].text, "Quokka");
+            assert_eq!(
+                linked.items[0].url.as_deref(),
+                Some("https://en.wikipedia.org/wiki/Quokka")
+            );
+        }
 
-        let Some(Body::TextBlock(text_block)) = fetcher.sample_body(Shape::TextBlock) else {
-            panic!("expected text block sample");
-        };
-        assert_eq!(text_block.lines[0], "Quokka");
-        assert!(text_block.lines[1].contains("small macropod"));
+        let text_block = fetcher.sample_body(Shape::TextBlock);
+        assert!(matches!(text_block, Some(Body::TextBlock(_))));
+        if let Some(Body::TextBlock(text_block)) = text_block {
+            assert_eq!(text_block.lines[0], "Quokka");
+            assert!(text_block.lines[1].contains("small macropod"));
+        }
 
-        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
-            panic!("expected text sample");
-        };
-        assert!(text.value.starts_with("Quokka:"));
+        let text = fetcher.sample_body(Shape::Text);
+        assert!(matches!(text, Some(Body::Text(_))));
+        if let Some(Body::Text(text)) = text {
+            assert!(text.value.starts_with("Quokka:"));
+        }
         assert!(fetcher.sample_body(Shape::Entries).is_none());
 
         let a = fetcher.cache_key(&ctx(Some("lang = \"en\""), Some(Shape::TextBlock)));
@@ -175,10 +177,7 @@ mod tests {
             .fetch(&ctx(Some("bogus = true"), Some(Shape::Text)))
             .await
             .unwrap_err();
-        let FetchError::Failed(message) = err else {
-            panic!("expected failed error");
-        };
-        assert!(message.contains("unknown field"));
+        assert!(matches!(&err, FetchError::Failed(message) if message.contains("unknown field")));
     }
 
     #[tokio::test]
@@ -188,18 +187,9 @@ mod tests {
             .fetch(&ctx(Some("lang = \"bad lang\""), Some(Shape::Text)))
             .await
             .unwrap_err();
-        let FetchError::Failed(message) = err else {
-            panic!("expected failed error");
-        };
-        assert!(message.contains("wikipedia request failed"));
-    }
-
-    /// Live smoke test — hits Wikipedia REST API.
-    #[tokio::test]
-    #[ignore]
-    async fn live_returns_a_random_article() {
-        let s = fetch_random("en").await.unwrap();
-        eprintln!("random: {}", s.title);
-        assert!(!s.title.is_empty());
+        assert!(matches!(
+            &err,
+            FetchError::Failed(message) if message.contains("wikipedia request failed")
+        ));
     }
 }

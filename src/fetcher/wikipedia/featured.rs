@@ -209,12 +209,13 @@ mod tests {
         ));
     }
 
-    /// Live smoke test — hits Wikipedia REST API.
     #[tokio::test]
-    #[ignore]
-    async fn live_returns_a_featured_article() {
-        let s = fetch_tfa("en").await.unwrap();
-        eprintln!("featured: {}", s.title);
-        assert!(!s.title.is_empty());
+    async fn fetch_tfa_surfaces_request_error_for_invalid_lang() {
+        let err = fetch_tfa("bad lang").await.unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("wikipedia request failed")
+        ));
     }
 }

@@ -245,63 +245,63 @@ mod tests {
     fn render_text_combines_title_and_first_sentence() {
         let s = summary_with(Some("It hops. It is fluffy."), None);
         let body = render_page_summary(&s, Shape::Text);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert_eq!(t.value, "Quokka: It hops.");
+        assert!(matches!(body, Body::Text(_)));
+        if let Body::Text(t) = body {
+            assert_eq!(t.value, "Quokka: It hops.");
+        }
     }
 
     #[test]
     fn render_text_falls_back_to_title_when_extract_missing() {
         let body = render_page_summary(&summary_with(None, None), Shape::Text);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert_eq!(t.value, "Quokka");
+        assert!(matches!(body, Body::Text(_)));
+        if let Body::Text(t) = body {
+            assert_eq!(t.value, "Quokka");
+        }
     }
 
     #[test]
     fn render_text_block_emits_title_then_extract_lines() {
         let s = summary_with(Some("Para one.\n\nPara two."), None);
         let body = render_page_summary(&s, Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["Quokka", "Para one.", "Para two."]);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(t) = body {
+            assert_eq!(t.lines, vec!["Quokka", "Para one.", "Para two."]);
+        }
     }
 
     #[test]
     fn render_text_block_emits_title_only_when_extract_empty() {
         let s = summary_with(Some(""), None);
         let body = render_page_summary(&s, Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["Quokka"]);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(t) = body {
+            assert_eq!(t.lines, vec!["Quokka"]);
+        }
     }
 
     #[test]
     fn render_linked_text_block_uses_summary_url() {
         let s = summary_with(None, Some("https://en.wikipedia.org/wiki/Quokka"));
         let body = render_page_summary(&s, Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 1);
-        assert_eq!(b.items[0].text, "Quokka");
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://en.wikipedia.org/wiki/Quokka")
-        );
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert_eq!(b.items.len(), 1);
+            assert_eq!(b.items[0].text, "Quokka");
+            assert_eq!(
+                b.items[0].url.as_deref(),
+                Some("https://en.wikipedia.org/wiki/Quokka")
+            );
+        }
     }
 
     #[test]
     fn render_linked_text_block_drops_url_when_absent() {
         let body = render_page_summary(&summary_with(None, None), Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items[0].url.is_none());
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert!(b.items[0].url.is_none());
+        }
     }
 
     #[test]
