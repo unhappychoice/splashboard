@@ -130,7 +130,7 @@ fn bullet_prefix(bullet: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payload::{Payload, TextBlockData};
+    use crate::payload::{Payload, TextBlockData, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
 
@@ -165,15 +165,23 @@ mod tests {
         let w: W = toml::from_str(r#"render = { type = "list_plain", bullet = "•" }"#).unwrap();
         let buf =
             render_to_buffer_with_spec(&payload(&["a", "b"]), Some(&w.render), &registry, 20, 3);
-        assert!(
-            line_text(&buf, 0).contains("• a"),
-            "row 0: {:?}",
-            line_text(&buf, 0)
-        );
-        assert!(
-            line_text(&buf, 1).contains("• b"),
-            "row 1: {:?}",
-            line_text(&buf, 1)
+        let row0 = line_text(&buf, 0);
+        let row1 = line_text(&buf, 1);
+        assert!(row0.contains("• a"));
+        assert!(row1.contains("• b"));
+    }
+
+    #[test]
+    fn natural_height_non_text_falls_back_to_one() {
+        let renderer = ListPlainRenderer;
+        let registry = Registry::with_builtins();
+        let body = Body::Text(TextData {
+            value: "ignored".into(),
+        });
+
+        assert_eq!(
+            renderer.natural_height(&body, &RenderOptions::default(), 20, &registry),
+            1
         );
     }
 
@@ -195,10 +203,7 @@ mod tests {
         assert!(line_text(&buf, 0).contains("a"));
         assert!(line_text(&buf, 1).contains("b"));
         // Third line was capped out.
-        assert!(
-            !line_text(&buf, 2).contains("c"),
-            "row 2: {:?}",
-            line_text(&buf, 2)
-        );
+        let row2 = line_text(&buf, 2);
+        assert!(!row2.contains("c"));
     }
 }
