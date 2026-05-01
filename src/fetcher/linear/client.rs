@@ -315,6 +315,12 @@ mod tests {
     }
 
     #[test]
+    fn strip_token_field_preserves_non_table_values() {
+        let value = toml::Value::String("plain".into());
+        assert_eq!(strip_token_field(&value), value);
+    }
+
+    #[test]
     fn parse_retry_after_reads_numeric_seconds() {
         let mut headers = HeaderMap::new();
         headers.insert(RETRY_AFTER, HeaderValue::from_static(" 7 "));
@@ -356,6 +362,34 @@ mod tests {
     fn error_message_falls_back_to_status_when_no_graphql_payload() {
         let msg = error_message(StatusCode::BAD_GATEWAY, b"upstream gone");
         assert!(msg.contains("502"));
+    }
+
+    #[test]
+    fn linear_token_guard_restores_previous_value_on_drop() {
+        let (previous, guard) = {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let previous = std::env::var("LINEAR_TOKEN").ok();
+            unsafe { std::env::set_var("LINEAR_TOKEN", "before") };
+            let guard = LinearTokenGuard {
+                _lock: lock,
+                previous: Some("before".into()),
+            };
+            unsafe { std::env::set_var("LINEAR_TOKEN", "during") };
+            (previous, guard)
+        };
+
+        drop(guard);
+        assert_eq!(
+            std::env::var("LINEAR_TOKEN").ok().as_deref(),
+            Some("before")
+        );
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
+            None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
+        }
     }
 
     #[test]
