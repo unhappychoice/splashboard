@@ -62,21 +62,30 @@ impl TestPty {
         })
     }
 
-    fn spawn_install(&self, home: &Path) -> io::Result<Child> {
+    fn spawn_cli(&self, cwd: &Path, home: &Path, args: &[&str]) -> io::Result<Child> {
         let stdin = self.slave.try_clone()?;
         let stdout = self.slave.try_clone()?;
         let stderr = self.slave.try_clone()?;
         let home = home.display().to_string();
 
         Command::new(env!("CARGO_BIN_EXE_splashboard"))
-            .current_dir(workspace_root())
-            .args(["install", "--shell", "zsh"])
+            .current_dir(cwd)
+            .args(args)
             .env("HOME", &home)
             .env("SPLASHBOARD_HOME", &home)
+            .env("TERM", "xterm-256color")
             .stdin(Stdio::from(stdin))
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr))
             .spawn()
+    }
+
+    fn spawn_install(&self, home: &Path) -> io::Result<Child> {
+        self.spawn_cli(
+            workspace_root().as_path(),
+            home,
+            &["install", "--shell", "zsh"],
+        )
     }
 
     fn send_input(&self, input: &'static [u8]) -> thread::JoinHandle<()> {
@@ -155,6 +164,17 @@ fn run_install(home: &TempDir, input: &'static [u8]) -> io::Result<(ExitStatus, 
     Ok((status, output))
 }
 
+fn run_cli(cwd: &Path, home: &TempDir, args: &[&str]) -> io::Result<(ExitStatus, String)> {
+    let pty = TestPty::new()?;
+    let reader = pty.drain_output();
+    let mut child = pty.spawn_cli(cwd, home.path(), args)?;
+    let status = wait_for_exit(&mut child, Duration::from_secs(15))?;
+    drop(child);
+    drop(pty);
+    let output = String::from_utf8_lossy(&reader.join().unwrap()).into_owned();
+    Ok((status, output))
+}
+
 #[test]
 fn interactive_install_picker_covers_confirm_and_cancel_paths() {
     let success_dir = tempfile::tempdir().unwrap();
@@ -197,4 +217,33 @@ fn interactive_install_picker_covers_confirm_and_cancel_paths() {
     assert!(!cancel_dir.path().join("project.dashboard.toml").exists());
     assert!(!cancel_dir.path().join("settings.toml").exists());
     assert!(!cancel_dir.path().join(".zshrc").exists());
+}
+
+#[test]
+fn tty_on_cd_renders_local_dashboard_and_populates_cache() {
+    let home = tempfile::tempdir().unwrap();
+    let cwd = tempfile::tempdir().unwrap();
+    std::fs::write(
+        cwd.path().join(".splashboard.toml"),
+        r#"
+[[widget]]
+id = "hello"
+fetcher = "basic_static"
+format = "Hello runtime"
+render = "text_plain"
+
+[[row]]
+height = { length = 3 }
+[[row.child]]
+widget = "hello"
+"#,
+    )
+    .unwrap();
+
+    let (status, output) = run_cli(cwd.path(), &home, &["--on-cd"]).unwrap();
+    assert!(status.success(), "render failed:\n{output}");
+    assert!(!output.is_empty(), "expected TTY render output");
+
+    let cache = home.path().join("cache");
+    assert!(cache.is_dir());
 }
