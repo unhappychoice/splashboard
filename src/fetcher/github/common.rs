@@ -139,7 +139,29 @@ pub fn cwd_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
+    use tempfile::tempdir;
+
     use super::*;
+
+    struct CwdGuard {
+        previous: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self { previous }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.previous).unwrap();
+        }
+    }
 
     #[test]
     fn repo_slug_parses_simple_pair() {
@@ -147,6 +169,15 @@ mod tests {
         assert_eq!(s.owner, "foo");
         assert_eq!(s.name, "bar");
         assert_eq!(s.as_path(), "foo/bar");
+    }
+
+    #[test]
+    fn text_block_body_wraps_lines_verbatim() {
+        let lines = vec!["alpha".to_string(), "beta".to_string()];
+        assert_eq!(
+            text_block_body(lines.clone()),
+            Body::TextBlock(TextBlockData { lines })
+        );
     }
 
     #[test]
@@ -197,5 +228,22 @@ mod tests {
     #[test]
     fn parse_timestamp_falls_back_to_zero_on_garbage() {
         assert_eq!(parse_timestamp("not-a-date"), 0);
+    }
+
+    #[test]
+    fn resolve_repo_errors_when_cwd_is_not_a_git_repo() {
+        let tmp = tempdir().unwrap();
+        let _cwd = CwdGuard::set(tmp.path());
+
+        assert!(matches!(
+            resolve_repo(None),
+            Err(FetchError::Failed(message)) if message.contains("no repo: set `repo =")
+        ));
+    }
+
+    #[test]
+    fn cwd_path_returns_the_current_directory() {
+        let expected = std::env::current_dir().unwrap();
+        assert_eq!(cwd_path(), expected);
     }
 }
