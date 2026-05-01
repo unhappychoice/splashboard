@@ -378,105 +378,109 @@ mod tests {
         assert_eq!(fetcher.option_schemas()[1].name, "limit");
         assert_eq!(fetcher.option_schemas()[2].name, "days");
 
-        let Some(Body::Bars(bars)) = fetcher.sample_body(Shape::Bars) else {
-            panic!("expected bars sample");
-        };
-        assert_eq!(bars.bars[0].label, "alice");
-        assert_eq!(bars.bars[1].value, 27);
+        let bars = fetcher.sample_body(Shape::Bars).unwrap();
+        assert!(matches!(&bars, Body::Bars(_)));
+        if let Body::Bars(bars) = bars {
+            assert_eq!(bars.bars[0].label, "alice");
+            assert_eq!(bars.bars[1].value, 27);
+        }
 
-        let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
-            panic!("expected entries sample");
-        };
-        assert_eq!(entries.items[0].key, "alice");
-        assert_eq!(entries.items[2].value.as_deref(), Some("11"));
+        let entries = fetcher.sample_body(Shape::Entries).unwrap();
+        assert!(matches!(&entries, Body::Entries(_)));
+        if let Body::Entries(entries) = entries {
+            assert_eq!(entries.items[0].key, "alice");
+            assert_eq!(entries.items[2].value.as_deref(), Some("11"));
+        }
 
-        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
-        else {
-            panic!("expected linked text block sample");
-        };
-        assert_eq!(linked.items[0].text, "alice  42");
-        assert_eq!(
-            linked.items[2].url.as_deref(),
-            Some("https://github.com/charlie")
-        );
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
+        assert!(matches!(&linked, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = linked {
+            assert_eq!(linked.items[0].text, "alice  42");
+            assert_eq!(
+                linked.items[2].url.as_deref(),
+                Some("https://github.com/charlie")
+            );
+        }
 
-        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
-            panic!("expected text block sample");
-        };
-        assert_eq!(text.lines[1], "bob  27");
+        let text_block = fetcher.sample_body(Shape::TextBlock).unwrap();
+        assert!(matches!(&text_block, Body::TextBlock(_)));
+        if let Body::TextBlock(text) = text_block {
+            assert_eq!(text.lines[1], "bob  27");
+        }
 
-        let Some(Body::MarkdownTextBlock(markdown)) = fetcher.sample_body(Shape::MarkdownTextBlock)
-        else {
-            panic!("expected markdown sample");
-        };
-        assert!(markdown.value.contains("1. **@alice** — 42"));
+        let markdown = fetcher.sample_body(Shape::MarkdownTextBlock).unwrap();
+        assert!(matches!(&markdown, Body::MarkdownTextBlock(_)));
+        if let Body::MarkdownTextBlock(markdown) = markdown {
+            assert!(markdown.value.contains("1. **@alice** — 42"));
+        }
 
-        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
-            panic!("expected text sample");
-        };
-        assert_eq!(text.value, "@alice +42 · @bob +27 · @charlie +11");
+        let text = fetcher.sample_body(Shape::Text).unwrap();
+        assert!(matches!(&text, Body::Text(_)));
+        if let Body::Text(text) = text {
+            assert_eq!(text.value, "@alice +42 · @bob +27 · @charlie +11");
+        }
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
     fn text_body_collapses_to_at_handles_with_plus_counts() {
         let body = render_body(&rows(), Shape::Text);
-        let Body::Text(d) = body else {
-            panic!("expected text")
-        };
-        assert_eq!(d.value, "@alice +42 · @bob +27");
+        assert!(matches!(&body, Body::Text(_)));
+        if let Body::Text(d) = body {
+            assert_eq!(d.value, "@alice +42 · @bob +27");
+        }
     }
 
     #[test]
     fn markdown_text_block_lists_handles_and_counts() {
         let body = render_body(&rows(), Shape::MarkdownTextBlock);
-        let Body::MarkdownTextBlock(d) = body else {
-            panic!("expected markdown")
-        };
-        assert!(d.value.contains("1. **@alice** — 42"));
-        assert!(d.value.contains("2. **@bob** — 27"));
+        assert!(matches!(&body, Body::MarkdownTextBlock(_)));
+        if let Body::MarkdownTextBlock(d) = body {
+            assert!(d.value.contains("1. **@alice** — 42"));
+            assert!(d.value.contains("2. **@bob** — 27"));
+        }
     }
 
     #[test]
     fn text_block_has_one_line_per_contributor() {
         let body = render_body(&rows(), Shape::TextBlock);
-        let Body::TextBlock(d) = body else {
-            panic!("expected text block")
-        };
-        assert_eq!(d.lines.len(), 2);
+        assert!(matches!(&body, Body::TextBlock(_)));
+        if let Body::TextBlock(d) = body {
+            assert_eq!(d.lines.len(), 2);
+        }
     }
 
     #[test]
     fn entries_body_keeps_name_to_count_pairs() {
         let body = render_body(&rows(), Shape::Entries);
-        let Body::Entries(entries) = body else {
-            panic!("expected entries")
-        };
-        assert_eq!(entries.items[0].key, "alice");
-        assert_eq!(entries.items[1].value.as_deref(), Some("27"));
+        assert!(matches!(&body, Body::Entries(_)));
+        if let Body::Entries(entries) = body {
+            assert_eq!(entries.items[0].key, "alice");
+            assert_eq!(entries.items[1].value.as_deref(), Some("27"));
+        }
     }
 
     #[test]
     fn linked_text_block_uses_profile_urls() {
         let body = render_body(&rows(), Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(linked) = body else {
-            panic!("expected linked text block")
-        };
-        assert_eq!(linked.items[0].text, "alice  42");
-        assert_eq!(
-            linked.items[1].url.as_deref(),
-            Some("https://github.com/bob")
-        );
+        assert!(matches!(&body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = body {
+            assert_eq!(linked.items[0].text, "alice  42");
+            assert_eq!(
+                linked.items[1].url.as_deref(),
+                Some("https://github.com/bob")
+            );
+        }
     }
 
     #[test]
     fn bars_body_preserves_labels_and_values() {
         let body = render_body(&rows(), Shape::Bars);
-        let Body::Bars(bars) = body else {
-            panic!("expected bars")
-        };
-        assert_eq!(bars.bars[0].label, "alice");
-        assert_eq!(bars.bars[1].value, 27);
+        assert!(matches!(&body, Body::Bars(_)));
+        if let Body::Bars(bars) = body {
+            assert_eq!(bars.bars[0].label, "alice");
+            assert_eq!(bars.bars[1].value, 27);
+        }
     }
 
     #[test]
@@ -530,6 +534,15 @@ mod tests {
             repo_for_key(&ctx(None, Some(Shape::Bars))),
             resolve_repo(None).unwrap().as_path()
         );
+    }
+
+    #[test]
+    fn env_guard_set_assigns_and_restores_some_values() {
+        let key = "SPLASHBOARD_TEST_CONTRIBUTORS_MONTHLY_ENV_GUARD";
+        let guard = EnvGuard::set(&[(key, Some("during"))]);
+        assert_eq!(std::env::var(key).ok().as_deref(), Some("during"));
+        drop(guard);
+        assert!(std::env::var(key).is_err());
     }
 
     #[test]
