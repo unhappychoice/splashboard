@@ -421,6 +421,20 @@ mod tests {
     }
 
     #[test]
+    fn resolve_shape_uses_renderer_first_shape_when_no_shapes_overlap() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+
+        let mut mismatch = widget("mismatch", "clock");
+        mismatch.render = Some(RenderSpec::Short("status_badge".into()));
+
+        assert_eq!(
+            resolve_shape(&mismatch, &fetchers.get("clock").unwrap(), &renderers),
+            Shape::Badge
+        );
+    }
+
+    #[test]
     fn build_specs_defaults_and_deanimates_wrapped_renderers() {
         let plain = widget("plain", "basic_static");
 
@@ -452,6 +466,13 @@ mod tests {
             Some(RenderSpec::Full { type_name, options })
                 if type_name == "list_plain" && options.align.as_deref() == Some("center")
         ));
+    }
+
+    #[test]
+    fn override_from_format_returns_none_for_non_text_shapes() {
+        let mut static_widget = widget("static", "basic_static");
+        static_widget.format = Some("alpha".into());
+        assert!(override_from_format(&static_widget, Shape::Badge).is_none());
     }
 
     #[test]
@@ -530,6 +551,28 @@ mod tests {
             RenderSpec::Full { type_name, options }
                 if type_name == "text_ascii"
                     && options.extra_str("font") == Some("ansi_shadow")
+        ));
+    }
+
+    #[test]
+    fn deanimate_full_typewriter_preserves_render_options() {
+        let spec = RenderSpec::Full {
+            type_name: "animated_typewriter".into(),
+            options: RenderOptions {
+                align: Some("right".into()),
+                color: Some("panel_title".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("speed", "2"),
+        };
+
+        assert!(matches!(
+            deanimate(spec),
+            RenderSpec::Full { type_name, options }
+                if type_name == "text_plain"
+                    && options.align.as_deref() == Some("right")
+                    && options.color.as_deref() == Some("panel_title")
+                    && options.extra_str("speed") == Some("2")
         ));
     }
 }
