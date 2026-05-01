@@ -642,6 +642,157 @@ mod tests {
     }
 
     #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = LinearIssues;
+        assert_eq!(fetcher.name(), "linear_issues");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.option_schemas().len(), OPTION_SCHEMAS.len());
+        assert_eq!(fetcher.option_schemas()[0].name, "token");
+        assert_eq!(fetcher.option_schemas().last().unwrap().name, "limit");
+        for &shape in SHAPES {
+            assert!(fetcher.sample_body(shape).is_some());
+        }
+        assert!(fetcher.sample_body(Shape::Image).is_none());
+    }
+
+    #[test]
+    fn parse_options_and_build_filter_cover_custom_state_project_label_and_today() {
+        let raw: toml::Value = toml::from_str("bogus = 1").unwrap();
+        assert!(matches!(
+            parse_options(Some(&raw)),
+            Err(FetchError::Failed(message)) if message.contains("invalid options")
+        ));
+
+        let opts = options(
+            r#"
+filter_status = "Needs Review"
+filter_assignee = "any"
+filter_project = "Roadmap"
+filter_due = "today"
+filter_label = "bug"
+"#,
+        );
+        let today = NaiveDate::from_ymd_opt(2026, 4, 29).unwrap();
+        let filter = build_filter(&opts, today);
+
+        assert_eq!(filter["state"]["name"]["eq"], json!("Needs Review"));
+        assert!(filter.get("assignee").is_none(), "got: {filter}");
+        assert_eq!(filter["project"]["name"]["eq"], json!("Roadmap"));
+        assert_eq!(filter["dueDate"]["eq"], json!("2026-04-29"));
+        assert_eq!(filter["labels"]["name"]["eq"], json!("bug"));
+    }
+
+    #[test]
+    fn helper_filters_cover_numeric_priority_due_variants_and_unknowns() {
+        let today = NaiveDate::from_ymd_opt(2026, 4, 29).unwrap();
+        assert!(assignee_filter(Some("any")).is_none());
+        assert_eq!(priority_filter(Some(" 3 ")).unwrap()["eq"], json!(3));
+        assert!(priority_filter(Some("mystery")).is_none());
+        assert_eq!(
+            due_filter(Some("no_due"), today).unwrap()["null"],
+            json!(true)
+        );
+        assert!(due_filter(Some("someday"), today).is_none());
+        assert_eq!(badge_status(4), Status::Warn);
+        assert_eq!(state_to_status("triage"), None);
+    }
+
+    #[test]
+    fn to_view_and_formatters_cover_optional_and_invalid_fields() {
+        let view = to_view(ApiIssue {
+            identifier: "ENG-42".into(),
+            title: "Ship it".into(),
+            priority: 9.7,
+            priority_label: None,
+            state: ApiState {
+                name: "Todo".into(),
+                state_type: "unstarted".into(),
+            },
+            assignee: Some(ApiUser {
+                display_name: None,
+                email: Some("ops@example.com".into()),
+            }),
+            team: Some(ApiTeam {
+                key: "ENG".into(),
+                name: "Engineering".into(),
+            }),
+            project: Some(ApiProject {
+                name: "Roadmap".into(),
+            }),
+            labels: Some(ApiConnection {
+                nodes: vec![
+                    ApiLabel { name: "bug".into() },
+                    ApiLabel { name: "ops".into() },
+                ],
+            }),
+            due_date: Some("not-a-date".into()),
+            url: "https://linear.app/acme/issue/ENG-42".into(),
+            updated_at: "not-rfc3339".into(),
+        });
+
+        assert_eq!(priority_to_u8(-1.2), 0);
+        assert_eq!(view.priority, 4);
+        assert_eq!(view.priority_label, "—");
+        assert_eq!(view.assignee.as_deref(), Some("ops@example.com"));
+        assert_eq!(view.team_name.as_deref(), Some("Engineering"));
+        assert_eq!(view.project.as_deref(), Some("Roadmap"));
+        assert_eq!(view.labels, vec!["bug", "ops"]);
+        assert!(view.due_date.is_none());
+        assert_eq!(view.updated_at, 0);
+
+        let due = NaiveDate::from_ymd_opt(2026, 12, 5).unwrap();
+        let due_view = view_for_test("ENG-9", 3, Some(due), 0);
+        assert_eq!(line_for(&due_view), "ENG-9 title [Todo] · due 12-05 · P3");
+        assert_eq!(
+            markdown_line_for(&due_view),
+            "- **ENG-9** title *[Todo]* · due 12-05 · P3"
+        );
+    }
+
+    #[test]
+    fn bars_and_render_fallback_cover_remaining_groupings() {
+        let mut team_a = view_for_test("ENG-1", 1, None, 0);
+        team_a.team_name = Some("Platform".into());
+        let team_b = view_for_test("ENG-2", 1, None, 0);
+        let mut team_c = view_for_test("ENG-3", 1, None, 0);
+        team_c.team_name = Some("Platform".into());
+        let Body::Bars(team_bars) = bars_body(&[team_a, team_b, team_c], Some("team")) else {
+            panic!("expected team bars");
+        };
+        assert_eq!(team_bars.bars[0].label, "Platform");
+        assert_eq!(team_bars.bars[0].value, 2);
+        assert_eq!(team_bars.bars[1].label, "—");
+
+        let mut assignee_a = view_for_test("ENG-4", 1, None, 0);
+        assignee_a.assignee = Some("Amy".into());
+        let assignee_b = view_for_test("ENG-5", 1, None, 0);
+        let Body::Bars(assignee_bars) = bars_body(&[assignee_a, assignee_b], Some("assignee"))
+        else {
+            panic!("expected assignee bars");
+        };
+        assert_eq!(assignee_bars.bars[0].label, "Amy");
+        assert_eq!(assignee_bars.bars[1].label, "Unassigned");
+
+        let mut project_a = view_for_test("ENG-6", 1, None, 0);
+        project_a.project = Some("Atlas".into());
+        let project_b = view_for_test("ENG-7", 1, None, 0);
+        let Body::Bars(project_bars) = bars_body(&[project_a, project_b], Some("project")) else {
+            panic!("expected project bars");
+        };
+        assert_eq!(project_bars.bars[0].label, "Atlas");
+        assert_eq!(project_bars.bars[1].label, "—");
+
+        let views = vec![view_for_test("ENG-8", 2, None, 0)];
+        let body = render_body(&views, Shape::Image, &Options::default(), 10);
+        let Body::TextBlock(text) = body else {
+            panic!("expected text fallback");
+        };
+        assert_eq!(text.lines, vec![line_for(&views[0])]);
+    }
+
+    #[test]
     fn state_filter_open_excludes_completed_and_canceled() {
         let v = state_filter(Some("open")).unwrap();
         assert_eq!(
