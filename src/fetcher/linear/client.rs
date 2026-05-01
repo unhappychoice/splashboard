@@ -210,6 +210,8 @@ async fn acquire_permit() -> Result<tokio::sync::SemaphorePermit<'static>, Fetch
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::net::TcpListener;
+    use std::process::Command;
 
     use reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
 
@@ -254,6 +256,33 @@ mod tests {
             .block_on(future)
     }
 
+    fn restore_linear_token(previous: Option<String>) {
+        match previous {
+            Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
+            None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
+        }
+    }
+
+    fn unused_proxy_url() -> String {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        format!("http://{addr}")
+    }
+
+    fn run_child_test(filter: &str, envs: &[(&str, &str)]) {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .arg(filter)
+            .arg("--nocapture")
+            .arg("--test-threads=1");
+        envs.iter().for_each(|(key, value)| {
+            command.env(key, value);
+        });
+        let status = command.status().unwrap();
+        assert!(status.success(), "child test failed: {status}");
+    }
+
     #[test]
     fn resolve_token_prefers_config_value() {
         let token = resolve_token(Some("from-config")).unwrap();
@@ -276,6 +305,15 @@ mod tests {
     #[test]
     fn resolve_token_errors_when_config_and_env_are_missing() {
         let _guard = LinearTokenGuard::set(None);
+        assert!(matches!(
+            resolve_token(None),
+            Err(FetchError::Failed(msg)) if msg.contains("linear token missing")
+        ));
+    }
+
+    #[test]
+    fn resolve_token_rejects_blank_env_values() {
+        let _guard = LinearTokenGuard::set(Some("   "));
         assert!(matches!(
             resolve_token(None),
             Err(FetchError::Failed(msg)) if msg.contains("linear token missing")
@@ -306,6 +344,15 @@ mod tests {
         let extra = cache_extra(Some("super-secret"), Some(&opts));
         assert!(!extra.contains("super-secret"), "got: {extra:?}");
         assert!(extra.contains("filter_team = \"ENG\""), "got: {extra:?}");
+    }
+
+    #[test]
+    fn cache_extra_preserves_nested_token_fields() {
+        let opts: toml::Value =
+            toml::from_str("token = \"top-secret\"\n[nested]\ntoken = \"inner-secret\"").unwrap();
+        let extra = cache_extra(Some("top-secret"), Some(&opts));
+        assert!(!extra.contains("top-secret"), "got: {extra:?}");
+        assert!(extra.contains("token = \"inner-secret\""), "got: {extra:?}");
     }
 
     #[test]
@@ -365,6 +412,13 @@ mod tests {
     }
 
     #[test]
+    fn graphql_response_defaults_missing_fields() {
+        let envelope: GraphqlResponse<serde_json::Value> = serde_json::from_str("{}").unwrap();
+        assert!(envelope.data.is_none());
+        assert!(envelope.errors.is_none());
+    }
+
+    #[test]
     fn linear_token_guard_restores_previous_value_on_drop() {
         let (previous, guard) = {
             let lock = crate::paths::TEST_ENV_LOCK
@@ -386,10 +440,25 @@ mod tests {
             Some("before")
         );
 
-        match previous {
-            Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
-            None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
-        }
+        restore_linear_token(previous);
+    }
+
+    #[test]
+    fn linear_token_guard_set_restores_outer_previous_value() {
+        let outer_previous = {
+            let _lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let outer_previous = std::env::var("LINEAR_TOKEN").ok();
+            unsafe { std::env::set_var("LINEAR_TOKEN", "outer") };
+            outer_previous
+        };
+
+        let guard = LinearTokenGuard::set(Some("inner"));
+        drop(guard);
+
+        assert_eq!(std::env::var("LINEAR_TOKEN").ok().as_deref(), Some("outer"));
+        restore_linear_token(outer_previous);
     }
 
     #[test]
@@ -401,5 +470,40 @@ mod tests {
     fn acquire_permit_returns_a_live_permit() {
         let permit = run_async(acquire_permit()).unwrap();
         drop(permit);
+    }
+
+    #[test]
+    fn graphql_query_surfaces_request_failures_via_child_process() {
+        let proxy = unused_proxy_url();
+        run_child_test(
+            "graphql_query_surfaces_request_failures_child_only",
+            &[
+                ("SPLASHBOARD_LINEAR_PROXY_CHILD", "1"),
+                ("HTTPS_PROXY", proxy.as_str()),
+                ("https_proxy", proxy.as_str()),
+                ("ALL_PROXY", proxy.as_str()),
+                ("all_proxy", proxy.as_str()),
+                ("NO_PROXY", ""),
+                ("no_proxy", ""),
+            ],
+        );
+    }
+
+    #[test]
+    fn graphql_query_surfaces_request_failures_child_only() {
+        if std::env::var_os("SPLASHBOARD_LINEAR_PROXY_CHILD").is_none() {
+            return;
+        }
+
+        let result = run_async(graphql_query::<serde_json::Value>(
+            "lin_api_test",
+            "query Viewer { viewer { id } }",
+            serde_json::json!({}),
+        ));
+
+        assert!(matches!(
+            result,
+            Err(FetchError::Failed(msg)) if msg.contains("linear request failed")
+        ));
     }
 }
