@@ -675,6 +675,59 @@ mod tests {
     }
 
     #[test]
+    fn fetcher_contract_and_parse_options_cover_catalog_surface() {
+        let fetcher = LinearNotifications;
+        let default = fetcher.cache_key(&FetchContext::default());
+        let custom = fetcher.cache_key(&FetchContext {
+            shape: Some(Shape::Badge),
+            options: Some(toml::from_str("filter_type = \"comment\"\nlimit = 3").unwrap()),
+            ..FetchContext::default()
+        });
+        let raw: toml::Value = toml::from_str(
+            "token = \"lin_api_test\"\nfilter_read = \"all\"\nfilter_type = \"comment\"\nfilter_team = \"ENG\"\nlimit = 3",
+        )
+        .unwrap();
+
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_ne!(default, custom);
+        assert!(fetcher.sample_body(Shape::Image).is_none());
+        assert!(parse_options(None).unwrap().limit.is_none());
+        assert_eq!(parse_options(Some(&raw)).unwrap().limit, Some(3));
+        assert!(matches!(
+            parse_options(Some(&toml::from_str("bogus = true").unwrap())),
+            Err(FetchError::Failed(message)) if message.contains("invalid options")
+        ));
+    }
+
+    #[test]
+    fn matches_type_and_pretty_type_cover_remaining_labels() {
+        let comment = view_for_test("issueCommentCreated", true, Some("ENG-1"));
+        let status = view_for_test("issueStatusChanged", true, Some("ENG-2"));
+        let project = view_for_test("projectUpdateCreated", true, None);
+
+        assert!(matches_type(&comment, Some("comment")));
+        assert!(matches_type(&status, Some("status_changed")));
+        assert!(matches_type(&project, Some("project_update")));
+        assert!(matches_type(&comment, Some("mystery")));
+        assert_eq!(pretty_type("issueSubscribed"), "subscribed");
+        assert_eq!(pretty_type("issueCreated"), "created");
+        assert_eq!(pretty_type("issueDueSoon"), "reminder");
+    }
+
+    #[test]
+    fn helpers_treat_blank_filters_and_empty_values_as_absent() {
+        let v = view_for_test("issueMention", true, Some("ENG-1"));
+
+        assert!(matches_team(&v, Some("  ")));
+        assert_eq!(capitalize(""), "");
+        assert_eq!(
+            join_parts(&[Some("ENG-1".into()), Some(String::new()), None]),
+            "ENG-1"
+        );
+        assert!(short_snippet(" \n\t\n ".into()).is_none());
+    }
+
+    #[test]
     fn render_text_emits_unread_count() {
         let views = vec![
             view_for_test("issueMention", true, Some("E-1")),
@@ -845,6 +898,55 @@ mod tests {
     }
 
     #[test]
+    fn render_markdown_entries_and_fallback_shapes_use_snippet_and_type_label() {
+        let mut v = view_for_test("issueCommentCreated", true, None);
+        v.actor = None;
+        v.issue_title = None;
+        v.snippet = Some("Need eyes on the migration".into());
+
+        let markdown = render_body(&[v], Shape::MarkdownTextBlock, 10);
+        let Body::MarkdownTextBlock(markdown) = markdown else {
+            panic!("expected markdown_text_block");
+        };
+        assert_eq!(markdown.value, "- *comment* · Need eyes on the migration");
+
+        let entries = render_body(
+            &[view_for_test("issueCommentCreated", true, None)],
+            Shape::Entries,
+            10,
+        );
+        let Body::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.items[0].key, "comment");
+
+        let mut fallback = view_for_test("issueCommentCreated", true, None);
+        fallback.actor = None;
+        fallback.issue_title = None;
+        fallback.snippet = Some("Need eyes on the migration".into());
+        let text = render_body(&[fallback], Shape::Image, 10);
+        let Body::TextBlock(text) = text else {
+            panic!("expected text_block");
+        };
+        assert_eq!(text.lines[0], "comment · Need eyes on the migration");
+    }
+
+    #[test]
+    fn tally_sort_badge_zero_and_payload_wrapper_cover_helper_paths() {
+        let bars = tally_by_type(&[
+            view_for_test("issueStatusChanged", true, Some("ENG-1")),
+            view_for_test("issueAssignedToYou", true, Some("ENG-2")),
+        ]);
+        let payload = payload(Body::Text(TextData { value: "ok".into() }));
+
+        assert_eq!(bars[0].label, "Assigned");
+        assert_eq!(bars[1].label, "Status");
+        assert_eq!(badge_status(&[]), Status::Ok);
+        assert!(payload.icon.is_none());
+        assert!(payload.status.is_none());
+    }
+
+    #[test]
     fn to_view_prefers_pull_request_over_project_when_both_absent_for_issue() {
         let api = ApiNotification {
             notif_type: "pullRequestReviewRequested".into(),
@@ -864,6 +966,78 @@ mod tests {
         assert_eq!(v.issue_identifier.as_deref(), Some("acme/widgets#42"));
         assert_eq!(v.issue_title.as_deref(), Some("Fix login flow"));
         assert!(v.is_unread);
+    }
+
+    #[test]
+    fn to_view_uses_issue_branch_email_fallback_and_comment_snippet() {
+        let api = ApiNotification {
+            notif_type: "issueCommentCreated".into(),
+            read_at: Some("2026-04-29T00:00:00Z".into()),
+            created_at: "2026-04-28T12:34:56Z".into(),
+            actor: Some(ApiUser {
+                display_name: None,
+                email: Some("sarah@example.com".into()),
+            }),
+            issue: Some(ApiIssue {
+                identifier: "ENG-42".into(),
+                title: "Ship notifications".into(),
+                url: "https://linear.app/acme/issue/ENG-42".into(),
+                team: Some(ApiTeam { key: "ENG".into() }),
+            }),
+            project: None,
+            comment: Some(ApiComment {
+                body: Some("\n\nNeed eyes on this\nsecond line".into()),
+            }),
+            pull_request: None,
+        };
+        let v = to_view(api);
+
+        assert_eq!(v.actor.as_deref(), Some("sarah@example.com"));
+        assert_eq!(v.issue_identifier.as_deref(), Some("ENG-42"));
+        assert_eq!(v.team_key.as_deref(), Some("ENG"));
+        assert_eq!(v.snippet.as_deref(), Some("Need eyes on this"));
+        assert!(!v.is_unread);
+        assert!(v.created_ts > 0);
+    }
+
+    #[test]
+    fn to_view_falls_back_when_pr_slug_or_subject_is_missing() {
+        let pr = ApiNotification {
+            notif_type: "pullRequestMerged".into(),
+            read_at: None,
+            created_at: "2026-04-29T00:00:00Z".into(),
+            actor: None,
+            issue: None,
+            project: None,
+            comment: None,
+            pull_request: Some(ApiPullRequest {
+                number: 9,
+                title: "Tighten filters".into(),
+                url: "https://github.com//widgets/pull/9".into(),
+            }),
+        };
+        let empty = ApiNotification {
+            notif_type: "issueCreated".into(),
+            read_at: None,
+            created_at: "not-a-date".into(),
+            actor: None,
+            issue: None,
+            project: None,
+            comment: Some(ApiComment {
+                body: Some("\n \n".into()),
+            }),
+            pull_request: None,
+        };
+
+        let pr_view = to_view(pr);
+        let empty_view = to_view(empty);
+
+        assert_eq!(pr_view.issue_identifier.as_deref(), Some("PR #9"));
+        assert_eq!(repo_from_pr_url("https://github.com//widgets/pull/9"), None);
+        assert_eq!(empty_view.issue_identifier, None);
+        assert_eq!(empty_view.issue_title, None);
+        assert_eq!(empty_view.snippet, None);
+        assert_eq!(empty_view.created_ts, 0);
     }
 
     #[test]
