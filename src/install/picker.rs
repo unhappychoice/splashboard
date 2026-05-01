@@ -817,6 +817,13 @@ mod tests {
             .join("\n")
     }
 
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+    }
+
     #[test]
     fn theme_options_keep_default_first_and_map_to_known_presets() {
         let options = theme_options();
@@ -850,6 +857,36 @@ mod tests {
     }
 
     #[test]
+    fn slot_meta_copy_stays_context_specific() {
+        let home = SlotMeta::home();
+        assert_eq!(home.title, "Pick your home dashboard");
+        assert!(home.subtitle.contains("new shells"));
+
+        let project = SlotMeta::project();
+        assert_eq!(project.title, "Pick your default project dashboard");
+        assert!(project.subtitle.contains(".splashboard/."));
+    }
+
+    #[test]
+    fn helper_rows_include_labels_markers_and_values() {
+        let summary = line_text(&summary_row("Theme", "default"));
+        assert!(summary.starts_with("  Theme"));
+        assert!(summary.ends_with("default"));
+
+        let active_name = line_text(&render_name_desc_row("alpha", "preview text", true));
+        assert!(active_name.starts_with("▶ alpha"));
+        assert!(active_name.ends_with("  preview text"));
+
+        let inactive_toggle = line_text(&render_toggle_row("wait", "fresh data", false, false));
+        assert!(inactive_toggle.starts_with("  [ ] wait"));
+        assert!(inactive_toggle.ends_with("  fresh data"));
+
+        let active_toggle = line_text(&render_toggle_row("paint", "terminal bg", true, true));
+        assert!(active_toggle.starts_with("▶ [x] paint"));
+        assert!(active_toggle.ends_with("  terminal bg"));
+    }
+
+    #[test]
     fn confirmation_screen_renders_summary_and_rc_block() {
         let summary = Summary {
             shell: "zsh".into(),
@@ -877,6 +914,28 @@ mod tests {
     }
 
     #[test]
+    fn confirmation_screen_hides_rc_block_when_path_is_missing() {
+        let summary = Summary {
+            shell: "fish".into(),
+            home_template: "home_splash".into(),
+            project_template: "project_plain".into(),
+            theme: "default".into(),
+            bg: true,
+            wait: false,
+            files: vec![PathBuf::from("/tmp/config.toml")],
+            rc_path: None,
+        };
+
+        let buf = draw_to_buffer(100, 18, |frame| draw_confirmation(frame, &summary));
+        let text = buffer_text(&buf);
+
+        assert!(text.contains("/tmp/config.toml"));
+        assert!(text.contains("Paint splash bg"));
+        assert!(text.contains("default"));
+        assert!(!text.contains("Shell rc block:"));
+    }
+
+    #[test]
     fn template_frame_renders_selected_template_and_preview() {
         let templates: Vec<&'static Template> = for_context(TemplateContext::Home).collect();
         let selected = 1;
@@ -892,6 +951,52 @@ mod tests {
         assert!(text.contains("preview"));
         assert!(text.contains(templates[selected].name));
         assert!(text.contains("navigate"));
+        assert!(!text.contains("(preview unavailable)"));
+    }
+
+    #[test]
+    fn helper_panels_render_titles_counts_and_placeholders() {
+        let buf = draw_to_buffer(80, 10, |frame| {
+            let layout = UiLayout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(2),
+                    Constraint::Min(6),
+                    Constraint::Length(1),
+                ])
+                .split(frame.area());
+            let meta = SlotMeta {
+                title: "Header title",
+                subtitle: "Header subtitle",
+            };
+            draw_header(frame, layout[0], &meta, 2, 5);
+            draw_preview(frame, layout[1], "demo", None);
+            draw_footer(frame, layout[2], "Esc cancel");
+        });
+        let text = buffer_text(&buf);
+
+        assert!(text.contains("Header title"));
+        assert!(text.contains("2/5"));
+        assert!(text.contains("Header subtitle"));
+        assert!(text.contains("preview · demo"));
+        assert!(text.contains("(preview unavailable)"));
+        assert!(text.contains("Esc cancel"));
+    }
+
+    #[test]
+    fn theme_frame_renders_default_preview_when_available() {
+        let options = theme_options();
+        let template = for_context(TemplateContext::Home).next().unwrap();
+        let preview =
+            TemplatePreview::from_body_with_theme(template.body, resolve_theme(None)).unwrap();
+
+        let buf = draw_to_buffer(100, 36, |frame| {
+            draw_theme_frame(frame, &options, 0, Some(&preview));
+        });
+        let text = buffer_text(&buf);
+
+        assert!(text.contains("Pick your theme"));
+        assert!(text.contains("preview · default"));
         assert!(!text.contains("(preview unavailable)"));
     }
 
@@ -914,5 +1019,17 @@ mod tests {
         assert!(toggle_text.contains("[ ] paint splash background"));
         assert!(toggle_text.contains("[x] wait for fresh data"));
         assert!(toggle_text.contains("space toggle"));
+    }
+
+    #[test]
+    fn toggle_frame_highlights_background_when_selected() {
+        let buf = draw_to_buffer(100, 10, |frame| {
+            draw_toggle_frame(frame, TOGGLE_BG, [true, false]);
+        });
+        let text = buffer_text(&buf);
+
+        assert!(text.contains("▶ [x] paint splash background"));
+        assert!(text.contains("[ ] wait for fresh data"));
+        assert!(text.contains("1/2"));
     }
 }
