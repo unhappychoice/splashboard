@@ -288,25 +288,25 @@ mod tests {
         let fetcher = HackernewsTopFetcher;
 
         let block = fetcher.sample_body(Shape::TextBlock).unwrap();
-        let Body::TextBlock(block) = block else {
-            panic!("expected text block");
-        };
-        assert_eq!(block.lines.len(), 3);
-        assert!(block.lines[0].contains("Show HN"));
+        assert!(matches!(block, Body::TextBlock(_)));
+        if let Body::TextBlock(block) = block {
+            assert_eq!(block.lines.len(), 3);
+            assert!(block.lines[0].contains("Show HN"));
+        }
 
         let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
-        let Body::LinkedTextBlock(linked) = linked else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(linked.items.len(), 3);
-        assert!(linked.items[0].url.is_some());
+        assert!(matches!(linked, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = linked {
+            assert_eq!(linked.items.len(), 3);
+            assert!(linked.items[0].url.is_some());
+        }
 
         let entries = fetcher.sample_body(Shape::Entries).unwrap();
-        let Body::Entries(entries) = entries else {
-            panic!("expected entries");
-        };
-        assert_eq!(entries.items[0].key, "Show HN: I built a thing");
-        assert_eq!(entries.items[0].value.as_deref(), Some("234pt 56c"));
+        assert!(matches!(entries, Body::Entries(_)));
+        if let Body::Entries(entries) = entries {
+            assert_eq!(entries.items[0].key, "Show HN: I built a thing");
+            assert_eq!(entries.items[0].value.as_deref(), Some("234pt 56c"));
+        }
 
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
@@ -341,20 +341,29 @@ mod tests {
             &[item(Some("hello"), Some(123), Some(45))],
             Shape::TextBlock,
         );
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["123pt 45c  hello".to_string()]);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(text_block) = body {
+            assert_eq!(text_block.lines, vec!["123pt 45c  hello".to_string()]);
+        }
     }
 
     #[test]
     fn entries_use_title_as_key_and_meta_as_value() {
         let body = render_body(&[item(Some("hello"), Some(7), None)], Shape::Entries);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        assert_eq!(e.items[0].key, "hello");
-        assert_eq!(e.items[0].value.as_deref(), Some("7pt 0c"));
+        assert!(matches!(body, Body::Entries(_)));
+        if let Body::Entries(entries) = body {
+            assert_eq!(entries.items[0].key, "hello");
+            assert_eq!(entries.items[0].value.as_deref(), Some("7pt 0c"));
+        }
+    }
+
+    #[test]
+    fn empty_items_renders_empty_entries() {
+        let body = render_body(&[], Shape::Entries);
+        assert!(matches!(body, Body::Entries(_)));
+        if let Body::Entries(entries) = body {
+            assert!(entries.items.is_empty());
+        }
     }
 
     #[test]
@@ -363,13 +372,13 @@ mod tests {
             &[item(Some("ask"), Some(0), Some(0))],
             Shape::LinkedTextBlock,
         );
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://news.ycombinator.com/item?id=1")
-        );
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = body {
+            assert_eq!(
+                linked.items[0].url.as_deref(),
+                Some("https://news.ycombinator.com/item?id=1")
+            );
+        }
     }
 
     #[test]
@@ -382,21 +391,24 @@ mod tests {
             url: Some("https://example.com/post".into()),
         };
         let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/post"));
-        assert!(b.items[0].text.contains("show"));
-        assert!(b.items[0].text.contains("1pt 0c"));
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = body {
+            assert_eq!(
+                linked.items[0].url.as_deref(),
+                Some("https://example.com/post")
+            );
+            assert!(linked.items[0].text.contains("show"));
+            assert!(linked.items[0].text.contains("1pt 0c"));
+        }
     }
 
     #[test]
     fn missing_title_falls_back_to_placeholder() {
         let body = render_body(&[item(None, Some(0), Some(0))], Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert!(t.lines[0].contains("(no title)"));
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(text_block) = body {
+            assert!(text_block.lines[0].contains("(no title)"));
+        }
     }
 
     #[test]
@@ -420,19 +432,28 @@ mod tests {
     #[test]
     fn empty_items_renders_empty_body() {
         let body = render_body(&[], Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert!(t.lines.is_empty());
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(text_block) = body {
+            assert!(text_block.lines.is_empty());
+        }
     }
 
     #[test]
     fn empty_items_renders_empty_linked_text_block() {
         let body = render_body(&[], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items.is_empty());
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = body {
+            assert!(linked.items.is_empty());
+        }
+    }
+
+    #[test]
+    fn unsupported_shape_falls_back_to_text_block() {
+        let body = render_body(&[item(Some("fallback"), Some(8), Some(3))], Shape::Text);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(text_block) = body {
+            assert_eq!(text_block.lines, vec!["8pt 3c  fallback".to_string()]);
+        }
     }
 
     #[test]
@@ -445,19 +466,19 @@ mod tests {
             url: None,
         };
         let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items[0].url.is_none());
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(linked) = body {
+            assert!(linked.items[0].url.is_none());
+        }
     }
 
     #[test]
     fn missing_score_and_comments_default_to_zero() {
         let body = render_body(&[item(Some("x"), None, None)], Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines[0], "0pt 0c  x");
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(text_block) = body {
+            assert_eq!(text_block.lines[0], "0pt 0c  x");
+        }
     }
 
     #[test]
