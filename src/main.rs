@@ -470,7 +470,46 @@ fn prompt_yes_no(question: &str) -> io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::allow_render;
+    use std::path::Path;
+
+    use super::{CatalogTarget, DashboardSource, TrustStore, WidgetConfig, allow_render};
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: Vec<(&'static str, Option<String>)>) -> Self {
+            let lock = splashboard::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .into_iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
 
     fn env_with(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
         move |k: &str| {
@@ -478,6 +517,36 @@ mod tests {
                 .iter()
                 .find(|(key, _)| *key == k)
                 .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    fn minimal_dashboard() -> &'static str {
+        r#"
+[[widget]]
+id = "x"
+fetcher = "basic_static"
+render = "text_plain"
+
+[[row]]
+height = { length = 3 }
+[[row.child]]
+widget = "x"
+"#
+    }
+
+    fn write_file(path: &Path, body: &str) {
+        std::fs::write(path, body).unwrap();
+    }
+
+    fn widget(id: &str, fetcher: &str) -> WidgetConfig {
+        WidgetConfig {
+            id: id.into(),
+            fetcher: fetcher.into(),
+            render: None,
+            format: None,
+            refresh_interval: None,
+            file_format: None,
+            options: None,
         }
     }
 
@@ -545,5 +614,223 @@ mod tests {
     fn sanitize_replaces_newline_and_tab() {
         let s = super::sanitize_for_display("a\nb\tc");
         assert_eq!(s.matches('\u{FFFD}').count(), 2);
+    }
+
+    #[test]
+    fn run_async_and_render_helpers_return_early_when_disabled() {
+        let _env = EnvGuard::set(vec![("TERM", Some("dumb".into()))]);
+        let result = super::run_async(async {
+            super::render_splash(false).await?;
+            super::render_for_cd(false).await
+        });
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn load_dashboard_file_or_uses_baked_when_path_is_none() {
+        let cfg =
+            super::load_dashboard_file_or(None, super::DashboardConfig::default_home).unwrap();
+        assert!(cfg.widgets.is_empty());
+        assert!(cfg.rows.is_empty());
+    }
+
+    #[test]
+    fn load_dashboard_file_or_uses_baked_when_file_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.toml");
+        let cfg =
+            super::load_dashboard_file_or(Some(path), super::DashboardConfig::default_project)
+                .unwrap();
+        assert!(cfg.widgets.is_empty());
+        assert!(cfg.rows.is_empty());
+    }
+
+    #[test]
+    fn load_dashboard_file_or_reads_valid_dashboard() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dashboard.toml");
+        write_file(&path, minimal_dashboard());
+        let cfg =
+            super::load_dashboard_file_or(Some(path), super::DashboardConfig::default_project)
+                .unwrap();
+        assert_eq!(cfg.widgets.len(), 1);
+        assert_eq!(cfg.widgets[0].id, "x");
+        assert_eq!(cfg.rows.len(), 1);
+    }
+
+    #[test]
+    fn load_dashboard_file_or_prefixes_parse_errors_with_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.toml");
+        write_file(&path, "not = [valid");
+        let err =
+            super::load_dashboard_file_or(Some(path.clone()), super::DashboardConfig::default_home)
+                .unwrap_err();
+        assert!(err.to_string().contains(&path.display().to_string()));
+    }
+
+    #[test]
+    fn load_dashboard_file_or_propagates_non_missing_io_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = super::load_dashboard_file_or(
+            Some(dir.path().to_path_buf()),
+            super::DashboardConfig::default_home,
+        )
+        .unwrap_err();
+        assert_ne!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn load_full_config_local_reads_settings_and_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(dir.path().display().to_string()),
+        )]);
+        write_file(
+            &dir.path().join("settings.toml"),
+            "[general]\nheight = 23\nwait_for_fresh = true\n",
+        );
+        let local = dir.path().join("local.dashboard.toml");
+        write_file(&local, minimal_dashboard());
+        let (config, ident) =
+            super::load_full_config(&DashboardSource::Local(local.clone())).unwrap();
+        let (path, hash) = ident.expect("local dashboard should include trust identity");
+        assert_eq!(path, local);
+        assert_eq!(hash.len(), 64);
+        assert_eq!(config.general.height, Some(23));
+        assert!(config.general.wait_for_fresh);
+        assert_eq!(config.widgets[0].id, "x");
+    }
+
+    #[test]
+    fn load_full_config_home_and_project_use_baked_dashboards_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(dir.path().display().to_string()),
+        )]);
+        let (home, home_ident) = super::load_full_config(&DashboardSource::Home).unwrap();
+        let (project, project_ident) = super::load_full_config(&DashboardSource::Project).unwrap();
+        assert!(home_ident.is_none());
+        assert!(project_ident.is_none());
+        assert!(home.widgets.is_empty());
+        assert!(project.widgets.is_empty());
+    }
+
+    #[test]
+    fn apply_secrets_sets_missing_keys_without_overriding_existing_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_path = std::env::var("PATH").unwrap();
+        let _env = EnvGuard::set(vec![
+            ("SPLASHBOARD_HOME", Some(dir.path().display().to_string())),
+            ("MAIN_TEST_SECRET_EXISTING", Some("from_env".to_string())),
+            ("MAIN_TEST_SECRET_NEW", None),
+        ]);
+        write_file(
+            &dir.path().join("secrets.toml"),
+            r#"
+MAIN_TEST_SECRET_EXISTING = "from_file"
+MAIN_TEST_SECRET_NEW = "from_file"
+PATH = "/tmp/ignored"
+"#,
+        );
+        super::apply_secrets();
+        assert_eq!(
+            std::env::var("MAIN_TEST_SECRET_EXISTING").ok().as_deref(),
+            Some("from_env")
+        );
+        assert_eq!(
+            std::env::var("MAIN_TEST_SECRET_NEW").ok().as_deref(),
+            Some("from_file")
+        );
+        assert_eq!(std::env::var("PATH").unwrap(), original_path);
+    }
+
+    #[test]
+    fn apply_secrets_ignores_invalid_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![
+            ("SPLASHBOARD_HOME", Some(dir.path().display().to_string())),
+            ("MAIN_TEST_SECRET_BROKEN", None),
+        ]);
+        write_file(&dir.path().join("secrets.toml"), "not = valid = toml");
+        super::apply_secrets();
+        assert!(std::env::var("MAIN_TEST_SECRET_BROKEN").is_err());
+    }
+
+    #[test]
+    fn run_catalog_accepts_successful_targets() {
+        assert!(super::run_catalog(None).is_ok());
+        assert!(super::run_catalog(Some(CatalogTarget::Fetcher { name: None })).is_ok());
+        assert!(
+            super::run_catalog(Some(CatalogTarget::Fetcher {
+                name: Some("clock".into()),
+            }))
+            .is_ok()
+        );
+        assert!(super::run_catalog(Some(CatalogTarget::Renderer { name: None })).is_ok());
+        assert!(
+            super::run_catalog(Some(CatalogTarget::Renderer {
+                name: Some("text_plain".into()),
+            }))
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn run_license_prints_both_embedded_bundles() {
+        assert!(super::run_license(true).is_ok());
+        assert!(super::run_license(false).is_ok());
+    }
+
+    #[test]
+    fn resolve_trust_target_prefers_override_path() {
+        let override_path = Path::new("/tmp/override-dashboard.toml").to_path_buf();
+        assert_eq!(
+            super::resolve_trust_target(Some(override_path.clone())),
+            Some(override_path)
+        );
+    }
+
+    #[test]
+    fn print_trust_summary_handles_network_widgets() {
+        let registry = super::Registry::with_builtins();
+        let widgets = vec![
+            widget("static", "basic_static"),
+            widget("feed", "rss"),
+            widget("missing", "missing_fetcher"),
+        ];
+        assert!(
+            super::print_trust_summary(Path::new("demo.toml"), "abc123", &widgets, &registry)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn print_trust_summary_handles_safe_only_widgets() {
+        let registry = super::Registry::with_builtins();
+        let widgets = vec![widget("static", "basic_static")];
+        assert!(
+            super::print_trust_summary(Path::new("demo.toml"), "abc123", &widgets, &registry)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn run_list_trusted_and_revoke_round_trip_store_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(dir.path().display().to_string()),
+        )]);
+        let dashboard = dir.path().join("trusted.dashboard.toml");
+        write_file(&dashboard, minimal_dashboard());
+        let mut store = TrustStore::load();
+        store.trust(&dashboard, "abc123".into()).unwrap();
+        assert!(super::run_list_trusted().is_ok());
+        assert!(super::run_revoke(Some(dashboard.clone())).is_ok());
+        assert!(TrustStore::load().list().is_empty());
+        assert!(super::run_revoke(Some(dashboard)).is_ok());
     }
 }

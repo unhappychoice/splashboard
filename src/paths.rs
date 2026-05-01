@@ -63,8 +63,7 @@ pub fn logs_dir() -> Option<PathBuf> {
 /// tests in different modules can see each other's temporary values through the process-wide
 /// env var. Exposed at crate level so other test modules (`fetcher::read_store`, etc.) can
 /// lock the same mutex.
-#[cfg(test)]
-pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod tests {
