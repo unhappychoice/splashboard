@@ -18,6 +18,9 @@ use crate::samples;
 
 use super::client::{API_BASE, HN_USER_URL, get};
 
+#[cfg(test)]
+use crate::payload::{TextBlockData, TextData};
+
 const SHAPES: &[Shape] = &[
     Shape::Entries,
     Shape::Text,
@@ -257,31 +260,61 @@ mod tests {
     fn sample_body_supports_each_declared_shape() {
         let fetcher = HackernewsUserFetcher;
 
-        let text = fetcher.sample_body(Shape::Text).unwrap();
-        let Body::Text(text) = text else {
-            panic!("expected text");
-        };
-        assert!(text.value.contains("@pg"));
-
-        let entries = fetcher.sample_body(Shape::Entries).unwrap();
-        let Body::Entries(entries) = entries else {
-            panic!("expected entries");
-        };
-        assert_eq!(entries.items[0].key, "login");
-
-        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
-        let Body::TextBlock(block) = block else {
-            panic!("expected text block");
-        };
-        assert_eq!(block.lines.len(), 4);
-
-        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
-        let Body::LinkedTextBlock(linked) = linked else {
-            panic!("expected linked text block");
-        };
         assert_eq!(
-            linked.items[0].url.as_deref(),
-            Some("https://news.ycombinator.com/user?id=pg")
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(TextData {
+                value: "@pg · 156000pt karma".into(),
+            }))
+        );
+
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "login".into(),
+                        value: Some("pg".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "karma".into(),
+                        value: Some("156000".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "created".into(),
+                        value: Some("2006-10-09".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "submissions".into(),
+                        value: Some("1234".into()),
+                        status: None,
+                    },
+                ],
+            }))
+        );
+
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(TextBlockData {
+                lines: vec![
+                    "@pg".into(),
+                    "156000pt karma".into(),
+                    "joined 2006-10-09".into(),
+                    "Paul Graham, Y Combinator co-founder.".into(),
+                ],
+            }))
+        );
+
+        assert_eq!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "@pg · 156000pt karma".into(),
+                    url: Some("https://news.ycombinator.com/user?id=pg".into()),
+                }],
+            }))
         );
 
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
@@ -302,45 +335,91 @@ mod tests {
 
     #[test]
     fn text_shape_combines_login_and_karma() {
-        let body = render_body(&info(None), Shape::Text);
-        let crate::payload::Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert!(t.value.contains("@pg"));
-        assert!(t.value.contains("156000pt"));
+        assert_eq!(
+            render_body(&info(None), Shape::Text),
+            Body::Text(TextData {
+                value: "@pg · 156000pt karma".into(),
+            })
+        );
     }
 
     #[test]
     fn entries_shape_includes_canonical_rows() {
-        let body = render_body(&info(None), Shape::Entries);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        let keys: Vec<_> = e.items.iter().map(|e| e.key.as_str()).collect();
-        assert!(keys.contains(&"login"));
-        assert!(keys.contains(&"karma"));
-        assert!(keys.contains(&"created"));
-        assert!(keys.contains(&"submissions"));
+        assert_eq!(
+            render_body(&info(None), Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "login".into(),
+                        value: Some("pg".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "karma".into(),
+                        value: Some("156000".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "created".into(),
+                        value: Some("2006-10-09".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "submissions".into(),
+                        value: Some("5".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn entries_shape_appends_about_when_present() {
-        let body = render_body(&info(Some("Paul.")), Shape::Entries);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        assert!(e.items.iter().any(|x| x.key == "about"));
+        assert_eq!(
+            render_body(&info(Some("Paul.")), Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "login".into(),
+                        value: Some("pg".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "karma".into(),
+                        value: Some("156000".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "created".into(),
+                        value: Some("2006-10-09".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "submissions".into(),
+                        value: Some("5".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "about".into(),
+                        value: Some("Paul.".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn linked_text_block_shape_links_to_user_page() {
-        let body = render_body(&info(None), Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
         assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://news.ycombinator.com/user?id=pg")
+            render_body(&info(None), Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "@pg · 156000pt karma".into(),
+                    url: Some("https://news.ycombinator.com/user?id=pg".into()),
+                }],
+            })
         );
     }
 
@@ -393,21 +472,64 @@ mod tests {
 
     #[test]
     fn entries_uses_submission_count_not_full_array() {
-        let body = render_body(&info(None), Shape::Entries);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        let submissions = e.items.iter().find(|x| x.key == "submissions").unwrap();
-        assert_eq!(submissions.value.as_deref(), Some("5"));
+        assert_eq!(
+            render_body(&info(None), Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "login".into(),
+                        value: Some("pg".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "karma".into(),
+                        value: Some("156000".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "created".into(),
+                        value: Some("2006-10-09".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "submissions".into(),
+                        value: Some("5".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
     fn empty_about_is_treated_as_missing() {
-        let body = render_body(&info(Some("")), Shape::Entries);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        assert!(e.items.iter().all(|x| x.key != "about"));
+        assert_eq!(
+            render_body(&info(Some("")), Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "login".into(),
+                        value: Some("pg".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "karma".into(),
+                        value: Some("156000".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "created".into(),
+                        value: Some("2006-10-09".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "submissions".into(),
+                        value: Some("5".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]

@@ -287,26 +287,59 @@ mod tests {
     fn sample_body_supports_each_declared_shape() {
         let fetcher = HackernewsTopFetcher;
 
-        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
-        assert!(matches!(block, Body::TextBlock(_)));
-        if let Body::TextBlock(block) = block {
-            assert_eq!(block.lines.len(), 3);
-            assert!(block.lines[0].contains("Show HN"));
-        }
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(TextBlockData {
+                lines: vec![
+                    "234pt 56c  Show HN: I built a thing".into(),
+                    "187pt 41c  Why X over Y".into(),
+                    "152pt 88c  Ask HN: how do you ...".into(),
+                ],
+            }))
+        );
 
-        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
-        assert!(matches!(linked, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = linked {
-            assert_eq!(linked.items.len(), 3);
-            assert!(linked.items[0].url.is_some());
-        }
+        assert_eq!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![
+                    LinkedLine {
+                        text: "234pt 56c  Show HN: I built a thing".into(),
+                        url: Some("https://example.com/show-hn".into()),
+                    },
+                    LinkedLine {
+                        text: "187pt 41c  Why X over Y".into(),
+                        url: Some("https://example.com/article".into()),
+                    },
+                    LinkedLine {
+                        text: "152pt 88c  Ask HN: how do you ...".into(),
+                        url: Some("https://news.ycombinator.com/item?id=1".into()),
+                    },
+                ],
+            }))
+        );
 
-        let entries = fetcher.sample_body(Shape::Entries).unwrap();
-        assert!(matches!(entries, Body::Entries(_)));
-        if let Body::Entries(entries) = entries {
-            assert_eq!(entries.items[0].key, "Show HN: I built a thing");
-            assert_eq!(entries.items[0].value.as_deref(), Some("234pt 56c"));
-        }
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "Show HN: I built a thing".into(),
+                        value: Some("234pt 56c".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "Why X over Y".into(),
+                        value: Some("187pt 41c".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "Ask HN: how do you ...".into(),
+                        value: Some("152pt 88c".into()),
+                        status: None,
+                    },
+                ],
+            }))
+        );
 
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
@@ -341,29 +374,35 @@ mod tests {
             &[item(Some("hello"), Some(123), Some(45))],
             Shape::TextBlock,
         );
-        assert!(matches!(body, Body::TextBlock(_)));
-        if let Body::TextBlock(text_block) = body {
-            assert_eq!(text_block.lines, vec!["123pt 45c  hello".to_string()]);
-        }
+        assert_eq!(
+            body,
+            Body::TextBlock(TextBlockData {
+                lines: vec!["123pt 45c  hello".into()],
+            })
+        );
     }
 
     #[test]
     fn entries_use_title_as_key_and_meta_as_value() {
         let body = render_body(&[item(Some("hello"), Some(7), None)], Shape::Entries);
-        assert!(matches!(body, Body::Entries(_)));
-        if let Body::Entries(entries) = body {
-            assert_eq!(entries.items[0].key, "hello");
-            assert_eq!(entries.items[0].value.as_deref(), Some("7pt 0c"));
-        }
+        assert_eq!(
+            body,
+            Body::Entries(EntriesData {
+                items: vec![Entry {
+                    key: "hello".into(),
+                    value: Some("7pt 0c".into()),
+                    status: None,
+                }],
+            })
+        );
     }
 
     #[test]
     fn empty_items_renders_empty_entries() {
-        let body = render_body(&[], Shape::Entries);
-        assert!(matches!(body, Body::Entries(_)));
-        if let Body::Entries(entries) = body {
-            assert!(entries.items.is_empty());
-        }
+        assert_eq!(
+            render_body(&[], Shape::Entries),
+            Body::Entries(EntriesData { items: vec![] })
+        );
     }
 
     #[test]
@@ -372,13 +411,15 @@ mod tests {
             &[item(Some("ask"), Some(0), Some(0))],
             Shape::LinkedTextBlock,
         );
-        assert!(matches!(body, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = body {
-            assert_eq!(
-                linked.items[0].url.as_deref(),
-                Some("https://news.ycombinator.com/item?id=1")
-            );
-        }
+        assert_eq!(
+            body,
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "0pt 0c  ask".into(),
+                    url: Some("https://news.ycombinator.com/item?id=1".into()),
+                }],
+            })
+        );
     }
 
     #[test]
@@ -391,24 +432,25 @@ mod tests {
             url: Some("https://example.com/post".into()),
         };
         let body = render_body(&[it], Shape::LinkedTextBlock);
-        assert!(matches!(body, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = body {
-            assert_eq!(
-                linked.items[0].url.as_deref(),
-                Some("https://example.com/post")
-            );
-            assert!(linked.items[0].text.contains("show"));
-            assert!(linked.items[0].text.contains("1pt 0c"));
-        }
+        assert_eq!(
+            body,
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "1pt 0c  show".into(),
+                    url: Some("https://example.com/post".into()),
+                }],
+            })
+        );
     }
 
     #[test]
     fn missing_title_falls_back_to_placeholder() {
-        let body = render_body(&[item(None, Some(0), Some(0))], Shape::TextBlock);
-        assert!(matches!(body, Body::TextBlock(_)));
-        if let Body::TextBlock(text_block) = body {
-            assert!(text_block.lines[0].contains("(no title)"));
-        }
+        assert_eq!(
+            render_body(&[item(None, Some(0), Some(0))], Shape::TextBlock),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["0pt 0c  (no title)".into()],
+            })
+        );
     }
 
     #[test]
@@ -431,29 +473,28 @@ mod tests {
 
     #[test]
     fn empty_items_renders_empty_body() {
-        let body = render_body(&[], Shape::TextBlock);
-        assert!(matches!(body, Body::TextBlock(_)));
-        if let Body::TextBlock(text_block) = body {
-            assert!(text_block.lines.is_empty());
-        }
+        assert_eq!(
+            render_body(&[], Shape::TextBlock),
+            Body::TextBlock(TextBlockData { lines: vec![] })
+        );
     }
 
     #[test]
     fn empty_items_renders_empty_linked_text_block() {
-        let body = render_body(&[], Shape::LinkedTextBlock);
-        assert!(matches!(body, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = body {
-            assert!(linked.items.is_empty());
-        }
+        assert_eq!(
+            render_body(&[], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData { items: vec![] })
+        );
     }
 
     #[test]
     fn unsupported_shape_falls_back_to_text_block() {
-        let body = render_body(&[item(Some("fallback"), Some(8), Some(3))], Shape::Text);
-        assert!(matches!(body, Body::TextBlock(_)));
-        if let Body::TextBlock(text_block) = body {
-            assert_eq!(text_block.lines, vec!["8pt 3c  fallback".to_string()]);
-        }
+        assert_eq!(
+            render_body(&[item(Some("fallback"), Some(8), Some(3))], Shape::Text),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["8pt 3c  fallback".into()],
+            })
+        );
     }
 
     #[test]
@@ -465,20 +506,25 @@ mod tests {
             descendants: Some(0),
             url: None,
         };
-        let body = render_body(&[it], Shape::LinkedTextBlock);
-        assert!(matches!(body, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = body {
-            assert!(linked.items[0].url.is_none());
-        }
+        assert_eq!(
+            render_body(&[it], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "1pt 0c  orphan".into(),
+                    url: None,
+                }],
+            })
+        );
     }
 
     #[test]
     fn missing_score_and_comments_default_to_zero() {
-        let body = render_body(&[item(Some("x"), None, None)], Shape::TextBlock);
-        assert!(matches!(body, Body::TextBlock(_)));
-        if let Body::TextBlock(text_block) = body {
-            assert_eq!(text_block.lines[0], "0pt 0c  x");
-        }
+        assert_eq!(
+            render_body(&[item(Some("x"), None, None)], Shape::TextBlock),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["0pt 0c  x".into()],
+            })
+        );
     }
 
     #[test]

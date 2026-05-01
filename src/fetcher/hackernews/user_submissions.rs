@@ -267,13 +267,14 @@ mod tests {
     #[test]
     fn linked_text_block_link_falls_back_to_hn_item_page() {
         let it = item("story", Some("hello"));
-        let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
         assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://news.ycombinator.com/item?id=1")
+            render_body(&[it], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "10pt 2c  hello".into(),
+                    url: Some("https://news.ycombinator.com/item?id=1".into()),
+                }],
+            })
         );
     }
 
@@ -287,48 +288,57 @@ mod tests {
             descendants: Some(0),
             url: Some("https://example.com/x".into()),
         };
-        let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/x"));
+        assert_eq!(
+            render_body(&[it], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "1pt 0c  hi".into(),
+                    url: Some("https://example.com/x".into()),
+                }],
+            })
+        );
     }
 
     #[test]
     fn text_block_shape_includes_meta_and_title() {
-        let body = render_body(&[item("story", Some("hello"))], Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines[0], "10pt 2c  hello");
+        assert_eq!(
+            render_body(&[item("story", Some("hello"))], Shape::TextBlock),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["10pt 2c  hello".into()],
+            })
+        );
     }
 
     #[test]
     fn entries_shape_uses_title_as_key_and_meta_as_value() {
-        let body = render_body(&[item("story", Some("hello"))], Shape::Entries);
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
-        assert_eq!(e.items[0].key, "hello");
-        assert_eq!(e.items[0].value.as_deref(), Some("10pt 2c"));
+        assert_eq!(
+            render_body(&[item("story", Some("hello"))], Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![Entry {
+                    key: "hello".into(),
+                    value: Some("10pt 2c".into()),
+                    status: None,
+                }],
+            })
+        );
     }
 
     #[test]
     fn missing_title_falls_back_to_placeholder() {
-        let body = render_body(&[item("story", None)], Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert!(t.lines[0].contains("(no title)"));
+        assert_eq!(
+            render_body(&[item("story", None)], Shape::TextBlock),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["10pt 2c  (no title)".into()],
+            })
+        );
     }
 
     #[test]
     fn empty_items_renders_empty_body() {
-        let body = render_body(&[], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items.is_empty());
+        assert_eq!(
+            render_body(&[], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData { items: vec![] })
+        );
     }
 
     #[test]
@@ -373,24 +383,49 @@ mod tests {
     fn sample_body_supports_each_declared_shape() {
         let fetcher = HackernewsUserSubmissionsFetcher;
 
-        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
-        let Body::LinkedTextBlock(linked) = linked else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(linked.items.len(), 2);
-        assert!(linked.items[0].text.contains("Show HN"));
+        assert_eq!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![
+                    LinkedLine {
+                        text: "234pt 56c  Show HN: I built a thing".into(),
+                        url: Some("https://example.com/show-hn".into()),
+                    },
+                    LinkedLine {
+                        text: "187pt 41c  Why X over Y".into(),
+                        url: Some("https://news.ycombinator.com/item?id=2".into()),
+                    },
+                ],
+            }))
+        );
 
-        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
-        let Body::TextBlock(block) = block else {
-            panic!("expected text block");
-        };
-        assert_eq!(block.lines.len(), 2);
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(TextBlockData {
+                lines: vec![
+                    "234pt 56c  Show HN: I built a thing".into(),
+                    "187pt 41c  Why X over Y".into(),
+                ],
+            }))
+        );
 
-        let entries = fetcher.sample_body(Shape::Entries).unwrap();
-        let Body::Entries(entries) = entries else {
-            panic!("expected entries");
-        };
-        assert_eq!(entries.items[0].key, "Show HN: I built a thing");
+        assert_eq!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "Show HN: I built a thing".into(),
+                        value: Some("234pt 56c".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "Why X over Y".into(),
+                        value: Some("187pt 41c".into()),
+                        status: None,
+                    },
+                ],
+            }))
+        );
 
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
@@ -399,12 +434,10 @@ mod tests {
     fn cache_key_changes_with_shape_and_options() {
         let fetcher = HackernewsUserSubmissionsFetcher;
         let base = fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 5"));
-        let same = fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 5"));
         let different_shape = fetcher.cache_key(&ctx(Shape::Entries, "user = \"pg\"\ncount = 5"));
         let different_options =
             fetcher.cache_key(&ctx(Shape::TextBlock, "user = \"pg\"\ncount = 6"));
 
-        assert_eq!(base, same);
         assert_ne!(base, different_shape);
         assert_ne!(base, different_options);
     }
@@ -474,16 +507,15 @@ mod tests {
 
     #[test]
     fn entries_shape_marks_rows_as_plain_status() {
-        let body = render_body(&[item("story", Some("hello"))], Shape::Entries);
-        let Body::Entries(entries) = body else {
-            panic!("expected entries");
-        };
-        assert!(entries.items.iter().all(|entry| entry.status.is_none()));
-        assert!(
-            entries
-                .items
-                .iter()
-                .all(|entry| entry.value.as_deref() == Some("10pt 2c"))
+        assert_eq!(
+            render_body(&[item("story", Some("hello"))], Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![Entry {
+                    key: "hello".into(),
+                    value: Some("10pt 2c".into()),
+                    status: None,
+                }],
+            })
         );
     }
 

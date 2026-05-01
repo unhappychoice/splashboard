@@ -152,20 +152,35 @@ mod tests {
     #[test]
     fn default_shape_is_text_block() {
         let p = RandomQuoteFetcher.compute(&ctx(None));
-        let Body::TextBlock(d) = p.body else {
-            panic!("expected text_block");
-        };
-        assert_eq!(d.lines.len(), 2);
-        assert!(d.lines[1].starts_with("— "));
+        assert!(matches!(
+            p.body,
+            Body::TextBlock(TextBlockData { ref lines })
+                if lines.len() == 2 && lines[1].starts_with("— ")
+        ));
     }
 
     #[test]
     fn text_shape_joins_with_dash() {
         let p = RandomQuoteFetcher.compute(&ctx(Some(Shape::Text)));
-        let Body::Text(d) = p.body else {
-            panic!("expected text");
-        };
-        assert!(d.value.contains(" — "));
+        assert!(matches!(
+            p.body,
+            Body::Text(TextData { ref value }) if value.contains(" — ")
+        ));
+    }
+
+    #[test]
+    fn sample_body_supports_declared_shapes_and_rejects_unsupported() {
+        let fetcher = RandomQuoteFetcher;
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(TextData { ref value })) if value.contains(" — ")
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(TextBlockData { ref lines }))
+                if lines.len() == 2 && lines[1].starts_with("— ")
+        ));
+        assert!(fetcher.sample_body(Shape::Image).is_none());
     }
 
     #[test]
@@ -199,11 +214,7 @@ mod tests {
     #[test]
     fn quote_list_meets_size_floor() {
         // 365+ guarantees no within-year repeat.
-        assert!(
-            QUOTES.len() >= 365,
-            "QUOTES has {} entries, want >= 365",
-            QUOTES.len()
-        );
+        assert!(QUOTES.len() >= 365);
     }
 
     #[test]
@@ -228,6 +239,11 @@ mod tests {
     }
 
     #[test]
+    fn parse_entry_drops_author_only_chunks() {
+        assert_eq!(parse_entry("— Someone"), None);
+    }
+
+    #[test]
     fn parse_drops_empty_chunks() {
         assert!(parse("\n%\n\n%\n").is_empty());
     }
@@ -238,14 +254,8 @@ mod tests {
         // adding-without-checking doesn't quietly inflate the count past
         // entries that already exist.
         use std::collections::HashSet;
-        let mut seen: HashSet<&str> = HashSet::new();
-        let mut dups: Vec<&str> = Vec::new();
-        for (q, _) in QUOTES.iter() {
-            if !seen.insert(q.as_str()) {
-                dups.push(q.as_str());
-            }
-        }
-        assert!(dups.is_empty(), "duplicate quotes found: {:?}", dups);
+        let unique: HashSet<&str> = QUOTES.iter().map(|(q, _)| q.as_str()).collect();
+        assert_eq!(unique.len(), QUOTES.len());
     }
 
     #[test]
