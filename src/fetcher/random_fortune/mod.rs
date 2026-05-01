@@ -121,19 +121,21 @@ mod tests {
     #[test]
     fn default_shape_is_text_block() {
         let p = RandomFortuneFetcher.compute(&ctx(None));
-        let Body::TextBlock(d) = p.body else {
-            panic!("expected text_block");
-        };
-        assert!(!d.lines.is_empty());
+        assert!(matches!(
+            p.body,
+            Body::TextBlock(ref d) if !d.lines.is_empty()
+        ));
     }
 
     #[test]
     fn text_shape_returns_single_string() {
         let p = RandomFortuneFetcher.compute(&ctx(Some(Shape::Text)));
-        let Body::Text(d) = p.body else {
-            panic!("expected text");
-        };
-        assert!(!d.value.is_empty());
+        assert!(matches!(p.body, Body::Text(ref d) if !d.value.is_empty()));
+    }
+
+    #[test]
+    fn sample_body_returns_none_for_unsupported_shape() {
+        assert!(RandomFortuneFetcher.sample_body(Shape::Image).is_none());
     }
 
     #[test]
@@ -154,11 +156,8 @@ mod tests {
 
     #[test]
     fn cookie_list_meets_size_floor() {
-        assert!(
-            COOKIES.len() >= 365,
-            "COOKIES has {} entries, want >= 365",
-            COOKIES.len()
-        );
+        let len = COOKIES.len();
+        assert!(len >= 365, "COOKIES has {} entries, want >= 365", len);
     }
 
     #[test]
@@ -186,27 +185,21 @@ mod tests {
     #[test]
     fn text_shape_collapses_newlines() {
         let p = RandomFortuneFetcher.compute(&ctx(Some(Shape::Text)));
-        let Body::Text(d) = p.body else {
-            panic!("expected text");
-        };
         assert!(
-            !d.value.contains('\n'),
+            matches!(p.body, Body::Text(ref d) if !d.value.contains('\n')),
             "Text body must be single-line, got: {:?}",
-            d.value
+            p.body
         );
     }
 
     #[test]
     fn cookie_list_has_no_duplicates() {
         use std::collections::HashSet;
-        let mut seen: HashSet<&str> = HashSet::new();
-        let mut dups: Vec<&str> = Vec::new();
-        for c in COOKIES.iter() {
-            if !seen.insert(c.as_str()) {
-                dups.push(c.as_str());
-            }
-        }
-        assert!(dups.is_empty(), "duplicate cookies found: {:?}", dups);
+        let unique = COOKIES
+            .iter()
+            .map(|cookie| cookie.as_str())
+            .collect::<HashSet<_>>();
+        assert_eq!(unique.len(), COOKIES.len());
     }
 
     #[test]
@@ -227,9 +220,9 @@ mod tests {
         let body = Body::TextBlock(TextBlockData {
             lines: "a\nb\nc".lines().map(str::to_string).collect(),
         });
-        let Body::TextBlock(d) = body else {
-            unreachable!()
-        };
-        assert_eq!(d.lines, vec!["a", "b", "c"]);
+        assert!(matches!(
+            body,
+            Body::TextBlock(ref d) if d.lines == ["a", "b", "c"]
+        ));
     }
 }
