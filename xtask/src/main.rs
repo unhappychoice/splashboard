@@ -99,3 +99,88 @@ fn scrub_host_env() {
         unsafe { std::env::remove_var(key) };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    struct EnvGuard {
+        values: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn capture(keys: &[&'static str]) -> Self {
+            Self {
+                values: keys
+                    .iter()
+                    .map(|key| (*key, std::env::var_os(key)))
+                    .collect(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.values.iter().for_each(|(key, value)| {
+                // SAFETY: tests restore the original process env under the shared lock below.
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn scrub_host_env_removes_known_terminal_keys() {
+        let _lock = splashboard::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let keys = [
+            "WT_SESSION",
+            "GHOSTTY_RESOURCES_DIR",
+            "KITTY_WINDOW_ID",
+            "ALACRITTY_WINDOW_ID",
+            "ALACRITTY_LOG",
+            "WEZTERM_PANE",
+            "TERM_PROGRAM",
+        ];
+        let _guard = EnvGuard::capture(&keys);
+
+        keys.iter().for_each(|key| {
+            // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+            unsafe { std::env::set_var(key, "present") };
+        });
+
+        scrub_host_env();
+
+        keys.iter()
+            .for_each(|key| assert_eq!(std::env::var_os(key), None));
+    }
+
+    #[test]
+    fn env_guard_restores_existing_values() {
+        let _lock = splashboard::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+        unsafe { std::env::set_var("WT_SESSION", "before") };
+
+        {
+            let _guard = EnvGuard::capture(&["WT_SESSION"]);
+            // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+            unsafe { std::env::set_var("WT_SESSION", "after") };
+        }
+
+        assert_eq!(
+            std::env::var_os("WT_SESSION"),
+            Some(OsString::from("before"))
+        );
+        // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+        unsafe { std::env::remove_var("WT_SESSION") };
+    }
+}

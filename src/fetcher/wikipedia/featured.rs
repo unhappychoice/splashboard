@@ -111,6 +111,15 @@ struct FeaturedResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fetcher::FetchContext;
+
+    fn ctx(options: Option<&str>, shape: Option<Shape>) -> FetchContext {
+        FetchContext {
+            shape,
+            options: options.map(|raw| toml::from_str(raw).unwrap()),
+            ..FetchContext::default()
+        }
+    }
 
     #[test]
     fn options_default_lang_to_none() {
@@ -144,6 +153,60 @@ mod tests {
         let raw = r#"{"news":[]}"#;
         let r: FeaturedResponse = serde_json::from_str(raw).unwrap();
         assert!(r.tfa.is_none());
+    }
+
+    #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let fetcher = WikipediaFeaturedFetcher;
+
+        assert_eq!(fetcher.name(), "wikipedia_featured");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("Featured Article"));
+        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, OPTION_SCHEMAS[0].name);
+        assert_eq!(
+            fetcher.option_schemas()[0].default,
+            OPTION_SCHEMAS[0].default
+        );
+        assert!(matches!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
+    }
+
+    #[test]
+    fn cache_key_changes_with_shape_and_lang() {
+        let fetcher = WikipediaFeaturedFetcher;
+        let default = fetcher.cache_key(&ctx(None, None));
+        let ja = fetcher.cache_key(&ctx(Some("lang = \"ja\""), None));
+        let ja_text = fetcher.cache_key(&ctx(Some("lang = \"ja\""), Some(Shape::Text)));
+
+        assert_ne!(default, ja);
+        assert_ne!(ja, ja_text);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_options_before_request() {
+        let err = WikipediaFeaturedFetcher
+            .fetch(&ctx(Some("bogus = true"), None))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("unknown field")
+        ));
     }
 
     /// Live smoke test — hits Wikipedia REST API.
