@@ -1187,6 +1187,89 @@ mod tests {
     }
 
     #[test]
+    fn system_sample_body_matches_documented_copy() {
+        let fetcher = SystemFetcher::default();
+
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(entries))
+                if entries.items.len() == 6
+                    && entries.items[0].key == "os"
+                    && entries.items[5].value.as_deref() == Some("67%")
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(block))
+                if block.lines[0] == "os: linux" && block.lines[5] == "memory: 67%"
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "iTerm2"
+        ));
+    }
+
+    #[test]
+    fn disk_sample_body_matches_documented_shapes() {
+        assert!(matches!(
+            DiskFetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(ratio))
+                if ratio.label.as_deref() == Some("disk") && ratio.value == 0.58
+        ));
+        assert!(matches!(
+            DiskFetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "58% of 400 GB"
+        ));
+        assert!(matches!(
+            DiskFetcher.sample_body(Shape::Bars),
+            Some(Body::Bars(bars))
+                if bars.bars.len() == 3
+                    && bars.bars[0].label == "/"
+                    && bars.bars[2].value == 200
+        ));
+    }
+
+    #[test]
+    fn battery_sample_body_matches_documented_shapes() {
+        let fetcher = BatteryFetcher::default();
+
+        assert!(matches!(
+            fetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(ratio))
+                if ratio.label.as_deref() == Some("battery") && ratio.value == 0.87
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "87% • Charging • 1h 23m"
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(entries))
+                if entries.items.len() == 5
+                    && entries.items[0].key == "charge"
+                    && entries.items[4].value.as_deref() == Some("97%")
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Badge),
+            Some(Body::Badge(badge))
+                if badge.status == Status::Ok && badge.label == "87% · Charging"
+        ));
+    }
+
+    #[test]
+    fn sample_bodies_return_none_for_unsupported_shapes() {
+        let unsupported = Shape::Image;
+
+        assert!(SystemFetcher::new().sample_body(unsupported).is_none());
+        assert!(CpuLoadFetcher::new().sample_body(unsupported).is_none());
+        assert!(MemoryFetcher::new().sample_body(unsupported).is_none());
+        assert!(UptimeFetcher.sample_body(unsupported).is_none());
+        assert!(LoadAverageFetcher.sample_body(unsupported).is_none());
+        assert!(ProcessTopFetcher::new().sample_body(unsupported).is_none());
+        assert!(DiskFetcher.sample_body(unsupported).is_none());
+        assert!(BatteryFetcher::new().sample_body(unsupported).is_none());
+    }
+
+    #[test]
     fn parse_options_defaults_and_surfaces_invalid_input() {
         let system: SystemOptions = parse_options(None).unwrap();
         assert!(system.kind.is_none());
@@ -1318,6 +1401,18 @@ mod tests {
         assert_eq!(ratio_of(10, 0), 0.0);
         assert_eq!(ratio_of(5, 10), 0.5);
         assert_eq!(ratio_of(20, 10), 1.0);
+    }
+
+    #[test]
+    fn empty_system_and_disk_snapshots_use_safe_fallbacks() {
+        let sys = System::new();
+        assert_eq!(memory_ratio(&sys), 0.0);
+        assert!(top_processes(&sys, PROCESS_TOP_COUNT).is_empty());
+
+        let disks = Disks::new();
+        assert_eq!(primary_disk(&disks), None);
+        assert!(disk_bars(&disks).is_empty());
+        assert_eq!(disk_label(10, 20), "0% of 10 B");
     }
 
     #[test]
