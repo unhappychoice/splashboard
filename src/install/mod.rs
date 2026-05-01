@@ -510,7 +510,43 @@ fn label_for_outcome(outcome: WriteOutcome) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths::TEST_ENV_LOCK;
     use tempfile::tempdir;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        restore: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: Vec<(&'static str, Option<String>)>) -> Self {
+            let lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let restore = pairs
+                .into_iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                    (key, previous)
+                })
+                .collect();
+            Self {
+                _lock: lock,
+                restore,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.restore.iter().for_each(|(key, value)| match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => unsafe { std::env::remove_var(key) },
+            });
+        }
+    }
 
     #[test]
     fn select_template_rejects_context_mismatch() {
@@ -731,6 +767,46 @@ mod tests {
         assert!(err.to_string().contains("unknown theme"));
     }
 
+    #[test]
+    fn resolve_shell_detects_known_shell_from_env() {
+        let _env = EnvGuard::set(vec![
+            ("SHELL", Some("/bin/bash".into())),
+            ("PSModulePath", None),
+        ]);
+        assert_eq!(resolve_shell(None).unwrap(), Shell::Bash);
+    }
+
+    #[test]
+    fn resolve_shell_uses_powershell_fallback_and_errors_when_undetectable() {
+        let _powershell = EnvGuard::set(vec![
+            ("SHELL", Some("/bin/ksh".into())),
+            (
+                "PSModulePath",
+                Some("C:\\Users\\x\\Documents\\PowerShell\\Modules".into()),
+            ),
+        ]);
+        assert_eq!(resolve_shell(None).unwrap(), Shell::Powershell);
+        drop(_powershell);
+
+        let _missing = EnvGuard::set(vec![
+            ("SHELL", Some("/bin/ksh".into())),
+            ("PSModulePath", None),
+        ]);
+        let err = resolve_shell(None).unwrap_err();
+        assert!(err.to_string().contains("could not detect your shell"));
+    }
+
+    #[test]
+    fn resolve_home_dir_uses_env_when_override_is_missing() {
+        let dir = tempdir().unwrap();
+        let home_dir = dir.path().join("env-home");
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home_dir.display().to_string()),
+        )]);
+        assert_eq!(resolve_home_dir(None).unwrap(), home_dir);
+    }
+
     /// End-to-end cut of `install::run()`: exercises shell resolution, template lookup,
     /// dashboard writes, the settings-default guard and rc wiring together to catch the
     /// kind of orchestration bugs the per-function tests miss.
@@ -830,6 +906,18 @@ mod tests {
         let body = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
         assert!(body.contains("node_modules"));
         assert!(body.contains("secrets.toml"));
+    }
+
+    #[test]
+    fn ensure_secrets_gitignore_inserts_missing_trailing_newline() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".gitignore");
+        std::fs::write(&path, "node_modules").unwrap();
+        ensure_secrets_gitignore(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "node_modules\nsecrets.toml\n"
+        );
     }
 
     #[test]
