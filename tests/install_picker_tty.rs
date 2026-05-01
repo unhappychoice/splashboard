@@ -220,6 +220,34 @@ fn interactive_install_picker_covers_confirm_and_cancel_paths() {
 }
 
 #[test]
+fn tty_home_renders_home_dashboard_and_populates_cache() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::write(
+        home.path().join("home.dashboard.toml"),
+        r#"
+[[widget]]
+id = "hello"
+fetcher = "basic_static"
+format = "Hello home runtime"
+render = "text_plain"
+
+[[row]]
+height = { length = 3 }
+[[row.child]]
+widget = "hello"
+"#,
+    )
+    .unwrap();
+
+    let (status, output) = run_cli(workspace_root().as_path(), &home, &[]).unwrap();
+    assert!(status.success(), "render failed:\n{output}");
+    assert!(!output.is_empty(), "expected TTY render output");
+
+    let cache = home.path().join("cache");
+    assert!(cache.is_dir());
+}
+
+#[test]
 fn tty_on_cd_renders_local_dashboard_and_populates_cache() {
     let home = tempfile::tempdir().unwrap();
     let cwd = tempfile::tempdir().unwrap();

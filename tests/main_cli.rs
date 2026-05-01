@@ -73,8 +73,8 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn run_cli_tty(cwd: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
-    let env_prefix = envs
-        .iter()
+    let env_prefix = std::iter::once(("TERM", "xterm-256color"))
+        .chain(envs.iter().copied())
         .map(|(key, value)| format!("{key}={}", shell_quote(value)))
         .collect::<Vec<_>>()
         .join(" ");
