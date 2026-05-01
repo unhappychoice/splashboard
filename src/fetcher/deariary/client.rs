@@ -546,6 +546,29 @@ mod tests {
         assert_eq!(strip_token_field(&value), value);
     }
 
+    #[test]
+    fn strip_token_field_removes_only_top_level_token() {
+        let value: toml::Value = toml::from_str(
+            r#"
+            token = "top-secret"
+            tag = "work"
+            [nested]
+            token = "keep-me"
+            "#,
+        )
+        .unwrap();
+
+        let stripped = strip_token_field(&value);
+        let table = stripped.as_table().unwrap();
+
+        assert!(!table.contains_key("token"));
+        assert_eq!(table.get("tag").and_then(toml::Value::as_str), Some("work"));
+        assert_eq!(
+            table["nested"].get("token").and_then(toml::Value::as_str),
+            Some("keep-me")
+        );
+    }
+
     #[tokio::test]
     async fn entry_slot_returns_same_arc_for_same_token_and_date() {
         let a = entry_slot("tok-A", "2026-04-27");
@@ -656,6 +679,72 @@ mod tests {
         }
     }
 
+    #[test]
+    fn resolve_token_errors_when_config_and_env_are_missing() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        unsafe { std::env::remove_var("DEARIARY_TOKEN") };
+
+        let err = resolve_token(Some("   ")).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(message)
+                if message == "deariary token missing: set options.token or DEARIARY_TOKEN"
+        ));
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
+                None => std::env::remove_var("DEARIARY_TOKEN"),
+            }
+        }
+    }
+
+    #[test]
+    fn cache_extra_uses_env_token_scope_when_config_token_is_missing() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        let opts: toml::Value = toml::from_str("tag = \"work\"").unwrap();
+        unsafe { std::env::set_var("DEARIARY_TOKEN", "env-token") };
+
+        let extra = cache_extra(None, Some(&opts));
+        assert!(extra.starts_with(&format!("{}|", token_scope("env-token"))));
+        assert!(extra.contains("tag = \"work\""));
+        assert!(!extra.contains("env-token"));
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
+                None => std::env::remove_var("DEARIARY_TOKEN"),
+            }
+        }
+    }
+
+    #[test]
+    fn cache_extra_uses_empty_scope_when_token_resolution_fails() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("DEARIARY_TOKEN").ok();
+        let opts: toml::Value = toml::from_str("tag = \"work\"").unwrap();
+        unsafe { std::env::remove_var("DEARIARY_TOKEN") };
+
+        let extra = cache_extra(None, Some(&opts));
+        assert!(extra.starts_with(&format!("{}|", token_scope(""))));
+        assert!(extra.contains("tag = \"work\""));
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("DEARIARY_TOKEN", value),
+                None => std::env::remove_var("DEARIARY_TOKEN"),
+            }
+        }
+    }
+
     #[tokio::test]
     async fn acquire_permit_succeeds_from_shared_semaphore() {
         assert!(std::ptr::eq(http(), http()));
@@ -673,6 +762,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_retry_after_trims_values_and_defaults_when_missing() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, " 9 ".parse().unwrap());
+        assert_eq!(parse_retry_after(&headers), Duration::from_secs(9));
+
+        let missing = reqwest::header::HeaderMap::new();
+        assert_eq!(parse_retry_after(&missing), Duration::from_secs(1));
+    }
+
+    #[test]
     fn header_str_returns_owned_utf8_values_only() {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("X-RateLimit-Limit", "120".parse().unwrap());
@@ -685,5 +784,11 @@ mod tests {
             Some("120")
         );
         assert!(header_str(&headers, "X-Binary").is_none());
+    }
+
+    #[test]
+    fn header_str_returns_none_when_header_is_missing() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert!(header_str(&headers, "X-RateLimit-Limit").is_none());
     }
 }

@@ -323,6 +323,21 @@ height = { length = 1 }
     }
 
     #[test]
+    fn render_config_html_surfaces_read_and_parse_errors() {
+        let missing = std::env::temp_dir().join(format!(
+            "splashboard-dashboard-snapshot-missing-{}.toml",
+            std::process::id()
+        ));
+        let read_err = render_config_html(&missing, 12, 4).unwrap_err().to_string();
+        assert!(read_err.contains("read"));
+
+        let path = write_dashboard("not valid toml");
+        let parse_err = render_config_html(&path, 12, 4).unwrap_err().to_string();
+        fs::remove_file(path).unwrap();
+        assert!(parse_err.contains("parse"));
+    }
+
+    #[test]
     fn sample_payloads_use_realtime_compute_and_basic_static_override() {
         let fetchers = FetcherRegistry::with_builtins();
         let renderers = RenderRegistry::with_builtins();
@@ -369,6 +384,24 @@ height = { length = 1 }
     }
 
     #[test]
+    fn override_from_format_only_applies_to_basic_static_text_shapes() {
+        let mut static_widget = widget("static", "basic_static");
+        static_widget.format = Some("alpha\nbeta".into());
+
+        assert!(matches!(
+            override_from_format(&static_widget, Shape::Text),
+            Some(Body::Text(TextData { value })) if value == "alpha\nbeta"
+        ));
+        assert!(matches!(
+            override_from_format(&static_widget, Shape::TextBlock),
+            Some(Body::TextBlock(TextBlockData { lines }))
+                if lines == vec![String::from("alpha"), String::from("beta")]
+        ));
+        assert!(override_from_format(&static_widget, Shape::Badge).is_none());
+        assert!(override_from_format(&widget("clock", "clock"), Shape::Text).is_none());
+    }
+
+    #[test]
     fn widget_specs_default_and_deanimate_wrapped_renderers() {
         let plain = widget("plain", "basic_static");
 
@@ -400,6 +433,40 @@ height = { length = 1 }
             Some(RenderSpec::Full { type_name, options })
                 if type_name == "list_plain" && options.align.as_deref() == Some("center")
         ));
+    }
+
+    #[test]
+    fn deanimate_collapses_wrapper_families_to_resting_inner_renderers() {
+        for name in [
+            "animated_boot",
+            "animated_postfx",
+            "animated_scanlines",
+            "animated_splitflap",
+            "animated_typewriter",
+            "animated_wave",
+        ] {
+            assert!(matches!(
+                deanimate(RenderSpec::Short(name.into())),
+                RenderSpec::Short(inner) if inner == "text_plain"
+            ));
+        }
+
+        for name in [
+            "animated_boot",
+            "animated_postfx",
+            "animated_scanlines",
+            "animated_splitflap",
+            "animated_wave",
+        ] {
+            let spec = RenderSpec::Full {
+                type_name: name.into(),
+                options: RenderOptions::default(),
+            };
+            assert!(matches!(
+                deanimate(spec),
+                RenderSpec::Full { type_name, .. } if type_name == "text_plain"
+            ));
+        }
     }
 
     #[test]
