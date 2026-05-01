@@ -209,7 +209,50 @@ async fn acquire_permit() -> Result<tokio::sync::SemaphorePermit<'static>, Fetch
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
+    use reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+
     use super::*;
+
+    struct LinearTokenGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: Option<String>,
+    }
+
+    impl LinearTokenGuard {
+        fn set(value: Option<&str>) -> Self {
+            let lock = crate::paths::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let previous = std::env::var("LINEAR_TOKEN").ok();
+            match value {
+                Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
+                None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
+            }
+            Self {
+                _lock: lock,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for LinearTokenGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
+                None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
+            }
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     #[test]
     fn resolve_token_prefers_config_value() {
@@ -224,11 +267,19 @@ mod tests {
     }
 
     #[test]
-    fn resolve_token_rejects_empty_config_value() {
-        let result = resolve_token(Some("   "));
-        if let Ok(t) = result {
-            assert!(!t.trim().is_empty());
-        }
+    fn resolve_token_falls_back_to_env_value_when_config_is_blank() {
+        let _guard = LinearTokenGuard::set(Some("  env-token  "));
+        assert_eq!(resolve_token(Some("   ")).unwrap(), "env-token");
+        assert_eq!(resolve_token(None).unwrap(), "env-token");
+    }
+
+    #[test]
+    fn resolve_token_errors_when_config_and_env_are_missing() {
+        let _guard = LinearTokenGuard::set(None);
+        assert!(matches!(
+            resolve_token(None),
+            Err(FetchError::Failed(msg)) if msg.contains("linear token missing")
+        ));
     }
 
     #[test]
@@ -258,6 +309,27 @@ mod tests {
     }
 
     #[test]
+    fn cache_extra_uses_empty_scope_when_no_token_is_available() {
+        let _guard = LinearTokenGuard::set(None);
+        assert_eq!(cache_extra(None, None), format!("{}|", token_scope("")));
+    }
+
+    #[test]
+    fn parse_retry_after_reads_numeric_seconds() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static(" 7 "));
+        assert_eq!(parse_retry_after(&headers), Duration::from_secs(7));
+    }
+
+    #[test]
+    fn parse_retry_after_defaults_to_one_second_for_invalid_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("soon"));
+        assert_eq!(parse_retry_after(&headers), Duration::from_secs(1));
+        assert_eq!(parse_retry_after(&HeaderMap::new()), Duration::from_secs(1));
+    }
+
+    #[test]
     fn issue_url_uses_workspace_and_identifier() {
         assert_eq!(
             issue_url("acme", "ENG-123"),
@@ -284,5 +356,16 @@ mod tests {
     fn error_message_falls_back_to_status_when_no_graphql_payload() {
         let msg = error_message(StatusCode::BAD_GATEWAY, b"upstream gone");
         assert!(msg.contains("502"));
+    }
+
+    #[test]
+    fn http_reuses_a_single_client_instance() {
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[test]
+    fn acquire_permit_returns_a_live_permit() {
+        let permit = run_async(acquire_permit()).unwrap();
+        drop(permit);
     }
 }
