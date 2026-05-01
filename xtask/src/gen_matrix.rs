@@ -412,3 +412,128 @@ fn shapes_list(shapes: &[Shape]) -> String {
 fn escape_pipe(s: &str) -> String {
     s.replace('|', "\\|")
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+    use splashboard::theme::TEXT;
+
+    #[test]
+    fn run_writes_reference_tree_with_grouped_pages() {
+        let out_dir = unique_out_dir();
+
+        run(&out_dir).expect("gen-matrix should render the reference tree");
+
+        let overview = read(&out_dir.join("matrix.md"));
+        assert!(overview.contains("## Fetchers"));
+        assert!(overview.contains("## Renderers"));
+        assert!(overview.contains("## Shape × Renderer"));
+        assert!(overview.contains("[`clock`](fetchers/clock/clock/)"));
+        assert!(overview.contains("[`text_plain`](renderers/text/text_plain/)"));
+
+        let fetcher_page = read(&out_dir.join("fetchers/clock/clock.md"));
+        assert!(fetcher_page.contains("## Compatible renderers"));
+        assert!(fetcher_page.contains("## Preview"));
+        assert!(fetcher_page.contains("../../renderers/text/text_plain/"));
+
+        let renderer_page = read(&out_dir.join("renderers/text/text_plain.md"));
+        assert!(renderer_page.contains("## Compatible fetchers"));
+        assert!(renderer_page.contains("## Theme tokens"));
+        assert!(renderer_page.contains("../../fetchers/clock/clock/"));
+
+        fs::remove_dir_all(out_dir).expect("temp output dir should be removable");
+    }
+
+    #[test]
+    fn compatible_sections_render_none_for_error_shape() {
+        let fetchers = FetcherRegistry::with_builtins();
+        let renderers = RenderRegistry::with_builtins();
+
+        let mut renderer_out = String::new();
+        render_compatible_renderers(&mut renderer_out, &[Shape::Error], &renderers);
+        assert!(renderer_out.contains("| `error` | _none_ |"));
+
+        let mut fetcher_out = String::new();
+        render_compatible_fetchers(&mut fetcher_out, &[Shape::Error], &fetchers);
+        assert!(fetcher_out.contains("| `error` | _none_ |"));
+    }
+
+    #[test]
+    fn helpers_escape_special_chars_and_emit_fallbacks() {
+        let mut frontmatter = String::new();
+        push_frontmatter(
+            &mut frontmatter,
+            r#"Title: "quoted"\path"#,
+            "desc with `code`",
+        );
+        assert!(frontmatter.contains(r#"title: "Title: \"quoted\"\\path""#));
+        assert!(frontmatter.contains(r#"description: "desc with `code`""#));
+
+        let mut options = String::new();
+        render_option_section(&mut options, &[], "Options", option_fallback_fetcher());
+        assert!(options.contains("_No options._"));
+
+        let mut option_table = String::new();
+        render_option_section(
+            &mut option_table,
+            &[OptionSchema {
+                name: "mode",
+                type_hint: "\"full\" | \"compact\"",
+                required: false,
+                default: Some("\"full\""),
+                description: "Pipe | survives markdown tables.",
+            }],
+            "Options",
+            option_fallback_renderer(),
+        );
+        assert!(option_table.contains("\\|"));
+
+        let mut colors = String::new();
+        render_color_keys_section(&mut colors, &[]);
+        assert!(colors.contains("does not read any `[theme]` tokens"));
+
+        let mut color_table = String::new();
+        render_color_keys_section(&mut color_table, &[TEXT]);
+        assert!(color_table.contains("| `text` |"));
+
+        assert_eq!(
+            rel_path("renderers", "text_plain"),
+            "renderers/text/text_plain.md"
+        );
+        assert_eq!(
+            rel_link("fetchers", "clock_ratio"),
+            "fetchers/clock/clock_ratio/"
+        );
+        assert_eq!(
+            cross_link("renderers", "text_plain"),
+            "../../renderers/text/text_plain/"
+        );
+        assert_eq!(family_of("clock"), "clock");
+        assert_eq!(family_of("clock_ratio"), "clock");
+        assert_eq!(safety_label(Safety::Exec), "Exec");
+        assert_eq!(
+            shapes_list(&[Shape::Text, Shape::Timeline]),
+            "`text`, `timeline`"
+        );
+        assert_eq!(escape_pipe("left|right"), "left\\|right");
+    }
+
+    fn read(path: &Path) -> String {
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    }
+
+    fn unique_out_dir() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "splashboard-gen-matrix-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+}
