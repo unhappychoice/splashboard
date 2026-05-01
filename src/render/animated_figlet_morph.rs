@@ -377,4 +377,47 @@ mod tests {
             (0..buffer.area.height).any(|y| !line_text(&buffer, y).trim().is_empty());
         assert!(has_visible_text);
     }
+
+    #[test]
+    fn render_applies_fade_in_at_start_of_a_phase() {
+        let body = text_body();
+        let registry = Registry::with_builtins();
+        let theme = Theme::default();
+        let elapsed = elapsed_since_start_ms().max(1) as u64;
+        let duration_ms = elapsed * DEFAULT_SEQUENCE.len() as u64;
+        let opts = RenderOptions {
+            duration_ms: Some(duration_ms),
+            ..RenderOptions::default()
+        };
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        terminal
+            .draw(|frame| {
+                render_morph(frame, frame.area(), &body, &opts, &theme, &registry);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        assert!((0..buffer.area.height).any(|y| !line_text(&buffer, y).trim().is_empty()));
+    }
+
+    #[test]
+    fn render_applies_fade_out_near_end_of_a_phase() {
+        let body = text_body();
+        let registry = Registry::with_builtins();
+        let theme = Theme::default();
+        let elapsed = elapsed_since_start_ms().max(1);
+        let phase_len = elapsed.saturating_add(200);
+        let duration_ms = phase_len as u64 * DEFAULT_SEQUENCE.len() as u64;
+        let opts = RenderOptions {
+            duration_ms: Some(duration_ms),
+            ..RenderOptions::default()
+        };
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        terminal
+            .draw(|frame| {
+                render_morph(frame, frame.area(), &body, &opts, &theme, &registry);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        assert!((0..buffer.area.height).any(|y| !line_text(&buffer, y).trim().is_empty()));
+    }
 }
