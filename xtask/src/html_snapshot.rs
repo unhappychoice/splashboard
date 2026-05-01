@@ -272,4 +272,75 @@ mod tests {
         let html = buffer_to_html(&buf);
         assert_eq!(html.matches("<span class=\"c\">").count(), 2);
     }
+
+    #[test]
+    fn styled_runs_share_a_single_outer_span() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 2, 1));
+        let style = Style::default()
+            .fg(Color::Red)
+            .bg(Color::Blue)
+            .add_modifier(Modifier::BOLD | Modifier::ITALIC | Modifier::UNDERLINED | Modifier::DIM);
+        buf[(0, 0)].set_symbol("A").set_style(style);
+        buf[(1, 0)].set_symbol("B").set_style(style);
+
+        let html = buffer_to_html(&buf);
+
+        assert_eq!(html.matches("<span style=\"").count(), 1);
+        assert!(html.contains("color:#aa0000"));
+        assert!(html.contains("background:#0000aa"));
+        assert!(html.contains("font-weight:bold"));
+        assert!(html.contains("font-style:italic"));
+        assert!(html.contains("text-decoration:underline"));
+        assert!(html.contains("opacity:0.6"));
+    }
+
+    #[test]
+    fn emit_link_wraps_styled_links_and_escapes_url_and_text() {
+        let mut out = String::new();
+        let style = Style::default()
+            .fg(Color::LightCyan)
+            .add_modifier(Modifier::UNDERLINED);
+
+        emit_link(&mut out, &style, "https://e.x/?q=\"a\"&x=1", "<&>");
+
+        assert!(out.starts_with("<span style=\""));
+        assert!(out.contains("color:#55ffff"));
+        assert!(out.contains("text-decoration:underline"));
+        assert!(out.contains("href=\"https://e.x/?q=&quot;a&quot;&amp;x=1\""));
+        assert!(out.contains("<span class=\"c\">&lt;</span>"));
+        assert!(out.contains("<span class=\"c\">&amp;</span>"));
+        assert!(out.contains("<span class=\"c\">&gt;</span>"));
+        assert!(out.ends_with("</span>"));
+    }
+
+    #[test]
+    fn malformed_osc8_sequences_are_ignored() {
+        assert!(parse_osc8("plain text").is_none());
+        assert!(parse_osc8("\x1b]8;;https://example.com/\x1b\\visible").is_none());
+        assert!(parse_osc8("\x1b]8;;https://example.com/visible\x1b]8;;\x1b\\").is_none());
+    }
+
+    #[test]
+    fn helpers_cover_default_style_and_color_fallbacks() {
+        let mut cell = ratatui::buffer::Cell::default();
+        cell.set_symbol("\"");
+        cell.set_style(Style::default().add_modifier(Modifier::BOLD));
+
+        let style = cell_style(&cell);
+        assert!(style.fg.is_none());
+        assert!(style.bg.is_none());
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+
+        let mut out = String::new();
+        flush_run(
+            &mut out,
+            Some(&Style::default()),
+            &[cell.symbol().to_string()],
+        );
+        assert_eq!(out, "<span class=\"c\">&quot;</span>");
+
+        assert_eq!(color_hex(Color::Rgb(1, 2, 3)), "#010203");
+        assert_eq!(color_hex(Color::Indexed(9)), "currentColor");
+        assert_eq!(color_hex(Color::Reset), "currentColor");
+    }
 }
