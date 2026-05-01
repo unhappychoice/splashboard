@@ -433,6 +433,16 @@ palette_series = ["red", "#00ff00", "blue"]
     }
 
     #[test]
+    fn heatmap_level_falls_back_on_empty_palette() {
+        let t = Theme {
+            palette_heatmap: vec![],
+            ..Theme::default()
+        };
+        assert_eq!(t.heatmap_level(0), Color::Rgb(0x0a, 0x14, 0x24));
+        assert_eq!(t.heatmap_level(99), Color::Rgb(0xff, 0xc6, 0x6b));
+    }
+
+    #[test]
     fn preset_with_overlay_layers_correctly() {
         // Regression guard for the two-step resolution: preset picks the base, then
         // individual fields overlay. If someone reorders those steps later the preset's
@@ -459,6 +469,18 @@ palette_series = ["red", "#00ff00", "blue"]
     }
 
     #[test]
+    fn unknown_preset_falls_back_then_applies_scalar_overrides() {
+        let cfg = ThemeConfig {
+            preset: Some("bogus".into()),
+            bg: Some(Color::Rgb(0x01, 0x02, 0x03)),
+            ..Default::default()
+        };
+        let t = Theme::from_config(&cfg);
+        assert_eq!(t.bg, Color::Rgb(0x01, 0x02, 0x03));
+        assert_eq!(t.status_ok, Theme::default().status_ok);
+    }
+
+    #[test]
     fn empty_series_override_keeps_default() {
         // An empty array in TOML shouldn't nuke the palette — that would silently break the
         // charts. Keep the built-in and let the user explicitly disable by writing a single-
@@ -469,5 +491,41 @@ palette_series = ["red", "#00ff00", "blue"]
         };
         let t = Theme::from_config(&cfg);
         assert_eq!(t.palette_series.len(), 10);
+    }
+
+    #[test]
+    fn from_config_overrides_remaining_scalars_and_heatmap_palette() {
+        let cfg = ThemeConfig {
+            bg: Some(Color::Rgb(0x01, 0x11, 0x21)),
+            bg_subtle: Some(Color::Rgb(0x02, 0x12, 0x22)),
+            text: Some(Color::Rgb(0x03, 0x13, 0x23)),
+            panel_border: Some(Color::Rgb(0x04, 0x14, 0x24)),
+            panel_title: Some(Color::Rgb(0x05, 0x15, 0x25)),
+            status_warn: Some(Color::Rgb(0x06, 0x16, 0x26)),
+            text_dim: Some(Color::Rgb(0x07, 0x17, 0x27)),
+            text_secondary: Some(Color::Rgb(0x08, 0x18, 0x28)),
+            accent_today: Some(Color::Rgb(0x09, 0x19, 0x29)),
+            accent_event: Some(Color::Rgb(0x0a, 0x1a, 0x2a)),
+            palette_heatmap: Some(vec![
+                Color::Rgb(0xaa, 0x00, 0x00),
+                Color::Rgb(0x00, 0xaa, 0x00),
+            ]),
+            ..Default::default()
+        };
+        let t = Theme::from_config(&cfg);
+        assert_eq!(t.bg, Color::Rgb(0x01, 0x11, 0x21));
+        assert_eq!(t.bg_subtle, Color::Rgb(0x02, 0x12, 0x22));
+        assert_eq!(t.text, Color::Rgb(0x03, 0x13, 0x23));
+        assert_eq!(t.panel_border, Color::Rgb(0x04, 0x14, 0x24));
+        assert_eq!(t.panel_title, Color::Rgb(0x05, 0x15, 0x25));
+        assert_eq!(t.status_warn, Color::Rgb(0x06, 0x16, 0x26));
+        assert_eq!(t.text_dim, Color::Rgb(0x07, 0x17, 0x27));
+        assert_eq!(t.text_secondary, Color::Rgb(0x08, 0x18, 0x28));
+        assert_eq!(t.accent_today, Color::Rgb(0x09, 0x19, 0x29));
+        assert_eq!(t.accent_event, Color::Rgb(0x0a, 0x1a, 0x2a));
+        assert_eq!(
+            t.palette_heatmap,
+            vec![Color::Rgb(0xaa, 0x00, 0x00), Color::Rgb(0x00, 0xaa, 0x00)]
+        );
     }
 }
