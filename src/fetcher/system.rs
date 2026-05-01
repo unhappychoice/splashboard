@@ -1237,6 +1237,34 @@ mod tests {
     }
 
     #[test]
+    fn detect_terminal_covers_remaining_aliases_and_priorities() {
+        assert_eq!(
+            detect_terminal_with(&[("KITTY_WINDOW_ID", "7"), ("TERM_PROGRAM", "iTerm.app")]),
+            "Kitty"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("ALACRITTY_WINDOW_ID", "9")]),
+            "Alacritty"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "iTerm.app")]),
+            "iTerm2"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "Apple_Terminal")]),
+            "Terminal"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "ghostty")]),
+            "Ghostty"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "WezTerm")]),
+            "WezTerm"
+        );
+    }
+
+    #[test]
     fn detect_shell_uses_basename_and_fallback() {
         let _guard = EnvGuard::set(&[("SHELL", Some("/usr/local/bin/fish"))]);
         assert_eq!(detect_shell(), "fish");
@@ -1290,6 +1318,39 @@ mod tests {
         assert_eq!(ratio_of(10, 0), 0.0);
         assert_eq!(ratio_of(5, 10), 0.5);
         assert_eq!(ratio_of(20, 10), 1.0);
+    }
+
+    #[test]
+    fn helper_formatters_and_builders_cover_remaining_branches() {
+        assert_eq!(format_percent(-1.0), "0%");
+        assert_eq!(format_percent(0.5), "50%");
+        assert_eq!(format_percent(2.0), "100%");
+        assert_eq!(disk_label(200, 50), "75% of 200 B");
+
+        #[cfg(not(windows))]
+        {
+            assert_eq!(format_load(0.42), "0.42");
+            assert_eq!(load_line(0.42, 0.38, 0.31), "0.42 0.38 0.31");
+        }
+
+        #[cfg(windows)]
+        {
+            assert_eq!(format_load(0.42), "n/a");
+            assert_eq!(load_line(0.42, 0.38, 0.31), "n/a (windows)");
+        }
+
+        let row = entry("cpu", "18%");
+        assert_eq!(row.key, "cpu");
+        assert_eq!(row.value.as_deref(), Some("18%"));
+        assert!(row.status.is_none());
+
+        let wrapped = payload(Body::Text(TextData {
+            value: "hello".into(),
+        }));
+        assert!(wrapped.icon.is_none());
+        assert!(wrapped.status.is_none());
+        assert!(wrapped.format.is_none());
+        assert!(matches!(wrapped.body, Body::Text(TextData { value }) if value == "hello"));
     }
 
     #[test]
