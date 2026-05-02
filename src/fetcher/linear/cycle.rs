@@ -632,6 +632,56 @@ mod tests {
     }
 
     #[test]
+    fn fetcher_contract_and_samples_cover_catalog_surface() {
+        let cycle_fetcher = LinearCycle;
+        let option_names: Vec<&str> = cycle_fetcher
+            .option_schemas()
+            .iter()
+            .map(|schema| schema.name)
+            .collect();
+        let ctx = FetchContext {
+            widget_id: "cycle".into(),
+            format: None,
+            timeout: std::time::Duration::from_millis(50),
+            file_format: None,
+            shape: Some(Shape::Badge),
+            options: Some(toml::from_str("team = \"ENG\"").unwrap()),
+            timezone: None,
+            locale: None,
+        };
+
+        assert_eq!(cycle_fetcher.name(), "linear_cycle");
+        assert_eq!(cycle_fetcher.safety(), Safety::Safe);
+        assert!(cycle_fetcher.description().contains("Linear cycle"));
+        assert_eq!(cycle_fetcher.shapes(), SHAPES);
+        assert_eq!(cycle_fetcher.default_shape(), Shape::Ratio);
+        assert_eq!(option_names, vec!["token", "workspace", "team", "cycle"]);
+        assert!(cycle_fetcher.cache_key(&ctx).contains("linear_cycle"));
+        assert!(
+            SHAPES
+                .iter()
+                .all(|shape| cycle_fetcher.sample_body(*shape).is_some())
+        );
+        assert!(cycle_fetcher.sample_body(Shape::Heatmap).is_none());
+        assert_eq!(fetcher().name(), "linear_cycle");
+    }
+
+    #[test]
+    fn parse_options_and_build_filter_cover_blank_and_invalid_inputs() {
+        let defaults = parse_options(None).unwrap();
+        let invalid: toml::Value = toml::from_str("unknown = 1").unwrap();
+        let filter = build_filter(&options("team = \"\"\ncycle = \" Prev \""));
+
+        assert!(defaults.team.is_none());
+        assert!(matches!(
+            parse_options(Some(&invalid)),
+            Err(FetchError::Failed(message)) if message.contains("invalid options")
+        ));
+        assert!(filter.get("team").is_none());
+        assert_eq!(filter["isPrevious"]["eq"], json!(true));
+    }
+
+    #[test]
     fn render_ratio_carries_progress_and_denominator() {
         let view = view_for_test(0.5, 5, 10);
         let body = render_body(&view, Shape::Ratio);
@@ -698,6 +748,17 @@ mod tests {
         assert_eq!(n.values, vec![0, 1, 3, 4]);
     }
 
+    #[test]
+    fn render_body_falls_back_to_text_for_unsupported_shape() {
+        let view = view_for_test(0.4, 4, 10);
+        let body = render_body(&view, Shape::Heatmap);
+
+        assert!(matches!(
+            body,
+            Body::Text(TextData { value }) if value == "Cycle 24"
+        ));
+    }
+
     fn view_for_test(progress: f64, completed: u64, total: u64) -> CycleView {
         CycleView {
             number: 24,
@@ -724,6 +785,101 @@ mod tests {
             due_date: due,
             url: format!("https://linear.app/acme/issue/{id}"),
         }
+    }
+
+    #[test]
+    fn to_view_falls_back_to_issue_counts_and_name() {
+        let due = NaiveDate::from_ymd_opt(2026, 5, 1).unwrap();
+        let api = ApiCycle {
+            number: 24,
+            name: Some(String::new()),
+            starts_at: "2026-04-22T09:00:00+09:00".into(),
+            ends_at: "2026-05-06".into(),
+            progress: None,
+            completed_history: vec![],
+            total_history: vec![],
+            team: Some(ApiTeam {
+                key: "ENG".into(),
+                name: "Engineering".into(),
+            }),
+            issues: Some(ApiConnection {
+                nodes: vec![
+                    ApiIssue {
+                        identifier: "ENG-1".into(),
+                        title: "Done".into(),
+                        state: ApiState {
+                            name: "Done".into(),
+                            state_type: "completed".into(),
+                        },
+                        due_date: Some(due.to_string()),
+                        url: "https://linear.app/acme/issue/ENG-1".into(),
+                    },
+                    ApiIssue {
+                        identifier: "ENG-2".into(),
+                        title: "Doing".into(),
+                        state: ApiState {
+                            name: "Doing".into(),
+                            state_type: "started".into(),
+                        },
+                        due_date: Some("invalid".into()),
+                        url: "https://linear.app/acme/issue/ENG-2".into(),
+                    },
+                ],
+            }),
+        };
+        let view = to_view(api, "acme".into()).unwrap();
+
+        assert_eq!(view.name, "Cycle 24");
+        assert_eq!(
+            view.starts_at,
+            NaiveDate::from_ymd_opt(2026, 4, 22).unwrap()
+        );
+        assert_eq!(view.ends_at, NaiveDate::from_ymd_opt(2026, 5, 6).unwrap());
+        assert_eq!(view.total_count, 2);
+        assert_eq!(view.completed_count, 1);
+        assert!((view.progress - 0.5).abs() < 1e-9);
+        assert_eq!(view.issues[0].due_date, Some(due));
+        assert_eq!(view.issues[1].due_date, None);
+        assert_eq!(view.workspace, "acme");
+    }
+
+    #[test]
+    fn to_view_clamps_progress_and_requires_team() {
+        let api = ApiCycle {
+            number: 42,
+            name: Some("Launch".into()),
+            starts_at: "2026-04-01".into(),
+            ends_at: "2026-04-14".into(),
+            progress: Some(1.7),
+            completed_history: vec![-1.2, 3.6],
+            total_history: vec![1.2, 5.8],
+            team: Some(ApiTeam {
+                key: "ENG".into(),
+                name: "Engineering".into(),
+            }),
+            issues: None,
+        };
+        let missing_team = ApiCycle {
+            number: 1,
+            name: None,
+            starts_at: "2026-04-01".into(),
+            ends_at: "2026-04-14".into(),
+            progress: Some(0.5),
+            completed_history: vec![],
+            total_history: vec![],
+            team: None,
+            issues: None,
+        };
+        let view = to_view(api, "acme".into()).unwrap();
+
+        assert_eq!(view.progress, 1.0);
+        assert_eq!(view.completed_count, 4);
+        assert_eq!(view.total_count, 6);
+        assert_eq!(view.completed_history, vec![0, 4]);
+        assert!(matches!(
+            to_view(missing_team, "acme".into()),
+            Err(FetchError::Failed(message)) if message.contains("missing team")
+        ));
     }
 
     #[test]
@@ -843,6 +999,62 @@ mod tests {
         let label = badge_label(&view, view.ends_at);
         assert!(["behind", "at risk", "on track", "done"].contains(&label));
         assert!(b.label.contains("Cycle 24"));
+    }
+
+    #[test]
+    fn parse_date_calendar_state_breakdown_and_payload_cover_remaining_helpers() {
+        let start = NaiveDate::from_ymd_opt(2026, 4, 22).unwrap();
+        let due = NaiveDate::from_ymd_opt(2026, 4, 25).unwrap();
+        let next_month = NaiveDate::from_ymd_opt(2026, 5, 2).unwrap();
+        let mut view = view_for_test(0.48, 4, 10);
+
+        assert_eq!(parse_date("2026-04-22").unwrap(), start);
+        assert_eq!(parse_date("2026-04-22T09:00:00+09:00").unwrap(), start);
+        assert!(matches!(
+            parse_date("nope"),
+            Err(FetchError::Failed(message)) if message.contains("date parse")
+        ));
+
+        view.issues = vec![
+            issue_for_test("ENG-1", "Todo", Some(due)),
+            issue_for_test("ENG-2", "Blocked", Some(due)),
+            issue_for_test("ENG-3", "Todo", Some(next_month)),
+            issue_for_test("ENG-4", "Blocked", None),
+        ];
+        let Body::Calendar(data) = calendar_body(&view, start - chrono::Duration::days(3)) else {
+            panic!("expected calendar");
+        };
+        let bars = state_breakdown(&view);
+
+        assert_eq!(data.year, 2026);
+        assert_eq!(data.month, 4);
+        assert_eq!(data.day, Some(19));
+        assert_eq!(
+            data.events
+                .iter()
+                .filter(|&&day| day == due.day() as u8)
+                .count(),
+            1
+        );
+        assert_eq!(
+            bars.iter()
+                .map(|bar| bar.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Blocked", "Todo"]
+        );
+        assert_eq!(
+            badge_label(&view, view.starts_at + chrono::Duration::days(7)),
+            "on track"
+        );
+        assert!(matches!(
+            payload(Body::Text(TextData { value: "hi".into() })),
+            Payload {
+                icon: None,
+                status: None,
+                format: None,
+                body: Body::Text(TextData { value })
+            } if value == "hi"
+        ));
     }
 
     #[test]

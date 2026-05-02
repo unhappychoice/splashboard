@@ -218,7 +218,34 @@ pub fn looks_binary(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use std::process::Command;
+
+    use super::super::super::git::test_support::make_repo;
     use super::*;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git should be on PATH for tests");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn write_file(dir: &Path, rel: &str, bytes: impl AsRef<[u8]>) {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, bytes).unwrap();
+    }
 
     #[test]
     fn excluded_dir_check_only_matches_segments() {
@@ -249,5 +276,117 @@ mod tests {
         assert!(looks_binary(b"text\x00more"));
         assert!(!looks_binary(b"plain ascii"));
         assert!(!looks_binary(b""));
+    }
+
+    #[test]
+    fn classify_helpers_cover_special_basenames_and_canonical_variants() {
+        let cfg = Config::default();
+
+        assert_eq!(
+            classify_with_lang("Gemfile", &cfg),
+            Some(("Ruby", LanguageType::Ruby))
+        );
+        assert_eq!(
+            classify_with_lang("Brewfile", &cfg).map(|(name, _)| name),
+            Some("Ruby")
+        );
+        assert_eq!(classify_path("src/app.tsx"), Some("TypeScript"));
+        assert_eq!(classify_path("src/app.jsx"), Some("JavaScript"));
+        assert_eq!(classify_path("notes.unknown-extension"), None);
+    }
+
+    #[test]
+    fn tracked_file_walker_is_noop_for_bare_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        git(tmp.path(), &["init", "--bare", "-q"]);
+        let repo = gix::open(tmp.path()).unwrap();
+        let mut visited = false;
+
+        for_each_tracked_file(&repo, |_path, _bytes| visited = true).unwrap();
+
+        assert!(!visited);
+    }
+
+    #[test]
+    fn tracked_walkers_skip_excluded_missing_large_binary_and_unreadable_files() {
+        let (_tmp, repo) = make_repo();
+        let dir = repo.workdir().unwrap();
+        write_file(dir, "src/main.rs", "fn main() {}\n");
+        write_file(dir, "vendor/ignored.rs", "pub fn ignored() {}\n");
+        write_file(dir, "Cargo.lock", "noise");
+        write_file(dir, "Gemfile", "puts 'hi'\n");
+        write_file(dir, "plain.txt", "hello\n");
+        write_file(dir, "missing.txt", "soon gone\n");
+        write_file(dir, "large.txt", vec![b'x'; FILE_SIZE_CAP as usize + 1]);
+        write_file(dir, "binary.dat", b"abc\0def");
+        write_file(dir, "unreadable.txt", "secret\n");
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "fixture"]);
+
+        std::fs::remove_file(dir.join("missing.txt")).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(
+            dir.join("unreadable.txt"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+
+        let mut path_hits = Vec::new();
+        for_each_tracked_path(&repo, |path| path_hits.push(path.to_string())).unwrap();
+        path_hits.sort();
+
+        assert!(path_hits.iter().any(|path| path == "src/main.rs"));
+        assert!(path_hits.iter().any(|path| path == "Gemfile"));
+        assert!(path_hits.iter().any(|path| path == "plain.txt"));
+        assert!(path_hits.iter().any(|path| path == "missing.txt"));
+        assert!(path_hits.iter().any(|path| path == "large.txt"));
+        assert!(path_hits.iter().any(|path| path == "binary.dat"));
+        assert!(path_hits.iter().any(|path| path == "unreadable.txt"));
+        assert!(!path_hits.iter().any(|path| path == "vendor/ignored.rs"));
+        assert!(!path_hits.iter().any(|path| path == "Cargo.lock"));
+
+        let mut file_hits = Vec::new();
+        for_each_tracked_file(&repo, |path, _bytes| file_hits.push(path.to_string())).unwrap();
+        file_hits.sort();
+
+        assert!(file_hits.iter().any(|path| path == "src/main.rs"));
+        assert!(file_hits.iter().any(|path| path == "Gemfile"));
+        assert!(file_hits.iter().any(|path| path == "plain.txt"));
+        assert!(!file_hits.iter().any(|path| path == "missing.txt"));
+        assert!(!file_hits.iter().any(|path| path == "large.txt"));
+        assert!(!file_hits.iter().any(|path| path == "binary.dat"));
+        #[cfg(unix)]
+        assert!(!file_hits.iter().any(|path| path == "unreadable.txt"));
+        assert!(!file_hits.iter().any(|path| path == "vendor/ignored.rs"));
+        assert!(!file_hits.iter().any(|path| path == "Cargo.lock"));
+
+        #[cfg(unix)]
+        std::fs::set_permissions(
+            dir.join("unreadable.txt"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn tokei_stat_walker_reports_classified_files_only() {
+        let (_tmp, repo) = make_repo();
+        let dir = repo.workdir().unwrap();
+        write_file(dir, "Gemfile", "puts 'hi'\n");
+        write_file(dir, "src/lib.rs", "fn answer() -> u32 {\n    42\n}\n");
+        write_file(dir, "notes.unknown-extension", "ignored\n");
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "fixture"]);
+
+        let mut stats = Vec::new();
+        for_each_tokei_stat(&repo, |path, name, stat| {
+            stats.push((path.to_string(), name, stat.code));
+        })
+        .unwrap();
+        stats.sort();
+
+        assert_eq!(stats.len(), 2);
+        assert_eq!(stats[0], ("Gemfile".into(), "Ruby", 1));
+        assert_eq!(stats[1], ("src/lib.rs".into(), "Rust", 3));
     }
 }

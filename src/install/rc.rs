@@ -171,14 +171,15 @@ mod tests {
     fn appends_block_to_existing_rc() {
         let contents = "# some prior config\nalias foo=bar\n";
         let block = format_block(Shell::Zsh);
-        let out = match replace_or_append(contents, &block) {
-            Outcome::Appended(s) => s,
-            _ => panic!("expected Appended"),
-        };
-        assert!(out.starts_with("# some prior config"));
-        assert!(out.contains(MARKER_OPEN));
-        assert!(out.contains(MARKER_CLOSE));
-        assert!(out.contains("splashboard init zsh"));
+        let out = replace_or_append(contents, &block);
+        assert!(matches!(
+            &out,
+            Outcome::Appended(s)
+                if s.starts_with("# some prior config")
+                    && s.contains(MARKER_OPEN)
+                    && s.contains(MARKER_CLOSE)
+                    && s.contains("splashboard init zsh")
+        ));
     }
 
     #[test]
@@ -192,30 +193,35 @@ eval \"$(splashboard init bash)\"\n\
 trailing\n"
         );
         let block = format_block(Shell::Zsh);
-        let out = match replace_or_append(&stale, &block) {
-            Outcome::Replaced(s) => s,
-            other => panic!(
-                "expected Replaced, got {other:?}",
-                other = discriminant(&other)
-            ),
-        };
-        // Surrounding content is preserved and the new shell line is in.
-        assert!(out.starts_with("prior\n"));
-        assert!(out.trim_end().ends_with("trailing"));
-        assert!(out.contains("splashboard init zsh"));
-        assert!(!out.contains("splashboard init bash"));
-        // Block appears exactly once.
-        assert_eq!(out.matches(MARKER_OPEN).count(), 1);
+        let out = replace_or_append(&stale, &block);
+        assert!(matches!(
+            &out,
+            Outcome::Replaced(s)
+                if s.starts_with("prior\n")
+                    && s.trim_end().ends_with("trailing")
+                    && s.contains("splashboard init zsh")
+                    && !s.contains("splashboard init bash")
+                    && s.matches(MARKER_OPEN).count() == 1
+        ));
     }
 
     #[test]
     fn no_change_when_block_already_matches() {
         let block = format_block(Shell::Fish);
         let contents = format!("prior\n{block}\ntrailing\n");
-        match replace_or_append(&contents, &block) {
-            Outcome::UpToDate => {}
-            _ => panic!("expected UpToDate when block already matches"),
-        }
+        assert!(matches!(
+            replace_or_append(&contents, &block),
+            Outcome::UpToDate
+        ));
+    }
+
+    #[test]
+    fn appending_to_empty_rc_emits_only_the_marker_block() {
+        let block = format_block(Shell::Bash);
+        assert!(matches!(
+            replace_or_append("", &block),
+            Outcome::Appended(s) if s == block
+        ));
     }
 
     #[test]
@@ -291,6 +297,17 @@ trailing\n"
             &without_trailing_newline[start..end],
             format!("{MARKER_OPEN}\ninside\n{MARKER_CLOSE}")
         );
+    }
+
+    #[test]
+    fn find_block_includes_the_close_marker_newline_when_present() {
+        let contents = format!("before\n{MARKER_OPEN}\ninside\n{MARKER_CLOSE}\nafter\n");
+        let (start, end) = find_block(&contents).unwrap();
+        assert_eq!(
+            &contents[start..end],
+            format!("{MARKER_OPEN}\ninside\n{MARKER_CLOSE}\n")
+        );
+        assert_eq!(&contents[end..], "after\n");
     }
 
     #[test]

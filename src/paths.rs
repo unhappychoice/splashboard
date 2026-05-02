@@ -63,12 +63,20 @@ pub fn logs_dir() -> Option<PathBuf> {
 /// tests in different modules can see each other's temporary values through the process-wide
 /// env var. Exposed at crate level so other test modules (`fetcher::read_store`, etc.) can
 /// lock the same mutex.
-#[cfg(test)]
-pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn restore_env(previous: Option<String>) {
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+    }
 
     /// All subpaths flow through `splashboard_home()` so overriding the env var relocates
     /// every splashboard-owned file atomically — important for test isolation and for
@@ -79,9 +87,13 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().to_path_buf();
-        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        let outer_previous = std::env::var("SPLASHBOARD_HOME").ok();
         // SAFETY: mutating process env in tests. Scoped to restore on exit; mutex above
         // ensures no other test races with us on this env var.
+        unsafe {
+            std::env::set_var("SPLASHBOARD_HOME", tmp.path().join("before"));
+        }
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
         unsafe {
             std::env::set_var("SPLASHBOARD_HOME", &path);
         }
@@ -100,11 +112,21 @@ mod tests {
         assert_eq!(cache_dir(), Some(path.join("cache")));
         assert_eq!(read_store_dir(), Some(path.join("store")));
         assert_eq!(logs_dir(), Some(path.join("logs")));
+        restore_env(previous);
+        restore_env(outer_previous);
+    }
+
+    #[test]
+    fn falls_back_to_dot_splashboard_under_home_dir_when_env_is_missing() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
         unsafe {
-            match previous {
-                Some(v) => std::env::set_var("SPLASHBOARD_HOME", v),
-                None => std::env::remove_var("SPLASHBOARD_HOME"),
-            }
+            std::env::remove_var("SPLASHBOARD_HOME");
         }
+
+        let home = dirs::home_dir().expect("test host should provide a home directory");
+
+        assert_eq!(splashboard_home(), Some(home.join(".splashboard")));
+        restore_env(previous);
     }
 }

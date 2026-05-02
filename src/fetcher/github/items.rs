@@ -118,6 +118,7 @@ fn entries_key(i: &IssueItem, include_repo: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     fn issue_item() -> IssueItem {
         IssueItem {
@@ -128,6 +129,10 @@ mod tests {
             html_url: "https://github.com/unhappychoice/splashboard/issues/42".into(),
             state: "open".into(),
         }
+    }
+
+    fn body_json(body: Body) -> Value {
+        serde_json::to_value(body).unwrap()
     }
 
     #[test]
@@ -143,17 +148,20 @@ mod tests {
     }
 
     #[test]
+    fn repo_from_url_rejects_incomplete_slug() {
+        assert!(repo_from_url("https://api.github.com/repos/foo").is_none());
+    }
+
+    #[test]
     fn render_entries_include_repo_name_and_title() {
-        let Body::Entries(data) = render_items(&[issue_item()], Shape::Entries, true) else {
-            panic!("expected entries");
-        };
-        assert_eq!(data.items.len(), 1);
-        assert_eq!(data.items[0].key, "splashboard #42");
+        let value = body_json(render_items(&[issue_item()], Shape::Entries, true));
+        assert_eq!(value["shape"], "entries");
+        assert_eq!(value["data"]["items"][0]["key"], "splashboard #42");
         assert_eq!(
-            data.items[0].value.as_deref(),
-            Some("Fix cached splash mismatch")
+            value["data"]["items"][0]["value"],
+            "Fix cached splash mismatch"
         );
-        assert!(data.items[0].status.is_none());
+        assert!(value["data"]["items"][0]["status"].is_null());
     }
 
     #[test]
@@ -168,6 +176,20 @@ mod tests {
         assert_eq!(data.items.len(), 1);
         assert_eq!(data.items[0].text, "#42 Fix cached splash mismatch");
         assert!(data.items[0].url.is_none());
+    }
+
+    #[test]
+    fn render_linked_text_block_prefixes_repo_path_and_uses_html_url() {
+        let value = body_json(render_items(&[issue_item()], Shape::LinkedTextBlock, true));
+        assert_eq!(value["shape"], "linked_text_block");
+        assert_eq!(
+            value["data"]["items"][0]["text"],
+            "unhappychoice/splashboard#42 Fix cached splash mismatch"
+        );
+        assert_eq!(
+            value["data"]["items"][0]["url"],
+            "https://github.com/unhappychoice/splashboard/issues/42"
+        );
     }
 
     #[test]
@@ -194,6 +216,26 @@ mod tests {
             panic!("expected text block");
         };
         assert_eq!(data.lines, vec!["#42 Fix cached splash mismatch"]);
+    }
+
+    #[test]
+    fn render_entries_without_repo_prefix_use_number_only() {
+        let value = body_json(render_items(&[issue_item()], Shape::Entries, false));
+        assert_eq!(value["shape"], "entries");
+        assert_eq!(value["data"]["items"][0]["key"], "#42");
+        assert_eq!(
+            value["data"]["items"][0]["value"],
+            "Fix cached splash mismatch"
+        );
+    }
+
+    #[test]
+    fn render_entries_fall_back_to_question_mark_for_bad_repo_url() {
+        let mut item = issue_item();
+        item.repository_url = "https://api.github.com/not-a-repo".into();
+        let value = body_json(render_items(&[item], Shape::Entries, true));
+        assert_eq!(value["shape"], "entries");
+        assert_eq!(value["data"]["items"][0]["key"], "? #42");
     }
 
     #[test]

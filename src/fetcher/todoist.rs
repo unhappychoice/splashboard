@@ -708,6 +708,19 @@ mod tests {
     }
 
     #[test]
+    fn due_helpers_cover_overdue_upcoming_and_future_date_branches() {
+        assert_eq!(due_clause(DueWindow::Overdue, true), Some("overdue".into()));
+        assert_eq!(
+            due_clause(DueWindow::Upcoming, false),
+            Some("7 days & !today".into())
+        );
+
+        let today = fixed_now().date_naive();
+        let future = NaiveDate::from_ymd_opt(2026, 4, 25).unwrap();
+        assert_eq!(due_label_from_date(future, today), "04-25");
+    }
+
+    #[test]
     fn priorities_clause_ignores_out_of_range_values() {
         let opts = options("filter_priorities = [0, 1, 4, 9]");
         assert_eq!(build_filter(&opts), Some("(p1 | p4)".into()));
@@ -829,6 +842,22 @@ mod tests {
         assert_eq!(task_meta(&no_due), "no due · P3");
         assert_eq!(task_line(&no_due), "no due · P3 Fix bug");
         assert!(task_link("").is_none());
+    }
+
+    #[test]
+    fn http_and_payload_helpers_return_stable_defaults() {
+        assert!(std::ptr::eq(http(), http()));
+
+        let payload = payload(Body::Text(TextData {
+            value: "todo 0 tasks (0 overdue)".into(),
+        }));
+        assert!(payload.icon.is_none());
+        assert!(payload.status.is_none());
+        assert!(payload.format.is_none());
+        assert!(matches!(
+            &payload.body,
+            Body::Text(text) if text.value == "todo 0 tasks (0 overdue)"
+        ));
     }
 
     #[test]

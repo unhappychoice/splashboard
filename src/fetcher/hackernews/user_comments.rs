@@ -258,27 +258,28 @@ mod tests {
     #[test]
     fn linked_text_block_links_to_hn_item_page() {
         let it = comment(42, "hello");
-        let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
         assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://news.ycombinator.com/item?id=42")
+            render_body(&[it], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "hello".into(),
+                    url: Some("https://news.ycombinator.com/item?id=42".into()),
+                }],
+            })
         );
-        assert_eq!(b.items[0].text, "hello");
     }
 
     #[test]
     fn text_block_shape_emits_snippet_per_comment() {
-        let body = render_body(
-            &[comment(1, "<p>first</p>"), comment(2, "<p>second</p>")],
-            Shape::TextBlock,
+        assert_eq!(
+            render_body(
+                &[comment(1, "<p>first</p>"), comment(2, "<p>second</p>")],
+                Shape::TextBlock,
+            ),
+            Body::TextBlock(TextBlockData {
+                lines: vec!["first".into(), "second".into()],
+            })
         );
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["first".to_string(), "second".to_string()]);
     }
 
     #[test]
@@ -288,11 +289,15 @@ mod tests {
             item_type: Some("comment".into()),
             text: None,
         };
-        let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items[0].text, "");
+        assert_eq!(
+            render_body(&[it], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "".into(),
+                    url: Some("https://news.ycombinator.com/item?id=1".into()),
+                }],
+            })
+        );
     }
 
     #[test]
@@ -302,11 +307,15 @@ mod tests {
             item_type: Some("comment".into()),
             text: Some("orphan".into()),
         };
-        let body = render_body(&[it], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items[0].url.is_none());
+        assert_eq!(
+            render_body(&[it], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![LinkedLine {
+                    text: "orphan".into(),
+                    url: None,
+                }],
+            })
+        );
     }
 
     #[test]
@@ -329,11 +338,10 @@ mod tests {
 
     #[test]
     fn empty_items_renders_empty_linked_text_block() {
-        let body = render_body(&[], Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items.is_empty());
+        assert_eq!(
+            render_body(&[], Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(LinkedTextBlockData { items: vec![] })
+        );
     }
 
     #[test]
@@ -382,18 +390,33 @@ mod tests {
     fn sample_body_supports_each_declared_shape() {
         let fetcher = HackernewsUserCommentsFetcher;
 
-        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
-        let Body::LinkedTextBlock(linked) = linked else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(linked.items.len(), 2);
-        assert!(linked.items[0].text.contains("rate limiter"));
+        assert_eq!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(LinkedTextBlockData {
+                items: vec![
+                    LinkedLine {
+                        text: "Yes, that's exactly the problem with the current rate limiter ..."
+                            .into(),
+                        url: Some("https://news.ycombinator.com/item?id=1".into()),
+                    },
+                    LinkedLine {
+                        text: "Have you tried running `cargo +nightly` to see if the issue ..."
+                            .into(),
+                        url: Some("https://news.ycombinator.com/item?id=2".into()),
+                    },
+                ],
+            }))
+        );
 
-        let block = fetcher.sample_body(Shape::TextBlock).unwrap();
-        let Body::TextBlock(block) = block else {
-            panic!("expected text block");
-        };
-        assert_eq!(block.lines.len(), 2);
+        assert_eq!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(TextBlockData {
+                lines: vec![
+                    "Yes, that's exactly the problem with the current rate limiter ...".into(),
+                    "Have you tried running `cargo +nightly` to see if the issue ...".into(),
+                ],
+            }))
+        );
 
         assert!(fetcher.sample_body(Shape::Entries).is_none());
     }

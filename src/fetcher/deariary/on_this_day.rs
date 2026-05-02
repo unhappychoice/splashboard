@@ -489,6 +489,19 @@ mod tests {
     }
 
     #[test]
+    fn non_empty_hits_yield_ok_badge_for_oldest_anchor() {
+        let hits = vec![
+            (0, entry("2026-03-27", "Recent")),
+            (7, entry("2021-04-27", "Five years")),
+        ];
+        let Body::Badge(b) = render_body(&hits, Shape::Badge, ymd(2026, 4, 27)) else {
+            panic!("expected Badge");
+        };
+        assert_eq!(b.status, Status::Ok);
+        assert_eq!(b.label, "📔 5 years ago");
+    }
+
+    #[test]
     fn entries_keys_with_anchor_label() {
         let hits = vec![(2, entry("2025-10-27", "Half year"))];
         let Body::Entries(e) = render_body(&hits, Shape::Entries, ymd(2026, 4, 27)) else {
@@ -516,6 +529,12 @@ mod tests {
             panic!("expected TextBlock");
         };
         assert_eq!(t.lines, vec!["1 month ago — Recent".to_string()]);
+    }
+
+    #[test]
+    fn fetch_anchors_returns_empty_when_all_anchors_underflow() {
+        let hits = run_async(fetch_anchors("unused-token", NaiveDate::MIN)).unwrap();
+        assert!(hits.is_empty());
     }
 
     #[tokio::test]

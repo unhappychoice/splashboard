@@ -75,9 +75,41 @@ fn build_appender(dir: &PathBuf) -> Option<tracing_appender::rolling::RollingFil
 mod tests {
     use super::*;
     use crate::paths::TEST_ENV_LOCK;
+    use std::path::Path;
     use std::time::Duration;
     use tracing_appender::non_blocking;
     use tracing_subscriber::fmt::MakeWriter;
+
+    fn restore_env(key: &str, value: Option<String>) {
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
+    fn wait_for_log_file(dir: &Path) -> bool {
+        let mut seen_once = false;
+        for _ in 0..40 {
+            let any = std::fs::read_dir(dir)
+                .ok()
+                .into_iter()
+                .flat_map(|entries| entries.filter_map(Result::ok))
+                .any(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(LOG_FILENAME_PREFIX)
+                });
+            if any && seen_once {
+                return true;
+            }
+            seen_once = any;
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        false
+    }
 
     #[test]
     fn build_appender_creates_a_file_on_first_write() {
@@ -90,24 +122,11 @@ mod tests {
             writeln!(w, "hello from tests").unwrap();
         }
         drop(_guard);
-        // The appender rotates daily; the current day's file starts with our prefix.
-        let mut found = false;
-        for _ in 0..40 {
-            let any = std::fs::read_dir(dir.path())
-                .unwrap()
-                .filter_map(|e| e.ok())
-                .any(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .starts_with(LOG_FILENAME_PREFIX)
-                });
-            if any {
-                found = true;
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        assert!(found, "log file must be created under {:?}", dir.path());
+        assert!(
+            wait_for_log_file(dir.path()),
+            "log file must be created under {:?}",
+            dir.path()
+        );
     }
 
     #[test]
@@ -126,6 +145,12 @@ mod tests {
         std::fs::write(&blocked_home, "occupied").unwrap();
         let good_home = tmp.path().join("good-home");
         let later_home = tmp.path().join("later-home");
+        let outer_previous_home = std::env::var("SPLASHBOARD_HOME").ok();
+        let outer_previous_filter = std::env::var("SPLASHBOARD_LOG").ok();
+        unsafe {
+            std::env::set_var("SPLASHBOARD_HOME", tmp.path().join("previous-home"));
+            std::env::set_var("SPLASHBOARD_LOG", "warn");
+        }
         let previous_home = std::env::var("SPLASHBOARD_HOME").ok();
         let previous_filter = std::env::var("SPLASHBOARD_LOG").ok();
         unsafe {
@@ -141,39 +166,19 @@ mod tests {
         init();
         assert!(GUARD.get().is_some());
         tracing::error!("logging smoke test");
-        let mut found = false;
-        for _ in 0..40 {
-            let any = std::fs::read_dir(good_home.join("logs"))
-                .ok()
-                .into_iter()
-                .flat_map(|entries| entries.filter_map(Result::ok))
-                .any(|entry| {
-                    entry
-                        .file_name()
-                        .to_string_lossy()
-                        .starts_with(LOG_FILENAME_PREFIX)
-                });
-            if any {
-                found = true;
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        assert!(found, "log file must be created under {:?}", good_home);
+        assert!(
+            wait_for_log_file(&good_home.join("logs")),
+            "log file must be created under {:?}",
+            good_home
+        );
         unsafe {
             std::env::set_var("SPLASHBOARD_HOME", &later_home);
         }
         init();
         assert!(!later_home.join("logs").exists());
-        unsafe {
-            match previous_home {
-                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
-                None => std::env::remove_var("SPLASHBOARD_HOME"),
-            }
-            match previous_filter {
-                Some(value) => std::env::set_var("SPLASHBOARD_LOG", value),
-                None => std::env::remove_var("SPLASHBOARD_LOG"),
-            }
-        }
+        restore_env("SPLASHBOARD_HOME", previous_home);
+        restore_env("SPLASHBOARD_LOG", previous_filter);
+        restore_env("SPLASHBOARD_HOME", outer_previous_home);
+        restore_env("SPLASHBOARD_LOG", outer_previous_filter);
     }
 }

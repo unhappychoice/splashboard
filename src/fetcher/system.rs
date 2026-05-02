@@ -1187,6 +1187,89 @@ mod tests {
     }
 
     #[test]
+    fn system_sample_body_matches_documented_copy() {
+        let fetcher = SystemFetcher::default();
+
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(entries))
+                if entries.items.len() == 6
+                    && entries.items[0].key == "os"
+                    && entries.items[5].value.as_deref() == Some("67%")
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(block))
+                if block.lines[0] == "os: linux" && block.lines[5] == "memory: 67%"
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "iTerm2"
+        ));
+    }
+
+    #[test]
+    fn disk_sample_body_matches_documented_shapes() {
+        assert!(matches!(
+            DiskFetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(ratio))
+                if ratio.label.as_deref() == Some("disk") && ratio.value == 0.58
+        ));
+        assert!(matches!(
+            DiskFetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "58% of 400 GB"
+        ));
+        assert!(matches!(
+            DiskFetcher.sample_body(Shape::Bars),
+            Some(Body::Bars(bars))
+                if bars.bars.len() == 3
+                    && bars.bars[0].label == "/"
+                    && bars.bars[2].value == 200
+        ));
+    }
+
+    #[test]
+    fn battery_sample_body_matches_documented_shapes() {
+        let fetcher = BatteryFetcher::default();
+
+        assert!(matches!(
+            fetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(ratio))
+                if ratio.label.as_deref() == Some("battery") && ratio.value == 0.87
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "87% • Charging • 1h 23m"
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(entries))
+                if entries.items.len() == 5
+                    && entries.items[0].key == "charge"
+                    && entries.items[4].value.as_deref() == Some("97%")
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Badge),
+            Some(Body::Badge(badge))
+                if badge.status == Status::Ok && badge.label == "87% · Charging"
+        ));
+    }
+
+    #[test]
+    fn sample_bodies_return_none_for_unsupported_shapes() {
+        let unsupported = Shape::Image;
+
+        assert!(SystemFetcher::new().sample_body(unsupported).is_none());
+        assert!(CpuLoadFetcher::new().sample_body(unsupported).is_none());
+        assert!(MemoryFetcher::new().sample_body(unsupported).is_none());
+        assert!(UptimeFetcher.sample_body(unsupported).is_none());
+        assert!(LoadAverageFetcher.sample_body(unsupported).is_none());
+        assert!(ProcessTopFetcher::new().sample_body(unsupported).is_none());
+        assert!(DiskFetcher.sample_body(unsupported).is_none());
+        assert!(BatteryFetcher::new().sample_body(unsupported).is_none());
+    }
+
+    #[test]
     fn parse_options_defaults_and_surfaces_invalid_input() {
         let system: SystemOptions = parse_options(None).unwrap();
         assert!(system.kind.is_none());
@@ -1234,6 +1317,34 @@ mod tests {
             "CustomTerm"
         );
         assert_eq!(detect_terminal_with(&[]), "terminal");
+    }
+
+    #[test]
+    fn detect_terminal_covers_remaining_aliases_and_priorities() {
+        assert_eq!(
+            detect_terminal_with(&[("KITTY_WINDOW_ID", "7"), ("TERM_PROGRAM", "iTerm.app")]),
+            "Kitty"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("ALACRITTY_WINDOW_ID", "9")]),
+            "Alacritty"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "iTerm.app")]),
+            "iTerm2"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "Apple_Terminal")]),
+            "Terminal"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "ghostty")]),
+            "Ghostty"
+        );
+        assert_eq!(
+            detect_terminal_with(&[("TERM_PROGRAM", "WezTerm")]),
+            "WezTerm"
+        );
     }
 
     #[test]
@@ -1293,6 +1404,51 @@ mod tests {
     }
 
     #[test]
+    fn empty_system_and_disk_snapshots_use_safe_fallbacks() {
+        let sys = System::new();
+        assert_eq!(memory_ratio(&sys), 0.0);
+        assert!(top_processes(&sys, PROCESS_TOP_COUNT).is_empty());
+
+        let disks = Disks::new();
+        assert_eq!(primary_disk(&disks), None);
+        assert!(disk_bars(&disks).is_empty());
+        assert_eq!(disk_label(10, 20), "0% of 10 B");
+    }
+
+    #[test]
+    fn helper_formatters_and_builders_cover_remaining_branches() {
+        assert_eq!(format_percent(-1.0), "0%");
+        assert_eq!(format_percent(0.5), "50%");
+        assert_eq!(format_percent(2.0), "100%");
+        assert_eq!(disk_label(200, 50), "75% of 200 B");
+
+        #[cfg(not(windows))]
+        {
+            assert_eq!(format_load(0.42), "0.42");
+            assert_eq!(load_line(0.42, 0.38, 0.31), "0.42 0.38 0.31");
+        }
+
+        #[cfg(windows)]
+        {
+            assert_eq!(format_load(0.42), "n/a");
+            assert_eq!(load_line(0.42, 0.38, 0.31), "n/a (windows)");
+        }
+
+        let row = entry("cpu", "18%");
+        assert_eq!(row.key, "cpu");
+        assert_eq!(row.value.as_deref(), Some("18%"));
+        assert!(row.status.is_none());
+
+        let wrapped = payload(Body::Text(TextData {
+            value: "hello".into(),
+        }));
+        assert!(wrapped.icon.is_none());
+        assert!(wrapped.status.is_none());
+        assert!(wrapped.format.is_none());
+        assert!(matches!(wrapped.body, Body::Text(TextData { value }) if value == "hello"));
+    }
+
+    #[test]
     fn cpu_load_defaults_to_ratio() {
         let p = CpuLoadFetcher::new().compute(&ctx_with_shape(None));
         assert!(matches!(p.body, Body::Ratio(_)));
@@ -1307,38 +1463,38 @@ mod tests {
     #[test]
     fn memory_defaults_to_ratio() {
         let p = MemoryFetcher::new().compute(&ctx_with_shape(None));
-        let Body::Ratio(r) = p.body else {
-            panic!("expected ratio");
-        };
-        assert!((0.0..=1.0).contains(&r.value));
+        assert!(matches!(p.body, Body::Ratio(_)));
+        if let Body::Ratio(r) = p.body {
+            assert!((0.0..=1.0).contains(&r.value));
+        }
     }
 
     #[test]
     fn memory_entries_shape_has_three_rows() {
         let p = MemoryFetcher::new().compute(&ctx_with_shape(Some(Shape::Entries)));
-        let Body::Entries(e) = p.body else {
-            panic!("expected entries");
-        };
-        let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
-        assert_eq!(keys, ["used", "total", "free"]);
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
+            assert_eq!(keys, ["used", "total", "free"]);
+        }
     }
 
     #[test]
     fn memory_text_shape_formats_used_over_total() {
         let p = MemoryFetcher::new().compute(&ctx_with_shape(Some(Shape::Text)));
-        let Body::Text(text) = p.body else {
-            panic!("expected text");
-        };
-        assert!(text.value.contains(" / "));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(text) = p.body {
+            assert!(text.value.contains(" / "));
+        }
     }
 
     #[test]
     fn uptime_emits_text() {
         let p = UptimeFetcher.compute(&ctx_with_shape(None));
-        let Body::Text(t) = p.body else {
-            panic!("expected text");
-        };
-        assert!(!t.value.is_empty());
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(!t.value.is_empty());
+        }
     }
 
     #[test]
@@ -1350,47 +1506,47 @@ mod tests {
     #[test]
     fn load_average_entries_shape_has_three_windows() {
         let p = LoadAverageFetcher.compute(&ctx_with_shape(Some(Shape::Entries)));
-        let Body::Entries(e) = p.body else {
-            panic!("expected entries");
-        };
-        let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
-        assert_eq!(keys, ["1min", "5min", "15min"]);
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
+            assert_eq!(keys, ["1min", "5min", "15min"]);
+        }
     }
 
     #[test]
     fn system_rollup_emits_six_rows() {
         let p = SystemFetcher::new().compute(&ctx_with_shape(None));
-        let Body::Entries(e) = p.body else {
-            panic!("expected entries");
-        };
-        assert_eq!(e.items.len(), 6);
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            assert_eq!(e.items.len(), 6);
+        }
     }
 
     #[test]
     fn system_text_shape_defaults_to_terminal_kind() {
         let p = SystemFetcher::new().compute(&ctx_text(None));
-        let Body::Text(t) = p.body else {
-            panic!("expected text");
-        };
-        assert!(!t.value.is_empty());
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(!t.value.is_empty());
+        }
     }
 
     #[test]
     fn system_text_shape_emits_arch_when_requested() {
         let p = SystemFetcher::new().compute(&ctx_text(Some("kind = \"arch\"")));
-        let Body::Text(t) = p.body else {
-            panic!("expected text");
-        };
-        assert_eq!(t.value, std::env::consts::ARCH);
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert_eq!(t.value, std::env::consts::ARCH);
+        }
     }
 
     #[test]
     fn system_text_shape_rejects_unknown_kind_to_placeholder() {
         let p = SystemFetcher::new().compute(&ctx_text(Some("kind = \"bogus\"")));
-        let Body::Text(t) = p.body else {
-            panic!("expected text");
-        };
-        assert!(t.value.starts_with("⚠"));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(t.value.starts_with("⚠"));
+        }
     }
 
     #[test]
@@ -1414,41 +1570,46 @@ mod tests {
         ];
         for (label, opts) in cases {
             let p = SystemFetcher::new().compute(&ctx_text(Some(opts)));
-            let Body::Text(t) = p.body else {
-                panic!("expected text for {label}");
-            };
-            eprintln!("{label:<12} → {}", t.value);
-            assert!(!t.value.is_empty());
+            assert!(matches!(p.body, Body::Text(_)), "expected text for {label}");
+            if let Body::Text(t) = p.body {
+                eprintln!("{label:<12} → {}", t.value);
+                assert!(!t.value.is_empty());
+            }
         }
+    }
+
+    #[test]
+    fn system_text_all_kinds_helper_runs_in_regular_suite() {
+        live_system_text_all_kinds();
     }
 
     #[test]
     fn system_text_block_shape_returns_key_value_strings() {
         let p = SystemFetcher::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
-        let Body::TextBlock(l) = p.body else {
-            panic!("expected text_block");
-        };
-        assert_eq!(l.lines.len(), 6);
-        assert!(l.lines.iter().all(|s| s.contains(": ")));
+        assert!(matches!(p.body, Body::TextBlock(_)));
+        if let Body::TextBlock(l) = p.body {
+            assert_eq!(l.lines.len(), 6);
+            assert!(l.lines.iter().all(|s| s.contains(": ")));
+        }
     }
 
     #[test]
     fn process_top_respects_count_cap() {
         let p = ProcessTopFetcher::new().compute(&ctx_with_shape(None));
-        let Body::Entries(e) = p.body else {
-            panic!("expected entries");
-        };
-        assert!(e.items.len() <= PROCESS_TOP_COUNT);
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            assert!(e.items.len() <= PROCESS_TOP_COUNT);
+        }
     }
 
     #[test]
     fn process_top_text_block_shape_formats_rows() {
         let p = ProcessTopFetcher::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
-        let Body::TextBlock(block) = p.body else {
-            panic!("expected text block");
-        };
-        assert!(block.lines.len() <= PROCESS_TOP_COUNT);
-        assert!(block.lines.iter().all(|line| line.ends_with('%')));
+        assert!(matches!(p.body, Body::TextBlock(_)));
+        if let Body::TextBlock(block) = p.body {
+            assert!(block.lines.len() <= PROCESS_TOP_COUNT);
+            assert!(block.lines.iter().all(|line| line.ends_with('%')));
+        }
     }
 
     fn snapshot(charge: f64, state: BatteryState, secs: Option<u64>) -> BatterySnapshot {
@@ -1526,11 +1687,11 @@ mod tests {
     #[test]
     fn no_battery_ratio_is_full_ac() {
         let p = no_battery_payload(Shape::Ratio, BatteryTextKind::Summary);
-        let Body::Ratio(r) = p.body else {
-            panic!("expected ratio")
-        };
-        assert_eq!(r.value, 1.0);
-        assert_eq!(r.label.as_deref(), Some("AC"));
+        assert!(matches!(p.body, Body::Ratio(_)));
+        if let Body::Ratio(r) = p.body {
+            assert_eq!(r.value, 1.0);
+            assert_eq!(r.label.as_deref(), Some("AC"));
+        }
     }
 
     #[test]
@@ -1538,30 +1699,34 @@ mod tests {
         let summary = no_battery_payload(Shape::Text, BatteryTextKind::Summary);
         let percent = no_battery_payload(Shape::Text, BatteryTextKind::Percent);
         let time = no_battery_payload(Shape::Text, BatteryTextKind::TimeRemaining);
-        let extract = |p: Payload| match p.body {
-            Body::Text(t) => t.value,
-            _ => panic!(),
-        };
-        assert_eq!(extract(summary), "AC");
-        assert_eq!(extract(percent), "100%");
-        assert_eq!(extract(time), "—");
+        assert!(matches!(summary.body, Body::Text(_)));
+        assert!(matches!(percent.body, Body::Text(_)));
+        assert!(matches!(time.body, Body::Text(_)));
+        if let Body::Text(text) = summary.body {
+            assert_eq!(text.value, "AC");
+        }
+        if let Body::Text(text) = percent.body {
+            assert_eq!(text.value, "100%");
+        }
+        if let Body::Text(text) = time.body {
+            assert_eq!(text.value, "—");
+        }
     }
 
     #[test]
     fn no_battery_entries_and_badge_use_ac_placeholders() {
-        let Body::Entries(entries) =
-            no_battery_payload(Shape::Entries, BatteryTextKind::Summary).body
-        else {
-            panic!("expected entries");
-        };
-        let Body::Badge(badge) = no_battery_payload(Shape::Badge, BatteryTextKind::Summary).body
-        else {
-            panic!("expected badge");
-        };
-        assert_eq!(entries.items[0].key, "power");
-        assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
-        assert_eq!(badge.status, Status::Ok);
-        assert_eq!(badge.label, "AC");
+        let entries = no_battery_payload(Shape::Entries, BatteryTextKind::Summary);
+        let badge = no_battery_payload(Shape::Badge, BatteryTextKind::Summary);
+        assert!(matches!(entries.body, Body::Entries(_)));
+        assert!(matches!(badge.body, Body::Badge(_)));
+        if let Body::Entries(entries) = entries.body {
+            assert_eq!(entries.items[0].key, "power");
+            assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
+        }
+        if let Body::Badge(badge) = badge.body {
+            assert_eq!(badge.status, Status::Ok);
+            assert_eq!(badge.label, "AC");
+        }
     }
 
     #[test]
@@ -1597,10 +1762,10 @@ mod tests {
     fn battery_rejects_unknown_option_to_placeholder() {
         let f = BatteryFetcher::new();
         let p = f.compute(&ctx_text(Some("bogus = true")));
-        let Body::Text(t) = p.body else {
-            panic!("expected text placeholder")
-        };
-        assert!(t.value.starts_with("⚠"));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(t.value.starts_with("⚠"));
+        }
     }
 
     #[test]
@@ -1609,20 +1774,21 @@ mod tests {
             manager: Mutex::new(None),
         };
 
-        let Body::Text(text) = fetcher.compute(&ctx_text(Some("kind = \"percent\""))).body else {
-            panic!("expected text");
-        };
-        let Body::Entries(entries) = fetcher.compute(&ctx_with_shape(Some(Shape::Entries))).body
-        else {
-            panic!("expected entries");
-        };
-        let Body::Badge(badge) = fetcher.compute(&ctx_with_shape(Some(Shape::Badge))).body else {
-            panic!("expected badge");
-        };
-
-        assert_eq!(text.value, "100%");
-        assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
-        assert_eq!(badge.label, "AC");
+        let text = fetcher.compute(&ctx_text(Some("kind = \"percent\"")));
+        let entries = fetcher.compute(&ctx_with_shape(Some(Shape::Entries)));
+        let badge = fetcher.compute(&ctx_with_shape(Some(Shape::Badge)));
+        assert!(matches!(text.body, Body::Text(_)));
+        assert!(matches!(entries.body, Body::Entries(_)));
+        assert!(matches!(badge.body, Body::Badge(_)));
+        if let Body::Text(text) = text.body {
+            assert_eq!(text.value, "100%");
+        }
+        if let Body::Entries(entries) = entries.body {
+            assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
+        }
+        if let Body::Badge(badge) = badge.body {
+            assert_eq!(badge.label, "AC");
+        }
     }
 
     #[tokio::test]

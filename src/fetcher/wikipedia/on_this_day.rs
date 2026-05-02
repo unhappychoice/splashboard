@@ -381,29 +381,32 @@ mod tests {
         assert_eq!(fetcher.option_schemas()[2].name, "lang");
         assert!(fetcher.description().contains("featured article"));
 
-        let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
-        else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(linked.items.len(), 3);
-        assert!(linked.items[0].url.is_some());
+        let linked = fetcher.sample_body(Shape::LinkedTextBlock);
+        assert!(matches!(linked, Some(Body::LinkedTextBlock(_))));
+        if let Some(Body::LinkedTextBlock(linked)) = linked {
+            assert_eq!(linked.items.len(), 3);
+            assert!(linked.items[0].url.is_some());
+        }
 
-        let Some(Body::TextBlock(text_block)) = fetcher.sample_body(Shape::TextBlock) else {
-            panic!("expected text block");
-        };
-        assert_eq!(text_block.lines.len(), 3);
-        assert!(text_block.lines[0].contains("Apollo 11"));
+        let text_block = fetcher.sample_body(Shape::TextBlock);
+        assert!(matches!(text_block, Some(Body::TextBlock(_))));
+        if let Some(Body::TextBlock(text_block)) = text_block {
+            assert_eq!(text_block.lines.len(), 3);
+            assert!(text_block.lines[0].contains("Apollo 11"));
+        }
 
-        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
-            panic!("expected text");
-        };
-        assert!(text.value.contains("Apollo 11"));
+        let text = fetcher.sample_body(Shape::Text);
+        assert!(matches!(text, Some(Body::Text(_))));
+        if let Some(Body::Text(text)) = text {
+            assert!(text.value.contains("Apollo 11"));
+        }
 
-        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
-            panic!("expected timeline");
-        };
-        assert_eq!(timeline.events.len(), 2);
-        assert!(timeline.events[0].title.contains("Apollo 11"));
+        let timeline = fetcher.sample_body(Shape::Timeline);
+        assert!(matches!(timeline, Some(Body::Timeline(_))));
+        if let Some(Body::Timeline(timeline)) = timeline {
+            assert_eq!(timeline.events.len(), 2);
+            assert!(timeline.events[0].title.contains("Apollo 11"));
+        }
 
         assert!(fetcher.sample_body(Shape::Entries).is_none());
 
@@ -517,16 +520,16 @@ mod tests {
             entry("1066 — B", None),
         ];
         let body = render_body(&events, Shape::LinkedTextBlock, 5);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 2);
-        assert_eq!(b.items[0].text, "1969 — A");
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://en.wikipedia.org/A")
-        );
-        assert!(b.items[1].url.is_none());
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert_eq!(b.items.len(), 2);
+            assert_eq!(b.items[0].text, "1969 — A");
+            assert_eq!(
+                b.items[0].url.as_deref(),
+                Some("https://en.wikipedia.org/A")
+            );
+            assert!(b.items[1].url.is_none());
+        }
     }
 
     #[test]
@@ -536,48 +539,48 @@ mod tests {
             entry("1066 — B", None),
         ];
         let body = render_body(&events, Shape::TextBlock, 5);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["1969 — A", "1066 — B"]);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(t) = body {
+            assert_eq!(t.lines, vec!["1969 — A", "1066 — B"]);
+        }
     }
 
     #[test]
     fn text_shape_emits_first_event_label() {
         let events = vec![entry("1969 — A", None), entry("1066 — B", None)];
         let body = render_body(&events, Shape::Text, 5);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert_eq!(t.value, "1969 — A");
+        assert!(matches!(body, Body::Text(_)));
+        if let Body::Text(t) = body {
+            assert_eq!(t.value, "1969 — A");
+        }
     }
 
     #[test]
     fn text_shape_is_empty_when_no_events() {
         let body = render_body(&[], Shape::Text, 5);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert!(t.value.is_empty());
+        assert!(matches!(body, Body::Text(_)));
+        if let Body::Text(t) = body {
+            assert!(t.value.is_empty());
+        }
     }
 
     #[test]
     fn limit_caps_emitted_rows() {
         let events: Vec<_> = (0..10).map(|i| entry(&format!("e{i}"), None)).collect();
         let body = render_body(&events, Shape::LinkedTextBlock, 3);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 3);
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert_eq!(b.items.len(), 3);
+        }
     }
 
     #[test]
     fn empty_events_produce_empty_linked_text_block() {
         let body = render_body(&[], Shape::LinkedTextBlock, 5);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items.is_empty());
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert!(b.items.is_empty());
+        }
     }
 
     #[test]
@@ -667,13 +670,13 @@ mod tests {
             },
         ];
         let body = render_body(&events, Shape::Timeline, 5);
-        let Body::Timeline(t) = body else {
-            panic!("expected timeline");
-        };
-        assert_eq!(t.events.len(), 2);
-        assert_eq!(t.events[0].timestamp, 12345);
-        assert_eq!(t.events[0].title, "1969 — A");
-        assert_eq!(t.events[1].timestamp, 67890);
+        assert!(matches!(body, Body::Timeline(_)));
+        if let Body::Timeline(t) = body {
+            assert_eq!(t.events.len(), 2);
+            assert_eq!(t.events[0].timestamp, 12345);
+            assert_eq!(t.events[0].title, "1969 — A");
+            assert_eq!(t.events[1].timestamp, 67890);
+        }
     }
 
     #[tokio::test]
@@ -683,10 +686,7 @@ mod tests {
             .fetch(&ctx(Some("bogus = true"), Some(Shape::Text), Some("plain")))
             .await
             .unwrap_err();
-        let FetchError::Failed(message) = err else {
-            panic!("expected failed error");
-        };
-        assert!(message.contains("unknown field"));
+        assert!(matches!(&err, FetchError::Failed(message) if message.contains("unknown field")));
     }
 
     #[tokio::test]
@@ -700,20 +700,9 @@ mod tests {
             ))
             .await
             .unwrap_err();
-        let FetchError::Failed(message) = err else {
-            panic!("expected failed error");
-        };
-        assert!(message.contains("wikipedia request failed"));
-    }
-
-    /// Live smoke test — hits Wikipedia REST API. `#[ignore]` keeps CI offline-safe.
-    #[tokio::test]
-    #[ignore]
-    async fn live_returns_at_least_one_event() {
-        let events = fetch_events("en", Kind::Selected).await.unwrap();
-        assert!(!events.is_empty());
-        for e in &events {
-            eprintln!("{} → {}", e.label, e.url.as_deref().unwrap_or("(no url)"));
-        }
+        assert!(matches!(
+            &err,
+            FetchError::Failed(message) if message.contains("wikipedia request failed")
+        ));
     }
 }

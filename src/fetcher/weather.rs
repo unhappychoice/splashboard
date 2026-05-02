@@ -416,6 +416,41 @@ fn payload(body: Body) -> Payload {
 mod tests {
     use super::*;
 
+    fn entries_data(body: Body) -> Option<EntriesData> {
+        match body {
+            Body::Entries(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    fn point_series_data(body: Body) -> Option<PointSeriesData> {
+        match body {
+            Body::PointSeries(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    fn number_series_data(body: Body) -> Option<NumberSeriesData> {
+        match body {
+            Body::NumberSeries(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    fn bars_data(body: Body) -> Option<BarsData> {
+        match body {
+            Body::Bars(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    fn text_data(body: Body) -> Option<TextData> {
+        match body {
+            Body::Text(data) => Some(data),
+            _ => None,
+        }
+    }
+
     #[test]
     fn build_url_metric_requests_ms_wind() {
         let url = build_url(35.68, 139.76, Units::Metric);
@@ -437,6 +472,7 @@ mod tests {
     fn weather_description_covers_canonical_codes() {
         assert_eq!(weather_description(0).1, "clear");
         assert_eq!(weather_description(3).1, "overcast");
+        assert_eq!(weather_description(56).1, "freezing drizzle");
         assert_eq!(weather_description(63).1, "rain");
         assert_eq!(weather_description(95).1, "thunderstorm");
         assert_eq!(weather_description(1234).1, "unknown");
@@ -444,10 +480,7 @@ mod tests {
 
     #[test]
     fn sample_entries_expose_three_rows() {
-        let body = entries(&Sample::default());
-        let Body::Entries(e) = body else {
-            panic!("expected entries");
-        };
+        let e = entries_data(entries(&Sample::default())).unwrap();
         assert_eq!(e.items.len(), 3);
         assert!(e.items[0].value.as_deref().unwrap().ends_with("°C"));
         assert!(e.items[1].value.as_deref().unwrap().ends_with("m/s"));
@@ -495,10 +528,7 @@ mod tests {
 
     #[test]
     fn point_series_carries_one_temperature_series_with_24_points() {
-        let body = point_series(&Sample::default().hourly, Units::Metric);
-        let Body::PointSeries(d) = body else {
-            panic!("expected point series");
-        };
+        let d = point_series_data(point_series(&Sample::default().hourly, Units::Metric)).unwrap();
         assert_eq!(d.series.len(), 1);
         assert_eq!(d.series[0].points.len(), HOURLY_HOURS);
         assert!(d.series[0].name.contains("°C"));
@@ -523,10 +553,7 @@ mod tests {
                 precipitation: 1.25,
             },
         ];
-        let body = number_series(&hourly);
-        let Body::NumberSeries(d) = body else {
-            panic!("expected number series");
-        };
+        let d = number_series_data(number_series(&hourly)).unwrap();
         // 0.6 mm → 6 tenths, 0.0 → 0, 1.25 → 13 (rounded).
         assert_eq!(d.values, vec![6, 0, 13]);
     }
@@ -547,20 +574,14 @@ mod tests {
                 precipitation: 0.0,
             },
         ];
-        let body = point_series(&hourly, Units::Metric);
-        let Body::PointSeries(d) = body else {
-            panic!("expected point series");
-        };
+        let d = point_series_data(point_series(&hourly, Units::Metric)).unwrap();
         assert_eq!(d.series[0].points[0].1, -5.0);
         assert_eq!(d.series[0].points[1].1, -2.5);
     }
 
     #[test]
     fn precipitation_bars_are_labelled_with_hour_offsets() {
-        let body = precipitation_bars(&Sample::default().hourly);
-        let Body::Bars(d) = body else {
-            panic!("expected bars");
-        };
+        let d = bars_data(precipitation_bars(&Sample::default().hourly)).unwrap();
         assert_eq!(d.bars.len(), HOURLY_HOURS);
         assert_eq!(d.bars[0].label, "+0h");
         assert_eq!(d.bars[5].label, "+5h");
@@ -626,12 +647,14 @@ mod tests {
                     | (Shape::Badge, Body::Badge(_))
             ));
         }
-        let Some(Body::Text(text)) = fetcher.sample_body(Shape::Text) else {
-            panic!("expected text sample");
-        };
-        let Some(Body::PointSeries(series)) = fetcher.sample_body(Shape::PointSeries) else {
-            panic!("expected point-series sample");
-        };
+        let text = fetcher
+            .sample_body(Shape::Text)
+            .and_then(text_data)
+            .unwrap();
+        let series = fetcher
+            .sample_body(Shape::PointSeries)
+            .and_then(point_series_data)
+            .unwrap();
         assert!(text.value.contains("💨"));
         assert_eq!(series.series[0].name, "temperature (°C)");
         assert!(fetcher.sample_body(Shape::Calendar).is_none());
@@ -643,12 +666,8 @@ mod tests {
             temperature_2m: (0..30).map(|i| i as f64).collect(),
             precipitation: vec![0.5],
         });
-        let Body::PointSeries(series) = point_series(&points[..2], Units::Imperial) else {
-            panic!("expected point series");
-        };
-        let Body::Text(text) = payload(Body::Text(TextData { value: "ok".into() })).body else {
-            panic!("expected text payload");
-        };
+        let series = point_series_data(point_series(&points[..2], Units::Imperial)).unwrap();
+        let text = text_data(payload(Body::Text(TextData { value: "ok".into() })).body).unwrap();
         assert_eq!(points.len(), HOURLY_HOURS);
         assert_eq!(points[1].precipitation, 0.0);
         assert_eq!(points[23].offset_hours, 23);
@@ -671,6 +690,15 @@ mod tests {
                 "thunderstorm w/ hail",
             ]
         );
+    }
+
+    #[test]
+    fn body_extractors_return_none_for_wrong_variants() {
+        assert!(entries_data(Body::Text(TextData { value: "x".into() })).is_none());
+        assert!(point_series_data(entries(&Sample::default())).is_none());
+        assert!(number_series_data(Body::Bars(BarsData { bars: vec![] })).is_none());
+        assert!(bars_data(Body::NumberSeries(NumberSeriesData { values: vec![] })).is_none());
+        assert!(text_data(Body::Badge(weather_badge(0))).is_none());
     }
 
     #[tokio::test]

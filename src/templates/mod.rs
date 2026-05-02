@@ -145,6 +145,41 @@ mod tests {
     }
 
     #[test]
+    fn find_returns_matching_template_and_none_for_unknown_name() {
+        let known = find("home_splash").unwrap();
+        assert_eq!(known.name, "home_splash");
+        assert_eq!(known.context, TemplateContext::Home);
+        assert!(find("missing-template").is_none());
+    }
+
+    #[test]
+    fn for_context_filters_templates_in_declaration_order() {
+        let homes = for_context(TemplateContext::Home)
+            .map(|template| template.name)
+            .collect::<Vec<_>>();
+        let projects = for_context(TemplateContext::Project)
+            .map(|template| template.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            homes,
+            TEMPLATES
+                .iter()
+                .filter(|template| template.context == TemplateContext::Home)
+                .map(|template| template.name)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            projects,
+            TEMPLATES
+                .iter()
+                .filter(|template| template.context == TemplateContext::Project)
+                .map(|template| template.name)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn every_template_parses() {
         for t in TEMPLATES {
             let _ = dashboard_for(t);

@@ -99,3 +99,240 @@ fn scrub_host_env() {
         unsafe { std::env::remove_var(key) };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEST_CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        values: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn capture(keys: &[&'static str]) -> Self {
+            Self {
+                values: keys
+                    .iter()
+                    .map(|key| (*key, std::env::var_os(key)))
+                    .collect(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.values.iter().for_each(|(key, value)| {
+                // SAFETY: tests restore the original process env under the shared lock below.
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            });
+        }
+    }
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            let path = unique_path(label);
+            fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    struct CwdGuard {
+        previous: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn change_to(path: &Path) -> Self {
+            let previous = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self { previous }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.previous).unwrap();
+        }
+    }
+
+    fn unique_path(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "splashboard-xtask-main-{label}-{unique}-{}",
+            std::process::id()
+        ))
+    }
+
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf()
+    }
+
+    #[test]
+    fn cli_parse_uses_documented_default_paths() {
+        let cli = Cli::parse_from(["xtask"]);
+        assert_eq!(
+            cli.out,
+            PathBuf::from("docs-site/src/content/docs/reference")
+        );
+        assert_eq!(
+            cli.rendered_out,
+            PathBuf::from("docs-site/src/assets/rendered")
+        );
+    }
+
+    #[test]
+    fn cli_parse_accepts_output_overrides() {
+        let cli = Cli::parse_from([
+            "xtask",
+            "--out",
+            "tmp/docs",
+            "--rendered-out",
+            "tmp/rendered",
+        ]);
+        assert_eq!(cli.out, PathBuf::from("tmp/docs"));
+        assert_eq!(cli.rendered_out, PathBuf::from("tmp/rendered"));
+    }
+
+    #[test]
+    fn unique_path_changes_with_inputs() {
+        let alpha = unique_path("alpha");
+        let beta = unique_path("beta");
+        assert_ne!(alpha, beta);
+        assert!(alpha.to_string_lossy().contains("alpha"));
+        assert!(beta.to_string_lossy().contains("beta"));
+    }
+
+    #[test]
+    fn cwd_guard_restores_previous_directory() {
+        let _lock = TEST_CWD_LOCK.lock().unwrap();
+        let previous = std::env::current_dir().unwrap();
+        let tmp = TempDir::new("cwd-guard");
+
+        {
+            let _guard = CwdGuard::change_to(tmp.path());
+            assert_eq!(std::env::current_dir().unwrap(), tmp.path());
+        }
+
+        assert_eq!(std::env::current_dir().unwrap(), previous);
+    }
+
+    #[test]
+    fn temp_dir_drop_removes_created_directory() {
+        let path = {
+            let tmp = TempDir::new("temp-dir-drop");
+            let path = tmp.path().to_path_buf();
+            assert!(path.is_dir());
+            path
+        };
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn scrub_host_env_removes_known_terminal_keys() {
+        let _lock = splashboard::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let keys = [
+            "WT_SESSION",
+            "GHOSTTY_RESOURCES_DIR",
+            "KITTY_WINDOW_ID",
+            "ALACRITTY_WINDOW_ID",
+            "ALACRITTY_LOG",
+            "WEZTERM_PANE",
+            "TERM_PROGRAM",
+        ];
+        let _guard = EnvGuard::capture(&keys);
+
+        keys.iter().for_each(|key| {
+            // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+            unsafe { std::env::set_var(key, "present") };
+        });
+
+        scrub_host_env();
+
+        keys.iter()
+            .for_each(|key| assert_eq!(std::env::var_os(key), None));
+    }
+
+    #[test]
+    fn env_guard_restores_existing_values() {
+        let _lock = splashboard::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+        unsafe { std::env::set_var("WT_SESSION", "before") };
+
+        {
+            let _guard = EnvGuard::capture(&["WT_SESSION"]);
+            // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+            unsafe { std::env::set_var("WT_SESSION", "after") };
+        }
+
+        assert_eq!(
+            std::env::var_os("WT_SESSION"),
+            Some(OsString::from("before"))
+        );
+        // SAFETY: test-only env mutation serialized by TEST_ENV_LOCK.
+        unsafe { std::env::remove_var("WT_SESSION") };
+    }
+
+    #[test]
+    fn render_dashboards_surfaces_snapshot_render_errors_from_wrong_cwd() {
+        let _lock = TEST_CWD_LOCK.lock().unwrap();
+        let out = TempDir::new("render-error");
+        let wrong_cwd = TempDir::new("wrong-cwd");
+        let _cwd = CwdGuard::change_to(wrong_cwd.path());
+
+        let err = render_dashboards(out.path()).unwrap_err();
+        let message = format!("{err:#}");
+
+        assert!(message.contains("src/templates/home_splash.toml"));
+        assert!(!out.path().join("home_splash.html").exists());
+    }
+
+    #[test]
+    fn render_dashboards_surfaces_file_create_errors() {
+        let _lock = TEST_CWD_LOCK.lock().unwrap();
+        let out = TempDir::new("render-create-error");
+        let blocked = out.path().join("home_splash.html");
+        fs::create_dir_all(&blocked).unwrap();
+        let _cwd = CwdGuard::change_to(&workspace_root());
+
+        let err = render_dashboards(out.path()).unwrap_err();
+        let message = format!("{err:#}");
+
+        assert!(message.contains("create"));
+        assert!(message.contains(&blocked.display().to_string()));
+    }
+}

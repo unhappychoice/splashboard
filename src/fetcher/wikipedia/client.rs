@@ -139,6 +139,10 @@ fn text_block_lines(summary: &PageSummary) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
     use super::*;
 
     fn summary_with(extract: Option<&str>, page_url: Option<&str>) -> PageSummary {
@@ -150,6 +154,33 @@ mod tests {
                 mobile: None,
             }),
         }
+    }
+
+    fn run_async<T>(fut: impl std::future::Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fut)
+    }
+
+    fn serve_once(status: &str, content_type: &str, body: &str) -> String {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let body = body.to_owned();
+        let content_type = content_type.to_owned();
+        let status = status.to_owned();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        format!("http://{addr}/")
     }
 
     #[test]
@@ -214,63 +245,63 @@ mod tests {
     fn render_text_combines_title_and_first_sentence() {
         let s = summary_with(Some("It hops. It is fluffy."), None);
         let body = render_page_summary(&s, Shape::Text);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert_eq!(t.value, "Quokka: It hops.");
+        assert!(matches!(body, Body::Text(_)));
+        if let Body::Text(t) = body {
+            assert_eq!(t.value, "Quokka: It hops.");
+        }
     }
 
     #[test]
     fn render_text_falls_back_to_title_when_extract_missing() {
         let body = render_page_summary(&summary_with(None, None), Shape::Text);
-        let Body::Text(t) = body else {
-            panic!("expected text");
-        };
-        assert_eq!(t.value, "Quokka");
+        assert!(matches!(body, Body::Text(_)));
+        if let Body::Text(t) = body {
+            assert_eq!(t.value, "Quokka");
+        }
     }
 
     #[test]
     fn render_text_block_emits_title_then_extract_lines() {
         let s = summary_with(Some("Para one.\n\nPara two."), None);
         let body = render_page_summary(&s, Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["Quokka", "Para one.", "Para two."]);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(t) = body {
+            assert_eq!(t.lines, vec!["Quokka", "Para one.", "Para two."]);
+        }
     }
 
     #[test]
     fn render_text_block_emits_title_only_when_extract_empty() {
         let s = summary_with(Some(""), None);
         let body = render_page_summary(&s, Shape::TextBlock);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines, vec!["Quokka"]);
+        assert!(matches!(body, Body::TextBlock(_)));
+        if let Body::TextBlock(t) = body {
+            assert_eq!(t.lines, vec!["Quokka"]);
+        }
     }
 
     #[test]
     fn render_linked_text_block_uses_summary_url() {
         let s = summary_with(None, Some("https://en.wikipedia.org/wiki/Quokka"));
         let body = render_page_summary(&s, Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 1);
-        assert_eq!(b.items[0].text, "Quokka");
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://en.wikipedia.org/wiki/Quokka")
-        );
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert_eq!(b.items.len(), 1);
+            assert_eq!(b.items[0].text, "Quokka");
+            assert_eq!(
+                b.items[0].url.as_deref(),
+                Some("https://en.wikipedia.org/wiki/Quokka")
+            );
+        }
     }
 
     #[test]
     fn render_linked_text_block_drops_url_when_absent() {
         let body = render_page_summary(&summary_with(None, None), Shape::LinkedTextBlock);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items[0].url.is_none());
+        assert!(matches!(body, Body::LinkedTextBlock(_)));
+        if let Body::LinkedTextBlock(b) = body {
+            assert!(b.items[0].url.is_none());
+        }
     }
 
     #[test]
@@ -301,5 +332,46 @@ mod tests {
         assert_eq!(s.title, "x");
         assert!(s.extract.is_none());
         assert!(s.url().is_none());
+    }
+
+    #[test]
+    fn get_deserializes_successful_json_payloads() {
+        let url = serve_once(
+            "200 OK",
+            "application/json",
+            r#"{"title":"Quokka","extract":"The quokka is a small macropod."}"#,
+        );
+
+        let summary = run_async(get::<PageSummary>(&url)).unwrap();
+
+        assert_eq!(summary.title, "Quokka");
+        assert_eq!(
+            summary.extract.as_deref(),
+            Some("The quokka is a small macropod.")
+        );
+    }
+
+    #[test]
+    fn get_rejects_non_success_statuses() {
+        let url = serve_once("503 Service Unavailable", "text/plain", "busy");
+
+        let err = run_async(get::<PageSummary>(&url)).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("wikipedia 503")
+        ));
+    }
+
+    #[test]
+    fn get_rejects_invalid_json_payloads() {
+        let url = serve_once("200 OK", "application/json", "{\"title\":");
+
+        let err = run_async(get::<PageSummary>(&url)).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.contains("wikipedia json parse")
+        ));
     }
 }

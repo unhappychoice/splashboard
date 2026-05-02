@@ -104,6 +104,43 @@ pub fn source_line(shell: Shell) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths::TEST_ENV_LOCK;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+            let lock = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let previous = pairs
+                .iter()
+                .map(|(key, _)| (*key, std::env::var(key).ok()))
+                .collect::<Vec<_>>();
+            pairs.iter().for_each(|(key, value)| unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            });
+            Self {
+                _lock: lock,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            self.previous.iter().for_each(|(key, value)| unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            });
+        }
+    }
 
     fn env_with(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
         move |k: &str| {
@@ -215,6 +252,36 @@ mod tests {
         assert!(rc.ends_with(".bashrc"));
         let rc = default_rc_path(Shell::Fish).unwrap();
         assert!(rc.ends_with("config.fish"));
+    }
+
+    #[test]
+    fn as_str_returns_cli_names_for_every_shell() {
+        assert_eq!(Shell::Bash.as_str(), "bash");
+        assert_eq!(Shell::Zsh.as_str(), "zsh");
+        assert_eq!(Shell::Fish.as_str(), "fish");
+        assert_eq!(Shell::Powershell.as_str(), "powershell");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn default_rc_path_uses_powershell_profile_under_home() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().to_string_lossy().into_owned();
+        let _guard = EnvGuard::set(&[
+            ("HOME", Some(home.as_str())),
+            ("USERPROFILE", Some(home.as_str())),
+            ("HOMEDRIVE", None),
+            ("HOMEPATH", None),
+        ]);
+
+        let rc = default_rc_path(Shell::Powershell).unwrap();
+        assert_eq!(
+            rc,
+            temp.path()
+                .join("Documents")
+                .join("PowerShell")
+                .join("Microsoft.PowerShell_profile.ps1")
+        );
     }
 
     #[test]

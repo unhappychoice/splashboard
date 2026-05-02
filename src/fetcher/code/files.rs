@@ -297,56 +297,74 @@ mod tests {
             file_count: 1,
             top_level: vec![],
         };
-        match render_body(one, Shape::Text) {
-            Body::Text(d) => assert_eq!(d.value, "1 file"),
-            _ => panic!(),
-        }
-        match render_body(fixed_scan(), Shape::Text) {
-            Body::Text(d) => assert_eq!(d.value, "220 files"),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(one, Shape::Text),
+            Body::Text(TextData {
+                value: "1 file".into()
+            })
+        );
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Text),
+            Body::Text(TextData {
+                value: "220 files".into()
+            })
+        );
     }
 
     #[test]
     fn text_is_empty_when_no_files() {
-        match render_body(Scan::default(), Shape::Text) {
-            Body::Text(d) => assert!(d.value.is_empty()),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(Scan::default(), Shape::Text),
+            Body::Text(TextData {
+                value: String::new()
+            })
+        );
     }
 
     #[test]
     fn text_block_lists_top_level_dirs() {
-        match render_body(fixed_scan(), Shape::TextBlock) {
-            Body::TextBlock(d) => assert_eq!(
-                d.lines,
-                vec!["src (180)", "tests (30)", "docs (9)", "(root) (1)",]
-            ),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::TextBlock),
+            Body::TextBlock(TextBlockData {
+                lines: vec![
+                    "src (180)".into(),
+                    "tests (30)".into(),
+                    "docs (9)".into(),
+                    "(root) (1)".into(),
+                ]
+            })
+        );
     }
 
     #[test]
     fn entries_uses_dir_names_as_keys() {
-        match render_body(fixed_scan(), Shape::Entries) {
-            Body::Entries(d) => {
-                let pairs: Vec<_> = d
-                    .items
-                    .iter()
-                    .map(|e| (e.key.as_str(), e.value.as_deref().unwrap_or("")))
-                    .collect();
-                assert_eq!(
-                    pairs,
-                    vec![
-                        ("src", "180"),
-                        ("tests", "30"),
-                        ("docs", "9"),
-                        (ROOT_LABEL, "1"),
-                    ]
-                );
-            }
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Entries),
+            Body::Entries(EntriesData {
+                items: vec![
+                    Entry {
+                        key: "src".into(),
+                        value: Some("180".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "tests".into(),
+                        value: Some("30".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: "docs".into(),
+                        value: Some("9".into()),
+                        status: None,
+                    },
+                    Entry {
+                        key: ROOT_LABEL.into(),
+                        value: Some("1".into()),
+                        status: None,
+                    },
+                ],
+            })
+        );
     }
 
     #[test]
@@ -358,68 +376,74 @@ mod tests {
             file_count: top.len(),
             top_level: top,
         };
-        match render_body(scan, Shape::Bars) {
-            Body::Bars(d) => assert_eq!(d.bars.len(), TOP_LEVEL_LIMIT),
-            _ => panic!(),
-        }
+        assert!(
+            matches!(render_body(scan, Shape::Bars), Body::Bars(BarsData { ref bars }) if bars.len() == TOP_LEVEL_LIMIT)
+        );
     }
 
     #[test]
     fn markdown_emphasises_dir_names_with_count_suffix() {
-        match render_body(fixed_scan(), Shape::MarkdownTextBlock) {
-            Body::MarkdownTextBlock(d) => assert_eq!(
-                d.value,
-                "- **src** — 180 files\n- **tests** — 30 files\n- **docs** — 9 files\n- **(root)** — 1 file"
-            ),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::MarkdownTextBlock),
+            Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: "- **src** — 180 files\n- **tests** — 30 files\n- **docs** — 9 files\n- **(root)** — 1 file".into()
+            })
+        );
     }
 
     #[test]
     fn render_body_uses_text_fallback_and_empty_structural_shapes() {
-        match render_body(fixed_scan(), Shape::Ratio) {
-            Body::Text(d) => assert_eq!(d.value, "220 files"),
-            _ => panic!(),
-        }
-        match render_body(Scan::default(), Shape::Entries) {
-            Body::Entries(d) => assert!(d.items.is_empty()),
-            _ => panic!(),
-        }
-        match render_body(Scan::default(), Shape::Bars) {
-            Body::Bars(d) => assert!(d.bars.is_empty()),
-            _ => panic!(),
-        }
-        match render_body(Scan::default(), Shape::MarkdownTextBlock) {
-            Body::MarkdownTextBlock(d) => assert!(d.value.is_empty()),
-            _ => panic!(),
-        }
+        assert_eq!(
+            render_body(fixed_scan(), Shape::Ratio),
+            Body::Text(TextData {
+                value: "220 files".into()
+            })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::Entries),
+            Body::Entries(EntriesData { items: vec![] })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::Bars),
+            Body::Bars(BarsData { bars: vec![] })
+        );
+        assert_eq!(
+            render_body(Scan::default(), Shape::MarkdownTextBlock),
+            Body::MarkdownTextBlock(MarkdownTextBlockData {
+                value: String::new()
+            })
+        );
+    }
+
+    #[test]
+    fn empty_text_block_shape_returns_no_lines() {
+        assert_eq!(
+            render_body(Scan::default(), Shape::TextBlock),
+            Body::TextBlock(TextBlockData { lines: vec![] })
+        );
     }
 
     #[tokio::test]
     async fn fetch_scans_current_repo_for_multiple_shapes() {
         let text = CodeFiles.fetch(&ctx(None)).await.unwrap();
-        match text.body {
-            Body::Text(d) => assert!(d.value.ends_with("files") || d.value.ends_with("file")),
-            _ => panic!(),
-        }
+        assert!(
+            matches!(text.body, Body::Text(TextData { ref value }) if value.ends_with("files") || value.ends_with("file"))
+        );
 
         let entries = CodeFiles.fetch(&ctx(Some(Shape::Entries))).await.unwrap();
-        match entries.body {
-            Body::Entries(d) => {
-                assert!(!d.items.is_empty());
-                assert!(!d.items[0].key.is_empty());
-                assert!(!d.items[0].value.as_deref().unwrap_or_default().is_empty());
-            }
-            _ => panic!(),
-        }
+        assert!(
+            matches!(entries.body, Body::Entries(EntriesData { ref items })
+                if !items.is_empty()
+                    && !items[0].key.is_empty()
+                    && !items[0].value.as_deref().unwrap_or_default().is_empty())
+        );
 
         let markdown = CodeFiles
             .fetch(&ctx(Some(Shape::MarkdownTextBlock)))
             .await
             .unwrap();
-        match markdown.body {
-            Body::MarkdownTextBlock(d) => assert!(d.value.contains("**")),
-            _ => panic!(),
-        }
+        assert!(
+            matches!(markdown.body, Body::MarkdownTextBlock(MarkdownTextBlockData { ref value }) if value.contains("**"))
+        );
     }
 }

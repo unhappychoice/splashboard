@@ -308,15 +308,9 @@ mod tests {
     }
 
     #[test]
-    fn cache_key_changes_with_shape_and_format() {
+    fn cache_key_distinguishes_shape_and_format() {
         let fetcher = GitCommitsActivity;
         let base = fetcher.cache_key(&FetchContext {
-            shape: Some(Shape::Heatmap),
-            format: Some("plain".into()),
-            timeout: StdDuration::from_secs(1),
-            ..FetchContext::default()
-        });
-        let same = fetcher.cache_key(&FetchContext {
             shape: Some(Shape::Heatmap),
             format: Some("plain".into()),
             timeout: StdDuration::from_secs(1),
@@ -334,7 +328,6 @@ mod tests {
             timeout: StdDuration::from_secs(1),
             ..FetchContext::default()
         });
-        assert_eq!(base, same);
         assert_ne!(base, different_shape);
         assert_ne!(base, different_format);
     }

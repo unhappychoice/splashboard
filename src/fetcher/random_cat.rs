@@ -186,6 +186,9 @@ fn remove_stale(dir: &std::path::Path, key: &str) {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
     use super::*;
 
     fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
@@ -204,6 +207,38 @@ mod tests {
                 Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
                 None => std::env::remove_var("SPLASHBOARD_HOME"),
             }
+        }
+    }
+
+    struct TestServer {
+        url: String,
+        handle: std::thread::JoinHandle<()>,
+    }
+
+    impl TestServer {
+        fn start(status: &str, body: Vec<u8>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let status = status.to_string();
+            let handle = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 1024];
+                let _ = stream.read(&mut request);
+                let headers = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream.write_all(headers.as_bytes()).unwrap();
+                stream.write_all(&body).unwrap();
+            });
+            Self {
+                url: format!("http://{addr}"),
+                handle,
+            }
+        }
+
+        fn finish(self) {
+            self.handle.join().unwrap();
         }
     }
 
@@ -374,6 +409,31 @@ mod tests {
     async fn fetch_bytes_rejects_malformed_url() {
         let err = fetch_bytes("https://bad host").await.unwrap_err();
         assert!(format!("{err}").contains("cat request failed"));
+    }
+
+    #[tokio::test]
+    async fn fetch_bytes_returns_response_body_for_success_status() {
+        let body = b"\x89PNG\r\n\x1a\ncat".to_vec();
+        let server = TestServer::start("200 OK", body.clone());
+        let bytes = fetch_bytes(&server.url).await.unwrap();
+        server.finish();
+        assert_eq!(bytes, body);
+    }
+
+    #[tokio::test]
+    async fn fetch_bytes_rejects_non_success_status() {
+        let server = TestServer::start("503 Service Unavailable", b"no cat today".to_vec());
+        let err = fetch_bytes(&server.url).await.unwrap_err();
+        server.finish();
+        assert!(format!("{err}").contains("cat 503"));
+    }
+
+    #[tokio::test]
+    async fn fetch_bytes_rejects_oversized_body() {
+        let server = TestServer::start("200 OK", vec![b'x'; MAX_BYTES + 1]);
+        let err = fetch_bytes(&server.url).await.unwrap_err();
+        server.finish();
+        assert!(format!("{err}").contains("cat body too large"));
     }
 
     #[tokio::test]
