@@ -884,6 +884,9 @@ mod tests {
 
     #[test]
     fn cache_key_changes_with_options() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut ctx = FetchContext {
             widget_id: "w".into(),
             ..Default::default()
@@ -899,6 +902,9 @@ mod tests {
 
     #[test]
     fn cache_key_is_stable_for_equivalent_options() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut ctx = FetchContext {
             widget_id: "w".into(),
             ..Default::default()
