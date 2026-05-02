@@ -355,6 +355,7 @@ mod tests {
         assert!(!file_hits.iter().any(|path| path == "missing.txt"));
         assert!(!file_hits.iter().any(|path| path == "large.txt"));
         assert!(!file_hits.iter().any(|path| path == "binary.dat"));
+        #[cfg(unix)]
         assert!(!file_hits.iter().any(|path| path == "unreadable.txt"));
         assert!(!file_hits.iter().any(|path| path == "vendor/ignored.rs"));
         assert!(!file_hits.iter().any(|path| path == "Cargo.lock"));

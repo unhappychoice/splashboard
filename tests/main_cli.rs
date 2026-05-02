@@ -68,10 +68,12 @@ fn run_cli_with_input(cwd: &Path, args: &[&str], envs: &[(&str, &str)], input: &
     child.wait_with_output().unwrap()
 }
 
+#[cfg(target_os = "linux")]
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+#[cfg(target_os = "linux")]
 fn run_cli_tty(cwd: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
     let env_prefix = std::iter::once(("TERM", "xterm-256color"))
         .chain(envs.iter().copied())
@@ -204,6 +206,7 @@ fn trust_and_revoke_report_when_no_local_dashboard_exists() {
     assert!(String::from_utf8_lossy(&revoke.stderr).contains("no project-local dashboard found"));
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn tty_invocation_respects_auto_home_false() {
     let home = TempPath::dir("tty-home-auto-home").unwrap();
@@ -224,6 +227,7 @@ fn tty_invocation_respects_auto_home_false() {
     assert!(String::from_utf8_lossy(&output.stderr).is_empty());
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn tty_on_cd_invocation_exits_cleanly_without_a_dashboard_source() {
     let home = TempPath::dir("tty-home-on-cd-none").unwrap();
@@ -240,6 +244,7 @@ fn tty_on_cd_invocation_exits_cleanly_without_a_dashboard_source() {
     assert!(String::from_utf8_lossy(&output.stderr).is_empty());
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn tty_on_cd_invocation_respects_auto_on_cd_false() {
     let home = TempPath::dir("tty-home-auto-on-cd").unwrap();

@@ -262,6 +262,7 @@ mod tests {
         assert_eq!(Shell::Powershell.as_str(), "powershell");
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn default_rc_path_uses_powershell_profile_under_home() {
         let temp = tempfile::tempdir().unwrap();
