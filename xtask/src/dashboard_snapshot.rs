@@ -20,13 +20,24 @@ use ratatui::widgets::Block;
 use splashboard::config::{Config, DashboardConfig, SettingsConfig, WidgetConfig};
 use splashboard::fetcher::{FetchContext, RegisteredFetcher, Registry as FetcherRegistry};
 use splashboard::layout as layout_engine;
-use splashboard::payload::{Body, Payload, TextBlockData, TextData};
+use splashboard::payload::{Body, ImageData, Payload, TextBlockData, TextData};
 use splashboard::render::{
     Registry as RenderRegistry, RenderOptions, RenderSpec, Shape, default_renderer_for,
 };
 use splashboard::theme::Theme;
 
 use crate::html_snapshot::buffer_to_html;
+
+/// Bundled placeholder PNG for `Image` widgets whose fetcher has no `sample_body` (e.g.
+/// `github_avatar`, `code_language_logo`). Materialised to a temp file once per xtask run;
+/// `media_image` then renders it through `ratatui_image`'s halfblocks protocol so the gallery
+/// shows actual coloured pixels in the slot instead of a blank rectangle. The `_generic.png`
+/// asset is the same `</>` glyph that `code_language_logo` uses as its own fallback —
+/// recycling it keeps every image-shape widget on a uniform "image was here" placeholder.
+const PLACEHOLDER_IMAGE_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../assets/logos/png/_generic.png"
+));
 
 pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result<String> {
     let body = fs::read_to_string(config_path)
@@ -92,7 +103,9 @@ fn sample_payloads(
                 };
                 return Some((w.id.clone(), realtime.compute(&ctx)));
             }
-            let body = override_from_format(w, shape).or_else(|| fetcher.sample_body(shape))?;
+            let body = override_from_format(w, shape)
+                .or_else(|| fetcher.sample_body(shape))
+                .or_else(|| placeholder_for(shape))?;
             Some((
                 w.id.clone(),
                 Payload {
@@ -104,6 +117,41 @@ fn sample_payloads(
             ))
         })
         .collect()
+}
+
+/// Last-chance fallback when neither the fetcher's `sample_body` nor `override_from_format`
+/// produces a body. Today the only shape we synthesise here is `Image` — anything else stays
+/// `None` and the widget gets dropped from the payload map (rendering a blank slot is the
+/// right behaviour for, say, an unimplemented `Heatmap` sample).
+fn placeholder_for(shape: Shape) -> Option<Body> {
+    match shape {
+        Shape::Image => placeholder_image_path()
+            .map(|path| {
+                Body::Image(ImageData {
+                    path: path.to_string_lossy().into_owned(),
+                })
+            })
+            .ok(),
+        _ => None,
+    }
+}
+
+fn placeholder_image_path() -> Result<std::path::PathBuf> {
+    use std::sync::OnceLock;
+    static CACHED: OnceLock<std::path::PathBuf> = OnceLock::new();
+    if let Some(path) = CACHED.get() {
+        return Ok(path.clone());
+    }
+    let path = std::env::temp_dir().join(format!(
+        "splashboard-xtask-image-placeholder-{}.png",
+        std::process::id()
+    ));
+    if !path.exists() {
+        fs::write(&path, PLACEHOLDER_IMAGE_BYTES)
+            .with_context(|| format!("write placeholder image to {}", path.display()))?;
+    }
+    let _ = CACHED.set(path.clone());
+    Ok(path)
 }
 
 fn resolve_shape(
