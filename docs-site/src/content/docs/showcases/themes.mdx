@@ -1,0 +1,48 @@
+---
+title: Themes
+description: The same dashboard rendered under each of splashboard's built-in palettes.
+---
+
+The same `home_daily` dashboard rendered under every built-in theme preset.
+Switch yours by adding `[theme] preset = "<name>"` to your settings — see
+the [themes guide](/guides/themes/) for tweaking individual color tokens.
+
+`home_daily` is the demo because it exercises the most theme tokens at once
+(panel titles, status colors on gauges, calendar accents, the heatmap-ish
+almanac strip, the series palette through chart widgets) — a quieter preset
+would hide the differences.
+
+export const themeHtml = Object.fromEntries(
+  Object.entries(import.meta.glob('../../../assets/rendered/themes/*.html', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  })).map(([path, html]) => [path.split('/').pop().replace(/\.html$/, ''), html])
+);
+
+export const themeIndex = (() => {
+  const indexes = import.meta.glob('../../../assets/rendered/themes/_index.json', { eager: true });
+  const first = Object.values(indexes)[0];
+  return first ? (first.default ?? first) : [];
+})();
+
+export const darkThemes = themeIndex.filter((t) => t.kind === 'dark');
+export const lightThemes = themeIndex.filter((t) => t.kind === 'light');
+
+## Dark
+
+{darkThemes.map((item) => (
+  <section key={item.slug}>
+    <h3>{item.name} <code>{item.slug}</code></h3>
+    <div class="splash-landing" set:html={themeHtml[item.slug] ?? ''} />
+  </section>
+))}
+
+## Light
+
+{lightThemes.map((item) => (
+  <section key={item.slug}>
+    <h3>{item.name} <code>{item.slug}</code></h3>
+    <div class="splash-landing" set:html={themeHtml[item.slug] ?? ''} />
+  </section>
+))}

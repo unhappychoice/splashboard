@@ -1,0 +1,28 @@
+---
+title: Showcases
+description: A gallery of splashboard in the wild — bundled presets, environment-specific use cases, themes, and community dashboards.
+---
+
+A gallery of what splashboard looks like. Snapshots are rendered from real
+TOML configs at the same 120×42 canvas using each fetcher's `sample_body`,
+so the docs site shows exactly what you'd see in a terminal — without ever
+hitting the network at build time.
+
+## Sections
+
+- **[Presets](/showcases/presets/)** — the bundled `home_*` / `project_*`
+  templates that ship with `splashboard install --template <name>`. Curated to
+  render well on any fresh machine.
+- **[Use cases](/showcases/usecases/)** — environment-specific samples one
+  curation tier below presets. Inspiration for "what could a Tokyo morning
+  briefing look like?" or "what about an OSS maintainer card?". Drop a TOML in
+  [`examples/usecases/`](https://github.com/unhappychoice/splashboard/tree/main/examples/usecases)
+  to add one.
+- **[Themes](/showcases/themes/)** — the same `home_daily` dashboard rendered
+  under every built-in palette so you can A/B them side by side before picking.
+- **[Community](/showcases/community/)** — user-submitted splashes. Share
+  yours via a PR adding a TOML to
+  [`examples/community/`](https://github.com/unhappychoice/splashboard/tree/main/examples/community).
+
+The per-widget breakdowns of every preset live on the
+[Presets guide](/guides/presets/).

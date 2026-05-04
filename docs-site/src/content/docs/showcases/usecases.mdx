@@ -1,0 +1,49 @@
+---
+title: Use cases
+description: Environment-specific sample dashboards — inspiration one tier below the bundled presets.
+---
+
+Sample home / project dashboards one curation tier below the bundled
+[presets](/showcases/presets/) — they assume a specific city, account, RSS
+feed, or other environment-specific bit, so they aren't shipped as
+`splashboard install --template` choices. Drop a TOML in
+[`examples/usecases/`](https://github.com/unhappychoice/splashboard/tree/main/examples/usecases)
+to add one.
+
+User-submitted dashboards live on the [Community](/showcases/community/) page,
+under a looser curation bar.
+
+export const usecaseHtml = Object.fromEntries(
+  Object.entries(import.meta.glob('../../../assets/rendered/usecases/*.html', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  })).map(([path, html]) => [path.split('/').pop().replace(/\.html$/, ''), html])
+);
+
+export const usecaseIndex = (() => {
+  const indexes = import.meta.glob('../../../assets/rendered/usecases/_index.json', { eager: true });
+  const first = Object.values(indexes)[0];
+  return first ? (first.default ?? first) : [];
+})();
+
+{usecaseIndex.length === 0 && (
+  <p><em>No use cases yet — run <code>cargo xtask</code> to generate them, or open a PR adding a TOML to <code>examples/usecases/</code>.</em></p>
+)}
+
+{usecaseIndex.map((item) => (
+  <section key={item.slug}>
+    <h3>{item.title} <code>{item.slug}</code></h3>
+    <p>{item.description}</p>
+    {item.requires && item.requires.length > 0 && (
+      <p><strong>Requires:</strong> {item.requires.join(', ')}</p>
+    )}
+    {item.code && (
+      <details class="splash-config">
+        <summary>Show config</summary>
+        <pre><code>{item.code}</code></pre>
+      </details>
+    )}
+    <div class="splash-landing" set:html={usecaseHtml[item.slug] ?? ''} />
+  </section>
+))}
