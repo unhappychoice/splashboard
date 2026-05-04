@@ -6020,6 +6020,8 @@ dependencies = [
  "anyhow",
  "clap",
  "ratatui",
+ "serde",
+ "serde_json",
  "splashboard",
  "toml 1.1.2+spec-1.1.0",
  "unicode-width",

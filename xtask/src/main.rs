@@ -14,6 +14,7 @@ use clap::Parser;
 mod dashboard_snapshot;
 mod gen_matrix;
 mod html_snapshot;
+mod preset_index;
 mod snapshots;
 
 #[derive(Parser)]
@@ -60,6 +61,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     gen_matrix::run(&cli.out)?;
     render_dashboards(&cli.rendered_out)?;
+    preset_index::run(&cli.rendered_out)?;
     Ok(())
 }
 
