@@ -3,7 +3,10 @@ use std::sync::OnceLock;
 
 use image::DynamicImage;
 use ratatui::{Frame, layout::Rect, style::Style, widgets::Paragraph};
-use ratatui_image::{Resize, StatefulImage, picker::{Picker, ProtocolType}};
+use ratatui_image::{
+    Resize, StatefulImage,
+    picker::{Picker, ProtocolType},
+};
 
 use crate::options::OptionSchema;
 use crate::payload::{Body, ImageData};
@@ -417,10 +420,9 @@ mod tests {
         };
         assert!(with(&[("TERM_PROGRAM", "iTerm.app")]));
         assert!(with(&[("LC_TERMINAL", "iTerm2")]));
-        assert!(with(&[
-            ("TERM_PROGRAM", "tmux"),
-            ("LC_TERMINAL", "iTerm2"),
-        ]));
+        assert!(with(
+            &[("TERM_PROGRAM", "tmux"), ("LC_TERMINAL", "iTerm2"),]
+        ));
         assert!(!with(&[("TERM_PROGRAM", "Apple_Terminal")]));
         assert!(!with(&[]));
     }
