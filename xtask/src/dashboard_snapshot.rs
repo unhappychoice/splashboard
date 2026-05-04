@@ -174,7 +174,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_typewriter" => RenderSpec::Full {
             type_name: "text_plain".into(),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_postfx" => {
             RenderSpec::Short("text_plain".into())
@@ -184,7 +184,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_postfx" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_boot" => {
             RenderSpec::Short("text_plain".into())
@@ -194,7 +194,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_boot" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_scanlines" => {
             RenderSpec::Short("text_plain".into())
@@ -204,7 +204,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_scanlines" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_splitflap" => {
             RenderSpec::Short("text_plain".into())
@@ -214,7 +214,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_splitflap" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_wave" => {
             RenderSpec::Short("text_plain".into())
@@ -224,7 +224,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_wave" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_figlet_morph" => RenderSpec::Full {
             type_name: "text_ascii".into(),
@@ -260,6 +260,20 @@ fn inner_renderer_name(opts: &RenderOptions) -> String {
     opts.extra_str("inner")
         .map(String::from)
         .unwrap_or_else(|| "text_plain".into())
+}
+
+/// Drop animation-wrapper-only extras before forwarding the options bag to the inner renderer.
+/// Inner renderers like `text_ascii` deserialise `raw` with `deny_unknown_fields`, so a leftover
+/// `inner = "text_ascii"` (or `effect`, `boot_lines`, …) would silently fail parsing and
+/// collapse the whole bag to defaults — losing `font`, `pixel_size`, etc. Stripping these
+/// preserves the user-set inner-renderer options through the deanimate transform.
+const WRAPPER_ONLY_EXTRAS: &[&str] = &["inner", "effect", "boot_lines", "font_sequence"];
+
+fn strip_wrapper_extras(mut opts: RenderOptions) -> RenderOptions {
+    for key in WRAPPER_ONLY_EXTRAS {
+        opts = opts.without_extra(key);
+    }
+    opts
 }
 
 fn font_sequence(opts: &RenderOptions) -> Option<Vec<String>> {
@@ -538,5 +552,50 @@ height = { length = 1 }
                     && options.style.as_deref() == Some("figlet")
                     && options.extra_str("font") == Some("ansi_shadow")
         ));
+    }
+
+    /// Regression: `animated_postfx` carries `inner` / `effect` extras alongside the
+    /// inner renderer's options (`font`, `pixel_size`, …). Forwarding the bag verbatim to
+    /// `text_ascii` tripped its `deny_unknown_fields` parser and silently collapsed the
+    /// options to defaults — `home_splash` would render in the `standard` font instead of
+    /// the configured `ansi_shadow`. Stripping the wrapper-only extras lets the inner
+    /// renderer keep its real options.
+    #[test]
+    fn deanimate_postfx_strips_wrapper_extras_so_inner_options_survive() {
+        let spec = RenderSpec::Full {
+            type_name: "animated_postfx".into(),
+            options: RenderOptions {
+                style: Some("figlet".into()),
+                color: Some("panel_title".into()),
+                align: Some("center".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("inner", "text_ascii")
+            .with_extra("effect", "particle_burst")
+            .with_extra("font", "ansi_shadow"),
+        };
+
+        match deanimate(spec) {
+            RenderSpec::Full { type_name, options } => {
+                assert_eq!(type_name, "text_ascii");
+                assert_eq!(options.style.as_deref(), Some("figlet"));
+                assert_eq!(options.extra_str("font"), Some("ansi_shadow"));
+                assert_eq!(options.extra_str("inner"), None);
+                assert_eq!(options.extra_str("effect"), None);
+
+                #[derive(serde::Deserialize, Debug, Default)]
+                #[serde(deny_unknown_fields)]
+                struct AsciiOptions {
+                    #[serde(default)]
+                    font: Option<String>,
+                    #[serde(default)]
+                    #[allow(dead_code)]
+                    pixel_size: Option<String>,
+                }
+                let parsed: AsciiOptions = options.parse_specific();
+                assert_eq!(parsed.font.as_deref(), Some("ansi_shadow"));
+            }
+            other => panic!("expected Full, got {other:?}"),
+        }
     }
 }
