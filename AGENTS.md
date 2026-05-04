@@ -150,6 +150,25 @@ Prioritization rubric (see #41 for the full version):
 3. Per-dir killer feature (cd into a project shows more than without splashboard).
 4. Dedicated built-ins beat ReadStore for curated UX; ReadStore is the ad-hoc escape hatch.
 
+### Curation tiers for sample dashboards
+
+| | `src/templates/` | `examples/usecases/` | `examples/community/` |
+|---|---|---|---|
+| Bundled in the binary | yes (`include_str!`) | no | no |
+| Available via `splashboard install --template` | yes | no | no |
+| Has to render well on a fresh install | yes | no | no |
+| Curation bar | tight | medium, "inspire don't ship" | loose, "anything makes sense to its author" |
+| Authored by | maintainers | maintainers | users (PR submissions) |
+| Docs surface | [Presets](https://splashboard.unhappychoice.com/showcases/presets/) | [Use cases](https://splashboard.unhappychoice.com/showcases/usecases/) | [Community](https://splashboard.unhappychoice.com/showcases/community/) |
+
+All three TOML directories share the same `[showcase]` metadata header (`title` / `description` / `context` / optional `requires` / for community: optional `author` / `source`). `cargo xtask` discovers them, renders snapshots via `dashboard_snapshot`, and emits a `_index.json` consumed by the corresponding MDX page. Drop a file in and it appears on the docs site — no Rust changes needed.
+
+Promotion path: a community submission that's broadly applicable can graduate to `examples/usecases/` (with credit retained); one that works on a fresh install all the way up to `src/templates/`.
+
+The presets page descriptions are sourced from `splashboard::templates::TEMPLATES` via `xtask`'s `preset_index` module, so they can never drift from the install picker — update one source and both move.
+
+The themes page renders one "demo dashboard" (currently `home_daily`) under every preset in `splashboard::theme::presets::KNOWN`, via `xtask`'s `themes` module. Adding a new theme = adding the entry to `KNOWN` + `by_name` in `src/theme/presets.rs`; the docs gallery picks it up automatically on the next `cargo xtask`.
+
 ## Conventions
 
 ### Code style (from repo CLAUDE rules)
