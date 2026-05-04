@@ -1,8 +1,13 @@
 use std::io::IsTerminal;
 use std::sync::OnceLock;
 
-use image::DynamicImage;
-use ratatui::{Frame, layout::Rect, style::Style, widgets::Paragraph};
+use image::{DynamicImage, Rgba};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Color, Style},
+    widgets::Paragraph,
+};
 use ratatui_image::{
     Resize, StatefulImage,
     picker::{Picker, ProtocolType},
@@ -106,7 +111,7 @@ fn render_image_payload(
     theme: &Theme,
 ) {
     let target = compute_target(area, opts);
-    match render_image(frame, target, &data.path, opts) {
+    match render_image(frame, target, &data.path, opts, theme) {
         Ok(()) => {}
         Err(msg) => frame.render_widget(
             Paragraph::new(msg).style(Style::default().fg(theme.text)),
@@ -120,13 +125,29 @@ fn render_image(
     area: Rect,
     path: &str,
     opts: &RenderOptions,
+    theme: &Theme,
 ) -> Result<(), String> {
     let specific: Options = opts.parse_specific();
     let img = load_image(path)?;
-    let mut protocol = picker().new_resize_protocol(img);
+    let mut p = picker();
+    if let Some(rgba) = solid_rgba(theme.bg) {
+        p.set_background_color(rgba);
+    }
+    let mut protocol = p.new_resize_protocol(img);
     let widget = StatefulImage::default().resize(resize_mode(specific.fit.as_deref()));
     frame.render_stateful_widget(widget, area, &mut protocol);
     Ok(())
+}
+
+/// Map a ratatui [`Color`] to an opaque `Rgba<u8>` for `ratatui_image`'s letterbox /
+/// transparent-pixel fill. Only `Color::Rgb` resolves; everything else (including
+/// `Color::Reset`, indexed colours, ANSI named colours) returns `None` so the picker keeps
+/// its default transparent-black, letting the terminal's own background show through.
+fn solid_rgba(color: Color) -> Option<Rgba<u8>> {
+    match color {
+        Color::Rgb(r, g, b) => Some(Rgba([r, g, b, 255])),
+        _ => None,
+    }
 }
 
 /// Apply padding, `max_width`/`max_height`, and alignment to produce the final cell rect the
@@ -297,7 +318,8 @@ mod tests {
                         frame,
                         frame.area(),
                         path.to_str().unwrap(),
-                        &RenderOptions::default()
+                        &RenderOptions::default(),
+                        &Theme::default(),
                     )
                     .is_ok()
                 );
@@ -399,6 +421,17 @@ mod tests {
         let out = compute_target(area, &opts);
         assert_eq!(out.x, 20);
         assert_eq!(out.width, 10);
+    }
+
+    #[test]
+    fn solid_rgba_maps_only_rgb_colors() {
+        assert_eq!(
+            super::solid_rgba(Color::Rgb(0x12, 0x34, 0x56)),
+            Some(Rgba([0x12, 0x34, 0x56, 255])),
+        );
+        assert_eq!(super::solid_rgba(Color::Reset), None);
+        assert_eq!(super::solid_rgba(Color::Indexed(7)), None);
+        assert_eq!(super::solid_rgba(Color::Red), None);
     }
 
     #[test]
