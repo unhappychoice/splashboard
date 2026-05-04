@@ -145,3 +145,46 @@
     1em 0 0 #febc2e,
     2em 0 0 #28c840;
 }
+
+/* Source-config disclosure for the use cases / community gallery. The TOML body has long
+   `render = { ... }` lines, so the inner `<pre>` needs an explicit horizontal scroll
+   instead of pushing the whole article wider than the viewport. */
+.splash-config {
+  margin-block: 0.75rem 1rem;
+}
+
+.splash-config > summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--sl-color-gray-3, #94a3b8);
+  user-select: none;
+}
+
+.splash-config > summary:hover {
+  color: var(--sl-color-text, currentColor);
+}
+
+.splash-config > pre {
+  margin-top: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.85rem 1rem;
+  border-radius: 0.4rem;
+  font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+  background: #0e172a;
+  color: #c5d2dc;
+  border: 1px solid #4a6b75;
+}
+
+.splash-config > pre code {
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  border: 0;
+}
