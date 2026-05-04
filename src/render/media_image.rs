@@ -3,7 +3,10 @@ use std::sync::OnceLock;
 
 use image::DynamicImage;
 use ratatui::{Frame, layout::Rect, style::Style, widgets::Paragraph};
-use ratatui_image::{Resize, StatefulImage, picker::Picker};
+use ratatui_image::{
+    Resize, StatefulImage,
+    picker::{Picker, ProtocolType},
+};
 
 use crate::options::OptionSchema;
 use crate::payload::{Body, ImageData};
@@ -177,11 +180,29 @@ fn picker() -> Picker {
 }
 
 fn detect_picker() -> Picker {
-    if std::io::stdin().is_terminal() {
+    let mut picker = if std::io::stdin().is_terminal() {
         Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks())
     } else {
         Picker::halfblocks()
+    };
+    if is_iterm2_env(|k| std::env::var(k).ok()) {
+        picker.set_protocol_type(ProtocolType::Iterm2);
     }
+    picker
+}
+
+/// iTerm2 (and tools that set `LC_TERMINAL=iTerm2`, e.g. iTerm2 over SSH) responds to the
+/// Kitty graphics capability query positively in current versions but doesn't render the
+/// resulting `APC G ...` chunks reliably — base64 payload bytes leak through as visible
+/// "garbage" characters. The native OSC 1337 inline-image protocol is the only thing iTerm2
+/// renders without artifacts, so force it whenever the environment says we're inside iTerm2.
+fn is_iterm2_env(env: impl Fn(&str) -> Option<String>) -> bool {
+    env("TERM_PROGRAM")
+        .as_deref()
+        .is_some_and(|s| s.contains("iTerm"))
+        || env("LC_TERMINAL")
+            .as_deref()
+            .is_some_and(|s| s.contains("iTerm"))
 }
 
 fn load_image(path: &str) -> Result<DynamicImage, String> {
@@ -386,5 +407,23 @@ mod tests {
         assert!(matches!(resize_mode(Some("stretch")), Resize::Scale(_)));
         assert!(matches!(resize_mode(Some("contain")), Resize::Fit(_)));
         assert!(matches!(resize_mode(None), Resize::Fit(_)));
+    }
+
+    #[test]
+    fn iterm2_env_detection_matches_expected_terminals() {
+        let with = |pairs: &[(&str, &str)]| {
+            let map: std::collections::HashMap<String, String> = pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            super::is_iterm2_env(|k| map.get(k).cloned())
+        };
+        assert!(with(&[("TERM_PROGRAM", "iTerm.app")]));
+        assert!(with(&[("LC_TERMINAL", "iTerm2")]));
+        assert!(with(
+            &[("TERM_PROGRAM", "tmux"), ("LC_TERMINAL", "iTerm2"),]
+        ));
+        assert!(!with(&[("TERM_PROGRAM", "Apple_Terminal")]));
+        assert!(!with(&[]));
     }
 }
