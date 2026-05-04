@@ -1,0 +1,177 @@
+# Linear sprint dashboard — cycle progress as a wide segmented gauge across
+# the masthead, four state-count tiles below it, then a single wide active-
+# issues table, with notifications + priority breakdown sharing the bottom
+# row. Drops the gauge_circle hero (which renders as a flat block of fill
+# characters at narrow widths) for a wide gauge that actually fills the band.
+
+[showcase]
+title = "Linear sprint board"
+description = "Wide cycle-progress gauge as the hero, four state tiles below, then a wide active-issues table and a notifications + priority breakdown row at the bottom."
+context = "home"
+requires = ["Linear API token (`LINEAR_TOKEN`)"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Hero: cycle progress as a wide segmented gauge. The gauge's own label
+# carries the cycle name + completion summary, so no separate label widget.
+[[widget]]
+id = "cycle_progress"
+fetcher = "linear_cycle"
+shape = "ratio"
+render = { type = "gauge_segment", tone = "fill" }
+
+# Four state tiles — each is `linear_issues` Badge with a different
+# `filter_state`. Tone field on the Badge drives the colour.
+[[widget]]
+id = "tile_todo"
+fetcher = "linear_issues"
+shape = "badge"
+render = { type = "status_badge", padding = 2 }
+  [widget.options]
+  filter_state = "unstarted"
+
+[[widget]]
+id = "tile_started"
+fetcher = "linear_issues"
+shape = "badge"
+render = { type = "status_badge", padding = 2 }
+  [widget.options]
+  filter_state = "started"
+
+[[widget]]
+id = "tile_completed"
+fetcher = "linear_issues"
+shape = "badge"
+render = { type = "status_badge", padding = 2 }
+  [widget.options]
+  filter_state = "completed"
+
+[[widget]]
+id = "tile_canceled"
+fetcher = "linear_issues"
+shape = "badge"
+render = { type = "status_badge", padding = 2 }
+  [widget.options]
+  filter_state = "canceled"
+
+# Cycle stats grid — sits in the sidebar (left) of the body row.
+[[widget]]
+id = "cycle_stats"
+fetcher = "linear_cycle"
+shape = "entries"
+render = "grid_table"
+
+# Active issues — wide right-side panel.
+[[widget]]
+id = "active_issues"
+fetcher = "linear_issues"
+render = "list_timeline"
+  [widget.options]
+  filter_state = "started"
+  filter_assignee = "me"
+  limit = 5
+
+# Notifications — bottom-left.
+[[widget]]
+id = "notifications"
+fetcher = "linear_notifications"
+render = "list_timeline"
+  [widget.options]
+  filter_read = "unread"
+  limit = 4
+
+# Priority breakdown — bottom-right.
+[[widget]]
+id = "priority"
+fetcher = "linear_issues"
+shape = "bars"
+render = { type = "chart_bar", horizontal = true }
+  [widget.options]
+  filter_assignee = "me"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+# Hero: wide cycle gauge.
+[[row]]
+height = { length = 3 }
+bg = "subtle"
+flex = "center"
+  [[row.child]]
+  widget = "cycle_progress"
+  width = { length = 110 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+# Four state tiles centred under the gauge.
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+flex = "center"
+gap = 4
+  [[row.child]]
+  widget = "tile_todo"
+  width = { length = 22 }
+  [[row.child]]
+  widget = "tile_started"
+  width = { length = 22 }
+  [[row.child]]
+  widget = "tile_completed"
+  width = { length = 22 }
+  [[row.child]]
+  widget = "tile_canceled"
+  width = { length = 22 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 1 }
+
+# Body: cycle stats sidebar (left) + active issues (right).
+[[row]]
+height = { length = 9 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "cycle_stats"
+  width = { length = 38 }
+  border = "top"
+  title = "  cycle stats  "
+  title_align = "left"
+  [[row.child]]
+  widget = "active_issues"
+  width = { length = 78 }
+  border = "top"
+  title = "  active · me  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Bottom: notifications (left) + priority bars (right).
+[[row]]
+height = { length = 9 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "notifications"
+  width = { length = 70 }
+  border = "top"
+  title = "  notifications  "
+  title_align = "left"
+  [[row.child]]
+  widget = "priority"
+  width = { length = 46 }
+  border = "top"
+  title = "  by priority  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }

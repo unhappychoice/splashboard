@@ -1,0 +1,158 @@
+# Mission-control style laptop monitor — every panel is a gauge or a small
+# table, packed into a tight 3×3 grid that reads as one continuous control
+# board. No figlet, no decorative bands. The visual signature is "lots of
+# small panes with their own borders, all aligned to the same column grid".
+# Battery / CPU / memory take the top row; uptime / load / disk middle;
+# system table / processes / mounts bottom.
+
+[showcase]
+title = "Laptop mission control"
+description = "Tight 3×3 grid of gauges and tables: battery / CPU / memory across the top, uptime / load / disk in the middle, system info / processes / mounts on the bottom. Mission-control style."
+context = "home"
+requires = ["local system access (no auth)"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Top row — three big-ratio gauges.
+[[widget]]
+id = "battery"
+fetcher = "system_battery"
+shape = "ratio"
+render = { type = "gauge_battery", tone = "drain" }
+
+[[widget]]
+id = "cpu_gauge"
+fetcher = "system_cpu"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "cpu" }
+
+[[widget]]
+id = "memory_gauge"
+fetcher = "system_memory"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "ram" }
+
+# Middle row — three text/entry panels.
+[[widget]]
+id = "uptime"
+fetcher = "system_uptime"
+shape = "text"
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "load_table"
+fetcher = "system_load"
+shape = "entries"
+render = "grid_table"
+
+[[widget]]
+id = "disk_gauge"
+fetcher = "system_disk_usage"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "disk" }
+
+# Bottom row — three tables / lists.
+[[widget]]
+id = "system_table"
+fetcher = "system"
+shape = "entries"
+render = "grid_table"
+
+[[widget]]
+id = "processes"
+fetcher = "system_processes"
+shape = "entries"
+render = "grid_table"
+  [widget.options]
+  count = 8
+
+[[widget]]
+id = "disk_bars"
+fetcher = "system_disk_usage"
+shape = "bars"
+render = { type = "chart_bar", horizontal = true }
+
+# ── Layout ─────────────────────────────────────────────────────────
+# Master grid: 3 cols × 38 cells + 2 gaps × 2 = 118-cell band.
+# Three rows of 11 cells each so panes stack uniformly.
+
+[[row]]
+height = { length = 1 }
+
+# Top row: battery | cpu | memory.
+[[row]]
+height = { length = 11 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "battery"
+  width = { length = 38 }
+  border = "top"
+  title = "  battery  "
+  title_align = "left"
+  [[row.child]]
+  widget = "cpu_gauge"
+  width = { length = 38 }
+  border = "top"
+  title = "  cpu  "
+  title_align = "left"
+  [[row.child]]
+  widget = "memory_gauge"
+  width = { length = 38 }
+  border = "top"
+  title = "  memory  "
+  title_align = "left"
+
+# Middle row: uptime | load | disk thermometer.
+[[row]]
+height = { length = 9 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "uptime"
+  width = { length = 38 }
+  border = "top"
+  title = "  uptime  "
+  title_align = "left"
+  [[row.child]]
+  widget = "load_table"
+  width = { length = 38 }
+  border = "top"
+  title = "  load avg  "
+  title_align = "left"
+  [[row.child]]
+  widget = "disk_gauge"
+  width = { length = 38 }
+  border = "top"
+  title = "  disk  "
+  title_align = "left"
+
+# Bottom row: system info | processes | mounts.
+[[row]]
+height = { length = 11 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "system_table"
+  width = { length = 38 }
+  border = "top"
+  title = "  system  "
+  title_align = "left"
+  [[row.child]]
+  widget = "processes"
+  width = { length = 38 }
+  border = "top"
+  title = "  top processes  "
+  title_align = "left"
+  [[row.child]]
+  widget = "disk_bars"
+  width = { length = 38 }
+  border = "top"
+  title = "  mounts  "
+  title_align = "left"
+
+# Tail fill — absorbs whatever canvas height is left over so the last
+# declared row keeps its declared length instead of ratatui Legacy flex
+# inflating it to fill leftover space.
+[[row]]
+height = { fill = 1 }

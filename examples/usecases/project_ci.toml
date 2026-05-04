@@ -1,0 +1,136 @@
+# CI status splash — answers exactly one question on entry: "is CI happy?"
+# Hero is a huge bg-toned status badge centred across the canvas. The colour
+# carries the answer; the small text below ("main · passing · 2m 14s") has
+# the operational details, and the bottom band shows the recent run history
+# as a sparkline + chronological timeline + branch / actor / duration grid.
+
+[showcase]
+title = "CI status"
+description = "One question: is CI happy? Hero is a huge tone-coloured status badge; below it sit the run vitals, a 30-run history sparkline, the recent runs timeline, and a branch / actor / duration grid."
+context = "project"
+requires = ["GitHub auth (gh login or `GH_TOKEN`)", "local git repo on GitHub"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Slim repo header.
+[[widget]]
+id = "repo"
+fetcher = "git_repo_name"
+render = { type = "text_plain", align = "center", color = "text_secondary" }
+
+[[widget]]
+id = "commit"
+fetcher = "git_recent_commits"
+shape = "text_block"
+format = "1"
+render = { type = "list_plain", align = "center", color = "text_secondary" }
+
+# Hero — fat status badge at full row width. The tone colour reads from
+# across the room, the dot + label sit centred inside.
+[[widget]]
+id = "status"
+fetcher = "github_action_status"
+shape = "badge"
+render = { type = "status_badge", padding = 8 }
+
+# Status text line — branch · result · duration. Sits as the subtitle.
+[[widget]]
+id = "status_text"
+fetcher = "github_action_status"
+shape = "text"
+render = { type = "text_plain", align = "center" }
+
+# 30-run history — Bars chart (filled width) instead of sparkline (which
+# only renders one cell per data point).
+[[widget]]
+id = "history"
+fetcher = "github_action_history"
+shape = "number_series"
+render = { type = "chart_sparkline", style = "bars" }
+
+# Recent runs timeline.
+[[widget]]
+id = "runs"
+fetcher = "github_action_history"
+shape = "timeline"
+render = "list_timeline"
+
+# Latest commit subtitle — repeated for the bottom row; sample git_status
+# shape gives a one-line "branch · clean | 3M 1A 2??" form.
+[[widget]]
+id = "branch_status"
+fetcher = "git_status"
+shape = "entries"
+render = "grid_table"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+# Slim header band.
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "repo"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "commit"
+
+[[row]]
+height = { length = 2 }
+
+# THE hero badge — wide centred band so the tone colour fills the eye.
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "status"
+  width = { length = 100 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "status_text"
+  width = { length = 90 }
+
+[[row]]
+height = { length = 2 }
+
+# 30-run sparkline — full-width band.
+[[row]]
+height = { length = 5 }
+flex = "center"
+  [[row.child]]
+  widget = "history"
+  width = { length = 100 }
+  border = "top"
+  title = "  last 30 runs  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Bottom row: recent runs (left, wide) | branch status (right).
+[[row]]
+height = { length = 9 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "runs"
+  width = { length = 70 }
+  border = "top"
+  title = "  recent runs  "
+  title_align = "left"
+  [[row.child]]
+  widget = "branch_status"
+  width = { length = 30 }
+  border = "top"
+  title = "  branch  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }
