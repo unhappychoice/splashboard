@@ -8,6 +8,15 @@ use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
+/// Cell rows of inner padding inserted above the content band. Every snapshot lands at
+/// `buffer_height + PADDING_TOP_ROWS` cells tall — uniform across presets, content
+/// top-aligned, with a consistent breathing-room band on top regardless of how densely
+/// packed the layout is.
+const PADDING_TOP_ROWS: u16 = 2;
+
+/// Render a buffer to inline HTML. Use this for non-dashboard previews (the per-fetcher /
+/// per-renderer reference snippets in `gen_matrix`) — no padding, no top-alignment, just
+/// emit the buffer as-is.
 pub fn buffer_to_html(buf: &Buffer) -> String {
     let mut out = String::new();
     out.push_str("<pre class=\"splash-snapshot\">");
@@ -18,6 +27,101 @@ pub fn buffer_to_html(buf: &Buffer) -> String {
     }
     out.push_str("</pre>");
     out
+}
+
+/// Render a dashboard buffer with `PADDING_TOP_ROWS` of theme-bg padding above the
+/// content, with the buffer's own rows top-aligned (any internal `fill` centring or
+/// `length = N` top spacing collapses by rotating the leading blanks to the bottom of the
+/// canvas). Caller passes the dashboard's theme bg so the synthesised padding rows match
+/// whatever palette the dashboard rendered under.
+pub fn buffer_to_html_dashboard(buf: &Buffer, theme_bg: Color) -> String {
+    let mut out = String::new();
+    out.push_str("<pre class=\"splash-snapshot\">");
+    let area = buf.area();
+    for _ in 0..PADDING_TOP_ROWS {
+        emit_padding_row(&mut out, theme_bg, area.width);
+        out.push('\n');
+    }
+    let order = top_aligned_row_order(buf, theme_bg);
+    for y in order {
+        emit_row(&mut out, buf, y, area.width);
+        out.push('\n');
+    }
+    out.push_str("</pre>");
+    out
+}
+
+/// Emit a `width`-cell row of pure theme-bg padding. Same markup shape as the runs that
+/// `flush_run` produces for blank-bg cells inside the buffer, so the synthesised rows
+/// blend with the rest of the snapshot's CSS / styling.
+fn emit_padding_row(out: &mut String, bg: Color, width: u16) {
+    let style = Style::default().bg(bg);
+    let cells: Vec<String> = (0..width).map(|_| " ".to_string()).collect();
+    flush_run(out, Some(&style), &cells);
+}
+
+/// Build a row order that top-aligns the buffer's content while preserving its total row
+/// count. Three classes of blank rows get pushed to the bottom of the canvas:
+///
+/// - **Leading blanks** — `fill = 1` top padding or `length = N` top spacing collapses to
+///   nothing so the first content row hugs the top of the snapshot.
+/// - **Long internal gaps** — `fill = 1` rows that ratatui inflated to absorb leftover
+///   canvas space (`project_codebase` puts two of them between sections, ten rows each).
+///   Anything beyond `KEEP_INTERNAL_BLANKS` rows of a contiguous gap moves to the bottom,
+///   so the section boundary stays visible without the dashboard reading as half-empty.
+/// - **Trailing blanks** — already at the bottom; left in place.
+///
+/// Top-of-snapshot padding is synthesised separately by `buffer_to_html_dashboard` — this
+/// function only reorders rows that already exist in the buffer.
+fn top_aligned_row_order(buf: &Buffer, theme_bg: Color) -> Vec<u16> {
+    let area = buf.area();
+    let total = area.height;
+    let mut kept: Vec<u16> = Vec::new();
+    let mut moved: Vec<u16> = Vec::new();
+    let mut y = 0u16;
+    while y < total {
+        if !is_row_blank(buf, y, area.width, theme_bg) {
+            kept.push(y);
+            y += 1;
+            continue;
+        }
+        let run_end = (y..total)
+            .find(|&i| !is_row_blank(buf, i, area.width, theme_bg))
+            .unwrap_or(total);
+        let leading = kept.is_empty();
+        let trailing = run_end == total;
+        let keep_count = if leading || trailing {
+            0
+        } else {
+            (run_end - y).min(KEEP_INTERNAL_BLANKS)
+        };
+        for i in y..y + keep_count {
+            kept.push(i);
+        }
+        for i in y + keep_count..run_end {
+            moved.push(i);
+        }
+        y = run_end;
+    }
+    let mut order = kept;
+    order.extend(moved);
+    order
+}
+
+/// Cap on how many rows of any contiguous internal blank run survive in place. The runs we
+/// want to preserve are the 1–2 row gaps designs use to separate sections (home_splash,
+/// home_minimal); anything longer is `fill = 1` slack we'd rather collapse so the snapshot
+/// reads as one cohesive band.
+const KEEP_INTERNAL_BLANKS: u16 = 2;
+
+fn is_row_blank(buf: &Buffer, y: u16, width: u16, canvas_bg: Color) -> bool {
+    (0..width).all(|x| {
+        let cell = &buf[(x, y)];
+        cell.symbol().chars().all(|c| c == ' ')
+            && cell.fg == Color::Reset
+            && cell.bg == canvas_bg
+            && cell.modifier.is_empty()
+    })
 }
 
 fn emit_row(out: &mut String, buf: &Buffer, y: u16, width: u16) {
@@ -211,12 +315,102 @@ mod tests {
 
     #[test]
     fn buffer_wraps_every_cell_in_its_own_span() {
-        let buf = Buffer::empty(Rect::new(0, 0, 3, 2));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 3, 2));
+        // Mark every cell visible so content_row_range doesn't trim the whole buffer.
+        for y in 0..2 {
+            for x in 0..3 {
+                buf[(x, y)].set_symbol("a");
+            }
+        }
         let html = buffer_to_html(&buf);
         assert!(html.starts_with("<pre"));
         assert!(html.ends_with("</pre>"));
         // 3 cols × 2 rows = 6 cells → 6 per-cell spans.
         assert_eq!(html.matches("<span class=\"c\">").count(), 6);
+    }
+
+    #[test]
+    fn buffer_to_html_preserves_total_row_count() {
+        // 6-row buffer with content only on row 4 — the output must still be 6 rows tall so
+        // every preset snapshot lands at the same uniform canvas height.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 4, 6));
+        buf[(0, 4)].set_symbol("h");
+        buf[(1, 4)].set_symbol("i");
+        let html = buffer_to_html(&buf);
+        assert_eq!(html.matches('\n').count(), 6);
+    }
+
+    #[test]
+    fn buffer_to_html_handles_entirely_blank_buffer() {
+        // No content → no rotation; emit the buffer in its natural order to keep the
+        // canvas uniform.
+        let buf = Buffer::empty(Rect::new(0, 0, 4, 3));
+        let html = buffer_to_html(&buf);
+        assert_eq!(html.matches('\n').count(), 3);
+    }
+
+    #[test]
+    fn top_aligned_row_order_rotates_leading_blanks_to_bottom() {
+        // 8 rows: 0..4 blank (leading), row 5 content, 6..7 trailing blank. Both leading
+        // and trailing runs end up after the content; the relative order between them
+        // doesn't matter visually since both are theme-bg blanks.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 8));
+        buf[(0, 5)].set_symbol("x");
+        let order = top_aligned_row_order(&buf, Color::Reset);
+        assert_eq!(order, vec![5, 0, 1, 2, 3, 4, 6, 7]);
+    }
+
+    #[test]
+    fn top_aligned_row_order_collapses_long_internal_gaps() {
+        // Content at row 0, 8 rows of internal gap, content at row 9. The internal run is
+        // longer than KEEP_INTERNAL_BLANKS, so only the first two rows survive in place;
+        // the rest move to the bottom alongside any leading / trailing blanks.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 10));
+        buf[(0, 0)].set_symbol("x");
+        buf[(0, 9)].set_symbol("y");
+        let order = top_aligned_row_order(&buf, Color::Reset);
+        assert_eq!(order, vec![0, 1, 2, 9, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn top_aligned_row_order_preserves_short_internal_gaps_within_threshold() {
+        // 1- and 2-row internal gaps are intentional design spacing (home_minimal,
+        // home_splash) — they fit under the threshold and stay in place.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 7));
+        buf[(0, 0)].set_symbol("a");
+        buf[(0, 2)].set_symbol("b");
+        buf[(0, 5)].set_symbol("c");
+        let order = top_aligned_row_order(&buf, Color::Reset);
+        assert_eq!(order, vec![0, 1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn top_aligned_row_order_keeps_natural_order_when_content_starts_at_row_zero() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 5));
+        buf[(0, 0)].set_symbol("x");
+        let order = top_aligned_row_order(&buf, Color::Reset);
+        assert_eq!(order, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn top_aligned_row_order_keeps_natural_order_for_entirely_blank_buffer() {
+        let buf = Buffer::empty(Rect::new(0, 0, 1, 3));
+        let order = top_aligned_row_order(&buf, Color::Reset);
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn buffer_to_html_dashboard_prepends_padding_rows_at_uniform_height() {
+        // 3-row buffer with content only on row 1; the dashboard variant prepends
+        // PADDING_TOP_ROWS rows of theme-bg padding, regardless of the buffer's leading
+        // blank count, so every preset's snapshot lands at the same uniform height.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 3));
+        buf[(0, 1)].set_symbol("x");
+        let html = buffer_to_html_dashboard(&buf, Color::Rgb(0x0e, 0x17, 0x2a));
+        let row_count = html.matches('\n').count();
+        assert_eq!(row_count, 3 + PADDING_TOP_ROWS as usize);
+        // The padding rows must be styled with the supplied theme bg.
+        assert!(html.contains("background:#0e172a"));
     }
 
     #[test]
