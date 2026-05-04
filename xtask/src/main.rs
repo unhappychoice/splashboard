@@ -17,6 +17,7 @@ mod gen_matrix;
 mod html_snapshot;
 mod preset_index;
 mod snapshots;
+mod themes;
 
 #[derive(Parser)]
 #[command(
@@ -82,6 +83,11 @@ fn main() -> Result<()> {
     gallery::run(
         &cli.community_src,
         &cli.rendered_out.join("community"),
+        SNAPSHOT_WIDTH,
+        SNAPSHOT_HEIGHT,
+    )?;
+    themes::run(
+        &cli.rendered_out.join("themes"),
         SNAPSHOT_WIDTH,
         SNAPSHOT_HEIGHT,
     )?;
