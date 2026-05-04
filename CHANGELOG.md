@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-05-04
+
+### 🐛 Bug Fixes
+
+- fix(render): pass theme.bg to ratatui_image so image letterbox is opaque ([b6d835e](https://github.com/unhappychoice/splashboard/commit/b6d835e))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.2.2 ([86c92f3](https://github.com/unhappychoice/splashboard/commit/86c92f3))
+- chore: update flake.nix hashes for v1.2.1 ([863f8e6](https://github.com/unhappychoice/splashboard/commit/863f8e6))
+
+
 ## [1.2.1] - 2026-05-04
 
 ### 🐛 Bug Fixes
@@ -16,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.2.1 ([3ab5746](https://github.com/unhappychoice/splashboard/commit/3ab5746))
+- chore: bump version to v1.2.1 ([c9a6526](https://github.com/unhappychoice/splashboard/commit/c9a6526))
 - style(render): apply rustfmt to media_image.rs ([e760f46](https://github.com/unhappychoice/splashboard/commit/e760f46))
 - chore(deps)(deps): bump unicode-width from 0.2.0 to 0.2.2 ([a5debfd](https://github.com/unhappychoice/splashboard/commit/a5debfd))
 - chore(deps)(deps): bump ratatui-image from 10.0.6 to 10.0.8 ([a3f028e](https://github.com/unhappychoice/splashboard/commit/a3f028e))
