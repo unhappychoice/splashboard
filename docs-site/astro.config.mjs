@@ -64,7 +64,16 @@ export default defineConfig({
             { label: 'Cookbook', link: '/guides/cookbook/' },
           ],
         },
-        { label: 'Showcases', link: '/showcases/' },
+        {
+          label: 'Showcases',
+          items: [
+            { label: 'Overview', link: '/showcases/' },
+            { label: 'Themes', link: '/showcases/themes/' },
+            { label: 'Presets', link: '/showcases/presets/' },
+            { label: 'Use cases', link: '/showcases/usecases/' },
+            { label: 'Community', link: '/showcases/community/' },
+          ],
+        },
         {
           label: 'Reference',
           items: [
