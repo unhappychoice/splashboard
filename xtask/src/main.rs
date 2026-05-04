@@ -48,9 +48,11 @@ struct Cli {
 }
 
 /// Every preset renders at the same 120 × 42 cell canvas so the embedded snapshots read as a
-/// uniform gallery under `.splash-landing` (the CSS scales font-size off a 120-cell baseline and
-/// `.splash-snapshot` has no fixed aspect ratio). 42 = project_github's natural height;
-/// shorter presets get blank rows of theme bg at the bottom, same as an oversized terminal would.
+/// uniform gallery under `.splash-landing`. 42 = project_github's natural height; shorter
+/// presets get blank theme-bg rows below their content. `html_snapshot::buffer_to_html_dashboard`
+/// then top-aligns the rendered content (rotating any leading blank rows to the bottom) and
+/// prepends a fixed `PADDING_TOP_ROWS` breathing-room band — so the final HTML lands at a
+/// consistent height with consistent top padding regardless of how dense the preset is.
 const SNAPSHOT_WIDTH: u16 = 120;
 const SNAPSHOT_HEIGHT: u16 = 42;
 

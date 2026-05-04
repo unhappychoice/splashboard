@@ -642,6 +642,8 @@ height = { length = 1 }
                 assert_eq!(options.extra_str("inner"), None);
                 assert_eq!(options.extra_str("effect"), None);
 
+                // The flattened bag must round-trip cleanly through text_ascii's Options
+                // parser — deny_unknown_fields will reject any leftover wrapper extras.
                 #[derive(serde::Deserialize, Debug, Default)]
                 #[serde(deny_unknown_fields)]
                 struct AsciiOptions {
