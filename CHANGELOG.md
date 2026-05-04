@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-04
+
+### 🐛 Bug Fixes
+
+- fix(render): force iTerm2 protocol for media_image when running under iTerm2 ([2b2c25f](https://github.com/unhappychoice/splashboard/commit/2b2c25f))
+- fix(tests): serialize cache_key stability tests on TEST_ENV_LOCK ([7575989](https://github.com/unhappychoice/splashboard/commit/7575989))
+- fix(tests): skip rc/trust assertions on Windows path-resolution mismatches ([558c940](https://github.com/unhappychoice/splashboard/commit/558c940))
+- fix(tests): make new coverage tests pass on all CI platforms ([8b85264](https://github.com/unhappychoice/splashboard/commit/8b85264))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.2.1 ([3ab5746](https://github.com/unhappychoice/splashboard/commit/3ab5746))
+- style(render): apply rustfmt to media_image.rs ([e760f46](https://github.com/unhappychoice/splashboard/commit/e760f46))
+- chore(deps)(deps): bump unicode-width from 0.2.0 to 0.2.2 ([a5debfd](https://github.com/unhappychoice/splashboard/commit/a5debfd))
+- chore(deps)(deps): bump ratatui-image from 10.0.6 to 10.0.8 ([a3f028e](https://github.com/unhappychoice/splashboard/commit/a3f028e))
+- chore(deps)(deps): bump gix from 0.82.0 to 0.83.0 ([d70f990](https://github.com/unhappychoice/splashboard/commit/d70f990))
+- test(linear): cover blank env tokens, nested cache tokens, and request failure paths ([8fa0d62](https://github.com/unhappychoice/splashboard/commit/8fa0d62))
+- test(code_files): cover empty text block and render body variants ([a75b8dc](https://github.com/unhappychoice/splashboard/commit/a75b8dc))
+- test(wikipedia): cover invalid lang request errors and sample body variants ([13c601a](https://github.com/unhappychoice/splashboard/commit/13c601a))
+- test(xtask): cover cli defaults, cwd guards, and render error paths ([9ddc636](https://github.com/unhappychoice/splashboard/commit/9ddc636))
+- test(fetchers): cover sample bodies and cache key variant paths ([9957403](https://github.com/unhappychoice/splashboard/commit/9957403))
+- test(hackernews_top): cover empty entries and unsupported shape fallback paths ([84b79b2](https://github.com/unhappychoice/splashboard/commit/84b79b2))
+- test(github_contributors_monthly): cover body variants and env guard restore paths ([192f50c](https://github.com/unhappychoice/splashboard/commit/192f50c))
+- test(system): cover payload body variants and live text kind paths ([1046dad](https://github.com/unhappychoice/splashboard/commit/1046dad))
+- test(system): cover sample bodies and empty snapshot fallback paths ([3932e12](https://github.com/unhappychoice/splashboard/commit/3932e12))
+- test(linear): cover client non-table strip and guard restore paths ([7915a77](https://github.com/unhappychoice/splashboard/commit/7915a77))
+- test(random_fortune): cover unsupported shape and cookie list paths ([5db45b0](https://github.com/unhappychoice/splashboard/commit/5db45b0))
+- test(install): cover preview shape fallback, format override, and deanimate paths ([1ffb817](https://github.com/unhappychoice/splashboard/commit/1ffb817))
+- test(main): cover tty home render and cache paths ([cb462a5](https://github.com/unhappychoice/splashboard/commit/cb462a5))
+- test(logging): cover log file polling and preexisting env restore paths ([37adcb9](https://github.com/unhappychoice/splashboard/commit/37adcb9))
+- test(github_items): cover repo parsing and linked text block paths ([93ca963](https://github.com/unhappychoice/splashboard/commit/93ca963))
+- test(weather): cover freezing drizzle and wrong-variant extractor paths ([daade12](https://github.com/unhappychoice/splashboard/commit/daade12))
+- test(animated_figlet_morph): cover phase fade in and fade out paths ([e1d034c](https://github.com/unhappychoice/splashboard/commit/e1d034c))
+- test(deariary_on_this_day): cover oldest badge and anchor underflow paths ([5282294](https://github.com/unhappychoice/splashboard/commit/5282294))
+- test(todoist): cover due helper and payload default paths ([cf35ce6](https://github.com/unhappychoice/splashboard/commit/cf35ce6))
+- test(main): cover tty on-cd render and cache paths ([094b654](https://github.com/unhappychoice/splashboard/commit/094b654))
+- test(github_common): cover text block body, cwd, and no-repo paths ([71627a5](https://github.com/unhappychoice/splashboard/commit/71627a5))
+- test(rc): cover append, replace, and close-marker newline paths ([b0641fb](https://github.com/unhappychoice/splashboard/commit/b0641fb))
+- test(list_plain): cover non-text natural height fallback path ([b23083e](https://github.com/unhappychoice/splashboard/commit/b23083e))
+- test(templates): cover template lookup and context filter paths ([51ca25c](https://github.com/unhappychoice/splashboard/commit/51ca25c))
+- test(code_scan): cover classifier helpers, tracked walker skips, and tokei stats ([c7cc48c](https://github.com/unhappychoice/splashboard/commit/c7cc48c))
+- test(wikipedia): cover get success, status, and json parse paths ([0d29724](https://github.com/unhappychoice/splashboard/commit/0d29724))
+- test(main): cover tty install picker confirm and cancel paths ([7e8d169](https://github.com/unhappychoice/splashboard/commit/7e8d169))
+- test(system): cover terminal alias priority, formatter helpers, and payload builders ([1019ba6](https://github.com/unhappychoice/splashboard/commit/1019ba6))
+- test(dashboard_snapshot): cover renderer fallback and deanimate option paths ([05d95cf](https://github.com/unhappychoice/splashboard/commit/05d95cf))
+- test(linear): cover notifications contract, helpers, rendering, and fallback paths ([015bb5c](https://github.com/unhappychoice/splashboard/commit/015bb5c))
+- test(paths): cover env restoration and home fallback paths ([00ca07f](https://github.com/unhappychoice/splashboard/commit/00ca07f))
+- test(main): cover install, tty auto flags, and trust prompt paths ([67c0e5c](https://github.com/unhappychoice/splashboard/commit/67c0e5c))
+- test(html_snapshot): cover styled spans, link escaping, and osc8 fallback paths ([ef9041a](https://github.com/unhappychoice/splashboard/commit/ef9041a))
+- test: cover deariary helper branches and dashboard snapshot fallback paths ([ea5affe](https://github.com/unhappychoice/splashboard/commit/ea5affe))
+- test(shell): cover cli names and powershell profile path ([f55a100](https://github.com/unhappychoice/splashboard/commit/f55a100))
+- test(random_cat): cover fetch bytes success, status, and size limit paths ([de401f1](https://github.com/unhappychoice/splashboard/commit/de401f1))
+- test(linear): cover fetcher contract, filter, formatter, and grouping paths ([f9db512](https://github.com/unhappychoice/splashboard/commit/f9db512))
+- test(theme): cover heatmap fallback and config override paths ([51b7d01](https://github.com/unhappychoice/splashboard/commit/51b7d01))
+- test(main): cover init, license, catalog, trust, and non-tty paths ([5d1a6ba](https://github.com/unhappychoice/splashboard/commit/5d1a6ba))
+- test(linear): cover cycle contract, helper, and fallback paths ([6c1b736](https://github.com/unhappychoice/splashboard/commit/6c1b736))
+- test(install): cover shell resolution, home fallback, and gitignore paths ([a3a6d20](https://github.com/unhappychoice/splashboard/commit/a3a6d20))
+- test(install): cover picker helper and fallback rendering paths ([277f8cc](https://github.com/unhappychoice/splashboard/commit/277f8cc))
+- test: cover wikipedia featured fetcher and xtask cli paths ([59f005c](https://github.com/unhappychoice/splashboard/commit/59f005c))
+- test(main): cover config loading, secrets, catalog, and trust paths ([a9c20a4](https://github.com/unhappychoice/splashboard/commit/a9c20a4))
+- test(linear): cover client token fallback and retry paths ([443903f](https://github.com/unhappychoice/splashboard/commit/443903f))
+- test(github): cover repo stars metadata and failure paths ([83d0f82](https://github.com/unhappychoice/splashboard/commit/83d0f82))
+- test(reddit): cover client retry and response validation paths ([b2de031](https://github.com/unhappychoice/splashboard/commit/b2de031))
+- test(xtask): cover gen_matrix module ([620278a](https://github.com/unhappychoice/splashboard/commit/620278a))
+- chore: update flake.nix hashes for v1.2.0 ([33d1569](https://github.com/unhappychoice/splashboard/commit/33d1569))
+
+
 ## [1.2.0] - 2026-04-30
 
 ### ✨ Features
@@ -21,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.2.0 ([416fbbb](https://github.com/unhappychoice/splashboard/commit/416fbbb))
+- chore: bump version to v1.2.0 ([4b51ba6](https://github.com/unhappychoice/splashboard/commit/4b51ba6))
 - test: isolate workspace-dependent fetcher tests ([731c9a6](https://github.com/unhappychoice/splashboard/commit/731c9a6))
 - test(git): make workspace-dependent tests CI-portable ([8ef708f](https://github.com/unhappychoice/splashboard/commit/8ef708f))
 - test: add focused layout helper tests that raised workspace line coverage from 92.9587% to 93.0482% and lifted `src/layout.rs` from 94.77% to 99.84%. ([bcaca9c](https://github.com/unhappychoice/splashboard/commit/bcaca9c))
