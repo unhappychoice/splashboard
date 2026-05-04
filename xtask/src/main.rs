@@ -94,6 +94,12 @@ fn scrub_host_env() {
         "ALACRITTY_LOG",
         "WEZTERM_PANE",
         "TERM_PROGRAM",
+        // `media_image`'s picker treats `LC_TERMINAL=iTerm2` as a hint to switch from the
+        // halfblocks protocol to iTerm2's OSC 1337 inline-image escape; that escape leaks
+        // into the test buffer when xtask runs on a Mac iTerm host. Scrub it so the
+        // committed snapshots stay halfblocks-rendered regardless of dev machine.
+        "LC_TERMINAL",
+        "LC_TERMINAL_VERSION",
     ] {
         // SAFETY: xtask is a single-threaded CLI entry point; no other threads can race this.
         unsafe { std::env::remove_var(key) };
@@ -270,6 +276,8 @@ mod tests {
             "ALACRITTY_LOG",
             "WEZTERM_PANE",
             "TERM_PROGRAM",
+            "LC_TERMINAL",
+            "LC_TERMINAL_VERSION",
         ];
         let _guard = EnvGuard::capture(&keys);
 
