@@ -258,14 +258,38 @@ impl Fetcher for TodoistTasks {
                 ("Migrate flaky integration tests", "fri · P3"),
             ]),
             Shape::Timeline => samples::timeline(&[
-                (1_776_456_000, "Fix flaky CI on macOS runner", Some("overdue · P4")),
-                (1_776_542_400, "Reply to design review feedback", Some("overdue · P3")),
+                (
+                    1_776_456_000,
+                    "Fix flaky CI on macOS runner",
+                    Some("overdue · P4"),
+                ),
+                (
+                    1_776_542_400,
+                    "Reply to design review feedback",
+                    Some("overdue · P3"),
+                ),
                 (1_776_628_800, "Ship v2.3 release notes", Some("today · P1")),
-                (1_776_715_200, "Pair with @sam on auth refactor", Some("today · P2")),
+                (
+                    1_776_715_200,
+                    "Pair with @sam on auth refactor",
+                    Some("today · P2"),
+                ),
                 (1_776_801_600, "Review @lin's PR #482", Some("today · P3")),
-                (1_776_888_000, "1:1 prep — quarterly goals", Some("tomorrow · P2")),
-                (1_777_060_800, "Draft proposal for caching layer", Some("wed · P3")),
-                (1_777_233_600, "Migrate flaky integration tests", Some("fri · P3")),
+                (
+                    1_776_888_000,
+                    "1:1 prep — quarterly goals",
+                    Some("tomorrow · P2"),
+                ),
+                (
+                    1_777_060_800,
+                    "Draft proposal for caching layer",
+                    Some("wed · P3"),
+                ),
+                (
+                    1_777_233_600,
+                    "Migrate flaky integration tests",
+                    Some("fri · P3"),
+                ),
             ]),
             Shape::Badge => Body::Badge(BadgeData {
                 status: Status::Error,
