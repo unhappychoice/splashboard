@@ -1,0 +1,153 @@
+# Welcome card — for the "other / project" context: when someone
+# clones this repo and cd's in for the first time, this is the splash
+# they see. Big logo, tagline, getting-started commands, "what is
+# this", and where-to-go-next links. Mostly static content authored
+# by the maintainer; the only live fetcher is `git_repo_name` for the
+# figlet header. Designed to ship inside the repo as
+# `.splashboard/dashboard.toml` so cloners get a curated welcome.
+
+[showcase]
+title = "Welcome card"
+description = "Welcome splash for newcomers cloning the repo. Repo-name figlet hero, tagline / mission line, two-column body (getting-started commands and what-this-is description), then a links band and a maintainer footer. Almost entirely static content — meant to be customised by the repo maintainer and committed to the repo so cloners see a curated welcome on their first `cd`."
+context = "project"
+requires = []
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Repo name as the visual hero — figlet quadrant blocks like the
+# project_codebase preset, but uncluttered (no metadata band beside it).
+[[widget]]
+id = "logo"
+fetcher = "git_repo_name"
+render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
+
+# Tagline — two-line mission statement. Maintainer edits this to taste.
+[[widget]]
+id = "tagline"
+fetcher = "basic_static"
+shape = "text_block"
+format = """
+Customizable terminal splash, configured per directory.
+One-line install, TOML config, fast cached first-paint.
+"""
+render = { type = "list_plain", align = "center", color = "text_secondary" }
+
+# Getting-started commands — the four-line incantation a cloner runs
+# after `git clone` to actually try the project. List rendered plain.
+[[widget]]
+id = "quickstart"
+fetcher = "basic_static"
+shape = "text_block"
+format = """
+$ cargo build --release
+$ ./target/release/splashboard install
+$ source ~/.zshrc
+$ cd any-project   # splash appears
+"""
+render = { type = "list_plain" }
+
+# "What is this" — a few sentences expanding on the tagline so a
+# cloner knows whether to keep reading. Static text.
+[[widget]]
+id = "what_is"
+fetcher = "basic_static"
+shape = "text_block"
+format = """
+A terminal splash you control with TOML.
+
+The killer feature is per-directory walk-up:
+each repo can ship its own dashboard, so
+different projects greet you differently
+when you cd in.
+"""
+render = { type = "list_plain" }
+
+# Where-to-go-next links — handover to docs / contributing / issues.
+[[widget]]
+id = "next_steps"
+fetcher = "basic_static"
+shape = "text_block"
+format = """
+• Read AGENTS.md for the architecture overview
+• See CONTRIBUTING.md to ship a new fetcher or renderer
+• Catalog issue: github.com/unhappychoice/splashboard/issues/41
+• Open an issue: github.com/unhappychoice/splashboard/issues
+"""
+render = { type = "list_plain" }
+
+# Maintainer footer — contact + license + sponsor link.
+[[widget]]
+id = "footer"
+fetcher = "basic_static"
+shape = "text"
+format = "Maintained by @unhappychoice · MIT licensed · github.com/unhappychoice/splashboard"
+render = { type = "text_plain", align = "center", color = "text_secondary" }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 2 }
+
+# Hero logo.
+[[row]]
+height = { length = 5 }
+  [[row.child]]
+  widget = "logo"
+
+[[row]]
+height = { length = 1 }
+
+# Tagline.
+[[row]]
+height = { length = 2 }
+flex = "center"
+  [[row.child]]
+  widget = "tagline"
+  width = { length = 100 }
+
+[[row]]
+height = { length = 1 }
+
+# Two-column body: quickstart | what is this.
+[[row]]
+height = { length = 8 }
+flex = "center"
+gap = 4
+  [[row.child]]
+  widget = "quickstart"
+  width = { length = 50 }
+  border = "top"
+  title = "  getting started  "
+  title_align = "left"
+  [[row.child]]
+  widget = "what_is"
+  width = { length = 50 }
+  border = "top"
+  title = "  what is this  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Where to go next — full-width links band.
+[[row]]
+height = { length = 6 }
+flex = "center"
+  [[row.child]]
+  widget = "next_steps"
+  width = { length = 100 }
+  border = "top"
+  title = "  where to go next  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Footer.
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "footer"
+
+[[row]]
+height = { fill = 1 }
