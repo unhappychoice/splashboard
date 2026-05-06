@@ -1,33 +1,30 @@
-# Todoist GTD dashboard — designed as a real task-app workspace, not a "splash
-# with feeds underneath". Today's date as the masthead figlet on a bg=subtle
-# band, three count badges flanking it (overdue / today / upcoming, each
-# colour-toned) act as the visual hierarchy. The body splits into three task
-# columns underneath, and a priority breakdown bar chart anchors the bottom
-# right corner so progress feels measurable.
+# Todoist GTD dashboard — three-column kanban: overdue / today /
+# upcoming, each one a `todoist_tasks` list filtered by `filter_due`.
+# Three count badges in a subtle band header summarise the day's pulse,
+# then the columns themselves take up the body. No figlet hero, no
+# bottom quote — just task columns, all business.
+#
+# Showcase note: `todoist_tasks.sample_body` is options-blind, so all
+# three count badges and all three list columns render identical sample
+# content in the preview. In live use each column shows its own
+# filtered set.
 
 [showcase]
 title = "Todoist GTD"
-description = "Date masthead, three count badges as the hero hierarchy, three task columns (overdue / today / upcoming), and a priority breakdown bar chart that grounds the bottom of the canvas. Designed as a task workspace, not a splash."
+description = "Three-column kanban (overdue / today / upcoming), each a `todoist_tasks` list filtered by `filter_due`. Three count badges as a header strip summarise the day's pulse. No figlet, no quote — task columns are the dashboard."
 context = "home"
 requires = ["Todoist API token (`TODOIST_TOKEN`)"]
 
 # ── Widgets ────────────────────────────────────────────────────────
 
-# Date masthead figlet — `quadrant` blocks at panel_title colour. Acts as the
-# splash's emotional anchor: every morning, you know what day it is.
-[[widget]]
-id = "date"
-fetcher = "clock"
-format = "%A · %e %b"
-render = { type = "text_ascii", style = "blocks", pixel_size = "quadrant", color = "panel_title", align = "center" }
-
-# Three count badges — same fetcher with different `filter_due`. Tone field
-# on the Badge shape drives colouring (overdue → error, today → warn, etc.).
+# Three count badges — same fetcher with different `filter_due`. Tone
+# follows the badge sample's Status (Error/Warn/Ok) so overdue reads red
+# in live use.
 [[widget]]
 id = "count_overdue"
 fetcher = "todoist_tasks"
 shape = "badge"
-render = { type = "status_badge", padding = 2 }
+render = { type = "status_badge", padding = 2, align = "center" }
   [widget.options]
   filter_due = "overdue"
 
@@ -35,7 +32,7 @@ render = { type = "status_badge", padding = 2 }
 id = "count_today"
 fetcher = "todoist_tasks"
 shape = "badge"
-render = { type = "status_badge", padding = 2 }
+render = { type = "status_badge", padding = 2, align = "center" }
   [widget.options]
   filter_due = "today"
 
@@ -43,86 +40,61 @@ render = { type = "status_badge", padding = 2 }
 id = "count_upcoming"
 fetcher = "todoist_tasks"
 shape = "badge"
-render = { type = "status_badge", padding = 2 }
+render = { type = "status_badge", padding = 2, align = "center" }
   [widget.options]
   filter_due = "upcoming"
 
-# Three task columns.
+# Three task columns — same fetcher, different `filter_due`.
 [[widget]]
 id = "list_overdue"
 fetcher = "todoist_tasks"
-render = { type = "list_links", max_items = 10 }
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 12 }
   [widget.options]
   filter_due = "overdue"
 
 [[widget]]
 id = "list_today"
 fetcher = "todoist_tasks"
-render = { type = "list_links", max_items = 10 }
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 12 }
   [widget.options]
   filter_due = "today"
 
 [[widget]]
 id = "list_upcoming"
 fetcher = "todoist_tasks"
-render = { type = "list_links", max_items = 10 }
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 12 }
   [widget.options]
   filter_due = "upcoming"
 
-# Priority breakdown — `todoist_tasks` Bars shape gives one bar per priority
-# bucket (P1/P2/P3/P4/none). Horizontal bar chart reads cleanly in a small slot.
-[[widget]]
-id = "priority"
-fetcher = "todoist_tasks"
-shape = "bars"
-render = { type = "chart_bar", horizontal = true }
-  [widget.options]
-  filter_due = "all"
-
-# Today's quote anchors the bottom-left as a quiet contemplative line.
-[[widget]]
-id = "quote"
-fetcher = "random_quote"
-shape = "text"
-render = { type = "text_plain", align = "center", color = "text_secondary" }
-
 # ── Layout ─────────────────────────────────────────────────────────
-# 116-cell content band centred on the 120 canvas.
 
-# Hero band on bg=subtle: date figlet, then the three count badges centred
-# below it.
+# Header strip: three count badges as the day's pulse.
 [[row]]
 height = { length = 1 }
-bg = "subtle"
-
-[[row]]
-height = { length = 4 }
-bg = "subtle"
-  [[row.child]]
-  widget = "date"
 
 [[row]]
 height = { length = 1 }
-bg = "subtle"
 flex = "center"
 gap = 4
   [[row.child]]
   widget = "count_overdue"
-  width = { length = 24 }
+  width = { length = 32 }
   [[row.child]]
   widget = "count_today"
-  width = { length = 24 }
+  width = { length = 32 }
   [[row.child]]
   widget = "count_upcoming"
-  width = { length = 24 }
+  width = { length = 32 }
 
 [[row]]
 height = { length = 1 }
-bg = "subtle"
 
-# Three task columns — uniform 36 cells × 3 + 4 gap × 2 = 116.
+# Three task columns — the dashboard body. 36 + 36 + 36 + 4 + 4 = 116.
 [[row]]
-height = { length = 18 }
+height = { length = 30 }
 flex = "center"
 gap = 4
   [[row.child]]
@@ -143,31 +115,6 @@ gap = 4
   border = "top"
   title = "  upcoming  "
   title_align = "left"
-
-[[row]]
-height = { length = 1 }
-
-# Bottom band: priority bars (full width) — quote was a 1-line throwaway and
-# left a 5-row dead zone next to it; cut it.
-[[row]]
-height = { length = 6 }
-flex = "center"
-  [[row.child]]
-  widget = "priority"
-  width = { length = 116 }
-  border = "top"
-  title = "  by priority  "
-  title_align = "left"
-
-[[row]]
-height = { length = 1 }
-
-[[row]]
-height = { length = 1 }
-flex = "center"
-  [[row.child]]
-  widget = "quote"
-  width = { length = 116 }
 
 [[row]]
 height = { fill = 1 }
