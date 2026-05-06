@@ -117,19 +117,30 @@ fn remote_slug(repo: &gix::Repository) -> Option<RepoSlug> {
     slug_from_url(&url.to_bstring().to_string())
 }
 
-/// Parses the two github URL shapes:
+/// Parses the github URL shapes splashboard supports:
 /// - `git@github.com:owner/name(.git)?`
 /// - `https://github.com/owner/name(.git)?`
+/// - `https://<user>(:<token>)?@github.com/owner/name(.git)?`
+/// - `ssh://git@github.com/owner/name(.git)?`
 ///
 /// Anything that isn't github.com returns `None` — splashboard's github fetchers target the
 /// github.com API and silently accepting a gitlab remote would be misleading.
 pub fn slug_from_url(url: &str) -> Option<RepoSlug> {
     let rest = url
         .strip_prefix("git@github.com:")
-        .or_else(|| url.strip_prefix("https://github.com/"))
+        .or_else(|| strip_https_github_prefix(url))
         .or_else(|| url.strip_prefix("ssh://git@github.com/"))?;
     let rest = rest.strip_suffix(".git").unwrap_or(rest);
     RepoSlug::parse(rest)
+}
+
+fn strip_https_github_prefix(url: &str) -> Option<&str> {
+    let after_scheme = url.strip_prefix("https://")?;
+    let after_userinfo = match after_scheme.split_once('@') {
+        Some((userinfo, rest)) if !userinfo.contains('/') => rest,
+        _ => after_scheme,
+    };
+    after_userinfo.strip_prefix("github.com/")
 }
 
 #[allow(dead_code)]
@@ -214,8 +225,23 @@ mod tests {
     }
 
     #[test]
+    fn slug_from_https_url_with_userinfo() {
+        let s = slug_from_url("https://fdncred@github.com/fdncred/nushell.git").unwrap();
+        assert_eq!(s.owner, "fdncred");
+        assert_eq!(s.name, "nushell");
+    }
+
+    #[test]
+    fn slug_from_https_url_with_user_and_token() {
+        let s = slug_from_url("https://user:token@github.com/owner/name").unwrap();
+        assert_eq!(s.owner, "owner");
+        assert_eq!(s.name, "name");
+    }
+
+    #[test]
     fn slug_rejects_non_github_hosts() {
         assert!(slug_from_url("https://gitlab.com/a/b").is_none());
+        assert!(slug_from_url("https://user@gitlab.com/a/b").is_none());
         assert!(slug_from_url("git@bitbucket.org:a/b.git").is_none());
     }
 
