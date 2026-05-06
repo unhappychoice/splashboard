@@ -6,15 +6,15 @@ Operating notes for AI agents (Claude, Codex, etc.) working on splashboard. Huma
 
 A customizable terminal splash rendered on shell startup and on `cd`. One-line install into your shell rc, TOML config, fast cached first-paint with background refresh.
 
-**Killer feature**: per-directory `.splashboard/config.toml` (walk-up discovery). Different repos get different splashes automatically. Competitor products (neofetch, fastfetch, starship) don't do this.
+**Killer feature**: per-directory `.splashboard/dashboard.toml` (walk-up discovery). Different repos get different splashes automatically. Competitor products (neofetch, fastfetch, starship) don't do this.
 
 **Positioning contexts** — all three are first-class:
 
 | context | value axis | config source |
 |---|---|---|
-| self / home | daily delight, ambient info | `$HOME/.splashboard/config.toml` |
-| self / project | operational (CI, branch, PRs) | `./.splashboard/config.toml` (per-dir, walk-up) |
-| other / project | craft + wow for cloners | `./.splashboard/config.toml` shipped with the repo |
+| self / home | daily delight, ambient info | `$HOME/.splashboard/home.dashboard.toml` |
+| self / project | operational (CI, branch, PRs) | `./.splashboard/dashboard.toml` (per-dir, walk-up) |
+| other / project | craft + wow for cloners | `./.splashboard/dashboard.toml` shipped with the repo |
 
 ## Core architecture: Shape × Fetcher × Renderer
 
@@ -110,11 +110,12 @@ All splashboard state lives under **`$HOME/.splashboard/`** (no XDG paths, same 
 
 ```
 $HOME/.splashboard/
-├── config.toml        # global config
-├── secrets.toml       # tokens / env vars exported at startup (git-ignored by install)
-├── trust.toml         # trust store (path + sha256 entries)
-├── cache/             # per-widget cache (key.json + key.lock)
-└── store/             # ReadStore files — $HOME/.splashboard/store/<id>.<ext>
+├── home.dashboard.toml      # global ambient dashboard (cwd not a git repo root)
+├── project.dashboard.toml   # global project dashboard (cwd is a git repo root, no per-dir override)
+├── secrets.toml             # tokens / env vars exported at startup (git-ignored by install)
+├── trust.toml               # trust store (path + sha256 entries)
+├── cache/                   # per-widget cache (key.json + key.lock)
+└── store/                   # ReadStore files — $HOME/.splashboard/store/<id>.<ext>
 ```
 
 `secrets.toml` is a flat top-level TOML map (`GH_TOKEN = "ghp_..."`). Keys get exported
@@ -125,7 +126,7 @@ are filtered out (see `secrets.rs`). `splashboard install` drops `secrets.toml` 
 
 Overridable via `SPLASHBOARD_HOME` env var (for tests, CI, relocatable installs).
 
-Per-directory configs stay in the repo: `./.splashboard/config.toml` or `./.splashboard.toml` (walk-up discovery starting from CWD).
+Per-directory configs stay in the repo: `./.splashboard/dashboard.toml` or `./.splashboard.toml` (walk-up discovery starting from CWD).
 
 ## Widget / renderer / fetcher catalog
 

@@ -265,7 +265,7 @@ fn render_color_keys_section(out: &mut String, keys: &[ColorKey]) {
         out.push_str("_This renderer does not read any `[theme]` tokens._\n\n");
         return;
     }
-    out.push_str("Overridable via the `[theme]` section of `config.toml`.\n\n");
+    out.push_str("Overridable via the `[theme]` section of your dashboard config.\n\n");
     out.push_str("| Key | Description |\n");
     out.push_str("| --- | --- |\n");
     for k in keys {
