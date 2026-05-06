@@ -1,0 +1,162 @@
+# Book project splash — manuscript cover. Slim figlet title centred at the
+# top, then a wide deadline gauge that spans the page like a chapter
+# divider, the writing-pace sparkline below, and three small tables (LOC
+# totals, chapters, recent edits) at the bottom. Reads as a book front
+# matter page rather than a code dashboard.
+
+[showcase]
+title = "Manuscript"
+description = "Slim figlet title centred above a wide deadline gauge, a writing-pace sparkline below, and totals / chapters / recent-edits tables along the bottom. Manuscript front-matter aesthetic."
+context = "project"
+requires = ["local git repo with prose content"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Slim figlet title.
+[[widget]]
+id = "name"
+fetcher = "git_repo_name"
+render = { type = "text_ascii", style = "figlet", font = "small", color = "panel_title", align = "center" }
+
+# Edition / age subtitle — version tag and how long the project has run,
+# laid out side-by-side as a single byline for the manuscript cover.
+[[widget]]
+id = "byline"
+fetcher = "git_latest_tag"
+shape = "text"
+render = { type = "text_plain", align = "right", color = "text_secondary" }
+
+[[widget]]
+id = "byline_sep"
+fetcher = "basic_static"
+format = "  ·  "
+render = { type = "text_plain", align = "center", color = "text_secondary" }
+
+[[widget]]
+id = "age"
+fetcher = "git_age"
+shape = "text"
+render = { type = "text_plain", align = "left", color = "text_secondary" }
+
+# Wide deadline gauge — spans the page. 30 segments so the bar actually
+# fills the canvas band instead of being a tiny 5-LED nub.
+[[widget]]
+id = "deadline"
+fetcher = "clock_countdown"
+shape = "ratio"
+render = { type = "gauge_segment", tone = "drain", segments = 30 }
+  [widget.options]
+  target = "2026-12-31"
+  target_label = "ship"
+  window_days = 365
+
+# Writing pace sparkline.
+[[widget]]
+id = "pace"
+fetcher = "git_commits_activity"
+shape = "number_series"
+render = { type = "chart_sparkline", style = "bars" }
+
+# LOC totals.
+[[widget]]
+id = "totals"
+fetcher = "code_loc"
+shape = "entries"
+render = "grid_table"
+
+# Longest chapters — `code_largest_files` reads as "chapter X — N words"
+# in a manuscript repo (the largest .md files are the longest chapters).
+[[widget]]
+id = "chapters"
+fetcher = "code_largest_files"
+shape = "entries"
+render = "grid_table"
+  [widget.options]
+  count = 6
+
+# Recent edits.
+[[widget]]
+id = "edits"
+fetcher = "git_recent_commits"
+render = "list_timeline"
+  [widget.options]
+  count = 4
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 2 }
+
+# Cover band — slim figlet centred.
+[[row]]
+height = { length = 5 }
+  [[row.child]]
+  widget = "name"
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "byline"
+  width = { length = 8 }
+  [[row.child]]
+  widget = "byline_sep"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "age"
+  width = { length = 8 }
+
+[[row]]
+height = { length = 2 }
+
+# Deadline gauge — segmented bar centred under the cover band.
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "deadline"
+  width = { length = 49 }
+
+[[row]]
+height = { length = 1 }
+
+# Writing-pace sparkline — full-width band.
+[[row]]
+height = { length = 5 }
+flex = "center"
+  [[row.child]]
+  widget = "pace"
+  width = { length = 100 }
+  border = "top"
+  title = "  writing pace · commits/week  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Bottom: totals (left, narrow) | chapters (centre) | recent edits (right).
+[[row]]
+height = { length = 8 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "totals"
+  width = { length = 26 }
+  border = "top"
+  title = "  totals  "
+  title_align = "left"
+  [[row.child]]
+  widget = "chapters"
+  width = { length = 34 }
+  border = "top"
+  title = "  longest chapters  "
+  title_align = "left"
+  [[row.child]]
+  widget = "edits"
+  width = { length = 38 }
+  border = "top"
+  title = "  recent edits  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }

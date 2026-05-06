@@ -12,9 +12,12 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 mod dashboard_snapshot;
+mod gallery;
 mod gen_matrix;
 mod html_snapshot;
+mod preset_index;
 mod snapshots;
+mod themes;
 
 #[derive(Parser)]
 #[command(
@@ -32,12 +35,24 @@ struct Cli {
     /// `index.mdx` and other landing surfaces. One file per entry in `DASHBOARD_SNAPSHOTS`.
     #[arg(long, default_value = "docs-site/src/assets/rendered")]
     rendered_out: PathBuf,
+
+    /// Source directory of `examples/usecases/*.toml` — maintainer-curated environment-specific
+    /// dashboards. Each file's `[showcase]` table supplies title / description / context.
+    #[arg(long, default_value = "examples/usecases")]
+    usecases_src: PathBuf,
+
+    /// Source directory of `examples/community/*.toml` — user-submitted dashboards. Same TOML
+    /// shape as `usecases_src`, looser curation tier.
+    #[arg(long, default_value = "examples/community")]
+    community_src: PathBuf,
 }
 
 /// Every preset renders at the same 120 × 42 cell canvas so the embedded snapshots read as a
-/// uniform gallery under `.splash-landing` (the CSS scales font-size off a 120-cell baseline and
-/// `.splash-snapshot` has no fixed aspect ratio). 42 = project_github's natural height;
-/// shorter presets get blank rows of theme bg at the bottom, same as an oversized terminal would.
+/// uniform gallery under `.splash-landing`. 42 = project_github's natural height; shorter
+/// presets get blank theme-bg rows below their content. `html_snapshot::buffer_to_html_dashboard`
+/// then top-aligns the rendered content (rotating any leading blank rows to the bottom) and
+/// prepends a fixed `PADDING_TOP_ROWS` breathing-room band — so the final HTML lands at a
+/// consistent height with consistent top padding regardless of how dense the preset is.
 const SNAPSHOT_WIDTH: u16 = 120;
 const SNAPSHOT_HEIGHT: u16 = 42;
 
@@ -60,6 +75,24 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     gen_matrix::run(&cli.out)?;
     render_dashboards(&cli.rendered_out)?;
+    preset_index::run(&cli.rendered_out)?;
+    gallery::run(
+        &cli.usecases_src,
+        &cli.rendered_out.join("usecases"),
+        SNAPSHOT_WIDTH,
+        SNAPSHOT_HEIGHT,
+    )?;
+    gallery::run(
+        &cli.community_src,
+        &cli.rendered_out.join("community"),
+        SNAPSHOT_WIDTH,
+        SNAPSHOT_HEIGHT,
+    )?;
+    themes::run(
+        &cli.rendered_out.join("themes"),
+        SNAPSHOT_WIDTH,
+        SNAPSHOT_HEIGHT,
+    )?;
     Ok(())
 }
 
@@ -94,6 +127,12 @@ fn scrub_host_env() {
         "ALACRITTY_LOG",
         "WEZTERM_PANE",
         "TERM_PROGRAM",
+        // `media_image`'s picker treats `LC_TERMINAL=iTerm2` as a hint to switch from the
+        // halfblocks protocol to iTerm2's OSC 1337 inline-image escape; that escape leaks
+        // into the test buffer when xtask runs on a Mac iTerm host. Scrub it so the
+        // committed snapshots stay halfblocks-rendered regardless of dev machine.
+        "LC_TERMINAL",
+        "LC_TERMINAL_VERSION",
     ] {
         // SAFETY: xtask is a single-threaded CLI entry point; no other threads can race this.
         unsafe { std::env::remove_var(key) };
@@ -207,6 +246,8 @@ mod tests {
             cli.rendered_out,
             PathBuf::from("docs-site/src/assets/rendered")
         );
+        assert_eq!(cli.usecases_src, PathBuf::from("examples/usecases"));
+        assert_eq!(cli.community_src, PathBuf::from("examples/community"));
     }
 
     #[test]
@@ -217,9 +258,15 @@ mod tests {
             "tmp/docs",
             "--rendered-out",
             "tmp/rendered",
+            "--usecases-src",
+            "tmp/usecases",
+            "--community-src",
+            "tmp/community",
         ]);
         assert_eq!(cli.out, PathBuf::from("tmp/docs"));
         assert_eq!(cli.rendered_out, PathBuf::from("tmp/rendered"));
+        assert_eq!(cli.usecases_src, PathBuf::from("tmp/usecases"));
+        assert_eq!(cli.community_src, PathBuf::from("tmp/community"));
     }
 
     #[test]
@@ -270,6 +317,8 @@ mod tests {
             "ALACRITTY_LOG",
             "WEZTERM_PANE",
             "TERM_PROGRAM",
+            "LC_TERMINAL",
+            "LC_TERMINAL_VERSION",
         ];
         let _guard = EnvGuard::capture(&keys);
 

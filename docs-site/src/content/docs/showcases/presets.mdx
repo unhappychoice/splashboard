@@ -1,0 +1,49 @@
+---
+title: Presets
+description: Bundled home / project templates — what they look like and which fetchers they use.
+---
+
+The curated home / project templates that ship with the binary. Pick one with
+`splashboard install --template <name>`. Per-widget breakdowns live on the
+[Presets guide](/guides/presets/).
+
+The descriptions below are pulled straight from the install picker's metadata,
+so they can never drift from what `splashboard install --template` actually
+shows you.
+
+export const presetHtml = Object.fromEntries(
+  Object.entries(import.meta.glob('../../../assets/rendered/*.html', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  })).map(([path, html]) => [path.split('/').pop().replace(/\.html$/, ''), html])
+);
+
+export const presetIndex = (() => {
+  const indexes = import.meta.glob('../../../assets/rendered/_presets.json', { eager: true });
+  const first = Object.values(indexes)[0];
+  return first ? (first.default ?? first) : [];
+})();
+
+export const homePresets = presetIndex.filter((p) => p.context === 'home');
+export const projectPresets = presetIndex.filter((p) => p.context === 'project');
+
+## Home presets
+
+{homePresets.map((item) => (
+  <section key={item.slug}>
+    <h3><code>{item.slug}</code></h3>
+    <p>{item.description}</p>
+    <div class="splash-landing" set:html={presetHtml[item.slug] ?? ''} />
+  </section>
+))}
+
+## Project presets
+
+{projectPresets.map((item) => (
+  <section key={item.slug}>
+    <h3><code>{item.slug}</code></h3>
+    <p>{item.description}</p>
+    <div class="splash-landing" set:html={presetHtml[item.slug] ?? ''} />
+  </section>
+))}

@@ -20,15 +20,37 @@ use ratatui::widgets::Block;
 use splashboard::config::{Config, DashboardConfig, SettingsConfig, WidgetConfig};
 use splashboard::fetcher::{FetchContext, RegisteredFetcher, Registry as FetcherRegistry};
 use splashboard::layout as layout_engine;
-use splashboard::payload::{Body, Payload, TextBlockData, TextData};
+use splashboard::payload::{Body, ImageData, Payload, TextBlockData, TextData};
 use splashboard::render::{
     Registry as RenderRegistry, RenderOptions, RenderSpec, Shape, default_renderer_for,
 };
 use splashboard::theme::Theme;
 
-use crate::html_snapshot::buffer_to_html;
+use crate::html_snapshot::buffer_to_html_dashboard;
+
+/// Bundled placeholder PNG for `Image` widgets whose fetcher has no `sample_body` (e.g.
+/// `github_avatar`, `random_cat`, `random_dog`, `code_language_logo`). Materialised to a temp
+/// file once per xtask run; `media_image` then renders it through `ratatui_image`'s halfblocks
+/// protocol so the gallery shows actual coloured pixels in the slot instead of a blank
+/// rectangle. The `_image_placeholder.png` asset is a simple camera icon — chosen over the
+/// `</>`-glyph `_generic.png` (which doubles as `code_language_logo`'s own fallback) because a
+/// camera reads as "image goes here" across every image-shape fetcher (avatars, pet portraits,
+/// code logos), whereas `</>` only really fits the language-logo case.
+const PLACEHOLDER_IMAGE_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../assets/_image_placeholder.png"
+));
 
 pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result<String> {
+    render_config_html_with_theme(config_path, width, height, Theme::default())
+}
+
+pub fn render_config_html_with_theme(
+    config_path: &Path,
+    width: u16,
+    height: u16,
+    theme: Theme,
+) -> Result<String> {
     let body = fs::read_to_string(config_path)
         .with_context(|| format!("read {}", config_path.display()))?;
     let dashboard = DashboardConfig::parse(&body)
@@ -36,7 +58,6 @@ pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result
     let config = Config::from_parts(SettingsConfig::default(), dashboard);
     let fetchers = FetcherRegistry::with_builtins();
     let renderers = RenderRegistry::with_builtins();
-    let theme = Theme::default();
     let payloads = sample_payloads(&config.widgets, &fetchers, &renderers);
     let specs = widget_specs(&config.widgets);
     let root = config.to_layout();
@@ -63,7 +84,10 @@ pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result
             );
         })
         .context("draw dashboard")?;
-    Ok(buffer_to_html(terminal.backend().buffer()))
+    Ok(buffer_to_html_dashboard(
+        terminal.backend().buffer(),
+        theme.bg,
+    ))
 }
 
 /// Resolve a `Payload` per widget. Realtime fetchers (`clock`, `clock_derived`, `system`, …)
@@ -92,7 +116,9 @@ fn sample_payloads(
                 };
                 return Some((w.id.clone(), realtime.compute(&ctx)));
             }
-            let body = override_from_format(w, shape).or_else(|| fetcher.sample_body(shape))?;
+            let body = override_from_format(w, shape)
+                .or_else(|| fetcher.sample_body(shape))
+                .or_else(|| placeholder_for(shape))?;
             Some((
                 w.id.clone(),
                 Payload {
@@ -104,6 +130,41 @@ fn sample_payloads(
             ))
         })
         .collect()
+}
+
+/// Last-chance fallback when neither the fetcher's `sample_body` nor `override_from_format`
+/// produces a body. Today the only shape we synthesise here is `Image` — anything else stays
+/// `None` and the widget gets dropped from the payload map (rendering a blank slot is the
+/// right behaviour for, say, an unimplemented `Heatmap` sample).
+fn placeholder_for(shape: Shape) -> Option<Body> {
+    match shape {
+        Shape::Image => placeholder_image_path()
+            .map(|path| {
+                Body::Image(ImageData {
+                    path: path.to_string_lossy().into_owned(),
+                })
+            })
+            .ok(),
+        _ => None,
+    }
+}
+
+fn placeholder_image_path() -> Result<std::path::PathBuf> {
+    use std::sync::OnceLock;
+    static CACHED: OnceLock<std::path::PathBuf> = OnceLock::new();
+    if let Some(path) = CACHED.get() {
+        return Ok(path.clone());
+    }
+    let path = std::env::temp_dir().join(format!(
+        "splashboard-xtask-image-placeholder-{}.png",
+        std::process::id()
+    ));
+    if !path.exists() {
+        fs::write(&path, PLACEHOLDER_IMAGE_BYTES)
+            .with_context(|| format!("write placeholder image to {}", path.display()))?;
+    }
+    let _ = CACHED.set(path.clone());
+    Ok(path)
 }
 
 fn resolve_shape(
@@ -174,7 +235,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_typewriter" => RenderSpec::Full {
             type_name: "text_plain".into(),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_postfx" => {
             RenderSpec::Short("text_plain".into())
@@ -184,7 +245,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_postfx" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_boot" => {
             RenderSpec::Short("text_plain".into())
@@ -194,7 +255,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_boot" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_scanlines" => {
             RenderSpec::Short("text_plain".into())
@@ -204,7 +265,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_scanlines" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_splitflap" => {
             RenderSpec::Short("text_plain".into())
@@ -214,7 +275,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_splitflap" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_wave" => {
             RenderSpec::Short("text_plain".into())
@@ -224,7 +285,7 @@ fn deanimate(spec: RenderSpec) -> RenderSpec {
             ref options,
         } if type_name == "animated_wave" => RenderSpec::Full {
             type_name: inner_renderer_name(options),
-            options: options.clone(),
+            options: strip_wrapper_extras(options.clone()),
         },
         RenderSpec::Short(ref name) if name == "animated_figlet_morph" => RenderSpec::Full {
             type_name: "text_ascii".into(),
@@ -260,6 +321,20 @@ fn inner_renderer_name(opts: &RenderOptions) -> String {
     opts.extra_str("inner")
         .map(String::from)
         .unwrap_or_else(|| "text_plain".into())
+}
+
+/// Drop animation-wrapper-only extras before forwarding the options bag to the inner renderer.
+/// Inner renderers like `text_ascii` deserialise `raw` with `deny_unknown_fields`, so a leftover
+/// `inner = "text_ascii"` (or `effect`, `boot_lines`, …) would silently fail parsing and
+/// collapse the whole bag to defaults — losing `font`, `pixel_size`, etc. Stripping these
+/// preserves the user-set inner-renderer options through the deanimate transform.
+const WRAPPER_ONLY_EXTRAS: &[&str] = &["inner", "effect", "boot_lines", "font_sequence"];
+
+fn strip_wrapper_extras(mut opts: RenderOptions) -> RenderOptions {
+    for key in WRAPPER_ONLY_EXTRAS {
+        opts = opts.without_extra(key);
+    }
+    opts
 }
 
 fn font_sequence(opts: &RenderOptions) -> Option<Vec<String>> {
@@ -538,5 +613,52 @@ height = { length = 1 }
                     && options.style.as_deref() == Some("figlet")
                     && options.extra_str("font") == Some("ansi_shadow")
         ));
+    }
+
+    /// Regression: `animated_postfx` carries `inner` / `effect` extras alongside the
+    /// inner renderer's options (`font`, `pixel_size`, …). Forwarding the bag verbatim to
+    /// `text_ascii` tripped its `deny_unknown_fields` parser and silently collapsed the
+    /// options to defaults — `home_splash` would render in the `standard` font instead of
+    /// the configured `ansi_shadow`. Stripping the wrapper-only extras lets the inner
+    /// renderer keep its real options.
+    #[test]
+    fn deanimate_postfx_strips_wrapper_extras_so_inner_options_survive() {
+        let spec = RenderSpec::Full {
+            type_name: "animated_postfx".into(),
+            options: RenderOptions {
+                style: Some("figlet".into()),
+                color: Some("panel_title".into()),
+                align: Some("center".into()),
+                ..RenderOptions::default()
+            }
+            .with_extra("inner", "text_ascii")
+            .with_extra("effect", "particle_burst")
+            .with_extra("font", "ansi_shadow"),
+        };
+
+        match deanimate(spec) {
+            RenderSpec::Full { type_name, options } => {
+                assert_eq!(type_name, "text_ascii");
+                assert_eq!(options.style.as_deref(), Some("figlet"));
+                assert_eq!(options.extra_str("font"), Some("ansi_shadow"));
+                assert_eq!(options.extra_str("inner"), None);
+                assert_eq!(options.extra_str("effect"), None);
+
+                // The flattened bag must round-trip cleanly through text_ascii's Options
+                // parser — deny_unknown_fields will reject any leftover wrapper extras.
+                #[derive(serde::Deserialize, Debug, Default)]
+                #[serde(deny_unknown_fields)]
+                struct AsciiOptions {
+                    #[serde(default)]
+                    font: Option<String>,
+                    #[serde(default)]
+                    #[allow(dead_code)]
+                    pixel_size: Option<String>,
+                }
+                let parsed: AsciiOptions = options.parse_specific();
+                assert_eq!(parsed.font.as_deref(), Some("ansi_shadow"));
+            }
+            other => panic!("expected Full, got {other:?}"),
+        }
     }
 }

@@ -1,0 +1,139 @@
+# Linear sprint dashboard — no hero, just three Overview panels (cycle
+# stats / state breakdown / burndown sparkline) drawn from the same
+# `linear_cycle` read in three different shapes. Active issues +
+# notifications sit below; the cycle calendar carries the time axis at
+# the bottom alongside a personal priority breakdown.
+
+[showcase]
+title = "Linear sprint board"
+description = "Cycle overview as three panels — stats, state breakdown bars, burndown sparkline — all derived from the same `linear_cycle` fetcher in different shapes. Active issues and notifications sit below; cycle calendar + personal priority breakdown anchor the bottom."
+context = "home"
+requires = ["Linear API token (`LINEAR_TOKEN`)"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Overview row — three views of the same cycle.
+[[widget]]
+id = "cycle_stats"
+fetcher = "linear_cycle"
+shape = "entries"
+render = "grid_table"
+
+[[widget]]
+id = "state_bars"
+fetcher = "linear_cycle"
+shape = "bars"
+render = { type = "chart_bar", horizontal = true }
+
+[[widget]]
+id = "burndown"
+fetcher = "linear_cycle"
+shape = "number_series"
+render = { type = "chart_sparkline", label = "completed" }
+
+# Operations row — what's open and what needs attention.
+[[widget]]
+id = "active_issues"
+fetcher = "linear_issues"
+render = "list_timeline"
+  [widget.options]
+  filter_state = "started"
+  filter_assignee = "me"
+  limit = 4
+
+[[widget]]
+id = "notifications"
+fetcher = "linear_notifications"
+render = "list_timeline"
+  [widget.options]
+  filter_read = "unread"
+  limit = 4
+
+# Bottom row — time axis + personal priority distribution.
+[[widget]]
+id = "cycle_calendar"
+fetcher = "linear_cycle"
+shape = "calendar"
+render = "grid_calendar"
+
+[[widget]]
+id = "priority"
+fetcher = "linear_issues"
+shape = "bars"
+render = { type = "chart_bar", horizontal = true }
+  [widget.options]
+  filter_assignee = "me"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Overview: cycle stats / state bars / burndown sparkline.
+[[row]]
+height = { length = 9 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "cycle_stats"
+  width = { length = 38 }
+  border = "top"
+  title = "  cycle stats  "
+  title_align = "left"
+  [[row.child]]
+  widget = "state_bars"
+  width = { length = 38 }
+  border = "top"
+  title = "  state breakdown  "
+  title_align = "left"
+  [[row.child]]
+  widget = "burndown"
+  width = { length = 38 }
+  border = "top"
+  title = "  burndown  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Operations: active issues + unread notifications.
+[[row]]
+height = { length = 9 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "active_issues"
+  width = { length = 56 }
+  border = "top"
+  title = "  active · me  "
+  title_align = "left"
+  [[row.child]]
+  widget = "notifications"
+  width = { length = 60 }
+  border = "top"
+  title = "  notifications  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Time axis + personal priority distribution.
+[[row]]
+height = { length = 10 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "cycle_calendar"
+  width = { length = 30 }
+  border = "top"
+  title = "  cycle days  "
+  title_align = "left"
+  [[row.child]]
+  widget = "priority"
+  width = { length = 86 }
+  border = "top"
+  title = "  by priority · me  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }

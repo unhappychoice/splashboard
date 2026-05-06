@@ -15,4 +15,6 @@ clap = { version = "4", features = ["derive"] }
 ratatui = { version = "0.30", features = ["widget-calendar"] }
 toml = "1.1"
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 unicode-width = "0.2"

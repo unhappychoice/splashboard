@@ -7,8 +7,8 @@ use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    Body, NumberSeriesData, Payload, PointSeries, PointSeriesData, Status, TimelineData,
-    TimelineEvent,
+    Bar, BarsData, Body, NumberSeriesData, Payload, PointSeries, PointSeriesData, Status,
+    TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 use crate::samples;
@@ -17,7 +17,12 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, parse_timestamp, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::NumberSeries, Shape::Timeline, Shape::PointSeries];
+const SHAPES: &[Shape] = &[
+    Shape::NumberSeries,
+    Shape::Timeline,
+    Shape::PointSeries,
+    Shape::Bars,
+];
 const DEFAULT_LIMIT: u32 = 30;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -66,7 +71,7 @@ impl Fetcher for GithubActionHistory {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Recent CI workflow runs as a pass/fail sparkline (`NumberSeries`), a timeline of the last N runs, or a duration scatter plot of `(run_number, seconds)` for spotting CI slowdowns (`PointSeries`). Use `github_action_status` instead for just the current main-branch state."
+        "Recent CI workflow runs as a pass/fail sparkline (`NumberSeries`), a timeline of the last N runs, a duration scatter plot of `(run_number, seconds)` for spotting CI slowdowns (`PointSeries`), or a passed/failed count breakdown (`Bars`). Use `github_action_status` instead for just the current main-branch state."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -80,18 +85,37 @@ impl Fetcher for GithubActionHistory {
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
-            Shape::NumberSeries => {
-                samples::number_series(&[1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
-            }
+            Shape::NumberSeries => samples::number_series(&[
+                1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0,
+                1, 1,
+            ]),
             Shape::Timeline => samples::timeline(&[
                 (1_776_000_000, "#4235 main", Some("passing")),
-                (1_775_800_000, "#4234 feat/a", Some("failing")),
+                (1_775_800_000, "#4234 feat/auth-refactor", Some("failing")),
                 (1_775_600_000, "#4233 main", Some("passing")),
+                (1_775_400_000, "#4232 main", Some("passing")),
+                (1_775_200_000, "#4231 hotfix/login", Some("passing")),
+                (1_775_000_000, "#4230 main", Some("failing")),
+                (1_774_800_000, "#4229 develop", Some("passing")),
+                (1_774_600_000, "#4228 main", Some("passing")),
             ]),
             Shape::PointSeries => Body::PointSeries(PointSeriesData {
                 series: vec![PointSeries {
                     name: "ci duration (s)".into(),
                     points: vec![
+                        (4220.0, 138.0),
+                        (4221.0, 145.0),
+                        (4222.0, 152.0),
+                        (4223.0, 148.0),
+                        (4224.0, 162.0),
+                        (4225.0, 158.0),
+                        (4226.0, 175.0),
+                        (4227.0, 168.0),
+                        (4228.0, 142.0),
+                        (4229.0, 156.0),
+                        (4230.0, 220.0),
+                        (4231.0, 195.0),
+                        (4232.0, 148.0),
                         (4233.0, 142.0),
                         (4234.0, 168.0),
                         (4235.0, 138.0),
@@ -99,6 +123,18 @@ impl Fetcher for GithubActionHistory {
                         (4237.0, 145.0),
                     ],
                 }],
+            }),
+            Shape::Bars => Body::Bars(BarsData {
+                bars: vec![
+                    Bar {
+                        label: "passed".into(),
+                        value: 25,
+                    },
+                    Bar {
+                        label: "failed".into(),
+                        value: 5,
+                    },
+                ],
             }),
             _ => return None,
         })
@@ -171,6 +207,25 @@ fn render_body(runs: &[WorkflowRun], shape: Shape) -> Body {
                     .collect(),
             }],
         }),
+        Shape::Bars => {
+            let passed = runs
+                .iter()
+                .filter(|r| matches!(r.conclusion.as_deref(), Some("success")))
+                .count() as u64;
+            let failed = (runs.len() as u64).saturating_sub(passed);
+            Body::Bars(BarsData {
+                bars: vec![
+                    Bar {
+                        label: "passed".into(),
+                        value: passed,
+                    },
+                    Bar {
+                        label: "failed".into(),
+                        value: failed,
+                    },
+                ],
+            })
+        }
         _ => Body::NumberSeries(NumberSeriesData {
             values: runs
                 .iter()
@@ -377,7 +432,7 @@ mod tests {
         };
         assert_eq!(point_series.series.len(), 1);
         assert_eq!(point_series.series[0].name, "ci duration (s)");
-        assert_eq!(point_series.series[0].points[3], (4236.0, 220.0));
+        assert_eq!(point_series.series[0].points[16], (4236.0, 220.0));
         assert!(fetcher.sample_body(Shape::Text).is_none());
     }
 

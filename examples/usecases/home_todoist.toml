@@ -1,0 +1,120 @@
+# Todoist GTD dashboard — three-column kanban: overdue / today /
+# upcoming, each one a `todoist_tasks` list filtered by `filter_due`.
+# Three count badges in a subtle band header summarise the day's pulse,
+# then the columns themselves take up the body. No figlet hero, no
+# bottom quote — just task columns, all business.
+#
+# Showcase note: `todoist_tasks.sample_body` is options-blind, so all
+# three count badges and all three list columns render identical sample
+# content in the preview. In live use each column shows its own
+# filtered set.
+
+[showcase]
+title = "Todoist GTD"
+description = "Three-column kanban (overdue / today / upcoming), each a `todoist_tasks` list filtered by `filter_due`. Three count badges as a header strip summarise the day's pulse. No figlet, no quote — task columns are the dashboard."
+context = "home"
+requires = ["Todoist API token (`TODOIST_TOKEN`)"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Three count badges — same fetcher with different `filter_due`. Tone
+# follows the badge sample's Status (Error/Warn/Ok) so overdue reads red
+# in live use.
+[[widget]]
+id = "count_overdue"
+fetcher = "todoist_tasks"
+shape = "badge"
+render = { type = "status_badge", padding = 2, align = "center" }
+  [widget.options]
+  filter_due = "overdue"
+
+[[widget]]
+id = "count_today"
+fetcher = "todoist_tasks"
+shape = "badge"
+render = { type = "status_badge", padding = 2, align = "center" }
+  [widget.options]
+  filter_due = "today"
+
+[[widget]]
+id = "count_upcoming"
+fetcher = "todoist_tasks"
+shape = "badge"
+render = { type = "status_badge", padding = 2, align = "center" }
+  [widget.options]
+  filter_due = "upcoming"
+
+# Three task columns — same fetcher, different `filter_due`.
+[[widget]]
+id = "list_overdue"
+fetcher = "todoist_tasks"
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 12 }
+  [widget.options]
+  filter_due = "overdue"
+
+[[widget]]
+id = "list_today"
+fetcher = "todoist_tasks"
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 12 }
+  [widget.options]
+  filter_due = "today"
+
+[[widget]]
+id = "list_upcoming"
+fetcher = "todoist_tasks"
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 12 }
+  [widget.options]
+  filter_due = "upcoming"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+# Header strip: three count badges as the day's pulse.
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 1 }
+flex = "center"
+gap = 4
+  [[row.child]]
+  widget = "count_overdue"
+  width = { length = 32 }
+  [[row.child]]
+  widget = "count_today"
+  width = { length = 32 }
+  [[row.child]]
+  widget = "count_upcoming"
+  width = { length = 32 }
+
+[[row]]
+height = { length = 1 }
+
+# Three task columns — the dashboard body. 36 + 36 + 36 + 4 + 4 = 116.
+[[row]]
+height = { length = 30 }
+flex = "center"
+gap = 4
+  [[row.child]]
+  widget = "list_overdue"
+  width = { length = 36 }
+  border = "top"
+  title = "  overdue  "
+  title_align = "left"
+  [[row.child]]
+  widget = "list_today"
+  width = { length = 36 }
+  border = "top"
+  title = "  today  "
+  title_align = "left"
+  [[row.child]]
+  widget = "list_upcoming"
+  width = { length = 36 }
+  border = "top"
+  title = "  upcoming  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }

@@ -1,0 +1,124 @@
+# GitHub triage inbox — designed around a single visual move: the
+# contributions heatmap fills the masthead band as a wide horizontal strip,
+# anchoring the splash with "here's what your year of GitHub looks like".
+# Avatar + identity card sit to its left as a sidebar; the four inbox
+# queues stack as a 2×2 grid below, each with a small count badge in the
+# title so heaviness reads at a glance.
+
+[showcase]
+title = "GitHub inbox"
+description = "Contributions heatmap as a wide masthead band, avatar identity card to its left, then a 2×2 grid of notifications / my PRs / review queue / assigned-issues. The year-at-a-glance heatmap is the visual hero, the queues the operational body."
+context = "home"
+requires = ["GitHub auth (gh login or `GH_TOKEN` / `GITHUB_TOKEN`)"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Avatar.
+[[widget]]
+id = "avatar"
+fetcher = "github_avatar"
+render = { type = "media_image", fit = "contain", max_width = 14, max_height = 7, align = "center" }
+
+# Identity lines.
+[[widget]]
+id = "user"
+fetcher = "github_user"
+shape = "text_block"
+render = { type = "list_plain" }
+
+# Hero — contributions heatmap, full year, fills the masthead band.
+[[widget]]
+id = "heatmap"
+fetcher = "github_contributions"
+shape = "heatmap"
+render = "grid_heatmap"
+
+# Four inbox queues.
+[[widget]]
+id = "notifications"
+fetcher = "github_notifications"
+render = { type = "list_links", max_items = 5 }
+
+[[widget]]
+id = "my_prs"
+fetcher = "github_my_prs"
+render = { type = "list_links", max_items = 5 }
+
+[[widget]]
+id = "review_queue"
+fetcher = "github_review_requests"
+render = { type = "list_links", max_items = 5 }
+
+[[widget]]
+id = "assigned"
+fetcher = "github_assigned_issues"
+render = { type = "list_links", max_items = 5 }
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+# Masthead: avatar (14) | identity (24) | heatmap (76). Asymmetric.
+[[row]]
+height = { length = 7 }
+bg = "subtle"
+gap = 2
+  [[row.child]]
+  widget = "avatar"
+  width = { length = 14 }
+  [[row.child]]
+  widget = "user"
+  width = { length = 24 }
+  [[row.child]]
+  widget = "heatmap"
+  width = { length = 78 }
+
+[[row]]
+height = { length = 1 }
+bg = "subtle"
+
+[[row]]
+height = { length = 1 }
+
+# Inbox 2×2 grid, equal cells.
+[[row]]
+height = { length = 7 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "notifications"
+  width = { length = 56 }
+  border = "top"
+  title = "  notifications  "
+  title_align = "left"
+  [[row.child]]
+  widget = "my_prs"
+  width = { length = 56 }
+  border = "top"
+  title = "  my PRs  "
+  title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+[[row]]
+height = { length = 7 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "review_queue"
+  width = { length = 56 }
+  border = "top"
+  title = "  review queue  "
+  title_align = "left"
+  [[row.child]]
+  widget = "assigned"
+  width = { length = 56 }
+  border = "top"
+  title = "  assigned  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }

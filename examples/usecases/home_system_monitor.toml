@@ -1,0 +1,161 @@
+# Mission-control style laptop monitor — every panel is a gauge or a small
+# table, packed into a tight grid that reads as one continuous control
+# board. No figlet, no decorative bands. The visual signature is "lots of
+# small panes with their own borders, all aligned to the same column grid".
+#
+# All four gauges (battery / cpu / memory / disk) use vertical
+# `gauge_thermometer` so the top row reads as a row of dial-style indicators.
+# Panel heights match the thermometer column so nothing leaves dead space.
+
+[showcase]
+title = "Laptop mission control"
+description = "Tight grid of vertical thermometer gauges and small tables: battery / cpu / memory / disk thermometers across the top, uptime / load / memory details / mounts tables below, and a full-width processes table at the bottom."
+context = "home"
+requires = ["local system access (no auth)"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Top row — four vertical thermometers, identical style.
+[[widget]]
+id = "battery"
+fetcher = "system_battery"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "bat" }
+
+[[widget]]
+id = "cpu_gauge"
+fetcher = "system_cpu"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "cpu" }
+
+[[widget]]
+id = "memory_gauge"
+fetcher = "system_memory"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "ram" }
+
+[[widget]]
+id = "disk_gauge"
+fetcher = "system_disk_usage"
+shape = "ratio"
+render = { type = "gauge_thermometer", tone = "drain", label = "dsk" }
+
+# Middle / bottom row tables.
+[[widget]]
+id = "uptime"
+fetcher = "system_uptime"
+shape = "text"
+render = { type = "text_plain", align = "left" }
+
+[[widget]]
+id = "load_table"
+fetcher = "system_load"
+shape = "entries"
+render = "grid_table"
+
+[[widget]]
+id = "memory_details"
+fetcher = "system_memory"
+shape = "entries"
+render = "grid_table"
+
+[[widget]]
+id = "disk_bars"
+fetcher = "system_disk_usage"
+shape = "bars"
+render = { type = "chart_bar", horizontal = true }
+
+[[widget]]
+id = "processes"
+fetcher = "system_processes"
+shape = "entries"
+render = "grid_table"
+  [widget.options]
+  count = 8
+
+# ── Layout ─────────────────────────────────────────────────────────
+# Four 28-cell columns: 28 × 4 + 2 × 3 = 118.
+
+[[row]]
+height = { length = 1 }
+
+# Top row — four thermometers on the left, uptime stacked over load-avg
+# in a single right-side column. 11 rows tall so the thermometer columns
+# have enough vertical resolution to show partial fill steps; the right
+# column splits 5/6 between uptime (only 1 line of content) and load avg
+# (3 entries) so neither panel feels empty.
+[[row]]
+height = { length = 11 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "battery"
+  width = { length = 13 }
+  border = "top"
+  title = "  bat  "
+  title_align = "center"
+  [[row.child]]
+  widget = "cpu_gauge"
+  width = { length = 13 }
+  border = "top"
+  title = "  cpu  "
+  title_align = "center"
+  [[row.child]]
+  widget = "memory_gauge"
+  width = { length = 13 }
+  border = "top"
+  title = "  ram  "
+  title_align = "center"
+  [[row.child]]
+  widget = "disk_gauge"
+  width = { length = 13 }
+  border = "top"
+  title = "  dsk  "
+  title_align = "center"
+  [[row.child]]
+  width = { length = 56 }
+    [[row.child.row]]
+    height = { length = 5 }
+      [[row.child.row.child]]
+      widget = "uptime"
+      border = "top"
+      title = "  uptime  "
+      title_align = "left"
+    [[row.child.row]]
+    height = { length = 6 }
+      [[row.child.row.child]]
+      widget = "load_table"
+      border = "top"
+      title = "  load avg  "
+      title_align = "left"
+
+[[row]]
+height = { length = 1 }
+
+# Middle row — memory details + mounts + top processes, three columns.
+# Sized at 11 rows so processes (8 entries + title) fits without padding.
+[[row]]
+height = { length = 11 }
+flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "memory_details"
+  width = { length = 38 }
+  border = "top"
+  title = "  memory  "
+  title_align = "left"
+  [[row.child]]
+  widget = "disk_bars"
+  width = { length = 38 }
+  border = "top"
+  title = "  mounts  "
+  title_align = "left"
+  [[row.child]]
+  widget = "processes"
+  width = { length = 38 }
+  border = "top"
+  title = "  top processes  "
+  title_align = "left"
+
+[[row]]
+height = { fill = 1 }

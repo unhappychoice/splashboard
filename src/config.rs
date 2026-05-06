@@ -200,7 +200,7 @@ pub enum FlexSpec {
 pub struct ChildConfig {
     /// Referenced widget id. Absent means this child is a pure layout spacer — the slot
     /// reserves its `width` but paints nothing. Preferred over the historical
-    /// `basic_static`-with-empty-format hack for gap columns.
+    /// `basic_static`-with-empty-format hack for gap columns. Mutually exclusive with `rows`.
     #[serde(default)]
     pub widget: Option<String>,
     #[serde(default)]
@@ -214,6 +214,11 @@ pub struct ChildConfig {
     /// Per-child background; see [`RowConfig::bg`].
     #[serde(default)]
     pub bg: Option<BgSpec>,
+    /// Nested rows stacked vertically inside this child cell. Lets a single cell host a
+    /// sub-layout (e.g. uptime above load-avg in the right gutter of a thermometer row).
+    /// Mutually exclusive with `widget`; when both are set, `rows` wins.
+    #[serde(default, rename = "row")]
+    pub rows: Vec<RowConfig>,
 }
 
 /// Title alignment on a `border = "top"` (or any bordered) panel. `left` matches ratatui's
@@ -480,9 +485,13 @@ fn to_flex(f: FlexSpec) -> Flex {
 }
 
 fn to_col_child(c: &ChildConfig) -> Child {
-    let leaf = match c.widget.as_deref() {
-        Some(id) => Layout::widget(id.to_string()),
-        None => Layout::Empty,
+    let leaf = if c.rows.is_empty() {
+        match c.widget.as_deref() {
+            Some(id) => Layout::widget(id.to_string()),
+            None => Layout::Empty,
+        }
+    } else {
+        Layout::rows(c.rows.iter().map(to_row_child).collect())
     };
     let decorated = apply_panel(leaf, c.title.as_deref(), c.border, c.title_align);
     let decorated = apply_bg(decorated, c.bg);
