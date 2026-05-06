@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-05-06
+
+### 🐛 Bug Fixes
+
+- fix(github): accept https URLs with userinfo when parsing remote ([bb548f2](https://github.com/unhappychoice/splashboard/commit/bb548f2))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.3.1 ([9a088f4](https://github.com/unhappychoice/splashboard/commit/9a088f4))
+- chore: update flake.nix hashes for v1.3.0 ([0d60c81](https://github.com/unhappychoice/splashboard/commit/0d60c81))
+
+
 ## [1.3.0] - 2026-05-06
 
 ### ✨ Features
@@ -17,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.3.0 ([595c745](https://github.com/unhappychoice/splashboard/commit/595c745))
+- chore: bump version to v1.3.0 ([46f8ccf](https://github.com/unhappychoice/splashboard/commit/46f8ccf))
 - chore: update flake.nix hashes for v1.2.2 ([4adc0a3](https://github.com/unhappychoice/splashboard/commit/4adc0a3))
 
 
