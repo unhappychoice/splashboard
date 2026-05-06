@@ -1,12 +1,14 @@
-# CI status splash — answers exactly one question on entry: "is CI happy?"
-# Hero is a huge bg-toned status badge centred across the canvas. The colour
-# carries the answer; the small text below ("main · passing · 2m 14s") has
-# the operational details, and the bottom band shows the recent run history
-# as a sparkline + chronological timeline + branch / actor / duration grid.
+# CI status splash — answers "is CI happy?" in layers, drilling down:
+#   1. Hero badge: overall status of the active branch
+#   2. Per-branch status row: which branches are healthy
+#   3. History sparkline + duration scatter: pass/fail and timing trends
+#   4. Recent runs timeline: what specifically just ran
+#
+# Skips a branch / dirty / ahead-behind panel — that's prompt territory.
 
 [showcase]
 title = "CI status"
-description = "One question: is CI happy? Hero is a huge tone-coloured status badge; below it sit the run vitals, a 30-run history sparkline, the recent runs timeline, and a branch / actor / duration grid."
+description = "Layered CI dashboard: tone-coloured status hero, per-branch status row (main / develop / feat / hotfix), then a 2-column band of pass/fail sparkline + duration scatter, with the recent runs timeline as the operational footer. All four data-rich panels are different shapes of the same `github_action_history` and `github_action_status` reads."
 context = "project"
 requires = ["GitHub auth (gh login or `GH_TOKEN`)", "local git repo on GitHub"]
 
@@ -25,28 +27,71 @@ shape = "text_block"
 format = "1"
 render = { type = "list_plain", align = "center", color = "text_secondary" }
 
-# Hero — fat status badge at full row width. The tone colour reads from
-# across the room, the dot + label sit centred inside.
+# Hero — fat status badge centred on the canvas.
 [[widget]]
 id = "status"
 fetcher = "github_action_status"
 shape = "badge"
-render = { type = "status_badge", padding = 8 }
+render = { type = "status_badge", padding = 8, align = "center" }
 
-# Status text line — branch · result · duration. Sits as the subtitle.
+# Status text line — branch · result · duration.
 [[widget]]
 id = "status_text"
 fetcher = "github_action_status"
 shape = "text"
 render = { type = "text_plain", align = "center" }
 
-# 30-run history — Bars chart (filled width) instead of sparkline (which
-# only renders one cell per data point).
+# Per-branch status badges — same fetcher, different `branch` option. In
+# the live splash these read distinct (each branch's own status); the
+# showcase preview shows them as identical sample data because
+# `github_action_status.sample_body` is options-blind.
+[[widget]]
+id = "branch_main"
+fetcher = "github_action_status"
+shape = "badge"
+render = { type = "status_badge", padding = 1, align = "center" }
+  [widget.options]
+  branch = "main"
+
+[[widget]]
+id = "branch_develop"
+fetcher = "github_action_status"
+shape = "badge"
+render = { type = "status_badge", padding = 1, align = "center" }
+  [widget.options]
+  branch = "develop"
+
+[[widget]]
+id = "branch_feat"
+fetcher = "github_action_status"
+shape = "badge"
+render = { type = "status_badge", padding = 1, align = "center" }
+  [widget.options]
+  branch = "feat/foo"
+
+[[widget]]
+id = "branch_hotfix"
+fetcher = "github_action_status"
+shape = "badge"
+render = { type = "status_badge", padding = 1, align = "center" }
+  [widget.options]
+  branch = "hotfix"
+
+# Pass/fail count over the last 30 runs — clearer than a NumberSeries
+# sparkline (which can't differentiate values, only positions). Bars
+# shape gives explicit "passed N · failed M" headline.
 [[widget]]
 id = "history"
 fetcher = "github_action_history"
-shape = "number_series"
-render = { type = "chart_sparkline", style = "bars" }
+shape = "bars"
+render = { type = "chart_bar", horizontal = true }
+
+# Run-duration trend — PointSeries connected by a line.
+[[widget]]
+id = "duration"
+fetcher = "github_action_history"
+shape = "point_series"
+render = "chart_line"
 
 # Recent runs timeline.
 [[widget]]
@@ -55,17 +100,15 @@ fetcher = "github_action_history"
 shape = "timeline"
 render = "list_timeline"
 
-# Latest commit subtitle — repeated for the bottom row; sample git_status
-# shape gives a one-line "branch · clean | 3M 1A 2??" form.
+# Open PRs awaiting CI — what's queued up downstream of the runs panel.
 [[widget]]
-id = "branch_status"
-fetcher = "git_status"
-shape = "entries"
-render = "grid_table"
+id = "open_prs"
+fetcher = "github_repo_prs"
+shape = "linked_text_block"
+render = { type = "list_links", max_items = 6 }
 
 # ── Layout ─────────────────────────────────────────────────────────
 
-# Slim header band.
 [[row]]
 height = { length = 1 }
 
@@ -80,9 +123,9 @@ height = { length = 1 }
   widget = "commit"
 
 [[row]]
-height = { length = 2 }
+height = { length = 1 }
 
-# THE hero badge — wide centred band so the tone colour fills the eye.
+# Hero badge — wide centred band.
 [[row]]
 height = { length = 3 }
 flex = "center"
@@ -98,38 +141,80 @@ flex = "center"
   width = { length = 90 }
 
 [[row]]
-height = { length = 2 }
+height = { length = 1 }
 
-# 30-run sparkline — full-width band.
+# Per-branch status row — four small badges spanning the canvas, each
+# panel titled with the branch name so the live (and showcase) reader
+# can tell them apart.
 [[row]]
-height = { length = 5 }
+height = { length = 3 }
 flex = "center"
+gap = 2
+  [[row.child]]
+  widget = "branch_main"
+  width = { length = 28 }
+  border = "top"
+  title = "  main  "
+  title_align = "center"
+  [[row.child]]
+  widget = "branch_develop"
+  width = { length = 28 }
+  border = "top"
+  title = "  develop  "
+  title_align = "center"
+  [[row.child]]
+  widget = "branch_feat"
+  width = { length = 28 }
+  border = "top"
+  title = "  feat/foo  "
+  title_align = "center"
+  [[row.child]]
+  widget = "branch_hotfix"
+  width = { length = 28 }
+  border = "top"
+  title = "  hotfix  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# 2-col band: pass/fail sparkline | duration scatter.
+[[row]]
+height = { length = 6 }
+flex = "center"
+gap = 2
   [[row.child]]
   widget = "history"
-  width = { length = 100 }
+  width = { length = 58 }
   border = "top"
-  title = "  last 30 runs  "
+  title = "  pass / fail (last 30)  "
+  title_align = "left"
+  [[row.child]]
+  widget = "duration"
+  width = { length = 58 }
+  border = "top"
+  title = "  duration  "
   title_align = "left"
 
 [[row]]
 height = { length = 1 }
 
-# Bottom row: recent runs (left, wide) | branch status (right).
+# Recent runs (left) + open PRs feeding CI (right).
 [[row]]
-height = { length = 9 }
+height = { length = 8 }
 flex = "center"
 gap = 2
   [[row.child]]
   widget = "runs"
-  width = { length = 70 }
+  width = { length = 58 }
   border = "top"
   title = "  recent runs  "
   title_align = "left"
   [[row.child]]
-  widget = "branch_status"
-  width = { length = 30 }
+  widget = "open_prs"
+  width = { length = 58 }
   border = "top"
-  title = "  branch  "
+  title = "  open PRs  "
   title_align = "left"
 
 [[row]]
