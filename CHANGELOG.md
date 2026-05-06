@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-05-06
+
+### ✨ Features
+
+- feat(fetcher): add lobsters_top for Lobsters story listings ([6678665](https://github.com/unhappychoice/splashboard/commit/6678665))
+
+### 🐛 Bug Fixes
+
+- fix(github_repo): accept repo option and clean up stale config.toml references ([473494a](https://github.com/unhappychoice/splashboard/commit/473494a))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.3.0 ([595c745](https://github.com/unhappychoice/splashboard/commit/595c745))
+- chore: update flake.nix hashes for v1.2.2 ([4adc0a3](https://github.com/unhappychoice/splashboard/commit/4adc0a3))
+
+
 ## [1.2.2] - 2026-05-04
 
 ### 🐛 Bug Fixes
@@ -13,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.2.2 ([86c92f3](https://github.com/unhappychoice/splashboard/commit/86c92f3))
+- chore: bump version to v1.2.2 ([6e82dca](https://github.com/unhappychoice/splashboard/commit/6e82dca))
 - chore: update flake.nix hashes for v1.2.1 ([863f8e6](https://github.com/unhappychoice/splashboard/commit/863f8e6))
 
 
