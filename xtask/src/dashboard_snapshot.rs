@@ -29,14 +29,16 @@ use splashboard::theme::Theme;
 use crate::html_snapshot::buffer_to_html_dashboard;
 
 /// Bundled placeholder PNG for `Image` widgets whose fetcher has no `sample_body` (e.g.
-/// `github_avatar`, `code_language_logo`). Materialised to a temp file once per xtask run;
-/// `media_image` then renders it through `ratatui_image`'s halfblocks protocol so the gallery
-/// shows actual coloured pixels in the slot instead of a blank rectangle. The `_generic.png`
-/// asset is the same `</>` glyph that `code_language_logo` uses as its own fallback —
-/// recycling it keeps every image-shape widget on a uniform "image was here" placeholder.
+/// `github_avatar`, `random_cat`, `random_dog`, `code_language_logo`). Materialised to a temp
+/// file once per xtask run; `media_image` then renders it through `ratatui_image`'s halfblocks
+/// protocol so the gallery shows actual coloured pixels in the slot instead of a blank
+/// rectangle. The `_image_placeholder.png` asset is a simple camera icon — chosen over the
+/// `</>`-glyph `_generic.png` (which doubles as `code_language_logo`'s own fallback) because a
+/// camera reads as "image goes here" across every image-shape fetcher (avatars, pet portraits,
+/// code logos), whereas `</>` only really fits the language-logo case.
 const PLACEHOLDER_IMAGE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../assets/logos/png/_generic.png"
+    "/../assets/_image_placeholder.png"
 ));
 
 pub fn render_config_html(config_path: &Path, width: u16, height: u16) -> Result<String> {
