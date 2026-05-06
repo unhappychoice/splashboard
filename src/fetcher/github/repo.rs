@@ -2,20 +2,33 @@
 //! REST API `/repos/{o}/{n}`. Entries shape feeds `grid_table` (inline or rows); Text joins
 //! the non-empty fields with `·` for a compact subtitle.
 
-use std::path::PathBuf;
-
 use async_trait::async_trait;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
+use crate::options::OptionSchema;
 use crate::payload::{Body, EntriesData, Entry, Payload, TextBlockData, TextData};
 use crate::render::Shape;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
-use super::common::resolve_repo;
+use super::common::{RepoSlug, cache_key, parse_options, resolve_repo};
+
+const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "repo",
+    type_hint: "\"owner/name\"",
+    required: false,
+    default: Some("git remote of cwd"),
+    description: "Repository to query. Falls back to the current directory's github remote.",
+}];
 
 pub struct GithubRepo;
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Options {
+    #[serde(default)]
+    pub repo: Option<String>,
+}
 
 #[async_trait]
 impl Fetcher for GithubRepo {
@@ -34,8 +47,12 @@ impl Fetcher for GithubRepo {
     fn default_shape(&self) -> Shape {
         Shape::Entries
     }
-    fn cache_key(&self, _ctx: &FetchContext) -> String {
-        cwd_scoped(self.name())
+    fn option_schemas(&self) -> &[OptionSchema] {
+        OPTION_SCHEMAS
+    }
+    fn cache_key(&self, ctx: &FetchContext) -> String {
+        let extra = repo_for_key(ctx);
+        cache_key(self.name(), ctx, &extra)
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
@@ -60,7 +77,8 @@ impl Fetcher for GithubRepo {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let slug = resolve_repo(None)?;
+        let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+        let slug = resolve_repo(opts.repo.as_deref())?;
         let info: RepoInfo = rest_get(&format!("/repos/{}/{}", slug.owner, slug.name)).await?;
         let meta = Metadata {
             slug: Some(format!("{}/{}", slug.owner, slug.name)),
@@ -80,6 +98,16 @@ impl Fetcher for GithubRepo {
         };
         Ok(payload(body))
     }
+}
+
+fn repo_for_key(ctx: &FetchContext) -> String {
+    ctx.options
+        .as_ref()
+        .and_then(|v| v.get("repo"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or_else(|| resolve_repo(None).ok().map(|s: RepoSlug| s.as_path()))
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,13 +164,6 @@ impl Metadata {
         .map(str::to_owned)
         .collect()
     }
-}
-
-fn cwd_scoped(name: &str) -> String {
-    let cwd: PathBuf = std::env::current_dir().unwrap_or_default();
-    let digest = Sha256::digest(cwd.to_string_lossy().as_bytes());
-    let hex: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
-    format!("{name}-{hex}")
 }
 
 fn entry(key: &str, value: &str) -> Entry {
@@ -248,6 +269,13 @@ mod tests {
     }
 
     #[test]
+    fn options_deserialize_repo_and_reject_unknown_keys() {
+        let opts: Options = toml::from_str("repo = \"foo/bar\"").unwrap();
+        assert_eq!(opts.repo.as_deref(), Some("foo/bar"));
+        assert!(toml::from_str::<Options>("extra = 1").is_err());
+    }
+
+    #[test]
     fn metadata_as_lines_preserves_visible_order() {
         let m = Metadata {
             slug: Some("foo/bar".into()),
@@ -260,11 +288,14 @@ mod tests {
     #[test]
     fn fetcher_metadata_cache_key_and_samples_match_contract() {
         let fetcher = GithubRepo;
-        let default_key = fetcher.cache_key(&FetchContext::default());
-        let shaped_key = fetcher.cache_key(&FetchContext {
-            format: Some("markdown".into()),
+        let left = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("repo = \"foo/bar\"").unwrap()),
             timeout: Duration::from_secs(1),
-            shape: Some(Shape::Text),
+            ..Default::default()
+        });
+        let right = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("repo = \"foo/baz\"").unwrap()),
+            timeout: Duration::from_secs(1),
             ..Default::default()
         });
 
@@ -276,8 +307,10 @@ mod tests {
             &[Shape::Entries, Shape::TextBlock, Shape::Text]
         );
         assert_eq!(fetcher.default_shape(), Shape::Entries);
-        assert_eq!(default_key, shaped_key);
-        assert!(default_key.starts_with("github_repo-"));
+        assert_eq!(fetcher.option_schemas().len(), 1);
+        assert_eq!(fetcher.option_schemas()[0].name, "repo");
+        assert_ne!(left, right);
+        assert!(left.starts_with("github_repo-"));
 
         let Some(Body::TextBlock(block)) = fetcher.sample_body(Shape::TextBlock) else {
             panic!("expected text block sample");
