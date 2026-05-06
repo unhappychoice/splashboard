@@ -1,0 +1,184 @@
+# Companions — desk-pet ambient splash. A clock figlet sits at the top
+# with date + greeting underneath; a random cat and a random dog stand
+# side-by-side beneath as a paired visual hero. A fortune cookie + daily
+# quote form the soft typographic body, and the almanac strip
+# (moon · zodiac · day-of-year) anchors the bottom for a touch of
+# cosmic texture. Refresh cycles rotate the pet portraits — each `cd`
+# brings new companions.
+
+[showcase]
+title = "Companions"
+description = "Clock figlet + date + greeting at the top; a random cat and a random dog stand side-by-side beneath as a paired visual hero; fortune cookie + daily quote form the soft typographic body; almanac strip anchors the bottom. Each refresh rotates the pets via `random_cat` / `random_dog`. Showcase preview shows a camera-icon placeholder; the live splash downloads real photos."
+context = "home"
+requires = ["network access for cataas.com / dog.ceo"]
+
+# ── Widgets ────────────────────────────────────────────────────────
+
+# Pet bookends. `max_width` / `max_height` cap the rendered box so the
+# `align = "center"` offset has room to take effect — without the caps,
+# the image fills the whole cell and centring becomes a no-op.
+[[widget]]
+id = "cat"
+fetcher = "random_cat"
+render = { type = "media_image", fit = "contain", align = "center", max_width = 18, max_height = 9 }
+
+[[widget]]
+id = "dog"
+fetcher = "random_dog"
+render = { type = "media_image", fit = "contain", align = "center", max_width = 18, max_height = 9 }
+
+# Clock — small figlet so the pets can share the band.
+[[widget]]
+id = "clock_hero"
+fetcher = "clock"
+format = "%H:%M"
+render = { type = "text_ascii", style = "figlet", font = "slant", color = "panel_title", align = "center" }
+
+[[widget]]
+id = "date"
+fetcher = "clock"
+format = "%A · %e %B %Y"
+render = { type = "text_plain", align = "center", color = "text_secondary" }
+
+[[widget]]
+id = "greeting"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "center", color = "text_secondary" }
+  [widget.options]
+  kind = "time_of_day"
+
+# Soft typography centre — fortune cookie + daily quote.
+[[widget]]
+id = "fortune"
+fetcher = "random_fortune"
+render = { type = "list_plain", align = "center" }
+
+[[widget]]
+id = "quote"
+fetcher = "random_quote"
+shape = "text"
+render = { type = "text_plain", align = "center", color = "panel_title" }
+
+# Almanac strip.
+[[widget]]
+id = "moon"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "right" }
+  [widget.options]
+  kind = "moon_phase"
+
+[[widget]]
+id = "sep1"
+fetcher = "basic_static"
+format = "  ·  "
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "zodiac"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "center" }
+  [widget.options]
+  kind = "zodiac"
+
+[[widget]]
+id = "sep2"
+fetcher = "basic_static"
+format = "  ·  "
+render = { type = "text_plain", align = "center" }
+
+[[widget]]
+id = "doy"
+fetcher = "clock_derived"
+render = { type = "text_plain", align = "left" }
+  [widget.options]
+  kind = "day_of_year"
+
+# ── Layout ─────────────────────────────────────────────────────────
+
+[[row]]
+height = { length = 1 }
+
+# Hero clock — full figlet, centred.
+[[row]]
+height = { length = 6 }
+  [[row.child]]
+  widget = "clock_hero"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "date"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "greeting"
+
+[[row]]
+height = { length = 1 }
+
+# Pets, side-by-side as the visual companion pair beneath the clock.
+[[row]]
+height = { length = 11 }
+flex = "center"
+gap = 8
+  [[row.child]]
+  widget = "cat"
+  width = { length = 26 }
+  border = "top"
+  title = "  cat  "
+  title_align = "center"
+  [[row.child]]
+  widget = "dog"
+  width = { length = 26 }
+  border = "top"
+  title = "  dog  "
+  title_align = "center"
+
+[[row]]
+height = { length = 1 }
+
+# Fortune cookie — wraps freely.
+[[row]]
+height = { length = 3 }
+flex = "center"
+  [[row.child]]
+  widget = "fortune"
+  width = { length = 90 }
+
+[[row]]
+height = { length = 1 }
+
+# Daily quote, centred single line.
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "quote"
+  width = { length = 100 }
+
+[[row]]
+height = { length = 1 }
+
+# Almanac strip.
+[[row]]
+height = { length = 1 }
+flex = "center"
+  [[row.child]]
+  widget = "moon"
+  width = { length = 4 }
+  [[row.child]]
+  widget = "sep1"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "zodiac"
+  width = { length = 14 }
+  [[row.child]]
+  widget = "sep2"
+  width = { length = 5 }
+  [[row.child]]
+  widget = "doy"
+  width = { length = 14 }
+
+[[row]]
+height = { fill = 1 }
