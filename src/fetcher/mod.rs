@@ -30,6 +30,7 @@ pub mod read_store;
 pub mod reddit;
 pub mod rss;
 pub mod static_text;
+pub mod stock_watchlist;
 pub mod system;
 pub mod todoist;
 pub mod weather;
@@ -319,6 +320,7 @@ impl Registry {
         r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
         r.register(Arc::new(crypto_watchlist::CryptoWatchlistFetcher));
+        r.register(Arc::new(stock_watchlist::StockWatchlistFetcher));
         r.register(Arc::new(random_cat::RandomCatFetcher));
         r.register(Arc::new(random_dog::RandomDogFetcher));
         for f in calendar::fetchers() {
