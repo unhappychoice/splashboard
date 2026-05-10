@@ -131,7 +131,7 @@ fn render_image(
     let img = load_image(path)?;
     let mut p = picker();
     if let Some(rgba) = solid_rgba(theme.bg) {
-        p.set_background_color(rgba);
+        p.set_background_color(Some(rgba));
     }
     let mut protocol = p.new_resize_protocol(img);
     let widget = StatefulImage::default().resize(resize_mode(specific.fit.as_deref()));
