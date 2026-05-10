@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-05-10
+
+### ✨ Features
+
+- feat(fetcher): add stock_watchlist (Yahoo Finance, 9 shapes) ([69e2138](https://github.com/unhappychoice/splashboard/commit/69e2138))
+- feat(fetcher): add crypto_watchlist (CoinGecko, 9 shapes) ([4f2b124](https://github.com/unhappychoice/splashboard/commit/4f2b124))
+- feat(fetcher/github): add Bars shape to action_history + expand samples ([34a22cc](https://github.com/unhappychoice/splashboard/commit/34a22cc))
+- feat(xtask): use camera icon as image-shape placeholder ([ea9f2fe](https://github.com/unhappychoice/splashboard/commit/ea9f2fe))
+- feat(layout): support nested rows in ChildConfig ([003ca0d](https://github.com/unhappychoice/splashboard/commit/003ca0d))
+- feat(xtask): render demo dashboard under every theme preset ([cdd60e6](https://github.com/unhappychoice/splashboard/commit/cdd60e6))
+- feat(xtask): generic gallery pipeline for usecases & community ([b45d9d0](https://github.com/unhappychoice/splashboard/commit/b45d9d0))
+- feat(xtask): generate preset descriptions index for the docs gallery ([b2f9e22](https://github.com/unhappychoice/splashboard/commit/b2f9e22))
+- feat(xtask): top-align dashboard snapshots with synthesised theme-bg padding ([eb0e404](https://github.com/unhappychoice/splashboard/commit/eb0e404))
+- feat(xtask): bundle placeholder PNG for image widgets without sample data ([ca47afc](https://github.com/unhappychoice/splashboard/commit/ca47afc))
+- feat(docs-site): style splash-config details for collapsible source code ([6e18cda](https://github.com/unhappychoice/splashboard/commit/6e18cda))
+- feat(docs-site): nest Showcases sidebar with Themes / Presets / Use cases / Community ([e0106ef](https://github.com/unhappychoice/splashboard/commit/e0106ef))
+- feat(docs-site): split Showcases into nested pages ([4a8f35c](https://github.com/unhappychoice/splashboard/commit/4a8f35c))
+- feat(examples): add community submission scaffold ([7ae2562](https://github.com/unhappychoice/splashboard/commit/7ae2562))
+- feat(examples): add usecases gallery with 8 tool-focused dashboards ([6003eed](https://github.com/unhappychoice/splashboard/commit/6003eed))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher/crypto_watchlist): subtract period min for sparkline values ([45ea15a](https://github.com/unhappychoice/splashboard/commit/45ea15a))
+- fix(xtask): scrub LC_TERMINAL so media_image's picker stays on halfblocks ([3b047b6](https://github.com/unhappychoice/splashboard/commit/3b047b6))
+- fix(xtask): preserve inner renderer options when deanimating animation wrappers ([32934ba](https://github.com/unhappychoice/splashboard/commit/32934ba))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.4.0 ([c9528c8](https://github.com/unhappychoice/splashboard/commit/c9528c8))
+- style(fetcher/todoist): apply rustfmt to expanded Timeline sample ([126e288](https://github.com/unhappychoice/splashboard/commit/126e288))
+- refactor(usecase): replace project_workspace with project_welcome ([2478d5c](https://github.com/unhappychoice/splashboard/commit/2478d5c))
+- refactor(usecase/project_ci): layered status + per-branch row + open PRs ([ced51c2](https://github.com/unhappychoice/splashboard/commit/ced51c2))
+- refactor(usecase/project_book): denser cover band + manuscript-coded panels ([a5ec3c1](https://github.com/unhappychoice/splashboard/commit/a5ec3c1))
+- refactor(usecase/home_todoist): trim to a clean 3-column kanban ([02a406f](https://github.com/unhappychoice/splashboard/commit/02a406f))
+- refactor(usecase/home_system_monitor): unify gauges and stack readouts ([6844510](https://github.com/unhappychoice/splashboard/commit/6844510))
+- refactor(usecase): replace home_quiet_companion with home_companions ([ee0b8cf](https://github.com/unhappychoice/splashboard/commit/ee0b8cf))
+- refactor(usecase/home_linear): rebuild as 3-shape Overview ([48487a5](https://github.com/unhappychoice/splashboard/commit/48487a5))
+- chore(fetcher/todoist): expand task sample data ([76e1911](https://github.com/unhappychoice/splashboard/commit/76e1911))
+- chore: update flake.nix hashes for v1.3.1 ([98a783e](https://github.com/unhappychoice/splashboard/commit/98a783e))
+- docs(xtask): clarify SNAPSHOT_HEIGHT comment and deanimate test rationale ([3d0d862](https://github.com/unhappychoice/splashboard/commit/3d0d862))
+- chore(docs-site): refresh package-lock.json ([d0c34b7](https://github.com/unhappychoice/splashboard/commit/d0c34b7))
+- docs(AGENTS): document curation tiers and showcase gallery workflow ([f3dbf4d](https://github.com/unhappychoice/splashboard/commit/f3dbf4d))
+
+
 ## [1.3.1] - 2026-05-06
 
 ### 🐛 Bug Fixes
@@ -13,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.3.1 ([9a088f4](https://github.com/unhappychoice/splashboard/commit/9a088f4))
+- chore: bump version to v1.3.1 ([7750489](https://github.com/unhappychoice/splashboard/commit/7750489))
 - chore: update flake.nix hashes for v1.3.0 ([0d60c81](https://github.com/unhappychoice/splashboard/commit/0d60c81))
 
 
