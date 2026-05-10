@@ -15,6 +15,7 @@ use crate::samples;
 pub mod calendar;
 pub mod clock;
 pub mod code;
+pub mod crypto_watchlist;
 pub mod deariary;
 pub mod git;
 pub mod github;
@@ -317,6 +318,7 @@ impl Registry {
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(weather::WeatherFetcher));
+        r.register(Arc::new(crypto_watchlist::CryptoWatchlistFetcher));
         r.register(Arc::new(random_cat::RandomCatFetcher));
         r.register(Arc::new(random_dog::RandomDogFetcher));
         for f in calendar::fetchers() {
