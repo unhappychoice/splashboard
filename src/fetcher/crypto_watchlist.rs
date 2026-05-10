@@ -89,7 +89,7 @@ impl Fetcher for CryptoWatchlistFetcher {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "CoinGecko price snapshot for a configurable list of coins. `Entries` (default) / `Text` / `TextBlock` / `MarkdownTextBlock` / `LinkedTextBlock` summarise spot price + 24h change; `NumberSeries` carries the first coin's 7-day hourly price (cents) for sparklines; `PointSeries` carries one series per coin for line / scatter charts; `Bars` ranks coins by 24h |% change| (basis points); `Badge` flags the top mover. No API key required."
+        "CoinGecko price snapshot for a configurable list of coins. `Entries` (default) / `Text` / `TextBlock` / `MarkdownTextBlock` / `LinkedTextBlock` summarise spot price + 24h change; `NumberSeries` carries the first coin's 7-day hourly price as cents above the period low (so high-magnitude assets like BTC don't flatten the sparkline); `PointSeries` carries one series per coin for line / scatter charts; `Bars` ranks coins by 24h |% change| (basis points); `Badge` flags the top mover. No API key required."
     }
     fn shapes(&self) -> &[Shape] {
         SHAPES
@@ -362,17 +362,27 @@ fn linked_text_block_body(snapshot: &Snapshot) -> Body {
     })
 }
 
-/// First coin's 7-day hourly price as cents — `NumberSeries.values: Vec<u64>` can't carry
-/// fractional currency, so the implicit unit is "cents of `vs_currency`". Negative or missing
-/// readings clamp to 0 rather than wrap into huge u64s.
+/// First coin's 7-day hourly price as cents *above the period minimum*.
+/// `chart_sparkline` normalises against the series max with an implicit zero floor, so emitting
+/// raw cents flattens the trace for any high-magnitude asset — BTC at \$40k with a 1 % daily
+/// swing collapses into a band glued to the top of the slot. Subtract the period minimum so the
+/// variation occupies the full bar height; the unit becomes "cents above the 7d low" rather
+/// than "cents", which is the right framing for a glance-at-the-trend sparkline anyway.
 fn number_series_body(snapshot: &Snapshot) -> Body {
     let values: Vec<u64> = snapshot
         .coins
         .first()
         .map(|c| {
+            let baseline = c
+                .sparkline
+                .iter()
+                .copied()
+                .filter(|p| p.is_finite())
+                .fold(f64::INFINITY, f64::min);
+            let baseline = if baseline.is_finite() { baseline } else { 0.0 };
             c.sparkline
                 .iter()
-                .map(|p| (p.max(0.0) * 100.0).round() as u64)
+                .map(|p| ((*p - baseline).max(0.0) * 100.0).round() as u64)
                 .collect()
         })
         .unwrap_or_default();
@@ -717,7 +727,7 @@ mod tests {
     }
 
     #[test]
-    fn number_series_carries_first_coin_sparkline_in_cents() {
+    fn number_series_carries_first_coin_sparkline_as_cents_above_period_low() {
         let snap = Snapshot {
             vs_currency: "usd".into(),
             coins: vec![CoinPoint {
@@ -731,8 +741,29 @@ mod tests {
         let Body::NumberSeries(d) = number_series_body(&snap) else {
             panic!("expected number series");
         };
-        // 1.234 → 123, -0.5 clamped to 0 → 0, 0.0 → 0, 12.345_678 → 1235.
-        assert_eq!(d.values, vec![123, 0, 0, 1235]);
+        // baseline = -0.5; deviations (cents): 1.734→173, 0.0→0, 0.5→50, 12.845_678→1285.
+        assert_eq!(d.values, vec![173, 0, 50, 1285]);
+    }
+
+    #[test]
+    fn number_series_high_magnitude_asset_lifts_off_the_top_of_the_slot() {
+        // The whole point of the baseline-subtraction is that a `[40_000.0, 40_400.0]` swing
+        // (1 % daily) reaches the full height of the sparkline instead of collapsing into a
+        // flat band at the top. `value / max` on raw cents would put both at >= 0.99.
+        let snap = Snapshot {
+            vs_currency: "usd".into(),
+            coins: vec![CoinPoint {
+                id: "btc".into(),
+                symbol: "BTC".into(),
+                price: 40_400.0,
+                change_24h: 1.0,
+                sparkline: vec![40_000.0, 40_200.0, 40_400.0],
+            }],
+        };
+        let Body::NumberSeries(d) = number_series_body(&snap) else {
+            panic!("expected number series");
+        };
+        assert_eq!(d.values, vec![0, 20_000, 40_000]);
     }
 
     #[test]
