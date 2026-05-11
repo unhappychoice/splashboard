@@ -65,6 +65,16 @@ pub struct PageSummary {
     pub extract: Option<String>,
     #[serde(default)]
     pub content_urls: Option<ContentUrls>,
+    /// REST API `thumbnail.source` — a remote `*.wikipedia.org` image URL. Optional because not
+    /// every page has a thumbnail; the JSON omits the whole block in that case.
+    #[serde(default)]
+    pub thumbnail: Option<PageThumbnail>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PageThumbnail {
+    #[serde(default)]
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -88,6 +98,17 @@ impl PageSummary {
             .map(|p| p.page.clone())
     }
 
+    /// Remote URL of the page's thumbnail image (typically `upload.wikimedia.org/...`). Returns
+    /// `None` when the REST API omits the thumbnail or returns an empty source. Callers feed
+    /// this through [`crate::fetcher::thumbnails::download_to_cache`] before handing the local
+    /// path to a `list_cards`-style renderer.
+    pub fn thumbnail_url(&self) -> Option<&str> {
+        self.thumbnail
+            .as_ref()
+            .map(|t| t.source.as_str())
+            .filter(|s| !s.is_empty())
+    }
+
     /// First sentence of the extract — split at the first `". "` so the Text shape can carry a
     /// preview without the whole multi-paragraph body. Returns `None` when the extract is
     /// missing or empty.
@@ -104,12 +125,33 @@ impl PageSummary {
 /// Shape-aware rendering for a single page summary — shared by `wikipedia_featured` and
 /// `wikipedia_random` since both fetchers expose the same `{title, extract, url}` triplet.
 pub fn render_page_summary(summary: &PageSummary, shape: Shape) -> Body {
+    render_page_summary_with_thumbnail(summary, shape, None)
+}
+
+/// Render variant that pins a pre-resolved local thumbnail path onto the `ImageLinkedList`
+/// shape's single card. Other shapes ignore the thumbnail (Text / TextBlock have no place to
+/// surface it). The thumbnail download itself is async, so callers run
+/// [`crate::fetcher::thumbnails::download_to_cache`] before calling this and pass the local
+/// path in.
+pub fn render_page_summary_with_thumbnail(
+    summary: &PageSummary,
+    shape: Shape,
+    thumbnail_path: Option<std::path::PathBuf>,
+) -> Body {
     match shape {
         Shape::Text => Body::Text(TextData {
             value: text_line(summary),
         }),
         Shape::TextBlock => Body::TextBlock(TextBlockData {
             lines: text_block_lines(summary),
+        }),
+        Shape::ImageLinkedList => Body::ImageLinkedList(crate::payload::ImageLinkedListData {
+            items: vec![crate::payload::ImageLinkedItem {
+                title: summary.title.clone(),
+                url: summary.url(),
+                thumbnail_path: thumbnail_path.map(|p| p.to_string_lossy().into_owned()),
+                subtitle: summary.first_sentence(),
+            }],
         }),
         _ => Body::LinkedTextBlock(LinkedTextBlockData {
             items: vec![LinkedLine {
@@ -153,6 +195,7 @@ mod tests {
                 desktop: Some(UrlsByPlatform { page: p.into() }),
                 mobile: None,
             }),
+            thumbnail: None,
         }
     }
 
@@ -208,6 +251,7 @@ mod tests {
                     page: "https://en.m.wikipedia.org/wiki/x".into(),
                 }),
             }),
+            thumbnail: None,
         };
         assert_eq!(
             s.url().as_deref(),
@@ -373,5 +417,69 @@ mod tests {
             err,
             FetchError::Failed(message) if message.contains("wikipedia json parse")
         ));
+    }
+
+    #[test]
+    fn thumbnail_url_returns_some_for_non_empty_source() {
+        let s = PageSummary {
+            title: "x".into(),
+            extract: None,
+            content_urls: None,
+            thumbnail: Some(PageThumbnail {
+                source: "https://upload.wikimedia.org/x.jpg".into(),
+            }),
+        };
+        assert_eq!(
+            s.thumbnail_url(),
+            Some("https://upload.wikimedia.org/x.jpg"),
+        );
+    }
+
+    #[test]
+    fn thumbnail_url_returns_none_for_missing_or_empty() {
+        // Missing thumbnail block.
+        assert!(summary_with(None, None).thumbnail_url().is_none());
+        // Empty `source` string — REST sometimes returns the block with a blank URL.
+        let s = PageSummary {
+            title: "x".into(),
+            extract: None,
+            content_urls: None,
+            thumbnail: Some(PageThumbnail {
+                source: String::new(),
+            }),
+        };
+        assert!(s.thumbnail_url().is_none());
+    }
+
+    #[test]
+    fn render_image_linked_list_pins_thumbnail_path_and_first_sentence_subtitle() {
+        let s = summary_with(Some("It hops. Other stuff."), Some("https://example.com/q"));
+        let body = render_page_summary_with_thumbnail(
+            &s,
+            Shape::ImageLinkedList,
+            Some(std::path::PathBuf::from("/tmp/quokka.jpg")),
+        );
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items.len(), 1);
+        assert_eq!(b.items[0].title, "Quokka");
+        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/q"));
+        assert_eq!(
+            b.items[0].thumbnail_path.as_deref(),
+            Some("/tmp/quokka.jpg")
+        );
+        assert_eq!(b.items[0].subtitle.as_deref(), Some("It hops."));
+    }
+
+    #[test]
+    fn render_image_linked_list_without_path_leaves_thumbnail_empty() {
+        let s = summary_with(None, None);
+        let body = render_page_summary_with_thumbnail(&s, Shape::ImageLinkedList, None);
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items[0].thumbnail_path, None);
+        assert_eq!(b.items[0].subtitle, None);
     }
 }

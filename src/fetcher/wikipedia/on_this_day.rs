@@ -310,6 +310,7 @@ mod tests {
                 desktop: Some(UrlsByPlatform { page: url.into() }),
                 mobile: None,
             }),
+            thumbnail: None,
         }
     }
 

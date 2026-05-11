@@ -10,15 +10,24 @@ use chrono::{Datelike, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::github::common::{cache_key, parse_options, payload};
+use crate::fetcher::thumbnails;
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 use crate::render::Shape;
 use crate::samples;
 
-use super::client::{DEFAULT_LANG, PageSummary, get, render_page_summary, rest_api_base};
+use super::client::{
+    DEFAULT_LANG, PageSummary, get, render_page_summary, render_page_summary_with_thumbnail,
+    rest_api_base,
+};
 
-const SHAPES: &[Shape] = &[Shape::LinkedTextBlock, Shape::TextBlock, Shape::Text];
+const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::ImageLinkedList,
+    Shape::TextBlock,
+    Shape::Text,
+];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "lang",
@@ -68,6 +77,12 @@ impl Fetcher for WikipediaFeaturedFetcher {
                 "Hyperion (poem)",
                 Some("https://en.wikipedia.org/wiki/Hyperion_(poem)"),
             )]),
+            Shape::ImageLinkedList => samples::image_linked_list(&[(
+                "Hyperion (poem)",
+                Some("https://en.wikipedia.org/wiki/Hyperion_(poem)"),
+                None,
+                Some("Hyperion is an unfinished epic poem by John Keats."),
+            )]),
             Shape::TextBlock => samples::text_block(&[
                 "Hyperion (poem)",
                 "Hyperion is an unfinished epic poem by John Keats, recounting the despair of the Titans after their defeat by the Olympians.",
@@ -83,7 +98,17 @@ impl Fetcher for WikipediaFeaturedFetcher {
         let lang = opts.lang.as_deref().unwrap_or(DEFAULT_LANG);
         let summary = fetch_tfa(lang).await?;
         let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
-        Ok(payload(render_page_summary(&summary, shape)))
+        let body = match shape {
+            Shape::ImageLinkedList => {
+                let path = match summary.thumbnail_url() {
+                    Some(url) => thumbnails::download_to_cache(url).await.ok().flatten(),
+                    None => None,
+                };
+                render_page_summary_with_thumbnail(&summary, shape, path)
+            }
+            _ => render_page_summary(&summary, shape),
+        };
+        Ok(payload(body))
     }
 }
 
@@ -181,6 +206,10 @@ mod tests {
         assert!(matches!(
             fetcher.sample_body(Shape::Text),
             Some(Body::Text(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::ImageLinkedList),
+            Some(Body::ImageLinkedList(_))
         ));
         assert!(fetcher.sample_body(Shape::Entries).is_none());
     }

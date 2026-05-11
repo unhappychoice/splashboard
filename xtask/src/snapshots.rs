@@ -139,6 +139,7 @@ fn representative_fetcher(shape: Shape, fetchers: &FetcherRegistry) -> String {
         Shape::TextBlock => "git_recent_commits",
         Shape::MarkdownTextBlock => "wikipedia_featured",
         Shape::LinkedTextBlock => "rss",
+        Shape::ImageLinkedList => "rss",
         Shape::Entries => "system",
         Shape::Ratio => "clock_ratio",
         Shape::NumberSeries => "git_commits_activity",

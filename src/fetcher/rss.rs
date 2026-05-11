@@ -15,14 +15,19 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use feed_rs::model::{Entry, Feed};
 use feed_rs::parser;
+use regex::Regex;
 use reqwest::Client;
 use serde::Deserialize;
 use url::Url;
 
 use crate::fetcher::github::common::{cache_key, parse_options, payload};
+use crate::fetcher::thumbnails;
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
-use crate::payload::{Body, LinkedLine, LinkedTextBlockData, Payload, TextBlockData};
+use crate::payload::{
+    Body, ImageLinkedItem, ImageLinkedListData, LinkedLine, LinkedTextBlockData, Payload,
+    TextBlockData,
+};
 use crate::render::Shape;
 use crate::samples;
 use crate::time as t;
@@ -36,7 +41,11 @@ const MAX_BYTES: usize = 5 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
 
-const SHAPES: &[Shape] = &[Shape::LinkedTextBlock, Shape::TextBlock];
+const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::ImageLinkedList,
+    Shape::TextBlock,
+];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -101,6 +110,26 @@ impl Fetcher for RssFetcher {
                 ),
                 ("Apr 22  A short note", Some("https://example.com/post-3")),
             ]),
+            Shape::ImageLinkedList => samples::image_linked_list(&[
+                (
+                    "Why X over Y",
+                    Some("https://example.com/post-1"),
+                    None,
+                    Some("Apr 26"),
+                ),
+                (
+                    "Release notes 0.42",
+                    Some("https://example.com/post-2"),
+                    None,
+                    Some("Apr 24"),
+                ),
+                (
+                    "A short note",
+                    Some("https://example.com/post-3"),
+                    None,
+                    Some("Apr 22"),
+                ),
+            ]),
             Shape::TextBlock => samples::text_block(&[
                 "Apr 26  Why X over Y",
                 "Apr 24  Release notes 0.42",
@@ -119,13 +148,18 @@ impl Fetcher for RssFetcher {
         let bytes = fetch_bytes(&url).await?;
         let feed = parser::parse(bytes.as_slice())
             .map_err(|e| FetchError::Failed(format!("rss parse: {e}")))?;
-        Ok(payload(render_body(
-            &feed,
-            count,
-            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
-            ctx.timezone.as_deref(),
-            ctx.locale.as_deref(),
-        )))
+        let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
+        let body = match shape {
+            Shape::ImageLinkedList => render_image_linked(&feed, count, ctx).await,
+            other => render_body(
+                &feed,
+                count,
+                other,
+                ctx.timezone.as_deref(),
+                ctx.locale.as_deref(),
+            ),
+        };
+        Ok(payload(body))
     }
 }
 
@@ -177,6 +211,105 @@ async fn fetch_bytes(url: &Url) -> Result<Vec<u8>, FetchError> {
         )));
     }
     Ok(bytes.to_vec())
+}
+
+async fn render_image_linked(feed: &Feed, count: usize, ctx: &FetchContext) -> Body {
+    let entries: Vec<&Entry> = feed.entries.iter().take(count).collect();
+    let thumbnail_urls: Vec<Option<String>> =
+        entries.iter().map(|e| thumbnail_url_for(e)).collect();
+    let thumbnail_paths = thumbnails::download_many(&thumbnail_urls).await;
+    Body::ImageLinkedList(ImageLinkedListData {
+        items: entries
+            .iter()
+            .zip(thumbnail_paths)
+            .map(|(e, path)| ImageLinkedItem {
+                title: title_or_placeholder(e),
+                url: link_for(e),
+                thumbnail_path: path.map(|p| p.to_string_lossy().into_owned()),
+                subtitle: subtitle_for(e, ctx.timezone.as_deref(), ctx.locale.as_deref()),
+            })
+            .collect(),
+    })
+}
+
+/// Best-effort image URL for the entry, in order of preference:
+///
+/// 1. `media:thumbnail` (RSS Media spec) — explicit thumbnail.
+/// 2. `media:content` URL — full media, usually an image.
+/// 3. First `<img src="http(s)://...">` in the entry's HTML `<content>` or `<summary>` —
+///    covers Atom feeds without media extensions (Rust blog, most personal blogs) where the
+///    cover image is inlined in the body markup.
+///
+/// `image.uri` on a thumbnail is always a string; `MediaContent` returns a `Url` we serialise
+/// back to `String` so the cache key (sha of the URL string) stays stable.
+fn thumbnail_url_for(entry: &Entry) -> Option<String> {
+    entry
+        .media
+        .iter()
+        .flat_map(|m| m.thumbnails.iter().map(|t| t.image.uri.clone()))
+        .find(|s| !s.is_empty())
+        .or_else(|| {
+            entry
+                .media
+                .iter()
+                .flat_map(|m| m.content.iter().filter_map(|c| c.url.as_ref()))
+                .map(|u| u.to_string())
+                .find(|s| !s.is_empty())
+        })
+        .or_else(|| {
+            entry
+                .content
+                .as_ref()
+                .and_then(|c| c.body.as_deref())
+                .and_then(first_inline_image_src)
+        })
+        .or_else(|| {
+            entry
+                .summary
+                .as_ref()
+                .and_then(|s| first_inline_image_src(&s.content))
+        })
+}
+
+/// Extracts the `src` attribute of the first HTTP(S) `<img>` tag in `html`. Used to recover a
+/// thumbnail when the feed doesn't expose `media:thumbnail` — most Atom blogs (Rust blog,
+/// personal sites) only ship the cover image inline inside the HTML body. Encoded entities
+/// (`&amp;`) are decoded back to `&` so the URL works as-is. Returns `None` when the body has
+/// no `<img>` or only data: / cid: / file: URIs.
+fn first_inline_image_src(html: &str) -> Option<String> {
+    static IMG_SRC_RE: OnceLock<Regex> = OnceLock::new();
+    // `(?is)`: case-insensitive + dot matches newlines. The regex is forgiving about
+    // attribute order — `src` may be preceded by any number of non-`>` attributes.
+    let re = IMG_SRC_RE
+        .get_or_init(|| Regex::new(r#"(?is)<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']"#).unwrap());
+    re.captures_iter(html)
+        .map(|cap| decode_html_entities(&cap[1]))
+        .find(|src| src.starts_with("http://") || src.starts_with("https://"))
+}
+
+fn decode_html_entities(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&#x2F;", "/")
+        .replace("&#x3D;", "=")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+}
+
+/// Subtitle for the card layout: `"<date> · <source-host>"`, or just one half when the other is
+/// missing. The full-line `"<date>  <title>"` rhythm from `LinkedTextBlock` doesn't fit the
+/// thumbnail layout because the title gets its own bold row.
+fn subtitle_for(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> Option<String> {
+    let date = date_label(entry, timezone, locale);
+    let host = link_for(entry)
+        .as_deref()
+        .and_then(|u| Url::parse(u).ok())
+        .and_then(|u| u.host_str().map(str::to_string));
+    match (date.is_empty(), host) {
+        (true, None) => None,
+        (false, None) => Some(date),
+        (true, Some(h)) => Some(h),
+        (false, Some(h)) => Some(format!("{date} · {h}")),
+    }
 }
 
 fn render_body(
@@ -554,17 +687,211 @@ mod tests {
     }
 
     #[test]
-    fn sample_body_covers_both_shapes() {
+    fn sample_body_covers_every_declared_shape() {
         let f = RssFetcher;
         assert!(matches!(
             f.sample_body(Shape::LinkedTextBlock),
             Some(Body::LinkedTextBlock(_))
         ));
         assert!(matches!(
+            f.sample_body(Shape::ImageLinkedList),
+            Some(Body::ImageLinkedList(_))
+        ));
+        assert!(matches!(
             f.sample_body(Shape::TextBlock),
             Some(Body::TextBlock(_))
         ));
         assert!(f.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn first_inline_image_src_extracts_first_http_src() {
+        let html = r#"<p>intro</p><img src="https://example.com/cover.jpg" /><img src="https://example.com/second.png">"#;
+        assert_eq!(
+            super::first_inline_image_src(html).as_deref(),
+            Some("https://example.com/cover.jpg"),
+        );
+    }
+
+    #[test]
+    fn first_inline_image_src_skips_data_and_cid_uris() {
+        let html =
+            r#"<img src="data:image/png;base64,AAAA"><img src="https://example.com/real.png">"#;
+        assert_eq!(
+            super::first_inline_image_src(html).as_deref(),
+            Some("https://example.com/real.png"),
+        );
+    }
+
+    #[test]
+    fn first_inline_image_src_decodes_encoded_amp_entities() {
+        // Real-world Atom feeds (e.g. Rust blog) HTML-encode the entry body, so query
+        // strings appear as `?a&amp;b=1`. Without decoding, the URL doesn't match what the
+        // origin actually serves.
+        let html = r#"<img src="https://example.com/img.png?a&amp;b&#x3D;1">"#;
+        assert_eq!(
+            super::first_inline_image_src(html).as_deref(),
+            Some("https://example.com/img.png?a&b=1"),
+        );
+    }
+
+    #[test]
+    fn first_inline_image_src_returns_none_without_img() {
+        assert!(super::first_inline_image_src("<p>no images here</p>").is_none());
+        assert!(super::first_inline_image_src("").is_none());
+    }
+
+    #[test]
+    fn thumbnail_url_falls_back_to_html_img_when_media_absent() {
+        use feed_rs::model::Content;
+        let entry = Entry {
+            content: Some(Content {
+                body: Some(r#"<p>lead</p><img src="https://example.com/hero.jpg"/>"#.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            super::thumbnail_url_for(&entry).as_deref(),
+            Some("https://example.com/hero.jpg"),
+        );
+    }
+
+    #[test]
+    fn thumbnail_url_picks_media_thumbnail_first_then_content() {
+        use feed_rs::model::{Image, MediaContent, MediaObject, MediaThumbnail};
+        let mut entry = Entry::default();
+        let media = MediaObject {
+            title: None,
+            content: vec![MediaContent {
+                url: Some(Url::parse("https://example.com/big.jpg").unwrap()),
+                content_type: None,
+                height: None,
+                width: None,
+                duration: None,
+                size: None,
+                rating: None,
+            }],
+            duration: None,
+            thumbnails: vec![MediaThumbnail {
+                image: Image {
+                    uri: "https://example.com/thumb.jpg".into(),
+                    title: None,
+                    link: None,
+                    width: None,
+                    height: None,
+                    description: None,
+                },
+                time: None,
+            }],
+            texts: vec![],
+            description: None,
+            community: None,
+            credits: vec![],
+        };
+        entry.media = vec![media];
+        assert_eq!(
+            super::thumbnail_url_for(&entry).as_deref(),
+            Some("https://example.com/thumb.jpg"),
+        );
+
+        let mut entry_no_thumb = Entry::default();
+        let mut media_content_only =
+            entry_no_thumb
+                .media
+                .first()
+                .cloned()
+                .unwrap_or_else(|| feed_rs::model::MediaObject {
+                    title: None,
+                    content: vec![MediaContent {
+                        url: Some(Url::parse("https://example.com/big.jpg").unwrap()),
+                        content_type: None,
+                        height: None,
+                        width: None,
+                        duration: None,
+                        size: None,
+                        rating: None,
+                    }],
+                    duration: None,
+                    thumbnails: vec![],
+                    texts: vec![],
+                    description: None,
+                    community: None,
+                    credits: vec![],
+                });
+        media_content_only.thumbnails.clear();
+        entry_no_thumb.media = vec![media_content_only];
+        assert_eq!(
+            super::thumbnail_url_for(&entry_no_thumb).as_deref(),
+            Some("https://example.com/big.jpg"),
+        );
+
+        let empty = Entry::default();
+        assert!(super::thumbnail_url_for(&empty).is_none());
+    }
+
+    #[test]
+    fn thumbnail_url_for_returns_none_when_no_source_available() {
+        let empty = Entry::default();
+        assert!(super::thumbnail_url_for(&empty).is_none());
+    }
+
+    #[test]
+    fn subtitle_for_returns_none_when_no_signal() {
+        // No date, no link → no useful subtitle. Returning None lets the renderer omit the
+        // subtitle row entirely rather than draw a blank line.
+        let entry = Entry::default();
+        assert!(super::subtitle_for(&entry, None, None).is_none());
+    }
+
+    #[test]
+    fn subtitle_for_falls_back_to_date_only_when_link_missing() {
+        let entry = Entry {
+            published: Some(chrono::Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
+            ..Default::default()
+        };
+        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        assert_eq!(sub, "Apr 26");
+        assert!(!sub.contains('·'));
+    }
+
+    #[test]
+    fn subtitle_for_falls_back_to_host_only_when_date_missing() {
+        use feed_rs::model::Link;
+        let entry = Entry {
+            links: vec![Link {
+                href: "https://blog.rust-lang.org/post".into(),
+                rel: None,
+                media_type: None,
+                href_lang: None,
+                title: None,
+                length: None,
+            }],
+            ..Default::default()
+        };
+        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        assert_eq!(sub, "blog.rust-lang.org");
+        assert!(!sub.contains('·'));
+    }
+
+    #[test]
+    fn subtitle_combines_date_and_host_when_both_present() {
+        use feed_rs::model::Link;
+        let entry = Entry {
+            published: Some(chrono::Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
+            links: vec![Link {
+                href: "https://blog.rust-lang.org/post".into(),
+                rel: None,
+                media_type: None,
+                href_lang: None,
+                title: None,
+                length: None,
+            }],
+            ..Default::default()
+        };
+        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        assert!(sub.contains("Apr 26"));
+        assert!(sub.contains("blog.rust-lang.org"));
     }
 
     #[test]
@@ -715,5 +1042,35 @@ mod tests {
                 eprintln!("{}  -> {:?}", it.text, it.url);
             }
         }
+    }
+
+    /// Live verification that the `media:thumbnail` extraction path works against a real
+    /// feed. BBC Tech ships `<media:thumbnail>` per item so every entry should resolve a
+    /// URL. The Rust blog has no images at all (not even inline `<img>` — text-only posts)
+    /// and would not satisfy this assertion. Run with
+    /// `cargo test -- --ignored fetcher::rss::tests::live_bbc_tech_thumbnail_url`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_bbc_tech_thumbnail_url_extracts_media_thumbnail() {
+        let url = validated_url(Some("https://feeds.bbci.co.uk/news/technology/rss.xml")).unwrap();
+        let bytes = fetch_bytes(&url).await.unwrap();
+        let feed = parser::parse(bytes.as_slice()).unwrap();
+        let with_thumb = feed
+            .entries
+            .iter()
+            .take(5)
+            .filter(|e| super::thumbnail_url_for(e).is_some())
+            .count();
+        for entry in feed.entries.iter().take(5) {
+            eprintln!(
+                "{:?} -> {:?}",
+                entry.title.as_ref().map(|t| &t.content),
+                super::thumbnail_url_for(entry),
+            );
+        }
+        assert!(
+            with_thumb > 0,
+            "expected at least one entry with a media:thumbnail",
+        );
     }
 }

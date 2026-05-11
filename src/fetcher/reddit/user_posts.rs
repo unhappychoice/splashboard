@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::fetcher::github::common::{parse_options, payload};
+use crate::fetcher::thumbnails;
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
@@ -12,7 +13,7 @@ use crate::render::Shape;
 use super::client::fetch_listing;
 use super::common::{
     Post, SHAPES, cache_key_for, network_unavailable_body, normalize_user, normalized_count,
-    render_posts, sample_post_body,
+    render_posts, render_posts_image_linked, sample_post_body,
 };
 
 const DEFAULT_USER: &str = "spez";
@@ -74,10 +75,25 @@ impl Fetcher for RedditUserPostsFetcher {
         let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
         let user = normalize_user(opts.user.as_deref().unwrap_or(DEFAULT_USER))?;
         match fetch_user_posts(&user, count).await {
-            Ok(posts) => Ok(payload(render_posts(&posts, shape))),
+            Ok(posts) => Ok(payload(render_for_shape(&posts, shape).await)),
             Err(err) => Ok(payload(network_unavailable_body(shape, &format!("{err}")))),
         }
     }
+}
+
+/// Sibling of [`reddit_subreddit_posts::render_for_shape`]: pre-downloads thumbnails for the
+/// `ImageLinkedList` shape so the renderer can show them, and falls through to the sync
+/// `render_posts` for every other shape.
+async fn render_for_shape(posts: &[Post], shape: Shape) -> Body {
+    if !matches!(shape, Shape::ImageLinkedList) {
+        return render_posts(posts, shape);
+    }
+    let urls: Vec<Option<String>> = posts
+        .iter()
+        .map(|p| p.thumbnail_url().map(str::to_string))
+        .collect();
+    let paths = thumbnails::download_many(&urls).await;
+    render_posts_image_linked(posts, &paths)
 }
 
 async fn fetch_user_posts(user: &str, count: usize) -> Result<Vec<Post>, FetchError> {

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::fetcher::github::common::{parse_options, payload};
+use crate::fetcher::thumbnails;
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
@@ -12,7 +13,7 @@ use crate::render::Shape;
 use super::client::fetch_listing;
 use super::common::{
     Post, SHAPES, cache_key_for, network_unavailable_body, normalize_subreddit, normalized_count,
-    render_posts, sample_post_body,
+    render_posts, render_posts_image_linked, sample_post_body,
 };
 
 const DEFAULT_SUBREDDIT: &str = "programming";
@@ -145,10 +146,26 @@ impl Fetcher for RedditSubredditPostsFetcher {
         let subreddit =
             normalize_subreddit(opts.subreddit.as_deref().unwrap_or(DEFAULT_SUBREDDIT))?;
         match fetch_subreddit_posts(&subreddit, count, listing_type, period).await {
-            Ok(posts) => Ok(payload(render_posts(&posts, shape))),
+            Ok(posts) => Ok(payload(render_for_shape(&posts, shape).await)),
             Err(err) => Ok(payload(network_unavailable_body(shape, &format!("{err}")))),
         }
     }
+}
+
+/// Wraps the sync [`render_posts`] but takes the async detour for `ImageLinkedList`: downloads
+/// each post's thumbnail (Reddit serves them as remote URLs) into the shared cache and pins the
+/// resolved local paths onto each card. Posts without a thumbnail keep `None`, so the renderer
+/// shows a blank thumbnail cell rather than an error.
+async fn render_for_shape(posts: &[Post], shape: Shape) -> Body {
+    if !matches!(shape, Shape::ImageLinkedList) {
+        return render_posts(posts, shape);
+    }
+    let urls: Vec<Option<String>> = posts
+        .iter()
+        .map(|p| p.thumbnail_url().map(str::to_string))
+        .collect();
+    let paths = thumbnails::download_many(&urls).await;
+    render_posts_image_linked(posts, &paths)
 }
 
 async fn fetch_subreddit_posts(
@@ -295,6 +312,10 @@ mod tests {
         assert!(matches!(
             fetcher.sample_body(Shape::Entries),
             Some(Body::Entries(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::ImageLinkedList),
+            Some(Body::ImageLinkedList(_))
         ));
         assert!(fetcher.sample_body(Shape::Ratio).is_none());
     }

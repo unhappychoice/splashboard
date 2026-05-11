@@ -155,6 +155,15 @@ fn osc8_suppressed() -> bool {
     OSC8_SUPPRESSED.with(StdCell::get)
 }
 
+/// Re-export of the OSC 8 wrapping helper so sibling renderers (`list_cards`) can reuse the
+/// `set_skip` plumbing without duplicating the escape-sequence dance.
+pub(crate) fn wrap_osc8(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Style) {
+    if osc8_suppressed() {
+        return;
+    }
+    wrap_link(buf, x, y, end_x, url, style);
+}
+
 fn wrap_link(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Style) {
     let visible: String = (x..end_x)
         .filter_map(|col| buf.cell((col, y)).map(|c| c.symbol().to_string()))

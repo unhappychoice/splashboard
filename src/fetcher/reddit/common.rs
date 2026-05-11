@@ -6,13 +6,29 @@ use serde::Deserialize;
 use crate::fetcher::FetchContext;
 use crate::fetcher::FetchError;
 use crate::fetcher::github::common::cache_key;
-use crate::payload::{Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, TextBlockData};
+use crate::payload::{
+    Body, EntriesData, Entry, ImageLinkedItem, ImageLinkedListData, LinkedLine,
+    LinkedTextBlockData, TextBlockData,
+};
 use crate::render::Shape;
 use crate::samples;
 
 use super::client::SITE_BASE;
 
-pub(super) const SHAPES: &[Shape] = &[Shape::LinkedTextBlock, Shape::TextBlock, Shape::Entries];
+/// Shapes the post-listing fetchers (`reddit_subreddit_posts`, `reddit_user_posts`) emit.
+/// Includes `ImageLinkedList` because Reddit posts can carry thumbnails.
+pub(super) const SHAPES: &[Shape] = &[
+    Shape::LinkedTextBlock,
+    Shape::ImageLinkedList,
+    Shape::TextBlock,
+    Shape::Entries,
+];
+
+/// Shapes for the comment fetcher (`reddit_user_comments`). Excludes `ImageLinkedList`
+/// because Reddit comments don't have images — declaring it would lie about the output
+/// contract.
+pub(super) const COMMENT_SHAPES: &[Shape] =
+    &[Shape::LinkedTextBlock, Shape::TextBlock, Shape::Entries];
 
 pub(super) const DEFAULT_COUNT: u32 = 10;
 pub(super) const MIN_COUNT: u32 = 1;
@@ -97,6 +113,14 @@ pub(super) fn network_unavailable_body(shape: Shape, err: &str) -> Body {
                 url: None,
             }],
         }),
+        Shape::ImageLinkedList => Body::ImageLinkedList(ImageLinkedListData {
+            items: vec![ImageLinkedItem {
+                title: line,
+                url: None,
+                thumbnail_path: None,
+                subtitle: None,
+            }],
+        }),
         _ => Body::TextBlock(TextBlockData { lines: vec![line] }),
     }
 }
@@ -115,6 +139,22 @@ pub(super) struct Post {
     pub permalink: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
+    /// Reddit returns one of: a thumbnail URL (http/https), the strings `"self"` / `"default"`
+    /// / `"nsfw"` / `"spoiler"`, or an empty string. Only the URL form is usable as an image —
+    /// see [`Post::thumbnail_url`].
+    #[serde(default)]
+    pub thumbnail: Option<String>,
+}
+
+impl Post {
+    /// HTTP(S) thumbnail URL if Reddit gave us one. Filters out the placeholder strings Reddit
+    /// returns when the post isn't a media post (`"self"`, `"default"`, …) and the empty case.
+    pub(super) fn thumbnail_url(&self) -> Option<&str> {
+        self.thumbnail
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| s.starts_with("http://") || s.starts_with("https://"))
+    }
 }
 
 pub(super) fn render_posts(posts: &[Post], shape: Shape) -> Body {
@@ -138,6 +178,7 @@ pub(super) fn render_posts(posts: &[Post], shape: Shape) -> Body {
                 })
                 .collect(),
         }),
+        Shape::ImageLinkedList => render_posts_image_linked(posts, &vec![None; posts.len()]),
         _ => Body::TextBlock(TextBlockData {
             lines: posts
                 .iter()
@@ -145,6 +186,31 @@ pub(super) fn render_posts(posts: &[Post], shape: Shape) -> Body {
                 .collect(),
         }),
     }
+}
+
+/// `ImageLinkedList` rendering with pre-resolved thumbnail paths. Kept separate from
+/// [`render_posts`] because the thumbnail download is async — callers run it once at fetch
+/// time and pass the resolved paths back in, so the sync renderer path can still serve
+/// thumbnail-less callers (`sample_post_body`, error fallbacks) without an executor.
+pub(super) fn render_posts_image_linked(
+    posts: &[Post],
+    thumbnail_paths: &[Option<std::path::PathBuf>],
+) -> Body {
+    Body::ImageLinkedList(ImageLinkedListData {
+        items: posts
+            .iter()
+            .enumerate()
+            .map(|(i, post)| ImageLinkedItem {
+                title: post_title(post),
+                url: post_link(post),
+                thumbnail_path: thumbnail_paths
+                    .get(i)
+                    .and_then(|p| p.as_ref())
+                    .map(|p| p.to_string_lossy().into_owned()),
+                subtitle: Some(post_meta(post)),
+            })
+            .collect(),
+    })
 }
 
 pub(super) fn sample_post_body(shape: Shape) -> Option<Body> {
@@ -157,6 +223,20 @@ pub(super) fn sample_post_body(shape: Shape) -> Option<Body> {
             (
                 "r/rust · 934↑ 104c  Why async Rust feels different from Go",
                 Some("https://example.com/async-rust-vs-go"),
+            ),
+        ]),
+        Shape::ImageLinkedList => samples::image_linked_list(&[
+            (
+                "Show: terminal dashboard with local trust model",
+                Some("https://www.reddit.com/r/programming/comments/abc123/demo/"),
+                None,
+                Some("r/programming · 1520↑ 218c"),
+            ),
+            (
+                "Why async Rust feels different from Go",
+                Some("https://example.com/async-rust-vs-go"),
+                None,
+                Some("r/rust · 934↑ 104c"),
             ),
         ]),
         Shape::TextBlock => samples::text_block(&[
@@ -267,6 +347,7 @@ mod tests {
             subreddit: Some("rust".into()),
             permalink: None,
             url: None,
+            thumbnail: None,
         };
         assert_eq!(post_meta(&post), "r/rust · 12↑ 3c");
     }
@@ -280,6 +361,7 @@ mod tests {
             subreddit: Some("rust".into()),
             permalink: None,
             url: None,
+            thumbnail: None,
         };
         assert_eq!(post_meta(&post), "r/rust · -5↑ 0c");
     }
@@ -319,6 +401,29 @@ mod tests {
             panic!("expected text_block");
         };
         assert!(t.lines[0].contains("boom"));
+
+        let cards = network_unavailable_body(Shape::ImageLinkedList, "reddit 429");
+        let Body::ImageLinkedList(cards) = cards else {
+            panic!("expected image_linked_list");
+        };
+        assert!(cards.items[0].title.contains("reddit 429"));
+        assert_eq!(cards.items[0].thumbnail_path, None);
+    }
+
+    #[test]
+    fn render_posts_image_linked_via_render_posts_emits_blank_thumbnails() {
+        // The sync `render_posts` path can't run the async download — it ships cards with
+        // no thumbnails. Callers that want thumbnails go through the family-specific
+        // `render_for_shape` wrapper. Documented as the contract here so a future
+        // refactor doesn't silently flip the default to a panicking unimplemented arm.
+        let posts = vec![sample_post(Some("https://example.com/a"))];
+        let body = render_posts(&posts, Shape::ImageLinkedList);
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items.len(), 1);
+        assert_eq!(b.items[0].thumbnail_path, None);
+        assert_eq!(b.items[0].title, "t");
     }
 
     #[test]
@@ -362,6 +467,7 @@ mod tests {
             subreddit: Some("rust".into()),
             permalink: Some("/r/rust/comments/xyz/hello/".into()),
             url: None,
+            thumbnail: None,
         }];
         let body = render_posts(&posts, Shape::LinkedTextBlock);
         let Body::LinkedTextBlock(b) = body else {
@@ -382,6 +488,7 @@ mod tests {
             subreddit: None,
             permalink: None,
             url: None,
+            thumbnail: None,
         }];
         let body = render_posts(&posts, Shape::TextBlock);
         let Body::TextBlock(t) = body else {
@@ -459,12 +566,75 @@ mod tests {
 
     #[test]
     fn sample_post_body_returns_some_for_supported_shapes() {
-        for shape in [Shape::LinkedTextBlock, Shape::TextBlock, Shape::Entries] {
+        for shape in [
+            Shape::LinkedTextBlock,
+            Shape::ImageLinkedList,
+            Shape::TextBlock,
+            Shape::Entries,
+        ] {
             assert!(
                 sample_post_body(shape).is_some(),
                 "expected sample for {shape:?}"
             );
         }
+    }
+
+    #[test]
+    fn thumbnail_url_filters_placeholder_strings() {
+        let mut post = Post {
+            title: None,
+            score: None,
+            num_comments: None,
+            subreddit: None,
+            permalink: None,
+            url: None,
+            thumbnail: Some("self".into()),
+        };
+        assert_eq!(post.thumbnail_url(), None);
+        post.thumbnail = Some("default".into());
+        assert_eq!(post.thumbnail_url(), None);
+        post.thumbnail = Some("nsfw".into());
+        assert_eq!(post.thumbnail_url(), None);
+        post.thumbnail = Some(String::new());
+        assert_eq!(post.thumbnail_url(), None);
+        post.thumbnail = Some("https://b.thumbs.redditmedia.com/x.jpg".into());
+        assert_eq!(
+            post.thumbnail_url(),
+            Some("https://b.thumbs.redditmedia.com/x.jpg"),
+        );
+    }
+
+    #[test]
+    fn render_posts_image_linked_pins_thumbnail_paths() {
+        let posts = vec![
+            Post {
+                title: Some("first".into()),
+                score: Some(1),
+                num_comments: Some(0),
+                subreddit: Some("rust".into()),
+                permalink: None,
+                url: Some("https://example.com/a".into()),
+                thumbnail: None,
+            },
+            Post {
+                title: Some("second".into()),
+                score: Some(2),
+                num_comments: Some(1),
+                subreddit: Some("rust".into()),
+                permalink: None,
+                url: Some("https://example.com/b".into()),
+                thumbnail: None,
+            },
+        ];
+        let paths = vec![Some(std::path::PathBuf::from("/tmp/a.png")), None];
+        let body = render_posts_image_linked(&posts, &paths);
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items[0].title, "first");
+        assert_eq!(b.items[0].thumbnail_path.as_deref(), Some("/tmp/a.png"));
+        assert!(b.items[0].subtitle.as_deref().unwrap().contains("r/rust"));
+        assert_eq!(b.items[1].thumbnail_path, None);
     }
 
     #[test]
@@ -480,6 +650,7 @@ mod tests {
             subreddit: Some("rust".into()),
             permalink: Some("/r/rust/comments/abc/t/".into()),
             url: url.map(String::from),
+            thumbnail: None,
         }
     }
 }

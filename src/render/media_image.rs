@@ -128,13 +128,30 @@ fn render_image(
     theme: &Theme,
 ) -> Result<(), String> {
     let specific: Options = opts.parse_specific();
+    draw_thumbnail(frame, area, path, specific.fit.as_deref(), theme)
+}
+
+/// Draws an image file into `area` using the shared `ratatui-image` pipeline. Exposed for
+/// renderers that need a thumbnail cell inside a larger composition (`list_cards`) without
+/// duplicating the picker / load / theme-bg plumbing. Returns the same `Err` strings
+/// `media_image` would surface so callers can fall back to a blank cell or text glyph.
+pub(crate) fn draw_thumbnail(
+    frame: &mut Frame,
+    area: Rect,
+    path: &str,
+    fit: Option<&str>,
+    theme: &Theme,
+) -> Result<(), String> {
+    if area.width == 0 || area.height == 0 {
+        return Ok(());
+    }
     let img = load_image(path)?;
     let mut p = picker();
     if let Some(rgba) = solid_rgba(theme.bg) {
         p.set_background_color(Some(rgba));
     }
     let mut protocol = p.new_resize_protocol(img);
-    let widget = StatefulImage::default().resize(resize_mode(specific.fit.as_deref()));
+    let widget = StatefulImage::default().resize(resize_mode(fit));
     frame.render_stateful_widget(widget, area, &mut protocol);
     Ok(())
 }

@@ -14,7 +14,8 @@ use crate::samples;
 
 use super::client::{SITE_BASE, fetch_listing};
 use super::common::{
-    SHAPES, cache_key_for, network_unavailable_body, normalize_user, normalized_count,
+    COMMENT_SHAPES as SHAPES, cache_key_for, network_unavailable_body, normalize_user,
+    normalized_count,
 };
 
 const DEFAULT_USER: &str = "spez";
