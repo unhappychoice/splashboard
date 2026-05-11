@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::payload::{
-    Bar, BarsData, Body, CalendarData, EntriesData, HeatmapData, ImageData, NumberSeriesData,
-    Payload, PointSeriesData, RatioData, TextBlockData, TextData,
+    Bar, BarsData, Body, CalendarData, EntriesData, HeatmapData, ImageData, ImageLinkedListData,
+    NumberSeriesData, Payload, PointSeriesData, RatioData, TextBlockData, TextData,
 };
 use crate::render::Shape;
 
@@ -22,6 +22,7 @@ const READ_STORE_SHAPES: &[Shape] = &[
     Shape::PointSeries,
     Shape::Bars,
     Shape::Image,
+    Shape::ImageLinkedList,
     Shape::Calendar,
     Shape::Heatmap,
 ];
@@ -174,6 +175,7 @@ fn from_json(text: &str, shape: Shape) -> Result<Body, FetchError> {
         Shape::PointSeries => parse_as!(PointSeriesData, PointSeries),
         Shape::Bars => parse_as!(BarsData, Bars),
         Shape::Image => parse_as!(ImageData, Image),
+        Shape::ImageLinkedList => parse_as!(ImageLinkedListData, ImageLinkedList),
         Shape::Calendar => parse_as!(CalendarData, Calendar),
         Shape::Heatmap => parse_as!(HeatmapData, Heatmap),
         other => Err(FetchError::Failed(format!(
@@ -200,6 +202,7 @@ fn from_toml(text: &str, shape: Shape) -> Result<Body, FetchError> {
         Shape::PointSeries => parse_as!(PointSeriesData, PointSeries),
         Shape::Bars => parse_as!(BarsData, Bars),
         Shape::Image => parse_as!(ImageData, Image),
+        Shape::ImageLinkedList => parse_as!(ImageLinkedListData, ImageLinkedList),
         Shape::Calendar => parse_as!(CalendarData, Calendar),
         Shape::Heatmap => parse_as!(HeatmapData, Heatmap),
         other => Err(FetchError::Failed(format!(
@@ -230,6 +233,7 @@ fn empty_body(shape: Shape) -> Body {
         Shape::Image => Body::Image(ImageData {
             path: String::new(),
         }),
+        Shape::ImageLinkedList => Body::ImageLinkedList(ImageLinkedListData { items: Vec::new() }),
         Shape::Calendar => Body::Calendar(CalendarData {
             year: 1970,
             month: 1,
@@ -324,6 +328,37 @@ mod tests {
         match p.body {
             Body::TextBlock(d) => assert_eq!(d.lines, vec!["one", "two", "three"]),
             other => panic!("expected text_block body, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn reads_image_linked_list_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("store");
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(
+            store.join("cards.json"),
+            r#"{"items":[
+                {"title":"first","url":"https://example.com/1","thumbnail_path":"/tmp/a.png","subtitle":"src · 2h"},
+                {"title":"second"}
+            ]}"#,
+        )
+        .unwrap();
+        let _guard = ScopedHome::new(tmp.path());
+        let p = ReadStoreFetcher
+            .fetch(&ctx("cards", Shape::ImageLinkedList, "json"))
+            .await
+            .unwrap();
+        match p.body {
+            Body::ImageLinkedList(d) => {
+                assert_eq!(d.items.len(), 2);
+                assert_eq!(d.items[0].title, "first");
+                assert_eq!(d.items[0].url.as_deref(), Some("https://example.com/1"));
+                assert_eq!(d.items[0].thumbnail_path.as_deref(), Some("/tmp/a.png"));
+                assert_eq!(d.items[1].url, None);
+                assert_eq!(d.items[1].thumbnail_path, None);
+            }
+            other => panic!("expected image_linked_list body, got {other:?}"),
         }
     }
 
