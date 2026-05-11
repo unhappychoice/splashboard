@@ -4405,6 +4405,7 @@ dependencies = [
  "image",
  "ratatui",
  "ratatui-image",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
