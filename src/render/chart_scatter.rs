@@ -22,7 +22,7 @@ struct Options {
     pub marker: Option<String>,
 }
 
-const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER, theme::BG];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -86,7 +86,11 @@ fn render_scatter(
 ) {
     let specific: Options = opts.parse_specific();
     let (x_bounds, y_bounds) = bounds(&data.series);
+    // ratatui's `Canvas` paints `background_color` (defaulting to `Color::Reset`) across the
+    // whole plot area, overwriting any panel surface the layout already painted. Anchor it
+    // to `theme.bg` so the scatter plot keeps the surrounding bg.
     let mut canvas = Canvas::default()
+        .background_color(theme.bg)
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .marker(parse_marker(specific.marker.as_deref()))
@@ -218,6 +222,33 @@ mod tests {
         let top = line_text(&buf, 0);
         assert!(top.starts_with('┌'), "missing top-left border: {top:?}");
         assert!(top.contains('┐'), "missing top-right border: {top:?}");
+    }
+
+    #[test]
+    fn rendered_cells_inherit_theme_bg_rather_than_color_reset() {
+        // Regression for `Canvas::default()` seeding `background_color = Color::Reset`.
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("chart_scatter".into());
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![series("temp", &[(0.0, 0.0), (1.0, 1.0)])]),
+            Some(&spec),
+            &registry,
+            20,
+            6,
+        );
+        let theme = Theme::default();
+        let mut bg_hits = 0;
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                if buf.cell((x, y)).unwrap().style().bg == Some(theme.bg) {
+                    bg_hits += 1;
+                }
+            }
+        }
+        assert!(
+            bg_hits > 0,
+            "expected at least one scatter cell to carry theme.bg, got 0"
+        );
     }
 
     #[test]

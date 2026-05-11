@@ -1,29 +1,27 @@
-//! `weather` fetcher — Open-Meteo forecast for a fixed (latitude, longitude).
+//! `weather` fetcher — Open-Meteo "current conditions" snapshot for a fixed
+//! (latitude, longitude). Multi-shape: Entries (default) / Text / PointSeries / NumberSeries /
+//! Bars / Badge.
 //!
 //! Safety::Safe because the host is hardcoded: the user supplies coordinates, not a URL, so
 //! config can't redirect traffic to an attacker-controlled origin. No API key is required and
 //! no token leaves the machine.
 
-use std::sync::OnceLock;
-use std::time::Duration;
-
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{
-    BadgeData, Bar, BarsData, Body, EntriesData, Entry, NumberSeriesData, Payload, PointSeries,
-    PointSeriesData, Status, TextData,
+    Bar, BarsData, Body, EntriesData, Entry, NumberSeriesData, Payload, PointSeries,
+    PointSeriesData, TextData,
 };
 use crate::render::Shape;
 
-use super::github::common::cache_key;
-use super::{FetchContext, FetchError, Fetcher, Safety};
+use super::super::github::common::cache_key;
+use super::super::{FetchContext, FetchError, Fetcher, Safety};
+use super::common::{
+    API_BASE, Units, http, parse_options, payload, weather_badge, weather_description,
+};
 
-const API_BASE: &str = "https://api.open-meteo.com/v1/forecast";
-const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const HOURLY_HOURS: usize = 24;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -50,7 +48,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
     },
 ];
 
-/// Open-Meteo forecast widget. Entries shape (primary): condition / temp / wind / humidity.
+/// Open-Meteo "now" widget. Entries shape (primary): condition / temp / wind / humidity.
 pub struct WeatherFetcher;
 
 #[derive(Debug, Deserialize)]
@@ -60,14 +58,6 @@ pub struct WeatherOptions {
     pub longitude: f64,
     #[serde(default)]
     pub units: Option<Units>,
-}
-
-#[derive(Debug, Default, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Units {
-    #[default]
-    Metric,
-    Imperial,
 }
 
 #[async_trait]
@@ -118,7 +108,7 @@ impl Fetcher for WeatherFetcher {
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: WeatherOptions =
-            parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
+            parse_options(ctx.options.as_ref(), self.name()).map_err(FetchError::Failed)?;
         let units = opts.units.unwrap_or_default();
         let report = fetch_report(opts.latitude, opts.longitude, units).await?;
         let body = match ctx.shape.unwrap_or(Shape::Entries) {
@@ -254,18 +244,10 @@ impl Default for Sample {
 
 impl Sample {
     fn temperature_label(&self) -> String {
-        let unit = match self.units {
-            Units::Metric => "°C",
-            Units::Imperial => "°F",
-        };
-        format!("{:.0}{unit}", self.temperature)
+        format!("{:.0}{}", self.temperature, self.units.temperature_label())
     }
     fn wind_label(&self) -> String {
-        let unit = match self.units {
-            Units::Metric => "m/s",
-            Units::Imperial => "mph",
-        };
-        format!("{:.0} {unit}", self.wind_speed)
+        format!("{:.0} {}", self.wind_speed, self.units.wind_label())
     }
     fn humidity_label(&self) -> String {
         format!("{}%", self.humidity)
@@ -282,13 +264,9 @@ impl Sample {
 }
 
 fn point_series(hourly: &[HourPoint], units: Units) -> Body {
-    let unit_label = match units {
-        Units::Metric => "°C",
-        Units::Imperial => "°F",
-    };
     Body::PointSeries(PointSeriesData {
         series: vec![PointSeries {
-            name: format!("temperature ({unit_label})"),
+            name: format!("temperature ({})", units.temperature_label()),
             points: hourly
                 .iter()
                 .map(|h| (f64::from(h.offset_hours), h.temperature))
@@ -324,23 +302,6 @@ fn precipitation_bars(hourly: &[HourPoint]) -> Body {
     })
 }
 
-fn weather_badge(code: u16) -> BadgeData {
-    let (status, label) = match code {
-        95 | 96 | 99 => (Status::Error, "thunderstorm"),
-        56 | 57 | 66 | 67 => (Status::Warn, "freezing"),
-        65 | 75 | 82 | 86 => (Status::Warn, "heavy precip"),
-        61 | 63 | 71 | 73 | 80 | 81 | 85 => (Status::Warn, "precip"),
-        _ => {
-            let (_, desc) = weather_description(code);
-            (Status::Ok, desc)
-        }
-    };
-    BadgeData {
-        status,
-        label: label.into(),
-    }
-}
-
 fn entries(s: &Sample) -> Body {
     let (emoji, condition) = weather_description(s.code);
     let rows = [
@@ -360,61 +321,10 @@ fn entries(s: &Sample) -> Body {
     })
 }
 
-/// WMO weather interpretation codes (Open-Meteo uses the standard table).
-fn weather_description(code: u16) -> (&'static str, &'static str) {
-    match code {
-        0 => ("🌞", "clear"),
-        1 => ("🌤", "mostly clear"),
-        2 => ("⛅", "partly cloudy"),
-        3 => ("☁", "overcast"),
-        45 | 48 => ("🌫", "fog"),
-        51 | 53 | 55 => ("🌦", "drizzle"),
-        56 | 57 => ("🌧", "freezing drizzle"),
-        61 | 63 | 65 => ("🌧", "rain"),
-        66 | 67 => ("🌧", "freezing rain"),
-        71 | 73 | 75 | 77 => ("🌨", "snow"),
-        80..=82 => ("🌦", "rain showers"),
-        85 | 86 => ("🌨", "snow showers"),
-        95 => ("⛈", "thunderstorm"),
-        96 | 99 => ("⛈", "thunderstorm w/ hail"),
-        _ => ("🌡", "unknown"),
-    }
-}
-
-fn http() -> &'static Client {
-    static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(REQUEST_TIMEOUT)
-            .gzip(true)
-            .build()
-            .expect("reqwest client should build with default config")
-    })
-}
-
-fn parse_options<T: serde::de::DeserializeOwned>(raw: Option<&toml::Value>) -> Result<T, String> {
-    match raw {
-        None => Err("weather requires `latitude` and `longitude` options".into()),
-        Some(value) => value
-            .clone()
-            .try_into::<T>()
-            .map_err(|e| format!("invalid options: {e}")),
-    }
-}
-
-fn payload(body: Body) -> Payload {
-    Payload {
-        icon: None,
-        status: None,
-        format: None,
-        body,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::payload::{BadgeData, Status};
 
     fn entries_data(body: Body) -> Option<EntriesData> {
         match body {
@@ -451,6 +361,13 @@ mod tests {
         }
     }
 
+    fn badge_data(body: Body) -> Option<BadgeData> {
+        match body {
+            Body::Badge(data) => Some(data),
+            _ => None,
+        }
+    }
+
     #[test]
     fn build_url_metric_requests_ms_wind() {
         let url = build_url(35.68, 139.76, Units::Metric);
@@ -466,16 +383,6 @@ mod tests {
         let url = build_url(40.71, -74.0, Units::Imperial);
         assert!(url.contains("temperature_unit=fahrenheit"));
         assert!(url.contains("wind_speed_unit=mph"));
-    }
-
-    #[test]
-    fn weather_description_covers_canonical_codes() {
-        assert_eq!(weather_description(0).1, "clear");
-        assert_eq!(weather_description(3).1, "overcast");
-        assert_eq!(weather_description(56).1, "freezing drizzle");
-        assert_eq!(weather_description(63).1, "rain");
-        assert_eq!(weather_description(95).1, "thunderstorm");
-        assert_eq!(weather_description(1234).1, "unknown");
     }
 
     #[test]
@@ -507,14 +414,14 @@ mod tests {
 
     #[test]
     fn parse_options_requires_latitude_and_longitude() {
-        let err: String = parse_options::<WeatherOptions>(None).unwrap_err();
+        let err: String = parse_options::<WeatherOptions>(None, "weather").unwrap_err();
         assert!(err.contains("latitude"));
     }
 
     #[test]
     fn parse_options_accepts_floats() {
         let raw: toml::Value = toml::from_str("latitude = 35.68\nlongitude = 139.76").unwrap();
-        let opts: WeatherOptions = parse_options(Some(&raw)).unwrap();
+        let opts: WeatherOptions = parse_options(Some(&raw), "weather").unwrap();
         assert_eq!(opts.latitude, 35.68);
         assert_eq!(opts.longitude, 139.76);
     }
@@ -523,7 +430,7 @@ mod tests {
     fn parse_options_rejects_unknown_keys() {
         let raw: toml::Value =
             toml::from_str("latitude = 1.0\nlongitude = 2.0\nbogus = true").unwrap();
-        assert!(parse_options::<WeatherOptions>(Some(&raw)).is_err());
+        assert!(parse_options::<WeatherOptions>(Some(&raw), "weather").is_err());
     }
 
     #[test]
@@ -539,7 +446,7 @@ mod tests {
         let hourly = vec![
             HourPoint {
                 offset_hours: 0,
-                temperature: -3.0, // negative temp must NOT clamp the precip slot to 0
+                temperature: -3.0,
                 precipitation: 0.6,
             },
             HourPoint {
@@ -554,14 +461,11 @@ mod tests {
             },
         ];
         let d = number_series_data(number_series(&hourly)).unwrap();
-        // 0.6 mm → 6 tenths, 0.0 → 0, 1.25 → 13 (rounded).
         assert_eq!(d.values, vec![6, 0, 13]);
     }
 
     #[test]
     fn point_series_temperature_preserves_negative_readings() {
-        // PointSeries is f64 — make sure sub-zero temps survive end-to-end (the bug fixed by
-        // moving temperature off `NumberSeries`, which would have clamped these to 0).
         let hourly = vec![
             HourPoint {
                 offset_hours: 0,
@@ -585,14 +489,6 @@ mod tests {
         assert_eq!(d.bars.len(), HOURLY_HOURS);
         assert_eq!(d.bars[0].label, "+0h");
         assert_eq!(d.bars[5].label, "+5h");
-    }
-
-    #[test]
-    fn weather_badge_severity_follows_wmo_groups() {
-        assert_eq!(weather_badge(0).status, Status::Ok);
-        assert_eq!(weather_badge(63).status, Status::Warn);
-        assert_eq!(weather_badge(75).status, Status::Warn);
-        assert_eq!(weather_badge(95).status, Status::Error);
     }
 
     #[test]
@@ -655,13 +551,18 @@ mod tests {
             .sample_body(Shape::PointSeries)
             .and_then(point_series_data)
             .unwrap();
+        let badge = fetcher
+            .sample_body(Shape::Badge)
+            .and_then(badge_data)
+            .unwrap();
         assert!(text.value.contains("💨"));
         assert_eq!(series.series[0].name, "temperature (°C)");
+        assert_eq!(badge.status, Status::Ok);
         assert!(fetcher.sample_body(Shape::Calendar).is_none());
     }
 
     #[test]
-    fn helper_paths_cover_padding_statuses_and_singletons() {
+    fn helper_paths_cover_padding_and_singletons() {
         let points = hourly_from(&Hourly {
             temperature_2m: (0..30).map(|i| i as f64).collect(),
             precipitation: vec![0.5],
@@ -673,23 +574,6 @@ mod tests {
         assert_eq!(points[23].offset_hours, 23);
         assert_eq!(series.series[0].name, "temperature (°F)");
         assert_eq!(text.value, "ok");
-        assert!(std::ptr::eq(http(), http()));
-        assert_eq!(weather_badge(56).label, "freezing");
-        assert_eq!(weather_badge(96).label, "thunderstorm");
-        assert_eq!(
-            [1, 2, 45, 51, 66, 71, 81, 86, 96].map(|code| weather_description(code).1),
-            [
-                "mostly clear",
-                "partly cloudy",
-                "fog",
-                "drizzle",
-                "freezing rain",
-                "snow",
-                "rain showers",
-                "snow showers",
-                "thunderstorm w/ hail",
-            ]
-        );
     }
 
     #[test]
@@ -714,10 +598,10 @@ mod tests {
     }
 
     /// Live smoke test — hits Open-Meteo. `#[ignore]` keeps CI offline-safe; run with
-    /// `cargo test -- --ignored fetcher::weather::tests::live` to verify real API shape.
+    /// `cargo test -- --ignored fetcher::weather::now::tests::live` to verify real API shape.
     #[tokio::test]
     #[ignore]
-    async fn live_tokyo_forecast_populates_entries() {
+    async fn live_tokyo_now_populates_entries() {
         let report = fetch_report(35.68, 139.76, Units::Metric).await.unwrap();
         let body = entries(&report);
         let Body::Entries(e) = body else {

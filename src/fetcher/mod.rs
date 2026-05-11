@@ -318,7 +318,6 @@ impl Registry {
         r.register(Arc::new(static_text::StaticText));
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(rss::RssFetcher));
-        r.register(Arc::new(weather::WeatherFetcher));
         r.register(Arc::new(crypto_watchlist::CryptoWatchlistFetcher));
         r.register(Arc::new(stock_watchlist::StockWatchlistFetcher));
         r.register(Arc::new(random_cat::RandomCatFetcher));
@@ -342,6 +341,9 @@ impl Registry {
             r.register(f);
         }
         for f in reddit::fetchers() {
+            r.register(f);
+        }
+        for f in weather::fetchers() {
             r.register(f);
         }
         for f in wikipedia::fetchers() {
