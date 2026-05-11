@@ -12,7 +12,7 @@ use crate::theme::{self, ColorKey, Theme};
 
 use super::{Registry, RenderOptions, Renderer, Shape};
 
-const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER];
+const COLOR_KEYS: &[ColorKey] = &[theme::PALETTE_SERIES, theme::PANEL_BORDER, theme::BG];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -78,7 +78,13 @@ fn render_line_chart(
         .map(|(i, s)| to_dataset(s, theme.series_color(i)))
         .collect();
     let (x_bounds, y_bounds) = bounds(&data.series);
+    // `Chart` builds an internal `Canvas` per dataset and seeds it with
+    // `self.style.bg.unwrap_or(Color::Reset)` (ratatui 0.29 `chart.rs:1023`). Without an
+    // explicit `bg` here, the plot area paints `Color::Reset` and erases the surrounding
+    // panel surface (`theme.bg` or `bg = "subtle"`). Propagate `theme.bg` so the chart
+    // keeps the layout-painted background.
     let mut chart = Chart::new(datasets)
+        .style(Style::default().bg(theme.bg))
         .x_axis(Axis::default().bounds(x_bounds))
         .y_axis(Axis::default().bounds(y_bounds));
     if opts.axes.unwrap_or(false) {
@@ -200,6 +206,35 @@ mod tests {
         let top = line_text(&buf, 0);
         assert!(top.starts_with('┌'), "missing top-left border: {top:?}");
         assert!(top.contains('┐'), "missing top-right border: {top:?}");
+    }
+
+    #[test]
+    fn rendered_cells_inherit_theme_bg_rather_than_color_reset() {
+        // Regression for ratatui's `Chart` seeding its internal `Canvas` with
+        // `Color::Reset` — without `Chart::style().bg(theme.bg)` the plot area would
+        // overwrite the panel surface painted by the layout.
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("chart_line".into());
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![series("temp", &[(0.0, 0.0), (1.0, 1.0)])]),
+            Some(&spec),
+            &registry,
+            20,
+            6,
+        );
+        let theme = Theme::default();
+        let mut bg_hits = 0;
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                if buf.cell((x, y)).unwrap().style().bg == Some(theme.bg) {
+                    bg_hits += 1;
+                }
+            }
+        }
+        assert!(
+            bg_hits > 0,
+            "expected at least one chart cell to carry theme.bg, got 0"
+        );
     }
 
     #[test]
