@@ -163,7 +163,13 @@ pub(crate) fn tmp_path_for(final_path: &Path) -> PathBuf {
     final_path.with_file_name(format!("{file_name}.{pid}.{seq}.tmp"))
 }
 
-fn sanitize(s: &str) -> String {
+/// Maps an arbitrary cache key to an on-disk filename stem by keeping ASCII alnum / `-` / `_`
+/// and replacing everything else with `_`. Exposed because the `splashboard cache clear <id>`
+/// command (in the binary crate) needs to compute the same stem from the same key — keeping a
+/// private copy in `main.rs` would silently desync if this rule ever tightens. Marked
+/// `#[doc(hidden)]` because external library consumers should not rely on it.
+#[doc(hidden)]
+pub fn sanitize(s: &str) -> String {
     s.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
