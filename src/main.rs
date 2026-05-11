@@ -448,7 +448,7 @@ fn run_cache_list(dir: &Path, json: bool) -> io::Result<()> {
     let mut rows = collect_cache_rows(dir)?;
     // Oldest first by default — surfaces stale and orphan files at the top where they're easier
     // to spot when scrolling a long list.
-    rows.sort_by(|a, b| b.age_seconds.cmp(&a.age_seconds));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.age_seconds));
 
     if json {
         for row in &rows {
@@ -464,8 +464,8 @@ fn run_cache_list(dir: &Path, json: bool) -> io::Result<()> {
     }
 
     println!(
-        "{:<40}  {:<6}  {:>10}  {:>10}  {:<8}  {:>10}  {}",
-        "KEY", "KIND", "AGE(s)", "TTL(s)", "STATE", "SIZE(B)", "OUTCOME"
+        "{:<40}  {:<6}  {:>10}  {:>10}  {:<8}  {:>10}  OUTCOME",
+        "KEY", "KIND", "AGE(s)", "TTL(s)", "STATE", "SIZE(B)"
     );
     for row in &rows {
         println!(
@@ -1314,6 +1314,133 @@ PATH = "/tmp/ignored"
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("never-created");
         super::clear_all(&path, /* yes = */ true, /* json = */ false).unwrap();
+    }
+
+    #[test]
+    fn clear_all_handles_empty_dir() {
+        // Dir exists but has no cache files. Both human and json modes must
+        // succeed without prompting (despite yes=false) since there's nothing
+        // to remove — the prompt only fires when there are real targets.
+        let dir = tempfile::tempdir().unwrap();
+        super::clear_all(dir.path(), /* yes = */ false, /* json = */ false).unwrap();
+        super::clear_all(dir.path(), /* yes = */ false, /* json = */ true).unwrap();
+    }
+
+    #[test]
+    fn clear_all_ignores_non_cache_extensions() {
+        // The contract: only .json + .lock are cache files; anything else (e.g.
+        // .tmp leftovers from interrupted writes, or user notes) must survive.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.json"), r#"{}"#).unwrap();
+        std::fs::write(dir.path().join("b.lock"), "").unwrap();
+        std::fs::write(dir.path().join("c.tmp"), "interrupted-write").unwrap();
+        std::fs::write(dir.path().join("README.md"), "user note").unwrap();
+        super::clear_all(dir.path(), /* yes = */ true, /* json = */ true).unwrap();
+        assert!(!dir.path().join("a.json").exists());
+        assert!(!dir.path().join("b.lock").exists());
+        assert!(dir.path().join("c.tmp").exists());
+        assert!(dir.path().join("README.md").exists());
+    }
+
+    #[test]
+    fn truncate_short_passes_through() {
+        assert_eq!(super::truncate("short", 40), "short");
+    }
+
+    #[test]
+    fn truncate_exact_length_passes_through() {
+        let s = "x".repeat(40);
+        assert_eq!(super::truncate(&s, 40), s);
+    }
+
+    #[test]
+    fn truncate_long_gets_ellipsis_suffix() {
+        let s = "x".repeat(60);
+        let out = super::truncate(&s, 10);
+        // 9 retained chars + 1 ellipsis = 10 grapheme positions
+        assert!(out.ends_with('…'));
+        assert_eq!(out.chars().count(), 10);
+    }
+
+    #[test]
+    fn truncate_handles_one_char_cap() {
+        // Edge case: max=1. saturating_sub(1) keeps zero prefix; result is just "…".
+        let out = super::truncate("longer", 1);
+        assert_eq!(out, "…");
+    }
+
+    #[test]
+    fn collect_cache_rows_skips_unknown_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        // Only the .json + .lock should produce rows. The .tmp and .bak must be
+        // skipped silently so the listing isn't polluted with internal scratch
+        // files or user backups.
+        std::fs::write(dir.path().join("x.tmp"), "scratch").unwrap();
+        std::fs::write(dir.path().join("y.bak"), "backup").unwrap();
+        std::fs::write(dir.path().join("z.json"), r#"{"refreshed_at":0,"ttl_seconds":0,"payload":{}}"#).unwrap();
+        std::fs::write(dir.path().join("z.lock"), "").unwrap();
+        let rows = super::collect_cache_rows(dir.path()).unwrap();
+        assert_eq!(rows.len(), 2);
+        let keys: Vec<_> = rows.iter().map(|r| r.key.as_str()).collect();
+        assert!(keys.contains(&"z"));
+    }
+
+    #[test]
+    fn collect_cache_rows_marks_unreadable_entries() {
+        // A garbage JSON file should still produce a row so the user can see and
+        // delete it via `cache clear`. The freshness/outcome columns surface the
+        // unreadable state instead of throwing the whole listing.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("corrupt.json"), "not valid json {").unwrap();
+        let rows = super::collect_cache_rows(dir.path()).unwrap();
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.key, "corrupt");
+        assert_eq!(row.freshness, "unreadable");
+        assert_eq!(row.outcome, "unreadable");
+        assert_eq!(row.ttl_seconds, 0);
+    }
+
+    #[test]
+    fn collect_cache_rows_skips_subdirectories() {
+        // Directories under the cache root are not cache entries. They should
+        // be ignored, not crash the listing or appear as rows.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("subdir")).unwrap();
+        let rows = super::collect_cache_rows(dir.path()).unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn run_cache_list_json_mode_succeeds_on_populated_dir() {
+        use splashboard::cache::{Cache, CacheEntry};
+        use splashboard::payload::{Body, Payload, TextData};
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        cache
+            .store(
+                "test-abcdef12",
+                &CacheEntry::new(
+                    Payload {
+                        icon: None,
+                        status: None,
+                        format: None,
+                        body: Body::Text(TextData { value: "hi".into() }),
+                    },
+                    60,
+                ),
+            )
+            .unwrap();
+        // Both modes must return Ok against the same populated dir.
+        super::run_cache_list(dir.path(), /* json = */ true).unwrap();
+        super::run_cache_list(dir.path(), /* json = */ false).unwrap();
+    }
+
+    #[test]
+    fn run_cache_list_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        super::run_cache_list(dir.path(), false).unwrap();
+        super::run_cache_list(dir.path(), true).unwrap();
     }
 
     #[test]
