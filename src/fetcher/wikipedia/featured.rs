@@ -207,6 +207,10 @@ mod tests {
             fetcher.sample_body(Shape::Text),
             Some(Body::Text(_))
         ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::ImageLinkedList),
+            Some(Body::ImageLinkedList(_))
+        ));
         assert!(fetcher.sample_body(Shape::Entries).is_none());
     }
 

@@ -363,6 +363,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_image_linked_list_file_renders_empty_for_declared_shape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _guard = ScopedHome::new(tmp.path());
+        let p = ReadStoreFetcher
+            .fetch(&ctx("absent_cards", Shape::ImageLinkedList, "json"))
+            .await
+            .unwrap();
+        match p.body {
+            Body::ImageLinkedList(d) => assert!(d.items.is_empty()),
+            other => panic!("expected empty image_linked_list body, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn missing_file_renders_empty_for_declared_shape() {
         let tmp = tempfile::tempdir().unwrap();
         let _guard = ScopedHome::new(tmp.path());

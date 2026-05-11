@@ -401,6 +401,29 @@ mod tests {
             panic!("expected text_block");
         };
         assert!(t.lines[0].contains("boom"));
+
+        let cards = network_unavailable_body(Shape::ImageLinkedList, "reddit 429");
+        let Body::ImageLinkedList(cards) = cards else {
+            panic!("expected image_linked_list");
+        };
+        assert!(cards.items[0].title.contains("reddit 429"));
+        assert_eq!(cards.items[0].thumbnail_path, None);
+    }
+
+    #[test]
+    fn render_posts_image_linked_via_render_posts_emits_blank_thumbnails() {
+        // The sync `render_posts` path can't run the async download — it ships cards with
+        // no thumbnails. Callers that want thumbnails go through the family-specific
+        // `render_for_shape` wrapper. Documented as the contract here so a future
+        // refactor doesn't silently flip the default to a panicking unimplemented arm.
+        let posts = vec![sample_post(Some("https://example.com/a"))];
+        let body = render_posts(&posts, Shape::ImageLinkedList);
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items.len(), 1);
+        assert_eq!(b.items[0].thumbnail_path, None);
+        assert_eq!(b.items[0].title, "t");
     }
 
     #[test]

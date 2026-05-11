@@ -418,4 +418,68 @@ mod tests {
             FetchError::Failed(message) if message.contains("wikipedia json parse")
         ));
     }
+
+    #[test]
+    fn thumbnail_url_returns_some_for_non_empty_source() {
+        let s = PageSummary {
+            title: "x".into(),
+            extract: None,
+            content_urls: None,
+            thumbnail: Some(PageThumbnail {
+                source: "https://upload.wikimedia.org/x.jpg".into(),
+            }),
+        };
+        assert_eq!(
+            s.thumbnail_url(),
+            Some("https://upload.wikimedia.org/x.jpg"),
+        );
+    }
+
+    #[test]
+    fn thumbnail_url_returns_none_for_missing_or_empty() {
+        // Missing thumbnail block.
+        assert!(summary_with(None, None).thumbnail_url().is_none());
+        // Empty `source` string — REST sometimes returns the block with a blank URL.
+        let s = PageSummary {
+            title: "x".into(),
+            extract: None,
+            content_urls: None,
+            thumbnail: Some(PageThumbnail {
+                source: String::new(),
+            }),
+        };
+        assert!(s.thumbnail_url().is_none());
+    }
+
+    #[test]
+    fn render_image_linked_list_pins_thumbnail_path_and_first_sentence_subtitle() {
+        let s = summary_with(Some("It hops. Other stuff."), Some("https://example.com/q"));
+        let body = render_page_summary_with_thumbnail(
+            &s,
+            Shape::ImageLinkedList,
+            Some(std::path::PathBuf::from("/tmp/quokka.jpg")),
+        );
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items.len(), 1);
+        assert_eq!(b.items[0].title, "Quokka");
+        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/q"));
+        assert_eq!(
+            b.items[0].thumbnail_path.as_deref(),
+            Some("/tmp/quokka.jpg")
+        );
+        assert_eq!(b.items[0].subtitle.as_deref(), Some("It hops."));
+    }
+
+    #[test]
+    fn render_image_linked_list_without_path_leaves_thumbnail_empty() {
+        let s = summary_with(None, None);
+        let body = render_page_summary_with_thumbnail(&s, Shape::ImageLinkedList, None);
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(b.items[0].thumbnail_path, None);
+        assert_eq!(b.items[0].subtitle, None);
+    }
 }

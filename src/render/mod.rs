@@ -836,8 +836,8 @@ mod tests {
     #[test]
     fn is_empty_body_matches_expectations() {
         use crate::payload::{
-            BarsData, EntriesData, HeatmapData, ImageData, NumberSeriesData, PointSeriesData,
-            RatioData, TextBlockData, TextData,
+            BarsData, EntriesData, HeatmapData, ImageData, ImageLinkedItem, ImageLinkedListData,
+            NumberSeriesData, PointSeriesData, RatioData, TextBlockData, TextData,
         };
         // Empty cases.
         assert!(is_empty_body(&Body::Text(TextData {
@@ -866,6 +866,30 @@ mod tests {
             row_labels: None,
             col_labels: None,
         })));
+        assert!(is_empty_body(&Body::ImageLinkedList(ImageLinkedListData {
+            items: vec![],
+        })));
+        // All-empty-titles is also collapsed to the placeholder so a feed that came back with
+        // structurally-present-but-content-less rows reads as "nothing here yet" rather than a
+        // wall of blank cards.
+        assert!(is_empty_body(&Body::ImageLinkedList(ImageLinkedListData {
+            items: vec![ImageLinkedItem {
+                title: String::new(),
+                url: None,
+                thumbnail_path: None,
+                subtitle: None,
+            }],
+        })));
+        assert!(!is_empty_body(&Body::ImageLinkedList(
+            ImageLinkedListData {
+                items: vec![ImageLinkedItem {
+                    title: "a card".into(),
+                    url: None,
+                    thumbnail_path: None,
+                    subtitle: None,
+                }],
+            }
+        )));
         // Non-empty and "structurally always present" cases.
         assert!(!is_empty_body(&Body::Text(TextData { value: "x".into() })));
         assert!(!is_empty_body(&Body::TextBlock(TextBlockData {

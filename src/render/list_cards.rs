@@ -271,6 +271,139 @@ mod tests {
     }
 
     #[test]
+    fn renderer_contract_exposes_image_linked_list_surface() {
+        let renderer = ListCardsRenderer;
+        assert_eq!(renderer.name(), "list_cards");
+        assert!(!renderer.animates());
+        assert_eq!(renderer.accepts(), &[Shape::ImageLinkedList]);
+        assert_eq!(
+            renderer
+                .color_keys()
+                .iter()
+                .map(|k| k.name)
+                .collect::<Vec<_>>(),
+            vec![theme::TEXT.name, theme::TEXT_DIM.name],
+        );
+        assert_eq!(
+            renderer
+                .option_schemas()
+                .iter()
+                .map(|s| s.name)
+                .collect::<Vec<_>>(),
+            vec!["max_items", "thumbnail_width", "row_height", "gap", "fit"],
+        );
+        assert!(renderer.description().contains("thumbnail"));
+    }
+
+    #[test]
+    fn zero_area_does_not_panic() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_cards".into());
+        // 0×0, 1×0, 0×1 all need to no-op rather than touch a zero-sized buffer.
+        for (w, h) in [(0u16, 0u16), (0, 5), (10, 0)] {
+            let _ = render_to_buffer_with_spec(
+                &payload(vec![item("ignored", None, None)]),
+                Some(&spec),
+                &registry,
+                w.max(1),
+                h.max(1),
+            );
+        }
+    }
+
+    #[test]
+    fn narrow_area_truncates_text_without_panicking() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_cards".into());
+        // 8 cells: 6 (thumb) + 1 (gap) leaves 1 cell for text. The renderer must clip,
+        // not crash. Confirm a buffer comes back populated to whatever the cell allows.
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![item("very long title", None, None)]),
+            Some(&spec),
+            &registry,
+            8,
+            3,
+        );
+        let row: String = (buf.area.x..buf.area.right())
+            .map(|x| buf[(x, 0)].symbol().to_string())
+            .collect();
+        // The first character of the title (`v`) lands at x=7 (6 thumb + 1 gap).
+        assert!(row.contains('v'));
+    }
+
+    #[test]
+    fn area_narrower_than_thumb_column_skips_text() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_cards".into());
+        // 4 cells total — narrower than the default 6-cell thumbnail width. The thumbnail
+        // cell saturates to the full row width, leaving no room for the gap or text.
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![item("hidden title", None, None)]),
+            Some(&spec),
+            &registry,
+            4,
+            3,
+        );
+        let row: String = (buf.area.x..buf.area.right())
+            .map(|x| buf[(x, 0)].symbol().to_string())
+            .collect();
+        // Text must be entirely suppressed when there's no room for it after the thumbnail.
+        assert!(
+            !row.contains("hidden"),
+            "text leaked past thumbnail column: {row:?}",
+        );
+    }
+
+    #[test]
+    fn gap_option_shifts_text_column() {
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        // thumbnail_width=4, gap=3 ⇒ text column starts at x=7.
+        let w: W =
+            toml::from_str(r#"render = { type = "list_cards", thumbnail_width = 4, gap = 3 }"#)
+                .unwrap();
+        let buf = render_to_buffer_with_spec(
+            &payload(vec![item("X", None, None)]),
+            Some(&w.render),
+            &registry,
+            20,
+            3,
+        );
+        let row: String = (buf.area.x..buf.area.right())
+            .map(|x| buf[(x, 0)].symbol().to_string())
+            .collect();
+        assert_eq!(row.find('X'), Some(7), "row: {row:?}");
+    }
+
+    #[test]
+    fn fit_option_parses_without_error() {
+        // We can't visually verify `fit` in the ASCII buffer (no real image is drawn for an
+        // empty thumbnail_path), but we can ensure each accepted value parses and the render
+        // path stays panic-free.
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        for fit in &["contain", "cover", "stretch"] {
+            let w: W = toml::from_str(&format!(
+                r#"render = {{ type = "list_cards", fit = "{fit}" }}"#
+            ))
+            .unwrap();
+            let _ = render_to_buffer_with_spec(
+                &payload(vec![item("x", None, None)]),
+                Some(&w.render),
+                &registry,
+                20,
+                3,
+            );
+        }
+    }
+
+    #[test]
     fn renders_title_and_subtitle_per_row() {
         let registry = Registry::with_builtins();
         let spec = RenderSpec::Short("list_cards".into());

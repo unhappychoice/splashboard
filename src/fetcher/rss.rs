@@ -831,6 +831,50 @@ mod tests {
     }
 
     #[test]
+    fn thumbnail_url_for_returns_none_when_no_source_available() {
+        let empty = Entry::default();
+        assert!(super::thumbnail_url_for(&empty).is_none());
+    }
+
+    #[test]
+    fn subtitle_for_returns_none_when_no_signal() {
+        // No date, no link → no useful subtitle. Returning None lets the renderer omit the
+        // subtitle row entirely rather than draw a blank line.
+        let entry = Entry::default();
+        assert!(super::subtitle_for(&entry, None, None).is_none());
+    }
+
+    #[test]
+    fn subtitle_for_falls_back_to_date_only_when_link_missing() {
+        let entry = Entry {
+            published: Some(chrono::Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
+            ..Default::default()
+        };
+        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        assert_eq!(sub, "Apr 26");
+        assert!(!sub.contains('·'));
+    }
+
+    #[test]
+    fn subtitle_for_falls_back_to_host_only_when_date_missing() {
+        use feed_rs::model::Link;
+        let entry = Entry {
+            links: vec![Link {
+                href: "https://blog.rust-lang.org/post".into(),
+                rel: None,
+                media_type: None,
+                href_lang: None,
+                title: None,
+                length: None,
+            }],
+            ..Default::default()
+        };
+        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        assert_eq!(sub, "blog.rust-lang.org");
+        assert!(!sub.contains('·'));
+    }
+
+    #[test]
     fn subtitle_combines_date_and_host_when_both_present() {
         use feed_rs::model::Link;
         let entry = Entry {

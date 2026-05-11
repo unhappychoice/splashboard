@@ -186,6 +186,10 @@ mod tests {
         if let Some(Body::Text(text)) = text {
             assert!(text.value.starts_with("Quokka:"));
         }
+        assert!(matches!(
+            fetcher.sample_body(Shape::ImageLinkedList),
+            Some(Body::ImageLinkedList(_)),
+        ));
         assert!(fetcher.sample_body(Shape::Entries).is_none());
 
         let a = fetcher.cache_key(&ctx(Some("lang = \"en\""), Some(Shape::TextBlock)));

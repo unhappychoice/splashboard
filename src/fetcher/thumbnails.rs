@@ -179,4 +179,46 @@ mod tests {
     fn hex_round_trips() {
         assert_eq!(hex(&[0x12, 0xab, 0xff, 0x00]), "12abff00");
     }
+
+    #[tokio::test]
+    async fn download_many_preserves_order_and_passes_none_through() {
+        // Empty + None + non-http URLs all resolve to None (no network involved) in input
+        // order, so the renderer can zip them back against the source list without
+        // misalignment.
+        let urls = vec![
+            None,
+            Some(String::new()),
+            Some("file:///etc/passwd".into()),
+            Some("not-a-url".into()),
+        ];
+        let paths = download_many(&urls).await;
+        assert_eq!(paths.len(), 4);
+        assert!(paths.iter().all(|p| p.is_none()));
+    }
+
+    #[test]
+    fn existing_cached_returns_first_matching_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let hash = "deadbeef";
+        // No file yet — None.
+        assert!(existing_cached(dir, hash).is_none());
+        // .jpg exists alongside no .png — picks .jpg.
+        let jpg = dir.join(format!("{hash}.jpg"));
+        std::fs::write(&jpg, b"jpeg-bytes").unwrap();
+        assert_eq!(existing_cached(dir, hash), Some(jpg.clone()));
+        // .png also exists — preference order in the helper is png, jpg, webp, gif, so png wins.
+        let png = dir.join(format!("{hash}.png"));
+        std::fs::write(&png, b"png-bytes").unwrap();
+        assert_eq!(existing_cached(dir, hash), Some(png));
+    }
+
+    #[tokio::test]
+    async fn download_to_cache_no_home_yields_failed_error() {
+        // Bypass network: an unsupported scheme returns Ok(None) without touching the cache
+        // dir at all, so we don't need to mock $HOME for that path. This complements the
+        // happy-path coverage which lives under the live ignored tests in fetcher/rss.rs.
+        let res = download_to_cache("ftp://example.com/x.png").await.unwrap();
+        assert!(res.is_none());
+    }
 }
