@@ -1377,7 +1377,11 @@ PATH = "/tmp/ignored"
         // files or user backups.
         std::fs::write(dir.path().join("x.tmp"), "scratch").unwrap();
         std::fs::write(dir.path().join("y.bak"), "backup").unwrap();
-        std::fs::write(dir.path().join("z.json"), r#"{"refreshed_at":0,"ttl_seconds":0,"payload":{}}"#).unwrap();
+        std::fs::write(
+            dir.path().join("z.json"),
+            r#"{"refreshed_at":0,"ttl_seconds":0,"payload":{}}"#,
+        )
+        .unwrap();
         std::fs::write(dir.path().join("z.lock"), "").unwrap();
         let rows = super::collect_cache_rows(dir.path()).unwrap();
         assert_eq!(rows.len(), 2);
