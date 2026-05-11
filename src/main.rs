@@ -1,15 +1,17 @@
 use std::future::Future;
 use std::io::{self, BufRead, IsTerminal, Write, stdin, stdout};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use clap::{Parser, Subcommand};
 
+use splashboard::cache::{self, CacheEntry};
 use splashboard::catalog;
 use splashboard::config::{
     self, Config, DashboardConfig, DashboardSource, SettingsConfig, WidgetConfig,
 };
 use splashboard::daemon::{self, DashboardKind};
-use splashboard::fetcher::{Registry, Safety};
+use splashboard::fetcher::{FetchContext, Registry, Safety};
 use splashboard::install::{self, InstallOptions};
 use splashboard::logging;
 use splashboard::paths;
@@ -114,6 +116,39 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// Inspect and manage the disk cache (`$HOME/.splashboard/cache/`). Useful when a widget
+    /// shows stale data, you need to force-refresh a single entry, or you want to know how much
+    /// disk the cache is using.
+    Cache {
+        #[command(subcommand)]
+        subcommand: CacheSubcommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheSubcommand {
+    /// Print the resolved cache directory.
+    Path,
+    /// List every cache entry: key, age, TTL, fresh/stale, payload size, kind. Sorted by age
+    /// descending. Pass `--json` for one JSON object per line.
+    List {
+        /// Emit one JSON object per entry instead of the human-readable table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove cache entries. Pass a widget id to remove only that widget's entry (the widget must
+    /// still be configured); otherwise removes every entry plus any leftover `.lock` files.
+    Clear {
+        /// Widget id to clear. If omitted, clears every entry.
+        #[arg(value_name = "WIDGET_ID")]
+        widget_id: Option<String>,
+        /// Skip the confirmation prompt for `clear` (no widget id).
+        #[arg(long)]
+        yes: bool,
+        /// Emit a JSON summary instead of the human-readable lines.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -161,6 +196,7 @@ fn main() -> io::Result<()> {
         Some(Command::ListTrusted) => run_list_trusted(),
         Some(Command::Catalog { target }) => run_catalog(target),
         Some(Command::License { own }) => run_license(own),
+        Some(Command::Cache { subcommand }) => run_cache(subcommand),
         None => {
             if !should_render() {
                 return Ok(());
@@ -362,6 +398,350 @@ fn run_list_trusted() -> io::Result<()> {
         );
     }
     Ok(())
+}
+
+fn run_cache(subcommand: CacheSubcommand) -> io::Result<()> {
+    let Some(dir) = paths::cache_dir() else {
+        eprintln!("no cache dir resolved (is $HOME set?)");
+        std::process::exit(2);
+    };
+    match subcommand {
+        CacheSubcommand::Path => {
+            println!("{}", dir.display());
+            Ok(())
+        }
+        CacheSubcommand::List { json } => run_cache_list(&dir, json),
+        CacheSubcommand::Clear {
+            widget_id,
+            yes,
+            json,
+        } => run_cache_clear(&dir, widget_id, yes, json),
+    }
+}
+
+/// One row of the `cache list` output. Also serialized as a JSON object when `--json` is used.
+#[derive(serde::Serialize)]
+struct CacheListRow {
+    /// Cache key — the filename stem, e.g. `clock-3f2a1c8b`.
+    key: String,
+    /// `entry` for `.json` payloads, `lock` for orphan `.lock` files.
+    kind: &'static str,
+    /// Seconds since the file was last written; for lock files this is the lock age.
+    age_seconds: u64,
+    /// TTL declared by the entry, in seconds. Zero for lock files.
+    ttl_seconds: u64,
+    /// `fresh` when `age_seconds < ttl_seconds`, otherwise `stale`. Lock files report `n/a`.
+    freshness: &'static str,
+    /// Size of the on-disk file, in bytes.
+    size_bytes: u64,
+    /// Outcome of the fetch that produced this entry — `ok` / `err` / `timeout`. `n/a` for locks.
+    outcome: &'static str,
+}
+
+fn run_cache_list(dir: &Path, json: bool) -> io::Result<()> {
+    let mut rows = collect_cache_rows(dir)?;
+    // Oldest first by default — surfaces stale and orphan files at the top where they're easier
+    // to spot when scrolling a long list.
+    rows.sort_by(|a, b| b.age_seconds.cmp(&a.age_seconds));
+
+    if json {
+        for row in &rows {
+            let line = serde_json::to_string(row).map_err(io::Error::other)?;
+            println!("{line}");
+        }
+        return Ok(());
+    }
+
+    if rows.is_empty() {
+        println!("(empty)");
+        return Ok(());
+    }
+
+    println!(
+        "{:<40}  {:<6}  {:>10}  {:>10}  {:<8}  {:>10}  {}",
+        "KEY", "KIND", "AGE(s)", "TTL(s)", "STATE", "SIZE(B)", "OUTCOME"
+    );
+    for row in &rows {
+        println!(
+            "{:<40}  {:<6}  {:>10}  {:>10}  {:<8}  {:>10}  {}",
+            truncate(&row.key, 40),
+            row.kind,
+            row.age_seconds,
+            row.ttl_seconds,
+            row.freshness,
+            row.size_bytes,
+            row.outcome,
+        );
+    }
+    Ok(())
+}
+
+fn collect_cache_rows(dir: &Path) -> io::Result<Vec<CacheListRow>> {
+    let mut rows = Vec::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        // Treat a missing cache dir the same as an empty one — operator hasn't run splashboard
+        // yet, no cached data, nothing to report.
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(rows),
+        Err(e) => return Err(e),
+    };
+    let now = SystemTime::now();
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+        if !metadata.is_file() {
+            continue;
+        }
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let age_seconds = metadata
+            .modified()
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let size_bytes = metadata.len();
+        match ext {
+            "json" => {
+                let entry = std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<CacheEntry>(&s).ok());
+                let (ttl, freshness, outcome) = entry
+                    .as_ref()
+                    .map(|e| {
+                        let ttl = e.ttl_seconds;
+                        let freshness = if e.is_fresh() { "fresh" } else { "stale" };
+                        let outcome = match e.kind {
+                            cache::CacheEntryKind::Ok => "ok",
+                            cache::CacheEntryKind::Err => "err",
+                            cache::CacheEntryKind::Timeout => "timeout",
+                        };
+                        (ttl, freshness, outcome)
+                    })
+                    .unwrap_or((0, "unreadable", "unreadable"));
+                rows.push(CacheListRow {
+                    key: stem.to_string(),
+                    kind: "entry",
+                    age_seconds,
+                    ttl_seconds: ttl,
+                    freshness,
+                    size_bytes,
+                    outcome,
+                });
+            }
+            "lock" => {
+                rows.push(CacheListRow {
+                    key: stem.to_string(),
+                    kind: "lock",
+                    age_seconds,
+                    ttl_seconds: 0,
+                    freshness: "n/a",
+                    size_bytes,
+                    outcome: "n/a",
+                });
+            }
+            // Anything else (`.tmp` leftovers, future formats) is skipped silently to keep the
+            // output focused on the things users can act on.
+            _ => continue,
+        }
+    }
+    Ok(rows)
+}
+
+fn run_cache_clear(dir: &Path, widget_id: Option<String>, yes: bool, json: bool) -> io::Result<()> {
+    match widget_id {
+        Some(id) => clear_one(dir, &id, json),
+        None => clear_all(dir, yes, json),
+    }
+}
+
+fn clear_all(dir: &Path, yes: bool, json: bool) -> io::Result<()> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e.collect::<Result<Vec<_>, _>>()?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let targets: Vec<PathBuf> = entries
+        .into_iter()
+        .filter(|e| e.metadata().map(|m| m.is_file()).unwrap_or(false))
+        .map(|e| e.path())
+        .filter(|p| {
+            matches!(
+                p.extension().and_then(|e| e.to_str()),
+                Some("json") | Some("lock")
+            )
+        })
+        .collect();
+
+    if targets.is_empty() {
+        if json {
+            println!(r#"{{"removed":0}}"#);
+        } else {
+            println!("(empty)");
+        }
+        return Ok(());
+    }
+
+    if !yes
+        && !prompt_yes_no(&format!(
+            "Remove all {} cache file(s) from {}?",
+            targets.len(),
+            dir.display()
+        ))?
+    {
+        println!("cancelled");
+        return Ok(());
+    }
+
+    let mut removed = 0usize;
+    let mut errors = Vec::new();
+    for path in &targets {
+        match std::fs::remove_file(path) {
+            Ok(()) => removed += 1,
+            Err(e) => errors.push(format!("{}: {e}", path.display())),
+        }
+    }
+
+    if json {
+        let payload = serde_json::json!({
+            "removed": removed,
+            "errors": errors,
+        });
+        println!("{payload}");
+    } else {
+        println!("removed {removed} file(s)");
+        for err in &errors {
+            eprintln!("error: {err}");
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "{} file(s) could not be removed",
+            errors.len()
+        )))
+    }
+}
+
+fn clear_one(dir: &Path, widget_id: &str, json: bool) -> io::Result<()> {
+    // Use option 1 from the issue: compute the key from the current config. Falls back to the
+    // home dashboard so the command works outside any project-local context (common case for
+    // ad-hoc debugging on $HOME/.splashboard/cache/).
+    let source = config::resolve_dashboard_source();
+    let (config, _ident) = load_full_config(&source)?;
+    let widget = config
+        .widgets
+        .iter()
+        .find(|w| w.id == widget_id)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "no widget '{widget_id}' in current config ({:?}). \
+Cache key can only be computed for widgets that are still configured; \
+to remove an orphaned entry run `splashboard cache list` and delete \
+the file directly.",
+                    source
+                ),
+            )
+        })?;
+    let registry = Registry::with_builtins();
+    let fetcher = registry.get_cached(&widget.fetcher).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "widget '{}' uses fetcher '{}' which is not in the registry \
+(realtime widgets don't have disk-cached entries)",
+                widget.id, widget.fetcher,
+            ),
+        )
+    })?;
+    let key = fetcher.cache_key(&FetchContext {
+        widget_id: widget.id.clone(),
+        format: widget.format.clone(),
+        // Cache key derivation does not actually look at timeout; pass zero to be explicit.
+        timeout: std::time::Duration::from_secs(0),
+        file_format: widget.file_format.clone(),
+        // Shape is part of the key but we don't know which shape will be used at fetch time
+        // without doing a layout pass. The default-shape path matches what `runtime::fetch_all`
+        // uses when no widget-specific shape override is in play.
+        shape: Some(fetcher.default_shape()),
+        options: widget.options.clone(),
+        // Locale and timezone do NOT participate in `default_cache_key` (see
+        // `fetcher/mod.rs::default_cache_key`); a None pair here is correct and intentional,
+        // and any fetcher that overrides `cache_key` to consume these would derive a key that
+        // won't match a runtime-produced entry anyway.
+        timezone: None,
+        locale: None,
+    });
+
+    // Same sanitization as cache.rs; replicated here to avoid widening the public API for a
+    // single character set that's stable across the codebase.
+    let sanitized = sanitize_cache_key(&key);
+    let entry_path = dir.join(format!("{sanitized}.json"));
+    let lock_path = dir.join(format!("{sanitized}.lock"));
+    let mut removed = Vec::new();
+    let mut missing = Vec::new();
+    for path in [&entry_path, &lock_path] {
+        match std::fs::remove_file(path) {
+            Ok(()) => removed.push(path.display().to_string()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                missing.push(path.display().to_string());
+            }
+            Err(e) => {
+                return Err(io::Error::other(format!(
+                    "removing {}: {e}",
+                    path.display()
+                )));
+            }
+        }
+    }
+
+    if json {
+        let payload = serde_json::json!({
+            "widget_id": widget_id,
+            "key": key,
+            "removed": removed,
+            "missing": missing,
+        });
+        println!("{payload}");
+    } else if removed.is_empty() {
+        println!("widget '{widget_id}' had no cache entry (key {key})");
+    } else {
+        println!(
+            "removed {} file(s) for widget '{widget_id}' (key {key})",
+            removed.len()
+        );
+        for path in &removed {
+            println!("  {path}");
+        }
+    }
+    Ok(())
+}
+
+/// Replicates `cache::sanitize` (which is module-private) so we can compute the on-disk
+/// filename for a given cache key. Kept in sync with `cache.rs`; covered by the
+/// `clear_one_matches_cache_filename_layout` test.
+fn sanitize_cache_key(key: &str) -> String {
+    key.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max.saturating_sub(1)])
+    }
 }
 
 fn run_catalog(target: Option<CatalogTarget>) -> io::Result<()> {
@@ -815,6 +1195,108 @@ PATH = "/tmp/ignored"
             super::print_trust_summary(Path::new("demo.toml"), "abc123", &widgets, &registry)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn sanitize_cache_key_matches_alnum_dash_underscore_passthrough() {
+        // Keys produced by `fetcher::default_cache_key` look like `<name>-<hex8>` (alnum + dash).
+        // They must round-trip through our sanitize unchanged, so the filename we compute in
+        // `clear_one` matches what the writer in `cache::Cache::store` chose.
+        let key = "clock-3f2a1c8b";
+        assert_eq!(super::sanitize_cache_key(key), key);
+    }
+
+    #[test]
+    fn sanitize_cache_key_replaces_path_and_control_chars() {
+        // Defensive: anything outside [A-Za-z0-9_-] must be replaced so the on-disk filename
+        // can't escape the cache directory.
+        let key = "evil/../name with spaces";
+        let sanitized = super::sanitize_cache_key(key);
+        assert!(!sanitized.contains('/'));
+        assert!(!sanitized.contains('.'));
+        assert!(!sanitized.contains(' '));
+    }
+
+    #[test]
+    fn clear_one_matches_cache_filename_layout() {
+        // Pin the contract that `clear_one` uses to find on-disk files: the path produced by
+        // `cache::Cache::path_for` for a given key must equal `<dir>/<sanitize_cache_key(key)>.json`.
+        // If this test breaks, `cache::sanitize` and `main::sanitize_cache_key` have drifted —
+        // update both before merging.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = splashboard::cache::Cache::open(dir.path().to_path_buf()).unwrap();
+        let key = "clock-3f2a1c8b";
+        let cache_path = cache.path_for(key);
+        let expected = dir
+            .path()
+            .join(format!("{}.json", super::sanitize_cache_key(key)));
+        assert_eq!(cache_path, expected);
+    }
+
+    #[test]
+    fn collect_cache_rows_returns_empty_for_missing_dir() {
+        // `cache list` against a never-used cache should print "(empty)", not error.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("never-created");
+        let rows = super::collect_cache_rows(&path).unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn collect_cache_rows_reads_entry_and_lock_files() {
+        use splashboard::cache::{Cache, CacheEntry};
+        use splashboard::payload::{Body, Payload, TextData};
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().to_path_buf()).unwrap();
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Text(TextData { value: "hi".into() }),
+        };
+        cache
+            .store("clock-abc12345", &CacheEntry::new(payload, 60))
+            .unwrap();
+        // Drop a stray .lock file so we can confirm it's surfaced as an "aux" row.
+        std::fs::write(dir.path().join("clock-abc12345.lock"), "").unwrap();
+        // And an unrelated file extension that should be skipped silently.
+        std::fs::write(dir.path().join("ignored.tmp"), "").unwrap();
+
+        let rows = super::collect_cache_rows(dir.path()).unwrap();
+        assert_eq!(rows.len(), 2, "entry + lock should both be returned");
+        let entry = rows.iter().find(|r| r.kind == "entry").unwrap();
+        assert_eq!(entry.ttl_seconds, 60);
+        assert!(entry.freshness == "fresh" || entry.freshness == "stale");
+        assert_eq!(entry.outcome, "ok");
+        let lock = rows.iter().find(|r| r.kind == "lock").unwrap();
+        assert_eq!(lock.ttl_seconds, 0);
+        assert_eq!(lock.freshness, "n/a");
+    }
+
+    #[test]
+    fn clear_all_removes_json_and_lock_files() {
+        let dir = tempfile::tempdir().unwrap();
+        // Seed: 1 entry + 1 lock + 1 unrelated file. Only the first two should be removed.
+        std::fs::write(dir.path().join("x.json"), r#"{}"#).unwrap();
+        std::fs::write(dir.path().join("x.lock"), "").unwrap();
+        std::fs::write(dir.path().join("note.txt"), "preserve me").unwrap();
+
+        super::clear_all(dir.path(), /* yes = */ true, /* json = */ false).unwrap();
+
+        assert!(!dir.path().join("x.json").exists());
+        assert!(!dir.path().join("x.lock").exists());
+        assert!(
+            dir.path().join("note.txt").exists(),
+            "non-cache files must not be touched"
+        );
+    }
+
+    #[test]
+    fn clear_all_handles_missing_dir_quietly() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("never-created");
+        super::clear_all(&path, /* yes = */ true, /* json = */ false).unwrap();
     }
 
     #[test]
