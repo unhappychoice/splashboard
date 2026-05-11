@@ -129,8 +129,8 @@ enum Command {
 enum CacheSubcommand {
     /// Print the resolved cache directory.
     Path,
-    /// List every cache entry: key, age, TTL, fresh/stale, payload size, kind. Sorted by age
-    /// descending. Pass `--json` for one JSON object per line.
+    /// List every cache entry: key, age, TTL, fresh/stale, payload size, kind. Oldest first
+    /// (stale / orphan entries surface at the top). Pass `--json` for one JSON object per line.
     List {
         /// Emit one JSON object per entry instead of the human-readable table.
         #[arg(long)]
@@ -139,16 +139,30 @@ enum CacheSubcommand {
     /// Remove cache entries. Pass a widget id to remove only that widget's entry (the widget must
     /// still be configured); otherwise removes every entry plus any leftover `.lock` files.
     ///
-    /// Note: when clearing by widget id, the cache key is computed using the widget's
-    /// default shape and no locale/timezone overrides. If your config overrides any of
-    /// those at runtime, the on-disk filename will differ and this command won't find
-    /// the entry. Use `splashboard cache list` to see the actual key and delete the
-    /// file directly in that case.
+    /// Single-widget clear computes the cache key from whichever dashboard would render in the
+    /// current directory (project-local if you're inside a configured project, otherwise the
+    /// home dashboard). If your widget only lives in the other dashboard, run this from a
+    /// directory that resolves to that dashboard, or use `splashboard cache list` + delete the
+    /// file directly.
+    ///
+    /// Cache key is computed using the widget's default shape and no locale/timezone
+    /// overrides. If your config overrides any of those at runtime, the on-disk filename will
+    /// differ and this command won't find the entry — fall back to `cache list` + manual
+    /// delete in that case.
+    ///
+    /// May race against an active daemon refresh: if the daemon is mid-write when you clear,
+    /// the next refresh re-creates the entry; rerun if that's not what you want. (A future
+    /// release may add lock-aware skipping.)
+    ///
+    /// When clearing all entries, partial removal failures exit non-zero while still reporting
+    /// the count that was removed — JSON consumers should read both `removed` and the exit
+    /// status.
     Clear {
         /// Widget id to clear. If omitted, clears every entry.
         #[arg(value_name = "WIDGET_ID")]
         widget_id: Option<String>,
-        /// Skip the confirmation prompt for `clear` (no widget id).
+        /// Skip the confirmation prompt when clearing all entries. Has no effect when a widget
+        /// id is given (single-widget clear is non-interactive).
         #[arg(long)]
         yes: bool,
         /// Emit a JSON summary instead of the human-readable lines.
@@ -408,8 +422,7 @@ fn run_list_trusted() -> io::Result<()> {
 
 fn run_cache(subcommand: CacheSubcommand) -> io::Result<()> {
     let Some(dir) = paths::cache_dir() else {
-        eprintln!("no cache dir resolved (is $HOME set?)");
-        std::process::exit(2);
+        return Err(io::Error::other("no cache dir resolved (is $HOME set?)"));
     };
     match subcommand {
         CacheSubcommand::Path => {
@@ -683,9 +696,9 @@ the file directly.",
         locale: None,
     });
 
-    // Same sanitization as cache.rs; replicated here to avoid widening the public API for a
-    // single character set that's stable across the codebase.
-    let sanitized = sanitize_cache_key(&key);
+    // Same sanitization function that `cache.rs` uses to write entries — keeping a second copy
+    // would silently desync if the rule ever tightened.
+    let sanitized = cache::sanitize(&key);
     let entry_path = dir.join(format!("{sanitized}.json"));
     let lock_path = dir.join(format!("{sanitized}.lock"));
     let mut removed = Vec::new();
@@ -738,26 +751,16 @@ the file directly.",
     Ok(())
 }
 
-/// Replicates `cache::sanitize` (which is module-private) so we can compute the on-disk
-/// filename for a given cache key. Kept in sync with `cache.rs`; covered by the
-/// `clear_one_matches_cache_filename_layout` test.
-fn sanitize_cache_key(key: &str) -> String {
-    key.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    // `chars().count()` walks the string once but is O(n) — fine here since `max` is at most
+    // a column width (e.g. 40). The earlier byte-slice version (`&s[..max-1]`) would panic on a
+    // multi-byte codepoint straddling the boundary; cache keys are alnum + dash today, but the
+    // table renders arbitrary user content (widget ids in --help output, fetcher names, ...).
+    if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max.saturating_sub(1)])
+        let prefix: String = s.chars().take(max.saturating_sub(1)).collect();
+        format!("{prefix}…")
     }
 }
 
@@ -1215,38 +1218,18 @@ PATH = "/tmp/ignored"
     }
 
     #[test]
-    fn sanitize_cache_key_matches_alnum_dash_underscore_passthrough() {
-        // Keys produced by `fetcher::default_cache_key` look like `<name>-<hex8>` (alnum + dash).
-        // They must round-trip through our sanitize unchanged, so the filename we compute in
-        // `clear_one` matches what the writer in `cache::Cache::store` chose.
-        let key = "clock-3f2a1c8b";
-        assert_eq!(super::sanitize_cache_key(key), key);
-    }
-
-    #[test]
-    fn sanitize_cache_key_replaces_path_and_control_chars() {
-        // Defensive: anything outside [A-Za-z0-9_-] must be replaced so the on-disk filename
-        // can't escape the cache directory.
-        let key = "evil/../name with spaces";
-        let sanitized = super::sanitize_cache_key(key);
-        assert!(!sanitized.contains('/'));
-        assert!(!sanitized.contains('.'));
-        assert!(!sanitized.contains(' '));
-    }
-
-    #[test]
     fn clear_one_matches_cache_filename_layout() {
         // Pin the contract that `clear_one` uses to find on-disk files: the path produced by
-        // `cache::Cache::path_for` for a given key must equal `<dir>/<sanitize_cache_key(key)>.json`.
-        // If this test breaks, `cache::sanitize` and `main::sanitize_cache_key` have drifted —
-        // update both before merging.
+        // `cache::Cache::path_for` for a given key must equal `<dir>/<cache::sanitize(key)>.json`.
+        // Both sides now call the same function, so this is mostly a "the layout hasn't changed
+        // shape" pin (e.g. someone adds a subdirectory level, or switches extension).
         let dir = tempfile::tempdir().unwrap();
         let cache = splashboard::cache::Cache::open(dir.path().to_path_buf()).unwrap();
         let key = "clock-3f2a1c8b";
         let cache_path = cache.path_for(key);
         let expected = dir
             .path()
-            .join(format!("{}.json", super::sanitize_cache_key(key)));
+            .join(format!("{}.json", splashboard::cache::sanitize(key)));
         assert_eq!(cache_path, expected);
     }
 
@@ -1367,6 +1350,19 @@ PATH = "/tmp/ignored"
         // Edge case: max=1. saturating_sub(1) keeps zero prefix; result is just "…".
         let out = super::truncate("longer", 1);
         assert_eq!(out, "…");
+    }
+
+    #[test]
+    fn truncate_handles_multi_byte_codepoints_without_panicking() {
+        // Regression: the earlier byte-slice impl (`&s[..max-1]`) would panic if the cut
+        // landed inside a multi-byte UTF-8 codepoint. Cache keys are alnum + dash today,
+        // but `truncate` is also used to render arbitrary user-facing strings.
+        // 「日本語」 is 3 codepoints, 9 UTF-8 bytes — slicing at byte 4 would split a char.
+        let out = super::truncate("日本語テスト", 4);
+        assert!(out.ends_with('…'));
+        assert_eq!(out.chars().count(), 4);
+        // Each character must remain a complete grapheme (no `from_utf8` round-trip error).
+        assert!(out.chars().all(|c| c != '\u{FFFD}'));
     }
 
     #[test]
