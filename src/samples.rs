@@ -11,9 +11,10 @@
 //! any future CLI that wants to preview what a fetcher emits without hitting I/O.
 
 use crate::payload::{
-    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, LinkedLine,
-    LinkedTextBlockData, MarkdownTextBlockData, NumberSeriesData, PointSeries, PointSeriesData,
-    RatioData, Status, TextBlockData, TextData, TimelineData, TimelineEvent,
+    BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, ImageLinkedItem,
+    ImageLinkedListData, LinkedLine, LinkedTextBlockData, MarkdownTextBlockData, NumberSeriesData,
+    PointSeries, PointSeriesData, RatioData, Status, TextBlockData, TextData, TimelineData,
+    TimelineEvent,
 };
 use crate::render::Shape;
 
@@ -30,6 +31,15 @@ pub fn canonical_sample(shape: Shape) -> Option<Body> {
         Shape::LinkedTextBlock => linked_text_block(&[
             ("splashboard greets on cd", Some("https://example.com/")),
             ("recent commit landed", None),
+        ]),
+        Shape::ImageLinkedList => image_linked_list(&[
+            (
+                "splashboard greets on cd",
+                Some("https://example.com/"),
+                None,
+                Some("docs · 2h"),
+            ),
+            ("recent commit landed", None, None, None),
         ]),
         Shape::Entries => entries(&[("key", "value"), ("foo", "bar"), ("baz", "qux")]),
         Shape::Ratio => ratio(0.67, "used"),
@@ -77,6 +87,25 @@ pub fn linked_text_block(rows: &[(&str, Option<&str>)]) -> Body {
             .map(|(text, url)| LinkedLine {
                 text: (*text).to_string(),
                 url: url.map(String::from),
+            })
+            .collect(),
+    })
+}
+
+/// Test-helper alias for `image_linked_list` rows. Keeps the call site readable as
+/// `(title, url, thumbnail_path, subtitle)` quadruples without tripping clippy's
+/// `type_complexity` lint on the public sample helper.
+pub type SampleImageLinkedRow<'a> = (&'a str, Option<&'a str>, Option<&'a str>, Option<&'a str>);
+
+pub fn image_linked_list(rows: &[SampleImageLinkedRow<'_>]) -> Body {
+    Body::ImageLinkedList(ImageLinkedListData {
+        items: rows
+            .iter()
+            .map(|(title, url, thumb, sub)| ImageLinkedItem {
+                title: (*title).to_string(),
+                url: url.map(String::from),
+                thumbnail_path: thumb.map(String::from),
+                subtitle: sub.map(String::from),
             })
             .collect(),
     })
@@ -191,6 +220,7 @@ mod tests {
             Shape::TextBlock,
             Shape::MarkdownTextBlock,
             Shape::LinkedTextBlock,
+            Shape::ImageLinkedList,
             Shape::Entries,
             Shape::Ratio,
             Shape::NumberSeries,

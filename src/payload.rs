@@ -39,6 +39,12 @@ pub enum Body {
     /// links can ignore the urls and render the text only. Right for feeds — HN top, GitHub
     /// PRs/issues/releases — where each row has a canonical "open this" target.
     LinkedTextBlock(LinkedTextBlockData),
+    /// `LinkedTextBlock` with a thumbnail column. Each item is a `(thumbnail?, title, url?,
+    /// subtitle?)` tuple. Right for media-feed widgets (RSS with images, YouTube channels,
+    /// Plex / Jellyfin recently-added, Reddit-with-thumbnails) where the thumbnail carries as
+    /// much glance value as the title. Items without `thumbnail_path` get a blank cell of the
+    /// same width so the text column stays aligned across rows.
+    ImageLinkedList(ImageLinkedListData),
     /// Key/value rows. Used by system info, env dumps, anything label:value shaped.
     Entries(EntriesData),
     /// A single 0..=1 value with an optional display label. Gauges, progress bars, donuts.
@@ -141,6 +147,22 @@ pub struct LinkedLine {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImageLinkedListData {
+    pub items: Vec<ImageLinkedItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImageLinkedItem {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -380,6 +402,61 @@ mod tests {
         }));
         let json = serde_json::to_string(&p).unwrap();
         assert!(!json.contains("\"url\""), "json: {json:?}");
+    }
+
+    #[test]
+    fn image_linked_list_round_trips() {
+        let p = bare(Body::ImageLinkedList(ImageLinkedListData {
+            items: vec![
+                ImageLinkedItem {
+                    title: "Rust 1.99 released".into(),
+                    url: Some("https://example.com/rust".into()),
+                    thumbnail_path: Some("/tmp/rust.png".into()),
+                    subtitle: Some("rust-lang.org · 2h ago".into()),
+                },
+                ImageLinkedItem {
+                    title: "no thumbnail here".into(),
+                    url: None,
+                    thumbnail_path: None,
+                    subtitle: None,
+                },
+            ],
+        }));
+        assert_eq!(p, round_trip(&p));
+    }
+
+    #[test]
+    fn image_linked_list_serializes_with_expected_shape_tag() {
+        let p = bare(Body::ImageLinkedList(ImageLinkedListData {
+            items: vec![ImageLinkedItem {
+                title: "hello".into(),
+                url: Some("https://example.com".into()),
+                thumbnail_path: Some("/tmp/x.png".into()),
+                subtitle: None,
+            }],
+        }));
+        let v: serde_json::Value = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["shape"], "image_linked_list");
+        assert_eq!(v["data"]["items"][0]["title"], "hello");
+        assert_eq!(v["data"]["items"][0]["url"], "https://example.com");
+        assert_eq!(v["data"]["items"][0]["thumbnail_path"], "/tmp/x.png");
+        assert!(v["data"]["items"][0].get("subtitle").is_none());
+    }
+
+    #[test]
+    fn image_linked_list_omits_optional_fields_when_none() {
+        let p = bare(Body::ImageLinkedList(ImageLinkedListData {
+            items: vec![ImageLinkedItem {
+                title: "only title".into(),
+                url: None,
+                thumbnail_path: None,
+                subtitle: None,
+            }],
+        }));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("\"url\""), "json: {json:?}");
+        assert!(!json.contains("\"thumbnail_path\""), "json: {json:?}");
+        assert!(!json.contains("\"subtitle\""), "json: {json:?}");
     }
 
     #[test]

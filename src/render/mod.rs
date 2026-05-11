@@ -35,6 +35,7 @@ mod gauge_thermometer;
 mod grid_calendar;
 mod grid_heatmap;
 mod grid_table;
+pub mod list_cards;
 pub mod list_links;
 mod list_plain;
 mod list_ranking;
@@ -58,6 +59,7 @@ pub enum Shape {
     TextBlock,
     MarkdownTextBlock,
     LinkedTextBlock,
+    ImageLinkedList,
     Entries,
     Ratio,
     NumberSeries,
@@ -80,6 +82,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::TextBlock(_) => Shape::TextBlock,
         Body::MarkdownTextBlock(_) => Shape::MarkdownTextBlock,
         Body::LinkedTextBlock(_) => Shape::LinkedTextBlock,
+        Body::ImageLinkedList(_) => Shape::ImageLinkedList,
         Body::Entries(_) => Shape::Entries,
         Body::Ratio(_) => Shape::Ratio,
         Body::NumberSeries(_) => Shape::NumberSeries,
@@ -103,6 +106,7 @@ impl Shape {
             Self::TextBlock => "text_block",
             Self::MarkdownTextBlock => "markdown_text_block",
             Self::LinkedTextBlock => "linked_text_block",
+            Self::ImageLinkedList => "image_linked_list",
             Self::Entries => "entries",
             Self::Ratio => "ratio",
             Self::NumberSeries => "number_series",
@@ -369,6 +373,7 @@ impl Registry {
         r.register(Arc::new(animated_wave::AnimatedWaveRenderer));
         r.register(Arc::new(status_badge::StatusBadgeRenderer));
         r.register(Arc::new(list_plain::ListPlainRenderer));
+        r.register(Arc::new(list_cards::ListCardsRenderer));
         r.register(Arc::new(list_links::ListLinksRenderer));
         r.register(Arc::new(list_ranking::ListRankingRenderer));
         r.register(Arc::new(grid_table::GridTableRenderer));
@@ -412,6 +417,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::TextBlock => "list_plain",
         Shape::MarkdownTextBlock => "text_markdown",
         Shape::LinkedTextBlock => "list_links",
+        Shape::ImageLinkedList => "list_cards",
         Shape::Entries => "grid_table",
         Shape::Ratio => "gauge_circle",
         Shape::NumberSeries => "chart_sparkline",
@@ -523,6 +529,9 @@ pub fn is_empty_body(body: &Body) -> bool {
         Body::TextBlock(d) => d.lines.is_empty() || d.lines.iter().all(|l| l.is_empty()),
         Body::MarkdownTextBlock(d) => d.value.is_empty(),
         Body::LinkedTextBlock(d) => d.items.is_empty() || d.items.iter().all(|i| i.text.is_empty()),
+        Body::ImageLinkedList(d) => {
+            d.items.is_empty() || d.items.iter().all(|i| i.title.is_empty())
+        }
         Body::Entries(d) => d.items.is_empty(),
         Body::NumberSeries(d) => d.values.is_empty(),
         Body::PointSeries(d) => d.series.iter().all(|s| s.points.is_empty()),
@@ -705,6 +714,7 @@ mod tests {
             "animated_wave",
             "status_badge",
             "list_plain",
+            "list_cards",
             "list_links",
             "list_ranking",
             "list_timeline",
@@ -735,6 +745,7 @@ mod tests {
             Shape::TextBlock,
             Shape::MarkdownTextBlock,
             Shape::LinkedTextBlock,
+            Shape::ImageLinkedList,
             Shape::Entries,
             Shape::Ratio,
             Shape::NumberSeries,
