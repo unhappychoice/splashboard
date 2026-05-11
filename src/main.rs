@@ -138,6 +138,12 @@ enum CacheSubcommand {
     },
     /// Remove cache entries. Pass a widget id to remove only that widget's entry (the widget must
     /// still be configured); otherwise removes every entry plus any leftover `.lock` files.
+    ///
+    /// Note: when clearing by widget id, the cache key is computed using the widget's
+    /// default shape and no locale/timezone overrides. If your config overrides any of
+    /// those at runtime, the on-disk filename will differ and this command won't find
+    /// the entry. Use `splashboard cache list` to see the actual key and delete the
+    /// file directly in that case.
     Clear {
         /// Widget id to clear. If omitted, clears every entry.
         #[arg(value_name = "WIDGET_ID")]
@@ -708,7 +714,18 @@ the file directly.",
         });
         println!("{payload}");
     } else if removed.is_empty() {
-        println!("widget '{widget_id}' had no cache entry (key {key})");
+        // Defensive: if `cache list` shows the widget on disk but `clear` reports
+        // nothing removed, the on-disk entry was written with a non-default shape /
+        // locale / timezone (overridden at runtime). The key we computed here uses
+        // `fetcher.default_shape()` with locale/timezone = None — that match the
+        // common case but not overrides. `cache list` + delete-by-key is the
+        // fallback path in that scenario.
+        println!(
+            "widget '{widget_id}' had no cache entry under key {key}\n\
+             (computed using default shape + no locale/timezone overrides; \
+              if your config overrides those, run `splashboard cache list` and \
+              delete the matching file directly)"
+        );
     } else {
         println!(
             "removed {} file(s) for widget '{widget_id}' (key {key})",
