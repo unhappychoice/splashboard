@@ -810,11 +810,16 @@ fn draw_final<B: Backend>(
     Ok(())
 }
 
-/// End-of-run draw: when the configured height doesn't fit the terminal, flush the top rows
-/// into scrollback via [`Terminal::insert_before`] and repaint the viewport with the bottom
-/// slice — no clip hint. This way the animation plays in the clamped viewport, then scrolls up
-/// at exit so the full splash is visible (bottom on screen, rest scrollable). When the layout
-/// fits, falls through to the regular [`draw_final`].
+/// End-of-run draw. By default, when the configured height doesn't fit the terminal, the
+/// overflow rows are dropped and the bottom of the viewport carries a `… +N rows` clip hint
+/// — same behaviour as the animation-loop frames. With `general.flush_to_scrollback = true`,
+/// the top rows are pushed into shell scrollback via [`Terminal::insert_before`] and the
+/// viewport repaints with the bottom slice (full splash visible by scrolling up).
+///
+/// Flush is off by default because ratatui's `insert_before` write loop doesn't honour
+/// `Cell::skip`, which `ratatui-image`'s stateful protocols (kitty / iTerm2 / sixel) rely on
+/// to keep cells around the image untouched. The flush path overdraws those cells with
+/// spaces and visibly chews up the image.
 #[allow(clippy::too_many_arguments)]
 fn finalize_draw<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -833,6 +838,20 @@ fn finalize_draw<B: Backend>(
     if scrollback_rows == 0 {
         return draw_final(
             terminal, root, payloads, specs, registry, theme, general, padding, 0, loading,
+        );
+    }
+    if !general.flush_to_scrollback {
+        return draw_final(
+            terminal,
+            root,
+            payloads,
+            specs,
+            registry,
+            theme,
+            general,
+            padding,
+            scrollback_rows + 1,
+            loading,
         );
     }
     flush_full_to_scrollback(
@@ -1331,7 +1350,7 @@ mod tests {
     }
 
     #[test]
-    fn finalize_draw_flushes_top_rows_and_reveals_bottom() {
+    fn finalize_draw_flushes_top_rows_and_reveals_bottom_when_opted_in() {
         let root = single_widget_tree("x");
         let mut payloads = HashMap::new();
         payloads.insert(
@@ -1342,6 +1361,57 @@ mod tests {
         let registry = render::Registry::with_builtins();
         // 10-row terminal, 4-row inline viewport, 8-row requested layout: 4 rows are pushed to
         // scrollback (rows r0..r3), bottom 4 rows (r4..r7) land in the viewport. No clip hint.
+        let backend = TestBackend::new(20, 10);
+        let mut terminal = make_terminal(backend, 4).unwrap();
+        let theme = Theme::default();
+        let loading = HashMap::new();
+        let general = General {
+            flush_to_scrollback: true,
+            ..General::default()
+        };
+        finalize_draw(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            &general,
+            (0, 0),
+            8,
+            4,
+            &loading,
+        )
+        .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let rows: Vec<String> = (0..buf.area.height)
+            .map(|y| row_text(&buf, y).trim_end().to_string())
+            .collect();
+        let combined = rows.join("\n");
+        assert!(
+            rows.iter().any(|r| r.contains("r7")),
+            "bottom row r7 missing: {rows:?}"
+        );
+        assert!(
+            rows.iter().any(|r| r.contains("r0")),
+            "scrollback row r0 missing: {rows:?}"
+        );
+        assert!(
+            !combined.contains("…"),
+            "clip hint should be suppressed after flush: {combined:?}"
+        );
+    }
+
+    #[test]
+    fn finalize_draw_defaults_to_clip_hint_when_taller_than_viewport() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert(
+            "x".into(),
+            text_block_payload(&["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"]),
+        );
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
         let backend = TestBackend::new(20, 10);
         let mut terminal = make_terminal(backend, 4).unwrap();
         let theme = Theme::default();
@@ -1366,16 +1436,12 @@ mod tests {
             .collect();
         let combined = rows.join("\n");
         assert!(
-            rows.iter().any(|r| r.contains("r7")),
-            "bottom row r7 missing: {rows:?}"
+            combined.contains("…"),
+            "clip hint should fire when flush is off: {combined:?}"
         );
         assert!(
-            rows.iter().any(|r| r.contains("r0")),
-            "scrollback row r0 missing: {rows:?}"
-        );
-        assert!(
-            !combined.contains("…"),
-            "clip hint should be suppressed after flush: {combined:?}"
+            !rows.iter().any(|r| r.contains("r7")),
+            "bottom rows should be clipped (not flushed to scrollback): {rows:?}"
         );
     }
 

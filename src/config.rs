@@ -81,6 +81,15 @@ pub struct General {
     /// `true`. Set to `false` to disable per-`cd` repaints without unwiring the shell rc.
     #[serde(default = "default_true")]
     pub auto_on_cd: bool,
+    /// When the configured dashboard is taller than the terminal viewport, push the
+    /// overflowing top rows into shell scrollback (so the user can scroll up to see them)
+    /// instead of just clipping with a `… +N rows` hint. Default `false`: the flush path
+    /// drags every renderer through ratatui's `insert_before` write loop, which doesn't
+    /// honour `Cell::skip` and visibly overdraws stateful image protocols (kitty / iTerm2 /
+    /// sixel) in the scrollback portion. Opt in only when the dashboard is text-only and
+    /// you specifically want the overflow in scrollback.
+    #[serde(default)]
+    pub flush_to_scrollback: bool,
 }
 
 fn default_true() -> bool {
@@ -97,6 +106,7 @@ impl Default for General {
             locale: None,
             auto_home: true,
             auto_on_cd: true,
+            flush_to_scrollback: false,
         }
     }
 }
