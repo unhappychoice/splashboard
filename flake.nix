@@ -29,9 +29,9 @@
             owner = "unhappychoice";
             repo = "splashboard";
             rev = "v${version}";
-            hash = "sha256-ppiKQDZNiQcnWw/l7gQG0HVyrSEEHfBdaW1Lebkbx1w=";
+            hash = "sha256-51ljQbuK5irrJXHg4ZO/VMgZmjKQZi+GwXcw1b4kY/A=";
           };
-          cargoHash = "sha256-d4gM5XzCVf8cW2SKPllFWrbCH7onJzVdKUjaYNF5Qo8=";
+          cargoHash = "sha256-igWOT6/kl27BItfwIHnOfLdRTjKMEHdu24l9jA/2g8A=";
           nativeBuildInputs = [ pkgs.pkg-config pkgs.git ];
           doCheck = false;
         };
