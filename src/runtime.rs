@@ -344,6 +344,7 @@ pub async fn run(
     };
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = make_terminal(backend, viewport_lines)?;
+    let _scroll_region_guard = ScrollRegionResetGuard;
 
     // Cache-first one-shot: no looping needed, paint what we have and exit.
     if loop_window.is_none() {
@@ -1052,6 +1053,22 @@ fn render_clip_hint(frame: &mut Frame, area: Rect, hidden_rows: u16, theme: &The
 fn finalize_splash<B: Backend>(terminal: &mut Terminal<B>) {
     let _ = terminal.show_cursor();
     println!();
+}
+
+/// Resets the DECSTBM (`CSI r`) scroll region on drop. With the `scrolling-regions` ratatui
+/// feature, `Terminal::insert_before` sets a sub-region, scrolls, and resets within a single
+/// buffered write — but if splashboard unwinds between those writes the shell would inherit
+/// a stuck region. Drop runs on both normal return and panic unwind, so the reset always
+/// makes it out. The escape is idempotent on terminals that don't honour DECSTBM.
+struct ScrollRegionResetGuard;
+
+impl Drop for ScrollRegionResetGuard {
+    fn drop(&mut self) {
+        use std::io::Write;
+        let mut out = stdout();
+        let _ = out.write_all(b"\x1b[r");
+        let _ = out.flush();
+    }
 }
 
 fn render_specs(widgets: &[WidgetConfig]) -> HashMap<WidgetId, RenderSpec> {
