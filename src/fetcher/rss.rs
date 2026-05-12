@@ -25,6 +25,11 @@ const SHAPES: &[Shape] = &[
     Shape::LinkedTextBlock,
     Shape::ImageLinkedList,
     Shape::TextBlock,
+    Shape::Text,
+    Shape::MarkdownTextBlock,
+    Shape::Entries,
+    Shape::Image,
+    Shape::Timeline,
 ];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -115,6 +120,20 @@ impl Fetcher for RssFetcher {
                 "Apr 24  Release notes 0.42",
                 "Apr 22  A short note",
             ]),
+            Shape::Text => samples::text("Why X over Y"),
+            Shape::MarkdownTextBlock => samples::markdown(
+                "- [Apr 26  Why X over Y](https://example.com/post-1)\n- [Apr 24  Release notes 0.42](https://example.com/post-2)\n- [Apr 22  A short note](https://example.com/post-3)",
+            ),
+            Shape::Entries => samples::entries(&[
+                ("Why X over Y", "Apr 26"),
+                ("Release notes 0.42", "Apr 24"),
+                ("A short note", "Apr 22"),
+            ]),
+            Shape::Timeline => samples::timeline(&[
+                (1_745_625_600, "Why X over Y", Some("example.com")),
+                (1_745_452_800, "Release notes 0.42", Some("example.com")),
+                (1_745_280_000, "A short note", Some("example.com")),
+            ]),
             _ => return None,
         })
     }
@@ -130,6 +149,7 @@ impl Fetcher for RssFetcher {
         let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
         let body = match shape {
             Shape::ImageLinkedList => feed::render_image_linked(&parsed, count, ctx).await,
+            Shape::Image => feed::render_image_body(&parsed).await,
             other => feed::render_body(
                 &parsed,
                 count,
@@ -476,7 +496,24 @@ mod tests {
             f.sample_body(Shape::TextBlock),
             Some(Body::TextBlock(_))
         ));
-        assert!(f.sample_body(Shape::Text).is_none());
+        assert!(matches!(f.sample_body(Shape::Text), Some(Body::Text(_))));
+        assert!(matches!(
+            f.sample_body(Shape::MarkdownTextBlock),
+            Some(Body::MarkdownTextBlock(_))
+        ));
+        assert!(matches!(
+            f.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(matches!(
+            f.sample_body(Shape::Timeline),
+            Some(Body::Timeline(_))
+        ));
+        // Image samples need a real on-disk path, which test data can't supply portably —
+        // `random_cat` skips it the same way.
+        assert!(f.sample_body(Shape::Image).is_none());
+        // Shapes outside SHAPES still return None.
+        assert!(f.sample_body(Shape::Ratio).is_none());
     }
 
     #[test]

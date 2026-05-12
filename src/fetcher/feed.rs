@@ -24,7 +24,9 @@ use url::Url;
 use crate::fetcher::thumbnails;
 use crate::fetcher::{FetchContext, FetchError};
 use crate::payload::{
-    Body, ImageLinkedItem, ImageLinkedListData, LinkedLine, LinkedTextBlockData, TextBlockData,
+    Body, EntriesData, Entry as PayloadEntry, ImageData, ImageLinkedItem, ImageLinkedListData,
+    LinkedLine, LinkedTextBlockData, MarkdownTextBlockData, TextBlockData, TextData, TimelineData,
+    TimelineEvent,
 };
 use crate::render::Shape;
 use crate::time as t;
@@ -86,10 +88,48 @@ pub(crate) fn render_body(
 ) -> Body {
     let entries: Vec<&Entry> = feed.entries.iter().take(count).collect();
     match shape {
+        Shape::Text => Body::Text(TextData {
+            value: entries
+                .first()
+                .map(|e| title_or_placeholder(e))
+                .unwrap_or_default(),
+        }),
         Shape::TextBlock => Body::TextBlock(TextBlockData {
             lines: entries
                 .iter()
                 .map(|e| line_text(e, timezone, locale))
+                .collect(),
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: entries
+                .iter()
+                .map(|e| markdown_line(e, timezone, locale))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: entries
+                .iter()
+                .map(|e| PayloadEntry {
+                    key: title_or_placeholder(e),
+                    value: Some(date_label(e, timezone, locale)).filter(|s| !s.is_empty()),
+                    status: None,
+                })
+                .collect(),
+        }),
+        Shape::Timeline => Body::Timeline(TimelineData {
+            events: entries
+                .iter()
+                .map(|e| TimelineEvent {
+                    timestamp: e
+                        .published
+                        .or(e.updated)
+                        .map(|d| d.timestamp())
+                        .unwrap_or(0),
+                    title: title_or_placeholder(e),
+                    detail: link_host(e),
+                    status: None,
+                })
                 .collect(),
         }),
         _ => Body::LinkedTextBlock(LinkedTextBlockData {
@@ -102,6 +142,43 @@ pub(crate) fn render_body(
                 .collect(),
         }),
     }
+}
+
+/// Async-only because it downloads the latest entry's thumbnail. Returns an empty `Body::Image`
+/// (path "") when the feed has no entries or no resolvable thumbnail — `is_empty_body` treats
+/// that as a placeholder.
+pub(crate) async fn render_image_body(feed: &Feed) -> Body {
+    let path = match feed.entries.first().and_then(thumbnail_url_for) {
+        Some(url) => thumbnails::download_to_cache(&url)
+            .await
+            .ok()
+            .flatten()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    Body::Image(ImageData { path })
+}
+
+fn markdown_line(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> String {
+    let date = date_label(entry, timezone, locale);
+    let title = title_or_placeholder(entry);
+    let labeled = if date.is_empty() {
+        title
+    } else {
+        format!("{date}  {title}")
+    };
+    match link_for(entry) {
+        Some(url) => format!("- [{labeled}]({url})"),
+        None => format!("- {labeled}"),
+    }
+}
+
+fn link_host(entry: &Entry) -> Option<String> {
+    link_for(entry)
+        .as_deref()
+        .and_then(|u| Url::parse(u).ok())
+        .and_then(|u| u.host_str().map(str::to_string))
 }
 
 pub(crate) async fn render_image_linked(feed: &Feed, count: usize, ctx: &FetchContext) -> Body {
