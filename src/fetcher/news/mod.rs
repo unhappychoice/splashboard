@@ -238,8 +238,8 @@ mod tests {
             for feed in source.feeds {
                 assert!(!feed.key.is_empty(), "{} has empty feed key", source.name);
                 assert!(
-                    feed.url.starts_with("http://") || feed.url.starts_with("https://"),
-                    "{}: feed `{}` has non-http url: {}",
+                    feed.url.starts_with("https://"),
+                    "{}: feed `{}` must use https:// (got {})",
                     source.name,
                     feed.key,
                     feed.url

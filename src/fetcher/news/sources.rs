@@ -101,32 +101,32 @@ pub const SOURCES: &[NewsSource] = &[
         feeds: &[
             NewsFeed {
                 key: "world",
-                url: "http://feeds.bbci.co.uk/news/world/rss.xml",
+                url: "https://feeds.bbci.co.uk/news/world/rss.xml",
                 label: "World",
             },
             NewsFeed {
                 key: "top",
-                url: "http://feeds.bbci.co.uk/news/rss.xml",
+                url: "https://feeds.bbci.co.uk/news/rss.xml",
                 label: "Top stories",
             },
             NewsFeed {
                 key: "business",
-                url: "http://feeds.bbci.co.uk/news/business/rss.xml",
+                url: "https://feeds.bbci.co.uk/news/business/rss.xml",
                 label: "Business",
             },
             NewsFeed {
                 key: "tech",
-                url: "http://feeds.bbci.co.uk/news/technology/rss.xml",
+                url: "https://feeds.bbci.co.uk/news/technology/rss.xml",
                 label: "Technology",
             },
             NewsFeed {
                 key: "science",
-                url: "http://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+                url: "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
                 label: "Science & environment",
             },
             NewsFeed {
                 key: "politics",
-                url: "http://feeds.bbci.co.uk/news/politics/rss.xml",
+                url: "https://feeds.bbci.co.uk/news/politics/rss.xml",
                 label: "Politics",
             },
         ],
@@ -760,7 +760,7 @@ pub const SOURCES: &[NewsSource] = &[
         description: "Slashdot — news for nerds, stuff that matters.",
         feeds: &[NewsFeed {
             key: "main",
-            url: "http://rss.slashdot.org/Slashdot/slashdotMain",
+            url: "https://rss.slashdot.org/Slashdot/slashdotMain",
             label: "Main",
         }],
     },
@@ -919,7 +919,7 @@ pub const SOURCES: &[NewsSource] = &[
         description: "DistroWatch — Linux distribution release announcements and database updates.",
         feeds: &[NewsFeed {
             key: "main",
-            url: "http://distrowatch.com/news/dwd.xml",
+            url: "https://distrowatch.com/news/dwd.xml",
             label: "Weekly",
         }],
     },
