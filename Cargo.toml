@@ -29,7 +29,7 @@ pkg-fmt = "tgz"
 pkg-fmt = "zip"
 
 [dependencies]
-ratatui = { version = "0.30", features = ["widget-calendar", "serde", "scrolling-regions"] }
+ratatui = { version = "0.30", features = ["widget-calendar", "serde"] }
 time = "0.3"
 figlet-rs = "1.0"
 serde = { version = "1", features = ["derive"] }
