@@ -38,6 +38,7 @@ pub mod thumbnails;
 pub mod todoist;
 pub mod weather;
 pub mod wikipedia;
+pub mod youtube;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Safety {
@@ -325,6 +326,7 @@ impl Registry {
         r.register(Arc::new(stock_watchlist::StockWatchlistFetcher));
         r.register(Arc::new(random_cat::RandomCatFetcher));
         r.register(Arc::new(random_dog::RandomDogFetcher));
+        r.register(Arc::new(youtube::YoutubeChannelFetcher));
         for f in calendar::fetchers() {
             r.register(f);
         }

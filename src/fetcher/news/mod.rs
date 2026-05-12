@@ -33,6 +33,11 @@ const SHAPES: &[Shape] = &[
     Shape::LinkedTextBlock,
     Shape::ImageLinkedList,
     Shape::TextBlock,
+    Shape::Text,
+    Shape::MarkdownTextBlock,
+    Shape::Entries,
+    Shape::Image,
+    Shape::Timeline,
 ];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -139,6 +144,20 @@ impl Fetcher for NewsFeedFetcher {
                 &format!("Apr 25  {display}: feature piece"),
                 &format!("Apr 24  {display}: shorter update"),
             ]),
+            Shape::Text => samples::text(&format!("{display}: top story")),
+            Shape::MarkdownTextBlock => samples::markdown(&format!(
+                "- [Apr 26  {display}: top story](https://example.com/article-1)\n- [Apr 25  {display}: feature piece](https://example.com/article-2)\n- [Apr 24  {display}: shorter update](https://example.com/article-3)",
+            )),
+            Shape::Entries => samples::entries(&[
+                ("top story", "Apr 26"),
+                ("feature piece", "Apr 25"),
+                ("shorter update", "Apr 24"),
+            ]),
+            Shape::Timeline => samples::timeline(&[
+                (1_745_625_600, "top story", Some("example.com")),
+                (1_745_539_200, "feature piece", Some("example.com")),
+                (1_745_452_800, "shorter update", Some("example.com")),
+            ]),
             _ => return None,
         })
     }
@@ -160,6 +179,7 @@ impl Fetcher for NewsFeedFetcher {
         let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
         let body = match shape {
             Shape::ImageLinkedList => feed::render_image_linked(&parsed, count, ctx).await,
+            Shape::Image => feed::render_image_body(&parsed).await,
             other => feed::render_body(
                 &parsed,
                 count,
@@ -352,7 +372,23 @@ mod tests {
             f.sample_body(Shape::TextBlock),
             Some(Body::TextBlock(_))
         ));
-        assert!(f.sample_body(Shape::Text).is_none());
+        assert!(matches!(f.sample_body(Shape::Text), Some(Body::Text(_))));
+        assert!(matches!(
+            f.sample_body(Shape::MarkdownTextBlock),
+            Some(Body::MarkdownTextBlock(_))
+        ));
+        assert!(matches!(
+            f.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(matches!(
+            f.sample_body(Shape::Timeline),
+            Some(Body::Timeline(_))
+        ));
+        // Image samples need a real on-disk path; skipped like `random_cat`.
+        assert!(f.sample_body(Shape::Image).is_none());
+        // Shapes outside SHAPES still return None.
+        assert!(f.sample_body(Shape::Ratio).is_none());
     }
 
     #[test]
