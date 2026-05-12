@@ -34,7 +34,6 @@ pub mod rss;
 pub mod static_text;
 pub mod stock_watchlist;
 pub mod system;
-pub mod system_dmi;
 pub mod thumbnails;
 pub mod todoist;
 pub mod weather;
