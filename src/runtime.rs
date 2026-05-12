@@ -1055,15 +1055,19 @@ fn finalize_splash<B: Backend>(terminal: &mut Terminal<B>) {
     println!();
 }
 
-/// Resets the DECSTBM (`CSI r`) scroll region on drop. With the `scrolling-regions` ratatui
-/// feature, `Terminal::insert_before` sets a sub-region, scrolls, and resets within a single
-/// buffered write — but if splashboard unwinds between those writes the shell would inherit
-/// a stuck region. Drop runs on both normal return and panic unwind, so the reset always
-/// makes it out. The escape is idempotent on terminals that don't honour DECSTBM.
+/// Emits a DECSTBM reset (`CSI r`) only when the current thread is unwinding due to a panic.
+/// With the `scrolling-regions` ratatui feature, `Terminal::insert_before` sets a sub-region,
+/// scrolls, and resets within a single buffered write; a panic between the set and the reset
+/// would leave the shell stuck inside the sub-region. On normal exit ratatui has already
+/// emitted the reset, so we skip it — DECSTBM reset also homes the cursor to (1,1), which
+/// would let the next shell prompt repaint over the freshly drawn splash.
 struct ScrollRegionResetGuard;
 
 impl Drop for ScrollRegionResetGuard {
     fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
         use std::io::Write;
         let mut out = stdout();
         let _ = out.write_all(b"\x1b[r");
