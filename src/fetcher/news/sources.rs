@@ -789,6 +789,72 @@ pub const SOURCES: &[NewsSource] = &[
     },
     // ---------- Business (cont.) ----------
     NewsSource {
+        name: "news_bloomberg",
+        display: "Bloomberg",
+        category: NewsCategory::Business,
+        description: "Bloomberg section feeds. Sub-feeds cover markets (default), technology, business, politics, economics, and wealth.",
+        feeds: &[
+            NewsFeed {
+                key: "markets",
+                url: "https://feeds.bloomberg.com/markets/news.rss",
+                label: "Markets",
+            },
+            NewsFeed {
+                key: "technology",
+                url: "https://feeds.bloomberg.com/technology/news.rss",
+                label: "Technology",
+            },
+            NewsFeed {
+                key: "business",
+                url: "https://feeds.bloomberg.com/business/news.rss",
+                label: "Business",
+            },
+            NewsFeed {
+                key: "politics",
+                url: "https://feeds.bloomberg.com/politics/news.rss",
+                label: "Politics",
+            },
+            NewsFeed {
+                key: "economics",
+                url: "https://feeds.bloomberg.com/economics/news.rss",
+                label: "Economics",
+            },
+            NewsFeed {
+                key: "wealth",
+                url: "https://feeds.bloomberg.com/wealth/news.rss",
+                label: "Wealth",
+            },
+        ],
+    },
+    NewsSource {
+        name: "news_wsj",
+        display: "Wall Street Journal",
+        category: NewsCategory::Business,
+        description: "Wall Street Journal section feeds. Sub-feeds cover markets (default), tech (WSJ.D), world, and opinion.",
+        feeds: &[
+            NewsFeed {
+                key: "markets",
+                url: "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
+                label: "Markets",
+            },
+            NewsFeed {
+                key: "tech",
+                url: "https://feeds.content.dowjones.io/public/rss/RSSWSJD",
+                label: "Tech (WSJ.D)",
+            },
+            NewsFeed {
+                key: "world",
+                url: "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
+                label: "World",
+            },
+            NewsFeed {
+                key: "opinion",
+                url: "https://feeds.content.dowjones.io/public/rss/RSSOpinion",
+                label: "Opinion",
+            },
+        ],
+    },
+    NewsSource {
         name: "news_forbes",
         display: "Forbes",
         category: NewsCategory::Business,
