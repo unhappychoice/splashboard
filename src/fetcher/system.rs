@@ -24,6 +24,17 @@ use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
     vec![
         Arc::new(SystemFetcher::new()),
+        Arc::new(SystemInfoHost),
+        Arc::new(SystemInfoCpu),
+        Arc::new(SystemInfoMemory),
+        Arc::new(SystemInfoKernel),
+        Arc::new(SystemInfoMachine),
+        Arc::new(SystemInfoBoard),
+        Arc::new(SystemInfoBios),
+        Arc::new(SystemInfoLocale),
+        Arc::new(SystemInfoTimezone),
+        Arc::new(SystemInfoEnv),
+        Arc::new(SystemInfoDesktop),
         Arc::new(CpuLoadFetcher::new()),
         Arc::new(MemoryFetcher::new()),
         Arc::new(UptimeFetcher),
@@ -39,10 +50,10 @@ pub fn cached_fetchers() -> Vec<Arc<dyn Fetcher>> {
 
 const SYSTEM_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "kind",
-    type_hint: "\"terminal\" | \"os\" | \"os_version\" | \"hostname\" | \"shell\" | \"arch\" | \"cpu_model\" | \"cpu_cores\" | \"cpu_frequency\" | \"cpu_vendor\" | \"memory_total\" | \"swap_total\" | \"kernel\" | \"kernel_version\" | \"host_model\" | \"host_vendor\" | \"host_serial\" | \"board_vendor\" | \"board_model\" | \"bios_vendor\" | \"bios_version\" | \"bios_date\" | \"chassis\" | \"locale\" | \"timezone\" | \"editor\" | \"visual\" | \"pager\" | \"de\" | \"wm\" | \"init_system\"",
+    type_hint: "\"terminal\" | \"os\" | \"os_version\" | \"hostname\" | \"shell\" | \"arch\"",
     required: false,
     default: Some("\"terminal\""),
-    description: "Selects the single identifier emitted by the `Text` shape: terminal / shell / kernel / cpu / memory / DMI hardware IDs (host / board / BIOS / chassis) / locale / timezone / `$EDITOR` / `$VISUAL` / `$PAGER` / desktop environment / window manager / init system. DMI reads return `\"n/a\"` on platforms other than Linux. Ignored by `Entries` / `TextBlock` shapes, which always return the full rollup.",
+    description: "Selects the single host identifier emitted by the `Text` shape (terminal emulator, OS name, OS version label, hostname, login shell, CPU arch).",
 }];
 
 #[derive(Debug, Default, Deserialize)]
@@ -62,31 +73,6 @@ pub enum SystemKind {
     Hostname,
     Shell,
     Arch,
-    CpuModel,
-    CpuCores,
-    CpuFrequency,
-    CpuVendor,
-    MemoryTotal,
-    SwapTotal,
-    Kernel,
-    KernelVersion,
-    HostModel,
-    HostVendor,
-    HostSerial,
-    BoardVendor,
-    BoardModel,
-    BiosVendor,
-    BiosVersion,
-    BiosDate,
-    Chassis,
-    Locale,
-    Timezone,
-    Editor,
-    Visual,
-    Pager,
-    De,
-    Wm,
-    InitSystem,
 }
 
 /// `os / host / uptime / load / cpu / memory` rollup. `Entries` by default; `TextBlock`
@@ -121,29 +107,16 @@ impl Default for SystemFetcher {
 
 impl RealtimeFetcher for SystemFetcher {
     fn name(&self) -> &str {
-        "system"
+        "system_monitor_host"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Host identity rollup combining OS, hostname, uptime, load, CPU, and memory into one block. The `kind` option on the `Text` shape extracts a single identifier (terminal, OS, hostname, shell, arch, CPU model / cores / frequency / vendor, total memory / swap, kernel, DMI hardware IDs, locale, timezone, editor, pager, desktop environment, window manager, init system) for hero or attribution lines."
+        "Host snapshot rollup combining OS / hostname / uptime / load / CPU% / memory% into one block. `Entries` is the default; `TextBlock` collapses each row to `\"key: value\"`. For a single static identifier (terminal / shell / arch / etc) use `system_info_host`."
     }
     fn shapes(&self) -> &[Shape] {
-        // Listed specific-to-broad so multi-shape renderers (text_plain, animated_postfx)
-        // pick `Text` by default — that's the variant where `kind = "terminal" | "os" | …`
-        // takes effect, which is what hero / attribution widgets almost always want. The
-        // full rollup still lands via `render = "grid_table"` (Entries-only renderer).
-        &[Shape::Text, Shape::TextBlock, Shape::Entries]
-    }
-    fn default_shape(&self) -> Shape {
-        // Preserve "no render spec = full rollup". Widgets that omit `render = ...` pick up
-        // the Entries view (CPU / memory / uptime / …); the reordered `shapes()` only
-        // affects intersection with multi-shape renderers.
-        Shape::Entries
-    }
-    fn option_schemas(&self) -> &[OptionSchema] {
-        SYSTEM_OPTION_SCHEMAS
+        &[Shape::Entries, Shape::TextBlock]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
@@ -163,14 +136,10 @@ impl RealtimeFetcher for SystemFetcher {
                 "cpu: 18%",
                 "memory: 67%",
             ]),
-            Shape::Text => samples::text("iTerm2"),
             _ => return None,
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        if matches!(ctx.shape, Some(Shape::Text)) {
-            return self.compute_text(ctx);
-        }
         let mut sys = self.state.lock().expect("system state mutex poisoned");
         sys.refresh_cpu_usage();
         sys.refresh_memory();
@@ -193,8 +162,34 @@ impl RealtimeFetcher for SystemFetcher {
     }
 }
 
-impl SystemFetcher {
-    fn compute_text(&self, ctx: &FetchContext) -> Payload {
+/// Static host-level identifiers (terminal / OS / hostname / shell / arch) selected by the
+/// `kind` option. Text-only. The dynamic rollup (uptime / load / cpu% / mem%) lives on
+/// `system_monitor_host`.
+pub struct SystemInfoHost;
+
+impl RealtimeFetcher for SystemInfoHost {
+    fn name(&self) -> &str {
+        "system_info_host"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Single static host identifier picked by `kind`: terminal emulator, OS name, OS version label, hostname, login shell, or CPU architecture. Use for hero / attribution lines where one field carries the splash."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("iTerm2")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
         let opts: SystemOptions = match parse_options(ctx.options.as_ref()) {
             Ok(o) => o,
             Err(msg) => return options_placeholder(&msg),
@@ -212,31 +207,6 @@ fn resolve_system_kind(kind: SystemKind) -> String {
         SystemKind::Hostname => System::host_name().unwrap_or_else(|| "unknown".into()),
         SystemKind::Shell => detect_shell(),
         SystemKind::Arch => std::env::consts::ARCH.into(),
-        SystemKind::CpuModel => cached_cpu_info().model.clone(),
-        SystemKind::CpuCores => format_cpu_cores(),
-        SystemKind::CpuFrequency => format_cpu_frequency(cached_cpu_info().frequency_mhz),
-        SystemKind::CpuVendor => cached_cpu_info().vendor.clone(),
-        SystemKind::MemoryTotal => format_bytes(cached_memory_totals().memory),
-        SystemKind::SwapTotal => format_bytes(cached_memory_totals().swap),
-        SystemKind::Kernel => kernel_name(),
-        SystemKind::KernelVersion => System::kernel_version().unwrap_or_else(|| "unknown".into()),
-        SystemKind::HostModel => dmi_or_na(system_dmi::host_model()),
-        SystemKind::HostVendor => dmi_or_na(system_dmi::host_vendor()),
-        SystemKind::HostSerial => dmi_or_na(system_dmi::host_serial()),
-        SystemKind::BoardVendor => dmi_or_na(system_dmi::board_vendor()),
-        SystemKind::BoardModel => dmi_or_na(system_dmi::board_model()),
-        SystemKind::BiosVendor => dmi_or_na(system_dmi::bios_vendor()),
-        SystemKind::BiosVersion => dmi_or_na(system_dmi::bios_version()),
-        SystemKind::BiosDate => dmi_or_na(system_dmi::bios_date()),
-        SystemKind::Chassis => dmi_or_na(system_dmi::chassis()),
-        SystemKind::Locale => detect_locale(),
-        SystemKind::Timezone => detect_timezone(),
-        SystemKind::Editor => env_basename("EDITOR", "(unset)"),
-        SystemKind::Visual => env_basename("VISUAL", "(unset)"),
-        SystemKind::Pager => env_basename("PAGER", "(unset)"),
-        SystemKind::De => detect_desktop_environment(),
-        SystemKind::Wm => detect_window_manager(),
-        SystemKind::InitSystem => detect_init_system(),
     }
 }
 
@@ -527,7 +497,7 @@ impl Default for CpuLoadFetcher {
 
 impl RealtimeFetcher for CpuLoadFetcher {
     fn name(&self) -> &str {
-        "system_cpu"
+        "system_monitor_cpu"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -585,7 +555,7 @@ impl Default for MemoryFetcher {
 
 impl RealtimeFetcher for MemoryFetcher {
     fn name(&self) -> &str {
-        "system_memory"
+        "system_monitor_memory"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -638,7 +608,7 @@ pub struct UptimeFetcher;
 
 impl RealtimeFetcher for UptimeFetcher {
     fn name(&self) -> &str {
-        "system_uptime"
+        "system_monitor_uptime"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -668,7 +638,7 @@ pub struct LoadAverageFetcher;
 
 impl RealtimeFetcher for LoadAverageFetcher {
     fn name(&self) -> &str {
-        "system_load"
+        "system_monitor_load"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -731,7 +701,7 @@ impl Default for ProcessTopFetcher {
 
 impl RealtimeFetcher for ProcessTopFetcher {
     fn name(&self) -> &str {
-        "system_processes"
+        "system_monitor_processes"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -784,7 +754,7 @@ pub struct DiskFetcher;
 #[async_trait]
 impl Fetcher for DiskFetcher {
     fn name(&self) -> &str {
-        "system_disk_usage"
+        "system_monitor_disk"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -921,7 +891,7 @@ impl Default for BatteryFetcher {
 
 impl RealtimeFetcher for BatteryFetcher {
     fn name(&self) -> &str {
-        "system_battery"
+        "system_monitor_battery"
     }
     fn safety(&self) -> Safety {
         Safety::Safe
@@ -1228,6 +1198,591 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+// ─── system_info_cpu ─────────────────────────────────────────────────────
+
+const SYSTEM_INFO_CPU_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"model\" | \"cores\" | \"frequency\" | \"vendor\"",
+    required: false,
+    default: Some("\"model\""),
+    description: "Selects which static CPU identifier the `Text` shape emits.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CpuInfoOptions {
+    #[serde(default)]
+    pub kind: Option<CpuInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CpuInfoKind {
+    #[default]
+    Model,
+    Cores,
+    Frequency,
+    Vendor,
+}
+
+/// Static CPU identifier: model / cores / frequency / vendor. Cached after first read since
+/// these don't change after boot. For dynamic CPU usage use `system_monitor_cpu`.
+pub struct SystemInfoCpu;
+
+impl RealtimeFetcher for SystemInfoCpu {
+    fn name(&self) -> &str {
+        "system_info_cpu"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Static CPU identifier: model name / core count / base frequency / vendor. Use for hero or attribution lines; pair with `system_monitor_cpu` for live load."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_CPU_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("Apple M3 Pro")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: CpuInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let info = cached_cpu_info();
+        let value = match opts.kind.unwrap_or_default() {
+            CpuInfoKind::Model => info.model.clone(),
+            CpuInfoKind::Cores => format_cpu_cores(),
+            CpuInfoKind::Frequency => format_cpu_frequency(info.frequency_mhz),
+            CpuInfoKind::Vendor => info.vendor.clone(),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_memory ──────────────────────────────────────────────────
+
+const SYSTEM_INFO_MEMORY_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"total\" | \"swap_total\"",
+    required: false,
+    default: Some("\"total\""),
+    description: "Selects whether the `Text` shape emits installed RAM or swap-area total.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryInfoOptions {
+    #[serde(default)]
+    pub kind: Option<MemoryInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryInfoKind {
+    #[default]
+    Total,
+    SwapTotal,
+}
+
+/// Static memory totals: installed RAM and swap area. For dynamic usage use
+/// `system_monitor_memory`.
+pub struct SystemInfoMemory;
+
+impl RealtimeFetcher for SystemInfoMemory {
+    fn name(&self) -> &str {
+        "system_info_memory"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Installed memory capacity: RAM total or swap-area total, byte-formatted (`\"31.3 GB\"`)."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_MEMORY_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("16 GB")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: MemoryInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let totals = cached_memory_totals();
+        let value = match opts.kind.unwrap_or_default() {
+            MemoryInfoKind::Total => format_bytes(totals.memory),
+            MemoryInfoKind::SwapTotal => format_bytes(totals.swap),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_kernel ──────────────────────────────────────────────────
+
+const SYSTEM_INFO_KERNEL_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"name\" | \"version\"",
+    required: false,
+    default: Some("\"name\""),
+    description: "Selects kernel name (`Linux` / `Darwin` / `Windows NT` / ...) or version string.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KernelInfoOptions {
+    #[serde(default)]
+    pub kind: Option<KernelInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KernelInfoKind {
+    #[default]
+    Name,
+    Version,
+}
+
+/// Kernel name or version string.
+pub struct SystemInfoKernel;
+
+impl RealtimeFetcher for SystemInfoKernel {
+    fn name(&self) -> &str {
+        "system_info_kernel"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Kernel name (`Linux` / `Darwin` / `Windows NT` / ...) or version string from sysinfo."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_KERNEL_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("Linux")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: KernelInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = match opts.kind.unwrap_or_default() {
+            KernelInfoKind::Name => kernel_name(),
+            KernelInfoKind::Version => System::kernel_version().unwrap_or_else(|| "unknown".into()),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_machine (DMI host) ──────────────────────────────────────
+
+const SYSTEM_INFO_MACHINE_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"model\" | \"vendor\" | \"serial\" | \"chassis\"",
+    required: false,
+    default: Some("\"model\""),
+    description: "Selects which physical-machine identifier the `Text` shape emits. Reads `/sys/class/dmi/id/*` on Linux; returns `\"n/a\"` on macOS / Windows.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MachineInfoOptions {
+    #[serde(default)]
+    pub kind: Option<MachineInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineInfoKind {
+    #[default]
+    Model,
+    Vendor,
+    Serial,
+    Chassis,
+}
+
+/// Physical-machine DMI identifier (manufacturer / model / serial / chassis form factor).
+pub struct SystemInfoMachine;
+
+impl RealtimeFetcher for SystemInfoMachine {
+    fn name(&self) -> &str {
+        "system_info_machine"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Physical machine identity from DMI / SMBIOS: vendor / model / serial / chassis type. Linux reads `/sys/class/dmi/id/*`; non-Linux platforms render `\"n/a\"` until IOKit / WMI bindings land."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_MACHINE_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("MacBookPro18,3")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: MachineInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = match opts.kind.unwrap_or_default() {
+            MachineInfoKind::Model => dmi_or_na(system_dmi::host_model()),
+            MachineInfoKind::Vendor => dmi_or_na(system_dmi::host_vendor()),
+            MachineInfoKind::Serial => dmi_or_na(system_dmi::host_serial()),
+            MachineInfoKind::Chassis => dmi_or_na(system_dmi::chassis()),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_board ───────────────────────────────────────────────────
+
+const SYSTEM_INFO_BOARD_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"vendor\" | \"model\"",
+    required: false,
+    default: Some("\"model\""),
+    description: "Selects motherboard identifier. DMI-backed; `\"n/a\"` off Linux.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoardInfoOptions {
+    #[serde(default)]
+    pub kind: Option<BoardInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoardInfoKind {
+    Vendor,
+    #[default]
+    Model,
+}
+
+/// Motherboard identifier (vendor / model) via DMI.
+pub struct SystemInfoBoard;
+
+impl RealtimeFetcher for SystemInfoBoard {
+    fn name(&self) -> &str {
+        "system_info_board"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Motherboard vendor or model, via DMI. Linux only; other platforms render `\"n/a\"`."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_BOARD_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("PRIME B660-PLUS")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: BoardInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = match opts.kind.unwrap_or_default() {
+            BoardInfoKind::Vendor => dmi_or_na(system_dmi::board_vendor()),
+            BoardInfoKind::Model => dmi_or_na(system_dmi::board_model()),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_bios ────────────────────────────────────────────────────
+
+const SYSTEM_INFO_BIOS_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"vendor\" | \"version\" | \"date\"",
+    required: false,
+    default: Some("\"version\""),
+    description: "Selects BIOS/UEFI field. DMI-backed; `\"n/a\"` off Linux.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BiosInfoOptions {
+    #[serde(default)]
+    pub kind: Option<BiosInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BiosInfoKind {
+    Vendor,
+    #[default]
+    Version,
+    Date,
+}
+
+/// BIOS / UEFI firmware vendor, version, or release date via DMI.
+pub struct SystemInfoBios;
+
+impl RealtimeFetcher for SystemInfoBios {
+    fn name(&self) -> &str {
+        "system_info_bios"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "BIOS / UEFI firmware identification (vendor / version / release date), via DMI. Linux only; other platforms render `\"n/a\"`."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_BIOS_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("1.42.0")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: BiosInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = match opts.kind.unwrap_or_default() {
+            BiosInfoKind::Vendor => dmi_or_na(system_dmi::bios_vendor()),
+            BiosInfoKind::Version => dmi_or_na(system_dmi::bios_version()),
+            BiosInfoKind::Date => dmi_or_na(system_dmi::bios_date()),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_locale ──────────────────────────────────────────────────
+
+/// Resolved POSIX locale (`LC_ALL` > `LC_CTYPE` > `LANG`, fallback `C`).
+pub struct SystemInfoLocale;
+
+impl RealtimeFetcher for SystemInfoLocale {
+    fn name(&self) -> &str {
+        "system_info_locale"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Resolved POSIX locale (`LC_ALL` > `LC_CTYPE` > `LANG`, fallback `C`)."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("en_US.UTF-8")),
+            _ => None,
+        }
+    }
+    fn compute(&self, _ctx: &FetchContext) -> Payload {
+        payload(Body::Text(TextData {
+            value: detect_locale(),
+        }))
+    }
+}
+
+// ─── system_info_timezone ────────────────────────────────────────────────
+
+/// IANA timezone name from `$TZ` or `/etc/localtime` symlink target.
+pub struct SystemInfoTimezone;
+
+impl RealtimeFetcher for SystemInfoTimezone {
+    fn name(&self) -> &str {
+        "system_info_timezone"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "IANA timezone name, resolved from `$TZ` or the `/etc/localtime` symlink target (e.g. `Asia/Tokyo`)."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("Asia/Tokyo")),
+            _ => None,
+        }
+    }
+    fn compute(&self, _ctx: &FetchContext) -> Payload {
+        payload(Body::Text(TextData {
+            value: detect_timezone(),
+        }))
+    }
+}
+
+// ─── system_info_env ─────────────────────────────────────────────────────
+
+const SYSTEM_INFO_ENV_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"editor\" | \"visual\" | \"pager\"",
+    required: false,
+    default: Some("\"editor\""),
+    description: "Selects which env-driven command preference the `Text` shape emits. Returns `\"(unset)\"` if the env var is empty.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvInfoOptions {
+    #[serde(default)]
+    pub kind: Option<EnvInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvInfoKind {
+    #[default]
+    Editor,
+    Visual,
+    Pager,
+}
+
+/// Command preference resolved from environment variables (`$EDITOR` / `$VISUAL` / `$PAGER`),
+/// shown as the binary basename.
+pub struct SystemInfoEnv;
+
+impl RealtimeFetcher for SystemInfoEnv {
+    fn name(&self) -> &str {
+        "system_info_env"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Command preference from environment: `$EDITOR` / `$VISUAL` / `$PAGER`. Emits the binary basename (e.g. `nvim`), or `\"(unset)\"` when empty."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_ENV_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("nvim")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: EnvInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = match opts.kind.unwrap_or_default() {
+            EnvInfoKind::Editor => env_basename("EDITOR", "(unset)"),
+            EnvInfoKind::Visual => env_basename("VISUAL", "(unset)"),
+            EnvInfoKind::Pager => env_basename("PAGER", "(unset)"),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
+// ─── system_info_desktop ─────────────────────────────────────────────────
+
+const SYSTEM_INFO_DESKTOP_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
+    name: "kind",
+    type_hint: "\"de\" | \"wm\" | \"init\"",
+    required: false,
+    default: Some("\"de\""),
+    description: "Selects desktop session identifier: desktop environment, window manager protocol, or init system.",
+}];
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopInfoOptions {
+    #[serde(default)]
+    pub kind: Option<DesktopInfoKind>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopInfoKind {
+    #[default]
+    De,
+    Wm,
+    Init,
+}
+
+/// Desktop session identifier: desktop environment / window manager / init system.
+pub struct SystemInfoDesktop;
+
+impl RealtimeFetcher for SystemInfoDesktop {
+    fn name(&self) -> &str {
+        "system_info_desktop"
+    }
+    fn safety(&self) -> Safety {
+        Safety::Safe
+    }
+    fn description(&self) -> &'static str {
+        "Desktop session identifier: desktop environment (`$XDG_CURRENT_DESKTOP` family), window manager protocol (wayland / x11 / Quartz / DWM), or init system (`systemd` / `launchd` / `wininit`)."
+    }
+    fn shapes(&self) -> &[Shape] {
+        &[Shape::Text]
+    }
+    fn option_schemas(&self) -> &[OptionSchema] {
+        SYSTEM_INFO_DESKTOP_OPTION_SCHEMAS
+    }
+    fn sample_body(&self, shape: Shape) -> Option<Body> {
+        match shape {
+            Shape::Text => Some(samples::text("GNOME")),
+            _ => None,
+        }
+    }
+    fn compute(&self, ctx: &FetchContext) -> Payload {
+        let opts: DesktopInfoOptions = match parse_options(ctx.options.as_ref()) {
+            Ok(o) => o,
+            Err(msg) => return options_placeholder(&msg),
+        };
+        let value = match opts.kind.unwrap_or_default() {
+            DesktopInfoKind::De => detect_desktop_environment(),
+            DesktopInfoKind::Wm => detect_window_manager(),
+            DesktopInfoKind::Init => detect_init_system(),
+        };
+        payload(Body::Text(TextData { value }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1365,31 +1920,130 @@ mod tests {
         assert_eq!(
             realtime_names,
             vec![
-                "system",
-                "system_cpu",
-                "system_memory",
-                "system_uptime",
-                "system_load",
-                "system_processes",
-                "system_battery",
+                "system_monitor_host",
+                "system_info_host",
+                "system_info_cpu",
+                "system_info_memory",
+                "system_info_kernel",
+                "system_info_machine",
+                "system_info_board",
+                "system_info_bios",
+                "system_info_locale",
+                "system_info_timezone",
+                "system_info_env",
+                "system_info_desktop",
+                "system_monitor_cpu",
+                "system_monitor_memory",
+                "system_monitor_uptime",
+                "system_monitor_load",
+                "system_monitor_processes",
+                "system_monitor_battery",
             ]
         );
-        assert_eq!(cached_names, vec!["system_disk_usage"]);
+        assert_eq!(cached_names, vec!["system_monitor_disk"]);
     }
 
     #[test]
     fn fetcher_contracts_cover_supported_shapes_and_samples() {
         assert_realtime_contract(
             &SystemFetcher::default(),
-            "system",
-            &[Shape::Text, Shape::TextBlock, Shape::Entries],
+            "system_monitor_host",
+            &[Shape::Entries, Shape::TextBlock],
             Shape::Entries,
             Shape::Ratio,
+            0,
+        );
+        assert_realtime_contract(
+            &SystemInfoHost,
+            "system_info_host",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoCpu,
+            "system_info_cpu",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoMemory,
+            "system_info_memory",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoKernel,
+            "system_info_kernel",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoMachine,
+            "system_info_machine",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoBoard,
+            "system_info_board",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoBios,
+            "system_info_bios",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoLocale,
+            "system_info_locale",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            0,
+        );
+        assert_realtime_contract(
+            &SystemInfoTimezone,
+            "system_info_timezone",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            0,
+        );
+        assert_realtime_contract(
+            &SystemInfoEnv,
+            "system_info_env",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
+            1,
+        );
+        assert_realtime_contract(
+            &SystemInfoDesktop,
+            "system_info_desktop",
+            &[Shape::Text],
+            Shape::Text,
+            Shape::Entries,
             1,
         );
         assert_realtime_contract(
             &CpuLoadFetcher::default(),
-            "system_cpu",
+            "system_monitor_cpu",
             &[Shape::Ratio, Shape::Text],
             Shape::Ratio,
             Shape::Entries,
@@ -1397,7 +2051,7 @@ mod tests {
         );
         assert_realtime_contract(
             &MemoryFetcher::default(),
-            "system_memory",
+            "system_monitor_memory",
             &[Shape::Ratio, Shape::Text, Shape::Entries],
             Shape::Ratio,
             Shape::Bars,
@@ -1405,7 +2059,7 @@ mod tests {
         );
         assert_realtime_contract(
             &UptimeFetcher,
-            "system_uptime",
+            "system_monitor_uptime",
             &[Shape::Text],
             Shape::Text,
             Shape::Entries,
@@ -1413,7 +2067,7 @@ mod tests {
         );
         assert_realtime_contract(
             &LoadAverageFetcher,
-            "system_load",
+            "system_monitor_load",
             &[Shape::Text, Shape::Entries],
             Shape::Text,
             Shape::Badge,
@@ -1421,7 +2075,7 @@ mod tests {
         );
         assert_realtime_contract(
             &ProcessTopFetcher::default(),
-            "system_processes",
+            "system_monitor_processes",
             &[Shape::Entries, Shape::TextBlock],
             Shape::Entries,
             Shape::Ratio,
@@ -1429,7 +2083,7 @@ mod tests {
         );
         assert_realtime_contract(
             &BatteryFetcher::default(),
-            "system_battery",
+            "system_monitor_battery",
             &[Shape::Ratio, Shape::Text, Shape::Entries, Shape::Badge],
             Shape::Ratio,
             Shape::Bars,
@@ -1437,7 +2091,7 @@ mod tests {
         );
         assert_cached_contract(
             &DiskFetcher,
-            "system_disk_usage",
+            "system_monitor_disk",
             &[Shape::Ratio, Shape::Text, Shape::Bars],
             Shape::Entries,
         );
@@ -1459,8 +2113,9 @@ mod tests {
             Some(Body::TextBlock(block))
                 if block.lines[0] == "os: linux" && block.lines[5] == "memory: 67%"
         ));
+        assert!(fetcher.sample_body(Shape::Text).is_none());
         assert!(matches!(
-            fetcher.sample_body(Shape::Text),
+            SystemInfoHost.sample_body(Shape::Text),
             Some(Body::Text(text)) if text.value == "iTerm2"
         ));
     }
@@ -1780,8 +2435,8 @@ mod tests {
     }
 
     #[test]
-    fn system_text_shape_defaults_to_terminal_kind() {
-        let p = SystemFetcher::new().compute(&ctx_text(None));
+    fn system_info_host_defaults_to_terminal_kind() {
+        let p = SystemInfoHost.compute(&ctx_text(None));
         assert!(matches!(p.body, Body::Text(_)));
         if let Body::Text(t) = p.body {
             assert!(!t.value.is_empty());
@@ -1789,8 +2444,8 @@ mod tests {
     }
 
     #[test]
-    fn system_text_shape_emits_arch_when_requested() {
-        let p = SystemFetcher::new().compute(&ctx_text(Some("kind = \"arch\"")));
+    fn system_info_host_emits_arch_when_requested() {
+        let p = SystemInfoHost.compute(&ctx_text(Some("kind = \"arch\"")));
         assert!(matches!(p.body, Body::Text(_)));
         if let Body::Text(t) = p.body {
             assert_eq!(t.value, std::env::consts::ARCH);
@@ -1798,8 +2453,8 @@ mod tests {
     }
 
     #[test]
-    fn system_text_shape_rejects_unknown_kind_to_placeholder() {
-        let p = SystemFetcher::new().compute(&ctx_text(Some("kind = \"bogus\"")));
+    fn system_info_host_rejects_unknown_kind_to_placeholder() {
+        let p = SystemInfoHost.compute(&ctx_text(Some("kind = \"bogus\"")));
         assert!(matches!(p.body, Body::Text(_)));
         if let Body::Text(t) = p.body {
             assert!(t.value.starts_with("⚠"));
@@ -1811,50 +2466,91 @@ mod tests {
         assert!(!detect_terminal().is_empty());
     }
 
-    /// Prints one Text-shape line per `kind` on the host running the tests. Kept `#[ignore]` so
-    /// the regular run stays side-effect free, but a dev can verify real output with
+    /// Prints one Text-shape line per `kind` across the `system_info_*` family on the host
+    /// running the tests. Kept `#[ignore]` so the regular run stays side-effect free, but a dev
+    /// can verify real output with
     /// `cargo test -- --ignored fetcher::system::tests::live_system_text_all_kinds --nocapture`.
     #[test]
     #[ignore]
     fn live_system_text_all_kinds() {
-        let cases = [
-            ("terminal", "kind = \"terminal\""),
-            ("os", "kind = \"os\""),
-            ("os_version", "kind = \"os_version\""),
-            ("hostname", "kind = \"hostname\""),
-            ("shell", "kind = \"shell\""),
-            ("arch", "kind = \"arch\""),
-            ("cpu_model", "kind = \"cpu_model\""),
-            ("cpu_cores", "kind = \"cpu_cores\""),
-            ("cpu_frequency", "kind = \"cpu_frequency\""),
-            ("cpu_vendor", "kind = \"cpu_vendor\""),
-            ("memory_total", "kind = \"memory_total\""),
-            ("swap_total", "kind = \"swap_total\""),
-            ("kernel", "kind = \"kernel\""),
-            ("kernel_version", "kind = \"kernel_version\""),
-            ("host_model", "kind = \"host_model\""),
-            ("host_vendor", "kind = \"host_vendor\""),
-            ("host_serial", "kind = \"host_serial\""),
-            ("board_vendor", "kind = \"board_vendor\""),
-            ("board_model", "kind = \"board_model\""),
-            ("bios_vendor", "kind = \"bios_vendor\""),
-            ("bios_version", "kind = \"bios_version\""),
-            ("bios_date", "kind = \"bios_date\""),
-            ("chassis", "kind = \"chassis\""),
-            ("locale", "kind = \"locale\""),
-            ("timezone", "kind = \"timezone\""),
-            ("editor", "kind = \"editor\""),
-            ("visual", "kind = \"visual\""),
-            ("pager", "kind = \"pager\""),
-            ("de", "kind = \"de\""),
-            ("wm", "kind = \"wm\""),
-            ("init_system", "kind = \"init_system\""),
+        let cases: Vec<(&str, &dyn RealtimeFetcher, Option<&str>)> = vec![
+            (
+                "host:terminal",
+                &SystemInfoHost,
+                Some("kind = \"terminal\""),
+            ),
+            ("host:os", &SystemInfoHost, Some("kind = \"os\"")),
+            (
+                "host:os_version",
+                &SystemInfoHost,
+                Some("kind = \"os_version\""),
+            ),
+            (
+                "host:hostname",
+                &SystemInfoHost,
+                Some("kind = \"hostname\""),
+            ),
+            ("host:shell", &SystemInfoHost, Some("kind = \"shell\"")),
+            ("host:arch", &SystemInfoHost, Some("kind = \"arch\"")),
+            ("cpu:model", &SystemInfoCpu, Some("kind = \"model\"")),
+            ("cpu:cores", &SystemInfoCpu, Some("kind = \"cores\"")),
+            (
+                "cpu:frequency",
+                &SystemInfoCpu,
+                Some("kind = \"frequency\""),
+            ),
+            ("cpu:vendor", &SystemInfoCpu, Some("kind = \"vendor\"")),
+            ("memory:total", &SystemInfoMemory, Some("kind = \"total\"")),
+            (
+                "memory:swap_total",
+                &SystemInfoMemory,
+                Some("kind = \"swap_total\""),
+            ),
+            ("kernel:name", &SystemInfoKernel, Some("kind = \"name\"")),
+            (
+                "kernel:version",
+                &SystemInfoKernel,
+                Some("kind = \"version\""),
+            ),
+            (
+                "machine:model",
+                &SystemInfoMachine,
+                Some("kind = \"model\""),
+            ),
+            (
+                "machine:vendor",
+                &SystemInfoMachine,
+                Some("kind = \"vendor\""),
+            ),
+            (
+                "machine:serial",
+                &SystemInfoMachine,
+                Some("kind = \"serial\""),
+            ),
+            (
+                "machine:chassis",
+                &SystemInfoMachine,
+                Some("kind = \"chassis\""),
+            ),
+            ("board:vendor", &SystemInfoBoard, Some("kind = \"vendor\"")),
+            ("board:model", &SystemInfoBoard, Some("kind = \"model\"")),
+            ("bios:vendor", &SystemInfoBios, Some("kind = \"vendor\"")),
+            ("bios:version", &SystemInfoBios, Some("kind = \"version\"")),
+            ("bios:date", &SystemInfoBios, Some("kind = \"date\"")),
+            ("locale", &SystemInfoLocale, None),
+            ("timezone", &SystemInfoTimezone, None),
+            ("env:editor", &SystemInfoEnv, Some("kind = \"editor\"")),
+            ("env:visual", &SystemInfoEnv, Some("kind = \"visual\"")),
+            ("env:pager", &SystemInfoEnv, Some("kind = \"pager\"")),
+            ("desktop:de", &SystemInfoDesktop, Some("kind = \"de\"")),
+            ("desktop:wm", &SystemInfoDesktop, Some("kind = \"wm\"")),
+            ("desktop:init", &SystemInfoDesktop, Some("kind = \"init\"")),
         ];
-        for (label, opts) in cases {
-            let p = SystemFetcher::new().compute(&ctx_text(Some(opts)));
+        for (label, fetcher, opts) in cases {
+            let p = fetcher.compute(&ctx_text(opts));
             assert!(matches!(p.body, Body::Text(_)), "expected text for {label}");
             if let Body::Text(t) = p.body {
-                eprintln!("{label:<14} → {}", t.value);
+                eprintln!("{label:<18} → {}", t.value);
                 assert!(!t.value.is_empty());
             }
         }

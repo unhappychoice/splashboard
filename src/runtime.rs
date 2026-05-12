@@ -2070,7 +2070,7 @@ mod tests {
         let registry = Registry::with_builtins();
         let widgets = vec![widget_with_render(
             "d",
-            "system_disk_usage",
+            "system_monitor_disk",
             Some("gauge_circle"),
         )];
         let shapes = single_shape("d", Shape::Ratio);
@@ -2093,7 +2093,7 @@ mod tests {
         let registry = Registry::with_builtins();
         let widgets = vec![widget_with_render(
             "d",
-            "system_disk_usage",
+            "system_monitor_disk",
             Some("grid_calendar"),
         )];
         let shapes = single_shape("d", Shape::Calendar);

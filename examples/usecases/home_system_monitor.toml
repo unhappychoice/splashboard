@@ -18,56 +18,56 @@ requires = ["local system access (no auth)"]
 # Top row — four vertical thermometers, identical style.
 [[widget]]
 id = "battery"
-fetcher = "system_battery"
+fetcher = "system_monitor_battery"
 shape = "ratio"
 render = { type = "gauge_thermometer", tone = "drain", label = "bat" }
 
 [[widget]]
 id = "cpu_gauge"
-fetcher = "system_cpu"
+fetcher = "system_monitor_cpu"
 shape = "ratio"
 render = { type = "gauge_thermometer", tone = "drain", label = "cpu" }
 
 [[widget]]
 id = "memory_gauge"
-fetcher = "system_memory"
+fetcher = "system_monitor_memory"
 shape = "ratio"
 render = { type = "gauge_thermometer", tone = "drain", label = "ram" }
 
 [[widget]]
 id = "disk_gauge"
-fetcher = "system_disk_usage"
+fetcher = "system_monitor_disk"
 shape = "ratio"
 render = { type = "gauge_thermometer", tone = "drain", label = "dsk" }
 
 # Middle / bottom row tables.
 [[widget]]
 id = "uptime"
-fetcher = "system_uptime"
+fetcher = "system_monitor_uptime"
 shape = "text"
 render = { type = "text_plain", align = "left" }
 
 [[widget]]
 id = "load_table"
-fetcher = "system_load"
+fetcher = "system_monitor_load"
 shape = "entries"
 render = "grid_table"
 
 [[widget]]
 id = "memory_details"
-fetcher = "system_memory"
+fetcher = "system_monitor_memory"
 shape = "entries"
 render = "grid_table"
 
 [[widget]]
 id = "disk_bars"
-fetcher = "system_disk_usage"
+fetcher = "system_monitor_disk"
 shape = "bars"
 render = { type = "chart_bar", horizontal = true }
 
 [[widget]]
 id = "processes"
-fetcher = "system_processes"
+fetcher = "system_monitor_processes"
 shape = "entries"
 render = "grid_table"
   [widget.options]
