@@ -471,7 +471,7 @@ fn detect_terminal() -> String {
         Some("Hyper") => "Hyper".into(),
         Some("vscode") => "VS Code".into(),
         Some(other) if !other.is_empty() => other.into(),
-        _ => "terminal".into(),
+        _ => "(unset)".into(),
     }
 }
 
@@ -483,7 +483,7 @@ fn detect_shell() -> String {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
         })
-        .unwrap_or_else(|| "shell".into())
+        .unwrap_or_else(|| "(unset)".into())
 }
 
 fn parse_options<T: serde::de::DeserializeOwned + Default>(
@@ -1573,7 +1573,7 @@ mod tests {
             detect_terminal_with(&[("TERM_PROGRAM", "CustomTerm")]),
             "CustomTerm"
         );
-        assert_eq!(detect_terminal_with(&[]), "terminal");
+        assert_eq!(detect_terminal_with(&[]), "(unset)");
     }
 
     #[test]
@@ -1611,7 +1611,7 @@ mod tests {
         drop(_guard);
 
         let _guard = EnvGuard::set(&[("SHELL", None)]);
-        assert_eq!(detect_shell(), "shell");
+        assert_eq!(detect_shell(), "(unset)");
     }
 
     #[test]
