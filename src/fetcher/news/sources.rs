@@ -25,6 +25,11 @@ pub enum NewsCategory {
     Android,
     Space,
     Climate,
+    Politics,
+    Photography,
+    Entertainment,
+    Music,
+    Crypto,
 }
 
 impl NewsCategory {
@@ -45,6 +50,11 @@ impl NewsCategory {
             Self::Android => "android",
             Self::Space => "space",
             Self::Climate => "climate",
+            Self::Politics => "politics",
+            Self::Photography => "photography",
+            Self::Entertainment => "entertainment",
+            Self::Music => "music",
+            Self::Crypto => "crypto",
         }
     }
 }
@@ -671,6 +681,610 @@ pub const SOURCES: &[NewsSource] = &[
         feeds: &[NewsFeed {
             key: "main",
             url: "https://insideclimatenews.org/feed/",
+            label: "Latest",
+        }],
+    },
+    // ========== Batch 2 expansion ==========
+    // ---------- General (cont.) ----------
+    NewsSource {
+        name: "news_france24",
+        display: "France 24",
+        category: NewsCategory::General,
+        description: "France 24 English-language international news.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.france24.com/en/rss",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_dw",
+        display: "Deutsche Welle",
+        category: NewsCategory::General,
+        description: "Deutsche Welle English — Germany's international broadcaster.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://rss.dw.com/rdf/rss-en-all",
+            label: "All news",
+        }],
+    },
+    NewsSource {
+        name: "news_sky_news",
+        display: "Sky News",
+        category: NewsCategory::General,
+        description: "Sky News world headlines.",
+        feeds: &[NewsFeed {
+            key: "world",
+            url: "https://feeds.skynews.com/feeds/rss/world.xml",
+            label: "World",
+        }],
+    },
+    NewsSource {
+        name: "news_cbs",
+        display: "CBS News",
+        category: NewsCategory::General,
+        description: "CBS News top stories.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.cbsnews.com/latest/rss/main",
+            label: "Latest",
+        }],
+    },
+    // ---------- Tech (cont.) ----------
+    NewsSource {
+        name: "news_the_register",
+        display: "The Register",
+        category: NewsCategory::Tech,
+        description: "The Register — UK-based enterprise IT news with a distinctive voice.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.theregister.com/headlines.atom",
+            label: "Headlines",
+        }],
+    },
+    NewsSource {
+        name: "news_zdnet",
+        display: "ZDNET",
+        category: NewsCategory::Tech,
+        description: "ZDNET — enterprise technology news, reviews, and analysis.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.zdnet.com/news/rss.xml",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_slashdot",
+        display: "Slashdot",
+        category: NewsCategory::Tech,
+        description: "Slashdot — news for nerds, stuff that matters.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "http://rss.slashdot.org/Slashdot/slashdotMain",
+            label: "Main",
+        }],
+    },
+    NewsSource {
+        name: "news_venturebeat",
+        display: "VentureBeat",
+        category: NewsCategory::Tech,
+        description: "VentureBeat — tech industry news with a startup-funding lens.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://venturebeat.com/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Gadget (cont.) ----------
+    NewsSource {
+        name: "news_techradar",
+        display: "TechRadar",
+        category: NewsCategory::Gadget,
+        description: "TechRadar — consumer technology product news and reviews.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.techradar.com/rss",
+            label: "Latest",
+        }],
+    },
+    // ---------- Business (cont.) ----------
+    NewsSource {
+        name: "news_forbes",
+        display: "Forbes",
+        category: NewsCategory::Business,
+        description: "Forbes Business section — companies, markets, and entrepreneurship.",
+        feeds: &[NewsFeed {
+            key: "business",
+            url: "https://www.forbes.com/business/feed/",
+            label: "Business",
+        }],
+    },
+    NewsSource {
+        name: "news_economist",
+        display: "The Economist",
+        category: NewsCategory::Business,
+        description: "The Economist Business section.",
+        feeds: &[NewsFeed {
+            key: "business",
+            url: "https://www.economist.com/business/rss.xml",
+            label: "Business",
+        }],
+    },
+    NewsSource {
+        name: "news_fortune",
+        display: "Fortune",
+        category: NewsCategory::Business,
+        description: "Fortune — corporate strategy, executives, and market trends.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://fortune.com/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Science (cont.) ----------
+    NewsSource {
+        name: "news_new_scientist",
+        display: "New Scientist",
+        category: NewsCategory::Science,
+        description: "New Scientist — magazine-style coverage of science and technology.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.newscientist.com/feed/home/",
+            label: "Home",
+        }],
+    },
+    NewsSource {
+        name: "news_sciencedaily",
+        display: "ScienceDaily",
+        category: NewsCategory::Science,
+        description: "ScienceDaily — research news across all scientific fields.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.sciencedaily.com/rss/all.xml",
+            label: "All news",
+        }],
+    },
+    NewsSource {
+        name: "news_phys_org",
+        display: "Phys.org",
+        category: NewsCategory::Science,
+        description: "Phys.org — physics, materials science, and broader hard-science coverage.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://phys.org/rss-feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Security (cont.) ----------
+    NewsSource {
+        name: "news_the_hacker_news",
+        display: "The Hacker News",
+        category: NewsCategory::Security,
+        description: "The Hacker News — daily cybersecurity news and analysis.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://feeds.feedburner.com/TheHackersNews",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_threatpost",
+        display: "Threatpost",
+        category: NewsCategory::Security,
+        description: "Threatpost — vulnerability and malware reporting.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://threatpost.com/feed/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_dark_reading",
+        display: "Dark Reading",
+        category: NewsCategory::Security,
+        description: "Dark Reading — enterprise security news and analysis.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.darkreading.com/rss.xml",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_graham_cluley",
+        display: "Graham Cluley",
+        category: NewsCategory::Security,
+        description: "Graham Cluley's security blog — practical, accessible coverage of threats and breaches.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://grahamcluley.com/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Linux / FOSS (cont.) ----------
+    NewsSource {
+        name: "news_its_foss",
+        display: "It's FOSS",
+        category: NewsCategory::Linux,
+        description: "It's FOSS — Linux, open-source applications, and tutorials.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://itsfoss.com/feed/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_distrowatch",
+        display: "DistroWatch",
+        category: NewsCategory::Linux,
+        description: "DistroWatch — Linux distribution release announcements and database updates.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "http://distrowatch.com/news/dwd.xml",
+            label: "Weekly",
+        }],
+    },
+    // ---------- Gaming (cont.) ----------
+    NewsSource {
+        name: "news_kotaku",
+        display: "Kotaku",
+        category: NewsCategory::Gaming,
+        description: "Kotaku — video-game news, criticism, and culture writing.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://kotaku.com/rss",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_ign",
+        display: "IGN",
+        category: NewsCategory::Gaming,
+        description: "IGN — broad video-game and entertainment news with reviews.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://feeds.ign.com/ign/games-all",
+            label: "Games",
+        }],
+    },
+    NewsSource {
+        name: "news_pc_gamer",
+        display: "PC Gamer",
+        category: NewsCategory::Gaming,
+        description: "PC Gamer — PC-focused gaming news, hardware reviews, and previews.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.pcgamer.com/rss/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_vg247",
+        display: "VG247",
+        category: NewsCategory::Gaming,
+        description: "VG247 — video-game news, deals, and guides.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.vg247.com/feed/articles",
+            label: "Articles",
+        }],
+    },
+    // ---------- AI / ML (cont.) ----------
+    NewsSource {
+        name: "news_hugging_face_blog",
+        display: "Hugging Face Blog",
+        category: NewsCategory::Ai,
+        description: "Hugging Face — research, tooling, and model-release write-ups from the HF team and community.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://huggingface.co/blog/feed.xml",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_the_gradient",
+        display: "The Gradient",
+        category: NewsCategory::Ai,
+        description: "The Gradient — long-form essays on AI / ML research.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://thegradient.pub/rss/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_mit_tr_ai",
+        display: "MIT Technology Review AI",
+        category: NewsCategory::Ai,
+        description: "MIT Technology Review — AI coverage subset of the broader publication.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.technologyreview.com/feed/?topic=artificial-intelligence",
+            label: "AI topic",
+        }],
+    },
+    // ---------- Hardware (cont.) ----------
+    NewsSource {
+        name: "news_techpowerup",
+        display: "TechPowerUp",
+        category: NewsCategory::Hardware,
+        description: "TechPowerUp — PC component news, driver releases, and database updates.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.techpowerup.com/rss/news",
+            label: "News",
+        }],
+    },
+    NewsSource {
+        name: "news_ifixit",
+        display: "iFixit Blog",
+        category: NewsCategory::Hardware,
+        description: "iFixit Blog — repairability news, teardowns, and right-to-repair advocacy.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.ifixit.com/blog/feed",
+            label: "Latest",
+        }],
+    },
+    // ---------- Web / design (cont.) ----------
+    NewsSource {
+        name: "news_a_list_apart",
+        display: "A List Apart",
+        category: NewsCategory::Web,
+        description: "A List Apart — long-running web standards and design writing.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://alistapart.com/main/feed",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_ux_collective",
+        display: "UX Collective",
+        category: NewsCategory::Web,
+        description: "UX Collective — Medium publication on UX design, research, and practice.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://uxdesign.cc/feed",
+            label: "Latest",
+        }],
+    },
+    // ---------- Apple (cont.) ----------
+    NewsSource {
+        name: "news_daring_fireball",
+        display: "Daring Fireball",
+        category: NewsCategory::Apple,
+        description: "Daring Fireball — John Gruber's long-running blog on Apple, design, and software.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://daringfireball.net/feeds/main",
+            label: "Main",
+        }],
+    },
+    NewsSource {
+        name: "news_appleinsider",
+        display: "AppleInsider",
+        category: NewsCategory::Apple,
+        description: "AppleInsider — Apple ecosystem news, rumors, and reviews.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://appleinsider.com/rss/news/",
+            label: "News",
+        }],
+    },
+    // ---------- Android (cont.) ----------
+    NewsSource {
+        name: "news_android_authority",
+        display: "Android Authority",
+        category: NewsCategory::Android,
+        description: "Android Authority — Android phones, reviews, and Google ecosystem coverage.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.androidauthority.com/feed/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_xda",
+        display: "XDA Developers",
+        category: NewsCategory::Android,
+        description: "XDA Developers — Android customization, ROMs, and developer-focused phone news.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.xda-developers.com/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Space (cont.) ----------
+    NewsSource {
+        name: "news_nasa_news",
+        display: "NASA News",
+        category: NewsCategory::Space,
+        description: "NASA breaking-news feed — mission updates, science releases, agency announcements.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.nasa.gov/rss/dyn/breaking_news.rss",
+            label: "Breaking news",
+        }],
+    },
+    NewsSource {
+        name: "news_space_com",
+        display: "Space.com",
+        category: NewsCategory::Space,
+        description: "Space.com — space news, astronomy, and skywatching guides.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.space.com/feeds/all",
+            label: "All",
+        }],
+    },
+    // ---------- Climate (cont.) ----------
+    NewsSource {
+        name: "news_carbon_brief",
+        display: "Carbon Brief",
+        category: NewsCategory::Climate,
+        description: "Carbon Brief — climate science, policy, and energy reporting.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.carbonbrief.org/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Politics ----------
+    NewsSource {
+        name: "news_politico",
+        display: "Politico",
+        category: NewsCategory::Politics,
+        description: "Politico — US politics and policy reporting.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://rss.politico.com/politics-news.xml",
+            label: "Politics",
+        }],
+    },
+    NewsSource {
+        name: "news_propublica",
+        display: "ProPublica",
+        category: NewsCategory::Politics,
+        description: "ProPublica — investigative journalism on US institutions and policy.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.propublica.org/feeds/propublica/main",
+            label: "Main",
+        }],
+    },
+    NewsSource {
+        name: "news_vox",
+        display: "Vox",
+        category: NewsCategory::Politics,
+        description: "Vox — explanatory journalism on politics, policy, and culture.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.vox.com/rss/index.xml",
+            label: "Latest",
+        }],
+    },
+    // ---------- Photography ----------
+    NewsSource {
+        name: "news_dpreview",
+        display: "DPReview",
+        category: NewsCategory::Photography,
+        description: "DPReview — digital camera reviews, gear announcements, and industry news.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.dpreview.com/feeds/news.xml",
+            label: "News",
+        }],
+    },
+    NewsSource {
+        name: "news_petapixel",
+        display: "PetaPixel",
+        category: NewsCategory::Photography,
+        description: "PetaPixel — photography news, tutorials, and gear coverage.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://petapixel.com/feed/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_fstoppers",
+        display: "Fstoppers",
+        category: NewsCategory::Photography,
+        description: "Fstoppers — professional photography and videography community.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://fstoppers.com/rss.xml",
+            label: "Latest",
+        }],
+    },
+    // ---------- Entertainment ----------
+    NewsSource {
+        name: "news_variety",
+        display: "Variety",
+        category: NewsCategory::Entertainment,
+        description: "Variety — entertainment industry news (film, TV, music, theater).",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://variety.com/feed/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_deadline",
+        display: "Deadline",
+        category: NewsCategory::Entertainment,
+        description: "Deadline — Hollywood breaking news and box office reporting.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://deadline.com/feed/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_indiewire",
+        display: "IndieWire",
+        category: NewsCategory::Entertainment,
+        description: "IndieWire — independent film, festival, and award-season coverage.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.indiewire.com/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Music ----------
+    NewsSource {
+        name: "news_pitchfork",
+        display: "Pitchfork",
+        category: NewsCategory::Music,
+        description: "Pitchfork — music criticism, news, and reviews.",
+        feeds: &[NewsFeed {
+            key: "news",
+            url: "https://pitchfork.com/rss/news/",
+            label: "News",
+        }],
+    },
+    NewsSource {
+        name: "news_stereogum",
+        display: "Stereogum",
+        category: NewsCategory::Music,
+        description: "Stereogum — indie / alternative music news and commentary.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.stereogum.com/feed/",
+            label: "Latest",
+        }],
+    },
+    // ---------- Crypto ----------
+    NewsSource {
+        name: "news_coindesk",
+        display: "CoinDesk",
+        category: NewsCategory::Crypto,
+        description: "CoinDesk — cryptocurrency and blockchain industry news.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_the_block",
+        display: "The Block",
+        category: NewsCategory::Crypto,
+        description: "The Block — investigative crypto industry journalism.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://www.theblock.co/rss.xml",
+            label: "Latest",
+        }],
+    },
+    NewsSource {
+        name: "news_decrypt",
+        display: "Decrypt",
+        category: NewsCategory::Crypto,
+        description: "Decrypt — crypto, Web3, and AI news with a consumer lens.",
+        feeds: &[NewsFeed {
+            key: "main",
+            url: "https://decrypt.co/feed",
             label: "Latest",
         }],
     },
