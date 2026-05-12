@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-12
+
+### ✨ Features
+
+- feat(fetcher/youtube): add youtube_channel fetcher ([df3f5cd](https://github.com/unhappychoice/splashboard/commit/df3f5cd))
+- feat(fetcher/news): add news_bloomberg + news_wsj (10 sub-feeds) ([12c52a9](https://github.com/unhappychoice/splashboard/commit/12c52a9))
+- feat(fetcher/news): expand to 93 sources / 20 sub-genres ([353a211](https://github.com/unhappychoice/splashboard/commit/353a211))
+- feat(fetcher/news): add news_* family with 39 curated sources ([cc69499](https://github.com/unhappychoice/splashboard/commit/cc69499))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.6.0 ([13553d2](https://github.com/unhappychoice/splashboard/commit/13553d2))
+- chore(fetcher/news): upgrade all feed URLs to https + lock policy in test ([8977c7d](https://github.com/unhappychoice/splashboard/commit/8977c7d))
+- chore: update flake.nix hashes for v1.5.0 ([8807cac](https://github.com/unhappychoice/splashboard/commit/8807cac))
+
+
 ## [1.5.0] - 2026-05-12
 
 ### ✨ Features
@@ -28,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.5.0 ([a97d516](https://github.com/unhappychoice/splashboard/commit/a97d516))
+- chore: bump version to v1.5.0 ([1bc7042](https://github.com/unhappychoice/splashboard/commit/1bc7042))
 - style: cargo fmt ([ab3b7d6](https://github.com/unhappychoice/splashboard/commit/ab3b7d6))
 - test: fill list_cards / ImageLinkedList coverage gaps ([8446b7d](https://github.com/unhappychoice/splashboard/commit/8446b7d))
 - refactor(render): extract draw_thumbnail and wrap_osc8 helpers ([a998762](https://github.com/unhappychoice/splashboard/commit/a998762))
