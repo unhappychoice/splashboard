@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-05-12
+
+### ✨ Features
+
+- feat(fetcher/wikipedia): emit ImageLinkedList with REST thumbnail.source ([97484af](https://github.com/unhappychoice/splashboard/commit/97484af))
+- feat(fetcher/reddit): emit ImageLinkedList for post listings ([0fd12dc](https://github.com/unhappychoice/splashboard/commit/0fd12dc))
+- feat(fetcher/rss): emit ImageLinkedList with thumbnails ([6680e40](https://github.com/unhappychoice/splashboard/commit/6680e40))
+- feat(fetcher): basic_read_store accepts ImageLinkedList ([af16de8](https://github.com/unhappychoice/splashboard/commit/af16de8))
+- feat(fetcher): add shared thumbnail downloader ([7f332fb](https://github.com/unhappychoice/splashboard/commit/7f332fb))
+- feat(render): add list_cards renderer over a new ImageLinkedList shape ([e50c4e1](https://github.com/unhappychoice/splashboard/commit/e50c4e1))
+- feat(cache): document shape/locale/timezone limitation for clear by id ([1eac161](https://github.com/unhappychoice/splashboard/commit/1eac161))
+- feat: "splashboard cache" management CLI — list, clear, path (#40) ([74c2ea4](https://github.com/unhappychoice/splashboard/commit/74c2ea4))
+- feat(fetcher): add weather_forecast ([e1d08a7](https://github.com/unhappychoice/splashboard/commit/e1d08a7))
+
+### 🐛 Bug Fixes
+
+- fix(cache): address review — dedupe sanitize, multi-byte truncate, doc/exit polish ([b2dbf13](https://github.com/unhappychoice/splashboard/commit/b2dbf13))
+- fix(clippy): sort_by_key + inline OUTCOME literal; add 11 coverage tests ([3b45780](https://github.com/unhappychoice/splashboard/commit/3b45780))
+- fix(render): preserve theme.bg in chart_line and chart_scatter ([911ed4f](https://github.com/unhappychoice/splashboard/commit/911ed4f))
+- fix(render): wrap rgba in Some for ratatui-image 11 set_background_color API ([b726d96](https://github.com/unhappychoice/splashboard/commit/b726d96))
+
+### 📝 Other Changes
+
+- chore: bump version to v1.5.0 ([a97d516](https://github.com/unhappychoice/splashboard/commit/a97d516))
+- style: cargo fmt ([ab3b7d6](https://github.com/unhappychoice/splashboard/commit/ab3b7d6))
+- test: fill list_cards / ImageLinkedList coverage gaps ([8446b7d](https://github.com/unhappychoice/splashboard/commit/8446b7d))
+- refactor(render): extract draw_thumbnail and wrap_osc8 helpers ([a998762](https://github.com/unhappychoice/splashboard/commit/a998762))
+- chore(deps)(deps): bump ratatui-image from 10.0.8 to 11.0.1 ([c7d6c62](https://github.com/unhappychoice/splashboard/commit/c7d6c62))
+- chore(deps)(deps): bump sysinfo from 0.38.4 to 0.39.0 ([9d82df6](https://github.com/unhappychoice/splashboard/commit/9d82df6))
+- chore(deps)(deps): bump tokio from 1.52.1 to 1.52.3 ([24ea3e1](https://github.com/unhappychoice/splashboard/commit/24ea3e1))
+- chore: update flake.nix hashes for v1.4.0 ([bef2903](https://github.com/unhappychoice/splashboard/commit/bef2903))
+
+
 ## [1.4.0] - 2026-05-10
 
 ### ✨ Features
@@ -33,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.4.0 ([c9528c8](https://github.com/unhappychoice/splashboard/commit/c9528c8))
+- chore: bump version to v1.4.0 ([bfa6cbe](https://github.com/unhappychoice/splashboard/commit/bfa6cbe))
 - style(fetcher/todoist): apply rustfmt to expanded Timeline sample ([126e288](https://github.com/unhappychoice/splashboard/commit/126e288))
 - refactor(usecase): replace project_workspace with project_welcome ([2478d5c](https://github.com/unhappychoice/splashboard/commit/2478d5c))
 - refactor(usecase/project_ci): layered status + per-branch row + open PRs ([ced51c2](https://github.com/unhappychoice/splashboard/commit/ced51c2))
