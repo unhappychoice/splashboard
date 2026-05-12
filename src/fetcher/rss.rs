@@ -4,42 +4,22 @@
 //! local-config they trust) types. Local configs must be `splashboard trust`-ed before this
 //! widget runs; global config is implicitly trusted.
 //!
-//! Output shapes: `LinkedTextBlock` (default — clickable rows for `list_links`) and `TextBlock`
-//! (titles only). Lines are `MMM DD  Article title`, mirroring `hackernews_top`'s
-//! `234pt 56c  Title` rhythm so the same renderer slot stays visually consistent.
-
-use std::sync::OnceLock;
-use std::time::Duration;
+//! Output shapes: `LinkedTextBlock` (default — clickable rows for `list_links`),
+//! `ImageLinkedList` (cards with thumbnails), and `TextBlock` (titles only). All wiring around
+//! HTTP retrieval, feed-rs parsing, and entry-to-row formatting lives in `crate::fetcher::feed`
+//! so the `news_*` family can reuse it.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use feed_rs::model::{Entry, Feed};
-use feed_rs::parser;
-use regex::Regex;
-use reqwest::Client;
 use serde::Deserialize;
 use url::Url;
 
+use crate::fetcher::feed;
 use crate::fetcher::github::common::{cache_key, parse_options, payload};
-use crate::fetcher::thumbnails;
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
-use crate::payload::{
-    Body, ImageLinkedItem, ImageLinkedListData, LinkedLine, LinkedTextBlockData, Payload,
-    TextBlockData,
-};
+use crate::payload::{Body, Payload};
 use crate::render::Shape;
 use crate::samples;
-use crate::time as t;
-
-const DEFAULT_COUNT: u32 = 5;
-const MIN_COUNT: u32 = 1;
-const MAX_COUNT: u32 = 20;
-
-/// Cap raw response bytes so a hostile / runaway feed can't OOM the daemon.
-const MAX_BYTES: usize = 5 * 1024 * 1024;
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
 
 const SHAPES: &[Shape] = &[
     Shape::LinkedTextBlock,
@@ -143,16 +123,15 @@ impl Fetcher for RssFetcher {
         let url = validated_url(opts.url.as_deref())?;
         let count = opts
             .count
-            .unwrap_or(DEFAULT_COUNT)
-            .clamp(MIN_COUNT, MAX_COUNT) as usize;
-        let bytes = fetch_bytes(&url).await?;
-        let feed = parser::parse(bytes.as_slice())
-            .map_err(|e| FetchError::Failed(format!("rss parse: {e}")))?;
+            .unwrap_or(feed::DEFAULT_COUNT)
+            .clamp(feed::MIN_COUNT, feed::MAX_COUNT) as usize;
+        let bytes = feed::fetch_bytes(&url, "rss").await?;
+        let parsed = feed::parse_feed(&bytes, "rss")?;
         let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
         let body = match shape {
-            Shape::ImageLinkedList => render_image_linked(&feed, count, ctx).await,
-            other => render_body(
-                &feed,
+            Shape::ImageLinkedList => feed::render_image_linked(&parsed, count, ctx).await,
+            other => feed::render_body(
+                &parsed,
                 count,
                 other,
                 ctx.timezone.as_deref(),
@@ -178,229 +157,17 @@ fn validated_url(raw: Option<&str>) -> Result<Url, FetchError> {
     }
 }
 
-fn http() -> &'static Client {
-    static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(REQUEST_TIMEOUT)
-            .gzip(true)
-            .build()
-            .expect("reqwest client should build with default config")
-    })
-}
-
-async fn fetch_bytes(url: &Url) -> Result<Vec<u8>, FetchError> {
-    let res = http()
-        .get(url.as_str())
-        .send()
-        .await
-        .map_err(|e| FetchError::Failed(format!("rss request failed: {e}")))?;
-    let status = res.status();
-    if !status.is_success() {
-        return Err(FetchError::Failed(format!("rss {status}")));
-    }
-    let bytes = res
-        .bytes()
-        .await
-        .map_err(|e| FetchError::Failed(format!("rss read body: {e}")))?;
-    if bytes.len() > MAX_BYTES {
-        return Err(FetchError::Failed(format!(
-            "rss response too large ({} bytes, cap {MAX_BYTES})",
-            bytes.len()
-        )));
-    }
-    Ok(bytes.to_vec())
-}
-
-async fn render_image_linked(feed: &Feed, count: usize, ctx: &FetchContext) -> Body {
-    let entries: Vec<&Entry> = feed.entries.iter().take(count).collect();
-    let thumbnail_urls: Vec<Option<String>> =
-        entries.iter().map(|e| thumbnail_url_for(e)).collect();
-    let thumbnail_paths = thumbnails::download_many(&thumbnail_urls).await;
-    Body::ImageLinkedList(ImageLinkedListData {
-        items: entries
-            .iter()
-            .zip(thumbnail_paths)
-            .map(|(e, path)| ImageLinkedItem {
-                title: title_or_placeholder(e),
-                url: link_for(e),
-                thumbnail_path: path.map(|p| p.to_string_lossy().into_owned()),
-                subtitle: subtitle_for(e, ctx.timezone.as_deref(), ctx.locale.as_deref()),
-            })
-            .collect(),
-    })
-}
-
-/// Best-effort image URL for the entry, in order of preference:
-///
-/// 1. `media:thumbnail` (RSS Media spec) — explicit thumbnail.
-/// 2. `media:content` URL — full media, usually an image.
-/// 3. First `<img src="http(s)://...">` in the entry's HTML `<content>` or `<summary>` —
-///    covers Atom feeds without media extensions (Rust blog, most personal blogs) where the
-///    cover image is inlined in the body markup.
-///
-/// `image.uri` on a thumbnail is always a string; `MediaContent` returns a `Url` we serialise
-/// back to `String` so the cache key (sha of the URL string) stays stable.
-fn thumbnail_url_for(entry: &Entry) -> Option<String> {
-    entry
-        .media
-        .iter()
-        .flat_map(|m| m.thumbnails.iter().map(|t| t.image.uri.clone()))
-        .find(|s| !s.is_empty())
-        .or_else(|| {
-            entry
-                .media
-                .iter()
-                .flat_map(|m| m.content.iter().filter_map(|c| c.url.as_ref()))
-                .map(|u| u.to_string())
-                .find(|s| !s.is_empty())
-        })
-        .or_else(|| {
-            entry
-                .content
-                .as_ref()
-                .and_then(|c| c.body.as_deref())
-                .and_then(first_inline_image_src)
-        })
-        .or_else(|| {
-            entry
-                .summary
-                .as_ref()
-                .and_then(|s| first_inline_image_src(&s.content))
-        })
-}
-
-/// Extracts the `src` attribute of the first HTTP(S) `<img>` tag in `html`. Used to recover a
-/// thumbnail when the feed doesn't expose `media:thumbnail` — most Atom blogs (Rust blog,
-/// personal sites) only ship the cover image inline inside the HTML body. Encoded entities
-/// (`&amp;`) are decoded back to `&` so the URL works as-is. Returns `None` when the body has
-/// no `<img>` or only data: / cid: / file: URIs.
-fn first_inline_image_src(html: &str) -> Option<String> {
-    static IMG_SRC_RE: OnceLock<Regex> = OnceLock::new();
-    // `(?is)`: case-insensitive + dot matches newlines. The regex is forgiving about
-    // attribute order — `src` may be preceded by any number of non-`>` attributes.
-    let re = IMG_SRC_RE
-        .get_or_init(|| Regex::new(r#"(?is)<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']"#).unwrap());
-    re.captures_iter(html)
-        .map(|cap| decode_html_entities(&cap[1]))
-        .find(|src| src.starts_with("http://") || src.starts_with("https://"))
-}
-
-fn decode_html_entities(s: &str) -> String {
-    s.replace("&amp;", "&")
-        .replace("&#x2F;", "/")
-        .replace("&#x3D;", "=")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-}
-
-/// Subtitle for the card layout: `"<date> · <source-host>"`, or just one half when the other is
-/// missing. The full-line `"<date>  <title>"` rhythm from `LinkedTextBlock` doesn't fit the
-/// thumbnail layout because the title gets its own bold row.
-fn subtitle_for(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> Option<String> {
-    let date = date_label(entry, timezone, locale);
-    let host = link_for(entry)
-        .as_deref()
-        .and_then(|u| Url::parse(u).ok())
-        .and_then(|u| u.host_str().map(str::to_string));
-    match (date.is_empty(), host) {
-        (true, None) => None,
-        (false, None) => Some(date),
-        (true, Some(h)) => Some(h),
-        (false, Some(h)) => Some(format!("{date} · {h}")),
-    }
-}
-
-fn render_body(
-    feed: &Feed,
-    count: usize,
-    shape: Shape,
-    timezone: Option<&str>,
-    locale: Option<&str>,
-) -> Body {
-    let entries: Vec<&Entry> = feed.entries.iter().take(count).collect();
-    match shape {
-        Shape::TextBlock => Body::TextBlock(TextBlockData {
-            lines: entries
-                .iter()
-                .map(|e| line_text(e, timezone, locale))
-                .collect(),
-        }),
-        _ => Body::LinkedTextBlock(LinkedTextBlockData {
-            items: entries
-                .iter()
-                .map(|e| LinkedLine {
-                    text: line_text(e, timezone, locale),
-                    url: link_for(e),
-                })
-                .collect(),
-        }),
-    }
-}
-
-fn line_text(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> String {
-    let date = date_label(entry, timezone, locale);
-    let title = title_or_placeholder(entry);
-    if date.is_empty() {
-        title
-    } else {
-        format!("{date}  {title}")
-    }
-}
-
-fn date_label(entry: &Entry, timezone: Option<&str>, locale: Option<&str>) -> String {
-    entry
-        .published
-        .or(entry.updated)
-        .map(|dt| format_short(dt, timezone, locale))
-        .unwrap_or_default()
-}
-
-fn format_short(dt: DateTime<Utc>, timezone: Option<&str>, locale: Option<&str>) -> String {
-    let local = match t::parse_tz(timezone) {
-        Some(tz) => dt.with_timezone(&tz).fixed_offset(),
-        None => dt.with_timezone(&chrono::Local).fixed_offset(),
-    };
-    t::format_local(&local, "%b %d", locale)
-}
-
-fn title_or_placeholder(entry: &Entry) -> String {
-    entry
-        .title
-        .as_ref()
-        .map(|t| collapse_whitespace(&t.content))
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "(no title)".into())
-}
-
-fn collapse_whitespace(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn link_for(entry: &Entry) -> Option<String> {
-    // Atom entries can carry multiple <link> with `rel` discriminators (`alternate`, `self`,
-    // `enclosure`, `via`, …). Per RFC 4287 the article URL is `rel="alternate"`, which is also
-    // the default when `rel` is absent — matching RSS 2.0's single-link case. Picking the first
-    // non-empty href would otherwise grab `rel="self"` (a self-pointer back into the feed) on
-    // common Atom shapes.
-    let alternate = entry
-        .links
-        .iter()
-        .find(|l| !l.href.is_empty() && matches!(l.rel.as_deref(), None | Some("alternate")));
-    alternate
-        .or_else(|| entry.links.iter().find(|l| !l.href.is_empty()))
-        .map(|l| l.href.clone())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Utc};
+    use feed_rs::model::{Entry, Feed};
+    use feed_rs::parser;
     use std::future::Future;
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
+    use std::time::Duration;
 
     fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
         FetchContext {
@@ -546,14 +313,14 @@ mod tests {
   </entry>
 </feed>"#;
 
-    fn parse(fixture: &str) -> Feed {
+    fn parse_fixture(fixture: &str) -> Feed {
         parser::parse(fixture.as_bytes()).expect("fixture must parse")
     }
 
     #[test]
     fn rss_parses_into_linked_text_block_with_dates_and_urls() {
-        let feed = parse(RSS_FIXTURE);
-        let body = render_body(&feed, 5, Shape::LinkedTextBlock, None, None);
+        let feed_doc = parse_fixture(RSS_FIXTURE);
+        let body = feed::render_body(&feed_doc, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -565,8 +332,8 @@ mod tests {
 
     #[test]
     fn rss_parses_into_text_block_without_urls() {
-        let feed = parse(RSS_FIXTURE);
-        let body = render_body(&feed, 5, Shape::TextBlock, None, None);
+        let feed_doc = parse_fixture(RSS_FIXTURE);
+        let body = feed::render_body(&feed_doc, 5, Shape::TextBlock, None, None);
         let Body::TextBlock(t) = body else {
             panic!("expected text block");
         };
@@ -576,8 +343,8 @@ mod tests {
 
     #[test]
     fn atom_parses_with_link_and_date() {
-        let feed = parse(ATOM_FIXTURE);
-        let body = render_body(&feed, 5, Shape::LinkedTextBlock, None, None);
+        let feed_doc = parse_fixture(ATOM_FIXTURE);
+        let body = feed::render_body(&feed_doc, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -591,24 +358,24 @@ mod tests {
 
     #[test]
     fn line_text_without_date_uses_title_only() {
-        let mut feed = parse(RSS_FIXTURE);
-        feed.entries[0].published = None;
-        feed.entries[0].updated = None;
-        let text = line_text(&feed.entries[0], None, None);
+        let mut feed_doc = parse_fixture(RSS_FIXTURE);
+        feed_doc.entries[0].published = None;
+        feed_doc.entries[0].updated = None;
+        let text = feed::line_text(&feed_doc.entries[0], None, None);
         assert_eq!(text, "First post");
     }
 
     #[test]
     fn format_short_uses_explicit_timezone() {
         let dt = Utc.with_ymd_and_hms(2026, 4, 30, 23, 30, 0).unwrap();
-        assert_eq!(format_short(dt, Some("UTC"), None), "Apr 30");
-        assert_eq!(format_short(dt, Some("Asia/Tokyo"), None), "May 01");
+        assert_eq!(feed::format_short(dt, Some("UTC"), None), "Apr 30");
+        assert_eq!(feed::format_short(dt, Some("Asia/Tokyo"), None), "May 01");
     }
 
     #[test]
     fn count_caps_entries() {
-        let feed = parse(RSS_FIXTURE);
-        let body = render_body(&feed, 1, Shape::LinkedTextBlock, None, None);
+        let feed_doc = parse_fixture(RSS_FIXTURE);
+        let body = feed::render_body(&feed_doc, 1, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -637,7 +404,7 @@ mod tests {
             ttl: None,
             entries: vec![],
         };
-        let body = render_body(&empty, 5, Shape::LinkedTextBlock, None, None);
+        let body = feed::render_body(&empty, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -646,9 +413,9 @@ mod tests {
 
     #[test]
     fn missing_title_falls_back_to_placeholder() {
-        let mut feed = parse(RSS_FIXTURE);
-        feed.entries[0].title = None;
-        let body = render_body(&feed, 1, Shape::TextBlock, None, None);
+        let mut feed_doc = parse_fixture(RSS_FIXTURE);
+        feed_doc.entries[0].title = None;
+        let body = feed::render_body(&feed_doc, 1, Shape::TextBlock, None, None);
         let Body::TextBlock(t) = body else {
             panic!("expected text block");
         };
@@ -657,18 +424,26 @@ mod tests {
 
     #[test]
     fn collapses_whitespace_in_titles() {
-        // RSS titles sometimes have embedded newlines / runs of spaces — render on one line.
         assert_eq!(
-            collapse_whitespace("hello\n  world\t!"),
+            feed::collapse_whitespace("hello\n  world\t!"),
             "hello world !".to_string()
         );
     }
 
     #[test]
     fn count_clamps_extremes() {
-        assert_eq!(0u32.clamp(MIN_COUNT, MAX_COUNT), MIN_COUNT);
-        assert_eq!(999u32.clamp(MIN_COUNT, MAX_COUNT), MAX_COUNT);
-        assert_eq!(DEFAULT_COUNT.clamp(MIN_COUNT, MAX_COUNT), DEFAULT_COUNT);
+        assert_eq!(
+            0u32.clamp(feed::MIN_COUNT, feed::MAX_COUNT),
+            feed::MIN_COUNT
+        );
+        assert_eq!(
+            999u32.clamp(feed::MIN_COUNT, feed::MAX_COUNT),
+            feed::MAX_COUNT
+        );
+        assert_eq!(
+            feed::DEFAULT_COUNT.clamp(feed::MIN_COUNT, feed::MAX_COUNT),
+            feed::DEFAULT_COUNT
+        );
     }
 
     #[test]
@@ -708,7 +483,7 @@ mod tests {
     fn first_inline_image_src_extracts_first_http_src() {
         let html = r#"<p>intro</p><img src="https://example.com/cover.jpg" /><img src="https://example.com/second.png">"#;
         assert_eq!(
-            super::first_inline_image_src(html).as_deref(),
+            feed::first_inline_image_src(html).as_deref(),
             Some("https://example.com/cover.jpg"),
         );
     }
@@ -718,27 +493,24 @@ mod tests {
         let html =
             r#"<img src="data:image/png;base64,AAAA"><img src="https://example.com/real.png">"#;
         assert_eq!(
-            super::first_inline_image_src(html).as_deref(),
+            feed::first_inline_image_src(html).as_deref(),
             Some("https://example.com/real.png"),
         );
     }
 
     #[test]
     fn first_inline_image_src_decodes_encoded_amp_entities() {
-        // Real-world Atom feeds (e.g. Rust blog) HTML-encode the entry body, so query
-        // strings appear as `?a&amp;b=1`. Without decoding, the URL doesn't match what the
-        // origin actually serves.
         let html = r#"<img src="https://example.com/img.png?a&amp;b&#x3D;1">"#;
         assert_eq!(
-            super::first_inline_image_src(html).as_deref(),
+            feed::first_inline_image_src(html).as_deref(),
             Some("https://example.com/img.png?a&b=1"),
         );
     }
 
     #[test]
     fn first_inline_image_src_returns_none_without_img() {
-        assert!(super::first_inline_image_src("<p>no images here</p>").is_none());
-        assert!(super::first_inline_image_src("").is_none());
+        assert!(feed::first_inline_image_src("<p>no images here</p>").is_none());
+        assert!(feed::first_inline_image_src("").is_none());
     }
 
     #[test]
@@ -752,7 +524,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            super::thumbnail_url_for(&entry).as_deref(),
+            feed::thumbnail_url_for(&entry).as_deref(),
             Some("https://example.com/hero.jpg"),
         );
     }
@@ -791,57 +563,24 @@ mod tests {
         };
         entry.media = vec![media];
         assert_eq!(
-            super::thumbnail_url_for(&entry).as_deref(),
+            feed::thumbnail_url_for(&entry).as_deref(),
             Some("https://example.com/thumb.jpg"),
         );
 
-        let mut entry_no_thumb = Entry::default();
-        let mut media_content_only =
-            entry_no_thumb
-                .media
-                .first()
-                .cloned()
-                .unwrap_or_else(|| feed_rs::model::MediaObject {
-                    title: None,
-                    content: vec![MediaContent {
-                        url: Some(Url::parse("https://example.com/big.jpg").unwrap()),
-                        content_type: None,
-                        height: None,
-                        width: None,
-                        duration: None,
-                        size: None,
-                        rating: None,
-                    }],
-                    duration: None,
-                    thumbnails: vec![],
-                    texts: vec![],
-                    description: None,
-                    community: None,
-                    credits: vec![],
-                });
-        media_content_only.thumbnails.clear();
-        entry_no_thumb.media = vec![media_content_only];
-        assert_eq!(
-            super::thumbnail_url_for(&entry_no_thumb).as_deref(),
-            Some("https://example.com/big.jpg"),
-        );
-
         let empty = Entry::default();
-        assert!(super::thumbnail_url_for(&empty).is_none());
+        assert!(feed::thumbnail_url_for(&empty).is_none());
     }
 
     #[test]
     fn thumbnail_url_for_returns_none_when_no_source_available() {
         let empty = Entry::default();
-        assert!(super::thumbnail_url_for(&empty).is_none());
+        assert!(feed::thumbnail_url_for(&empty).is_none());
     }
 
     #[test]
     fn subtitle_for_returns_none_when_no_signal() {
-        // No date, no link → no useful subtitle. Returning None lets the renderer omit the
-        // subtitle row entirely rather than draw a blank line.
         let entry = Entry::default();
-        assert!(super::subtitle_for(&entry, None, None).is_none());
+        assert!(feed::subtitle_for(&entry, None, None).is_none());
     }
 
     #[test]
@@ -850,7 +589,7 @@ mod tests {
             published: Some(chrono::Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
             ..Default::default()
         };
-        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        let sub = feed::subtitle_for(&entry, Some("UTC"), None).unwrap();
         assert_eq!(sub, "Apr 26");
         assert!(!sub.contains('·'));
     }
@@ -869,7 +608,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        let sub = feed::subtitle_for(&entry, Some("UTC"), None).unwrap();
         assert_eq!(sub, "blog.rust-lang.org");
         assert!(!sub.contains('·'));
     }
@@ -889,7 +628,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let sub = super::subtitle_for(&entry, Some("UTC"), None).unwrap();
+        let sub = feed::subtitle_for(&entry, Some("UTC"), None).unwrap();
         assert!(sub.contains("Apr 26"));
         assert!(sub.contains("blog.rust-lang.org"));
     }
@@ -914,9 +653,9 @@ mod tests {
 
     #[test]
     fn whitespace_only_titles_fall_back_to_placeholder() {
-        let mut feed = parse(RSS_FIXTURE);
-        feed.entries[0].title.as_mut().unwrap().content = " \n\t ".into();
-        let body = render_body(&feed, 1, Shape::TextBlock, None, None);
+        let mut feed_doc = parse_fixture(RSS_FIXTURE);
+        feed_doc.entries[0].title.as_mut().unwrap().content = " \n\t ".into();
+        let body = feed::render_body(&feed_doc, 1, Shape::TextBlock, None, None);
         let Body::TextBlock(t) = body else {
             panic!("expected text block");
         };
@@ -964,15 +703,15 @@ mod tests {
     fn fetch_bytes_reports_http_status_and_size_cap() {
         let (status_url, status_server) =
             serve_once("500 Internal Server Error", "text/plain", b"oops");
-        let status_err =
-            run_async(fetch_bytes(&validated_url(Some(&status_url)).unwrap())).unwrap_err();
+        let url = validated_url(Some(&status_url)).unwrap();
+        let status_err = run_async(feed::fetch_bytes(&url, "rss")).unwrap_err();
         status_server.join().unwrap();
         assert_failed_contains(status_err, "rss 500");
 
-        let oversized = vec![b'x'; MAX_BYTES + 1];
+        let oversized = vec![b'x'; feed::MAX_BYTES + 1];
         let (size_url, size_server) = serve_once("200 OK", "application/octet-stream", &oversized);
-        let size_err =
-            run_async(fetch_bytes(&validated_url(Some(&size_url)).unwrap())).unwrap_err();
+        let url = validated_url(Some(&size_url)).unwrap();
+        let size_err = run_async(feed::fetch_bytes(&url, "rss")).unwrap_err();
         size_server.join().unwrap();
         assert_failed_contains(size_err, "too large");
     }
@@ -996,8 +735,8 @@ mod tests {
 
     #[test]
     fn link_prefers_alternate_over_self_in_atom() {
-        let feed = parse(ATOM_MULTI_REL_FIXTURE);
-        let body = render_body(&feed, 5, Shape::LinkedTextBlock, None, None);
+        let feed_doc = parse_fixture(ATOM_MULTI_REL_FIXTURE);
+        let body = feed::render_body(&feed_doc, 5, Shape::LinkedTextBlock, None, None);
         let Body::LinkedTextBlock(b) = body else {
             panic!("expected linked text block");
         };
@@ -1009,10 +748,10 @@ mod tests {
 
     #[test]
     fn link_falls_back_to_first_non_empty_href_when_no_alternate_exists() {
-        let mut feed = parse(ATOM_FIXTURE);
-        feed.entries[0].links[0].rel = Some("self".into());
+        let mut feed_doc = parse_fixture(ATOM_FIXTURE);
+        feed_doc.entries[0].links[0].rel = Some("self".into());
         assert_eq!(
-            link_for(&feed.entries[0]).as_deref(),
+            feed::link_for(&feed_doc.entries[0]).as_deref(),
             Some("https://example.com/atom-1")
         );
     }
@@ -1020,23 +759,21 @@ mod tests {
     #[test]
     fn fetch_bytes_reports_request_failure_for_unreachable_host() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/feed.xml", listener.local_addr().unwrap());
+        let url_str = format!("http://{}/feed.xml", listener.local_addr().unwrap());
         drop(listener);
-
-        let err = run_async(fetch_bytes(&validated_url(Some(&url)).unwrap())).unwrap_err();
+        let url = validated_url(Some(&url_str)).unwrap();
+        let err = run_async(feed::fetch_bytes(&url, "rss")).unwrap_err();
         assert_failed_contains(err, "rss request failed");
     }
 
-    /// Live smoke test — hits the Rust blog's feed. `#[ignore]` keeps CI offline-safe; run with
-    /// `cargo test -- --ignored fetcher::rss::tests::live` to verify the real fetch path.
     #[tokio::test]
     #[ignore]
     async fn live_rust_blog_feed_returns_at_least_one_entry() {
         let url = validated_url(Some("https://blog.rust-lang.org/feed.xml")).unwrap();
-        let bytes = fetch_bytes(&url).await.unwrap();
-        let feed = parser::parse(bytes.as_slice()).unwrap();
-        assert!(!feed.entries.is_empty());
-        let body = render_body(&feed, 3, Shape::LinkedTextBlock, None, None);
+        let bytes = feed::fetch_bytes(&url, "rss").await.unwrap();
+        let feed_doc = feed::parse_feed(&bytes, "rss").unwrap();
+        assert!(!feed_doc.entries.is_empty());
+        let body = feed::render_body(&feed_doc, 3, Shape::LinkedTextBlock, None, None);
         if let Body::LinkedTextBlock(b) = body {
             for it in &b.items {
                 eprintln!("{}  -> {:?}", it.text, it.url);
@@ -1044,28 +781,23 @@ mod tests {
         }
     }
 
-    /// Live verification that the `media:thumbnail` extraction path works against a real
-    /// feed. BBC Tech ships `<media:thumbnail>` per item so every entry should resolve a
-    /// URL. The Rust blog has no images at all (not even inline `<img>` — text-only posts)
-    /// and would not satisfy this assertion. Run with
-    /// `cargo test -- --ignored fetcher::rss::tests::live_bbc_tech_thumbnail_url`.
     #[tokio::test]
     #[ignore]
     async fn live_bbc_tech_thumbnail_url_extracts_media_thumbnail() {
         let url = validated_url(Some("https://feeds.bbci.co.uk/news/technology/rss.xml")).unwrap();
-        let bytes = fetch_bytes(&url).await.unwrap();
-        let feed = parser::parse(bytes.as_slice()).unwrap();
-        let with_thumb = feed
+        let bytes = feed::fetch_bytes(&url, "rss").await.unwrap();
+        let feed_doc = feed::parse_feed(&bytes, "rss").unwrap();
+        let with_thumb = feed_doc
             .entries
             .iter()
             .take(5)
-            .filter(|e| super::thumbnail_url_for(e).is_some())
+            .filter(|e| feed::thumbnail_url_for(e).is_some())
             .count();
-        for entry in feed.entries.iter().take(5) {
+        for entry in feed_doc.entries.iter().take(5) {
             eprintln!(
                 "{:?} -> {:?}",
                 entry.title.as_ref().map(|t| &t.content),
-                super::thumbnail_url_for(entry),
+                feed::thumbnail_url_for(entry),
             );
         }
         assert!(
