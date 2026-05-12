@@ -206,6 +206,9 @@ mod tests {
 
     #[test]
     fn fetch_uses_current_repo_for_default_and_explicit_shapes() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let fetcher = GitStashCount;
         let repo = open_repo().unwrap();
         let count = stash_count(&repo).unwrap();

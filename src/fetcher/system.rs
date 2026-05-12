@@ -4,7 +4,7 @@
 //! cache a `Mutex<System>` and refresh only the fields they need per frame, so the `<1ms
 //! infallible` contract holds even as many widgets sample the same source.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -18,6 +18,7 @@ use crate::payload::{
 use crate::render::Shape;
 use crate::samples;
 
+use super::system_dmi;
 use super::{FetchContext, FetchError, Fetcher, RealtimeFetcher, Safety};
 
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
@@ -38,10 +39,10 @@ pub fn cached_fetchers() -> Vec<Arc<dyn Fetcher>> {
 
 const SYSTEM_OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "kind",
-    type_hint: "\"terminal\" | \"os\" | \"os_version\" | \"hostname\" | \"shell\" | \"arch\"",
+    type_hint: "\"terminal\" | \"os\" | \"os_version\" | \"hostname\" | \"shell\" | \"arch\" | \"cpu_model\" | \"cpu_cores\" | \"cpu_frequency\" | \"cpu_vendor\" | \"memory_total\" | \"swap_total\" | \"kernel\" | \"kernel_version\" | \"host_model\" | \"host_vendor\" | \"host_serial\" | \"board_vendor\" | \"board_model\" | \"bios_vendor\" | \"bios_version\" | \"bios_date\" | \"chassis\" | \"locale\" | \"timezone\" | \"editor\" | \"visual\" | \"pager\" | \"de\" | \"wm\" | \"init_system\"",
     required: false,
     default: Some("\"terminal\""),
-    description: "Selects the single value emitted by the `Text` shape. Ignored by `Entries` / `TextBlock` shapes, which always return the full rollup.",
+    description: "Selects the single identifier emitted by the `Text` shape: terminal / shell / kernel / cpu / memory / DMI hardware IDs (host / board / BIOS / chassis) / locale / timezone / `$EDITOR` / `$VISUAL` / `$PAGER` / desktop environment / window manager / init system. DMI reads return `\"n/a\"` on platforms other than Linux. Ignored by `Entries` / `TextBlock` shapes, which always return the full rollup.",
 }];
 
 #[derive(Debug, Default, Deserialize)]
@@ -61,11 +62,38 @@ pub enum SystemKind {
     Hostname,
     Shell,
     Arch,
+    CpuModel,
+    CpuCores,
+    CpuFrequency,
+    CpuVendor,
+    MemoryTotal,
+    SwapTotal,
+    Kernel,
+    KernelVersion,
+    HostModel,
+    HostVendor,
+    HostSerial,
+    BoardVendor,
+    BoardModel,
+    BiosVendor,
+    BiosVersion,
+    BiosDate,
+    Chassis,
+    Locale,
+    Timezone,
+    Editor,
+    Visual,
+    Pager,
+    De,
+    Wm,
+    InitSystem,
 }
 
 /// `os / host / uptime / load / cpu / memory` rollup. `Entries` by default; `TextBlock`
-/// collapses each row to `"key: value"`; `Text` emits a single identity field selected by the
-/// `kind` option (terminal name, OS label, hostname, shell, arch) for hero / attribution lines.
+/// collapses each row to `"key: value"`; `Text` emits a single identifier selected by the
+/// `kind` option (terminal / shell / OS / hostname / arch, CPU model / cores / frequency / vendor,
+/// total memory / swap, kernel, DMI hardware IDs, locale / timezone / `$EDITOR` / `$VISUAL` /
+/// `$PAGER`, desktop environment / window manager / init system) for hero / attribution lines.
 pub struct SystemFetcher {
     state: Mutex<System>,
     os: String,
@@ -99,7 +127,7 @@ impl RealtimeFetcher for SystemFetcher {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Host identity rollup combining OS, hostname, uptime, load, CPU, and memory into one block. Use the `kind` option on the `Text` shape to extract a single field (terminal, OS, hostname, shell, arch) for hero or attribution lines."
+        "Host identity rollup combining OS, hostname, uptime, load, CPU, and memory into one block. The `kind` option on the `Text` shape extracts a single identifier (terminal, OS, hostname, shell, arch, CPU model / cores / frequency / vendor, total memory / swap, kernel, DMI hardware IDs, locale, timezone, editor, pager, desktop environment, window manager, init system) for hero or attribution lines."
     }
     fn shapes(&self) -> &[Shape] {
         // Listed specific-to-broad so multi-shape renderers (text_plain, animated_postfx)
@@ -184,7 +212,236 @@ fn resolve_system_kind(kind: SystemKind) -> String {
         SystemKind::Hostname => System::host_name().unwrap_or_else(|| "unknown".into()),
         SystemKind::Shell => detect_shell(),
         SystemKind::Arch => std::env::consts::ARCH.into(),
+        SystemKind::CpuModel => cached_cpu_info().model.clone(),
+        SystemKind::CpuCores => format_cpu_cores(),
+        SystemKind::CpuFrequency => format_cpu_frequency(cached_cpu_info().frequency_mhz),
+        SystemKind::CpuVendor => cached_cpu_info().vendor.clone(),
+        SystemKind::MemoryTotal => format_bytes(cached_memory_totals().memory),
+        SystemKind::SwapTotal => format_bytes(cached_memory_totals().swap),
+        SystemKind::Kernel => kernel_name(),
+        SystemKind::KernelVersion => System::kernel_version().unwrap_or_else(|| "unknown".into()),
+        SystemKind::HostModel => dmi_or_na(system_dmi::host_model()),
+        SystemKind::HostVendor => dmi_or_na(system_dmi::host_vendor()),
+        SystemKind::HostSerial => dmi_or_na(system_dmi::host_serial()),
+        SystemKind::BoardVendor => dmi_or_na(system_dmi::board_vendor()),
+        SystemKind::BoardModel => dmi_or_na(system_dmi::board_model()),
+        SystemKind::BiosVendor => dmi_or_na(system_dmi::bios_vendor()),
+        SystemKind::BiosVersion => dmi_or_na(system_dmi::bios_version()),
+        SystemKind::BiosDate => dmi_or_na(system_dmi::bios_date()),
+        SystemKind::Chassis => dmi_or_na(system_dmi::chassis()),
+        SystemKind::Locale => detect_locale(),
+        SystemKind::Timezone => detect_timezone(),
+        SystemKind::Editor => env_basename("EDITOR", "(unset)"),
+        SystemKind::Visual => env_basename("VISUAL", "(unset)"),
+        SystemKind::Pager => env_basename("PAGER", "(unset)"),
+        SystemKind::De => detect_desktop_environment(),
+        SystemKind::Wm => detect_window_manager(),
+        SystemKind::InitSystem => detect_init_system(),
     }
+}
+
+#[derive(Debug, Clone)]
+struct CpuInfo {
+    model: String,
+    vendor: String,
+    frequency_mhz: u64,
+}
+
+fn cached_cpu_info() -> &'static CpuInfo {
+    static CACHE: OnceLock<CpuInfo> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let mut sys = System::new();
+        sys.refresh_cpu_usage();
+        let cpu = sys.cpus().first();
+        let frequency_mhz = cpu
+            .map(|c| c.frequency())
+            .filter(|f| *f > 0)
+            .or_else(cpu_mhz_from_proc_cpuinfo)
+            .unwrap_or(0);
+        CpuInfo {
+            model: cpu
+                .map(|c| c.brand().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unknown".into()),
+            vendor: cpu
+                .map(|c| c.vendor_id().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unknown".into()),
+            frequency_mhz,
+        }
+    })
+}
+
+/// Fallback for environments where sysinfo's `Cpu::frequency()` returns 0 (WSL, some
+/// containers). Reads the first `cpu MHz` line from `/proc/cpuinfo` and rounds to MHz.
+fn cpu_mhz_from_proc_cpuinfo() -> Option<u64> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let text = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    text.lines()
+        .find_map(|line| {
+            line.strip_prefix("cpu MHz")
+                .and_then(|rest| rest.split(':').nth(1))
+        })
+        .and_then(|val| val.trim().parse::<f64>().ok())
+        .map(|mhz| mhz.round() as u64)
+        .filter(|m| *m > 0)
+}
+
+fn format_cpu_cores() -> String {
+    let physical = System::physical_core_count().unwrap_or(0);
+    let mut sys = System::new();
+    sys.refresh_cpu_usage();
+    let logical = sys.cpus().len();
+    match (physical, logical) {
+        (0, 0) => "unknown".into(),
+        (0, l) => format!("{l} threads"),
+        (p, l) if p == l => format!("{p} cores"),
+        (p, l) => format!("{p} cores / {l} threads"),
+    }
+}
+
+fn format_cpu_frequency(mhz: u64) -> String {
+    match mhz {
+        0 => "unknown".into(),
+        m if m >= 1000 => format!("{:.2} GHz", m as f64 / 1000.0),
+        m => format!("{m} MHz"),
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MemoryTotals {
+    memory: u64,
+    swap: u64,
+}
+
+fn cached_memory_totals() -> MemoryTotals {
+    static CACHE: OnceLock<MemoryTotals> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        let mut sys = System::new();
+        sys.refresh_memory();
+        MemoryTotals {
+            memory: sys.total_memory(),
+            swap: sys.total_swap(),
+        }
+    })
+}
+
+fn kernel_name() -> String {
+    match std::env::consts::OS {
+        "linux" => "Linux".into(),
+        "macos" => "Darwin".into(),
+        "windows" => "Windows NT".into(),
+        "freebsd" => "FreeBSD".into(),
+        "openbsd" => "OpenBSD".into(),
+        "netbsd" => "NetBSD".into(),
+        other if !other.is_empty() => {
+            let mut chars = other.chars();
+            chars
+                .next()
+                .map(|c| c.to_uppercase().chain(chars).collect())
+                .unwrap_or_else(|| other.into())
+        }
+        _ => "unknown".into(),
+    }
+}
+
+fn dmi_or_na(value: Option<String>) -> String {
+    value.unwrap_or_else(|| "n/a".into())
+}
+
+fn detect_locale() -> String {
+    ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .unwrap_or_else(|| "C".into())
+}
+
+fn detect_timezone() -> String {
+    if let Some(tz) = std::env::var("TZ").ok().filter(|v| !v.is_empty()) {
+        return tz;
+    }
+    if let Ok(path) = std::fs::read_link("/etc/localtime") {
+        let s = path.to_string_lossy();
+        if let Some(idx) = s.find("/zoneinfo/") {
+            return s[idx + "/zoneinfo/".len()..].to_string();
+        }
+        if let Some(name) = path.file_name() {
+            return name.to_string_lossy().into_owned();
+        }
+    }
+    "unknown".into()
+}
+
+fn env_basename(key: &str, fallback: &str) -> String {
+    std::env::var(key)
+        .ok()
+        .and_then(|s| {
+            let trimmed = s.trim();
+            (!trimmed.is_empty()).then(|| {
+                std::path::Path::new(trimmed)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| trimmed.to_string())
+            })
+        })
+        .unwrap_or_else(|| fallback.into())
+}
+
+fn detect_desktop_environment() -> String {
+    if cfg!(target_os = "macos") {
+        return "Aqua".into();
+    }
+    if cfg!(target_os = "windows") {
+        return "Windows".into();
+    }
+    ["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION", "GDMSESSION"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .map(|s| s.split(':').next().unwrap_or("").to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "tty".into())
+}
+
+fn detect_window_manager() -> String {
+    if cfg!(target_os = "macos") {
+        return "Quartz".into();
+    }
+    if cfg!(target_os = "windows") {
+        return "DWM".into();
+    }
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        return std::env::var("XDG_SESSION_DESKTOP")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "wayland".into());
+    }
+    if std::env::var("DISPLAY").is_ok() {
+        return std::env::var("XDG_SESSION_DESKTOP")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "x11".into());
+    }
+    "tty".into()
+}
+
+fn detect_init_system() -> String {
+    if cfg!(target_os = "macos") {
+        return "launchd".into();
+    }
+    if cfg!(target_os = "windows") {
+        return "wininit".into();
+    }
+    if cfg!(target_os = "linux")
+        && let Ok(comm) = std::fs::read_to_string("/proc/1/comm")
+    {
+        let name = comm.trim();
+        if !name.is_empty() {
+            return name.into();
+        }
+    }
+    "unknown".into()
 }
 
 /// Detect the terminal emulator via well-known env vars. Env vars are the only signal available
@@ -1567,15 +1824,131 @@ mod tests {
             ("hostname", "kind = \"hostname\""),
             ("shell", "kind = \"shell\""),
             ("arch", "kind = \"arch\""),
+            ("cpu_model", "kind = \"cpu_model\""),
+            ("cpu_cores", "kind = \"cpu_cores\""),
+            ("cpu_frequency", "kind = \"cpu_frequency\""),
+            ("cpu_vendor", "kind = \"cpu_vendor\""),
+            ("memory_total", "kind = \"memory_total\""),
+            ("swap_total", "kind = \"swap_total\""),
+            ("kernel", "kind = \"kernel\""),
+            ("kernel_version", "kind = \"kernel_version\""),
+            ("host_model", "kind = \"host_model\""),
+            ("host_vendor", "kind = \"host_vendor\""),
+            ("host_serial", "kind = \"host_serial\""),
+            ("board_vendor", "kind = \"board_vendor\""),
+            ("board_model", "kind = \"board_model\""),
+            ("bios_vendor", "kind = \"bios_vendor\""),
+            ("bios_version", "kind = \"bios_version\""),
+            ("bios_date", "kind = \"bios_date\""),
+            ("chassis", "kind = \"chassis\""),
+            ("locale", "kind = \"locale\""),
+            ("timezone", "kind = \"timezone\""),
+            ("editor", "kind = \"editor\""),
+            ("visual", "kind = \"visual\""),
+            ("pager", "kind = \"pager\""),
+            ("de", "kind = \"de\""),
+            ("wm", "kind = \"wm\""),
+            ("init_system", "kind = \"init_system\""),
         ];
         for (label, opts) in cases {
             let p = SystemFetcher::new().compute(&ctx_text(Some(opts)));
             assert!(matches!(p.body, Body::Text(_)), "expected text for {label}");
             if let Body::Text(t) = p.body {
-                eprintln!("{label:<12} → {}", t.value);
+                eprintln!("{label:<14} → {}", t.value);
                 assert!(!t.value.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn kernel_name_maps_consts_os() {
+        let name = kernel_name();
+        assert!(!name.is_empty());
+        match std::env::consts::OS {
+            "linux" => assert_eq!(name, "Linux"),
+            "macos" => assert_eq!(name, "Darwin"),
+            "windows" => assert_eq!(name, "Windows NT"),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn format_cpu_frequency_buckets_units() {
+        assert_eq!(format_cpu_frequency(0), "unknown");
+        assert_eq!(format_cpu_frequency(800), "800 MHz");
+        assert_eq!(format_cpu_frequency(2400), "2.40 GHz");
+        assert_eq!(format_cpu_frequency(4250), "4.25 GHz");
+    }
+
+    #[test]
+    fn dmi_or_na_falls_back_when_unavailable() {
+        assert_eq!(dmi_or_na(None), "n/a");
+        assert_eq!(dmi_or_na(Some("Dell Inc.".into())), "Dell Inc.");
+    }
+
+    #[test]
+    fn env_basename_uses_filename_then_fallback() {
+        let _guard = EnvGuard::set(&[("EDITOR", Some("/usr/bin/nvim"))]);
+        assert_eq!(env_basename("EDITOR", "(unset)"), "nvim");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[("EDITOR", None)]);
+        assert_eq!(env_basename("EDITOR", "(unset)"), "(unset)");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn cpu_mhz_from_proc_cpuinfo_returns_some_on_linux() {
+        // Real `/proc/cpuinfo` typically exposes `cpu MHz`; container envs without it
+        // legitimately return None, so this only asserts the call doesn't panic.
+        let _ = cpu_mhz_from_proc_cpuinfo();
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn cpu_mhz_from_proc_cpuinfo_is_none_off_linux() {
+        assert!(cpu_mhz_from_proc_cpuinfo().is_none());
+    }
+
+    #[test]
+    fn detect_locale_prefers_lc_all_then_lang() {
+        let _guard = EnvGuard::set(&[
+            ("LC_ALL", Some("en_US.UTF-8")),
+            ("LC_CTYPE", None),
+            ("LANG", Some("ja_JP.UTF-8")),
+        ]);
+        assert_eq!(detect_locale(), "en_US.UTF-8");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("LC_ALL", None),
+            ("LC_CTYPE", None),
+            ("LANG", Some("ja_JP.UTF-8")),
+        ]);
+        assert_eq!(detect_locale(), "ja_JP.UTF-8");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[("LC_ALL", None), ("LC_CTYPE", None), ("LANG", None)]);
+        assert_eq!(detect_locale(), "C");
+    }
+
+    #[test]
+    fn detect_timezone_honors_tz_env_override() {
+        let _guard = EnvGuard::set(&[("TZ", Some("Asia/Tokyo"))]);
+        assert_eq!(detect_timezone(), "Asia/Tokyo");
+    }
+
+    #[test]
+    fn cpu_info_cache_returns_non_empty_fields() {
+        let info = cached_cpu_info();
+        assert!(!info.model.is_empty());
+        assert!(!info.vendor.is_empty());
+    }
+
+    #[test]
+    fn memory_totals_cache_reports_nonzero_memory() {
+        let totals = cached_memory_totals();
+        assert!(totals.memory > 0);
     }
 
     #[test]
