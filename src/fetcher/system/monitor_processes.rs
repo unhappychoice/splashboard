@@ -80,3 +80,28 @@ impl RealtimeFetcher for SystemMonitorProcesses {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn process_top_respects_count_cap() {
+        let p = SystemMonitorProcesses::new().compute(&ctx_with_shape(None));
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            assert!(e.items.len() <= PROCESS_TOP_COUNT);
+        }
+    }
+
+    #[test]
+    fn process_top_text_block_shape_formats_rows() {
+        let p = SystemMonitorProcesses::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
+        assert!(matches!(p.body, Body::TextBlock(_)));
+        if let Body::TextBlock(block) = p.body {
+            assert!(block.lines.len() <= PROCESS_TOP_COUNT);
+            assert!(block.lines.iter().all(|line| line.ends_with('%')));
+        }
+    }
+}

@@ -95,3 +95,28 @@ impl RealtimeFetcher for SystemMonitorHost {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn rollup_emits_six_rows() {
+        let p = SystemMonitorHost::new().compute(&ctx_with_shape(None));
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            assert_eq!(e.items.len(), 6);
+        }
+    }
+
+    #[test]
+    fn text_block_shape_returns_key_value_strings() {
+        let p = SystemMonitorHost::new().compute(&ctx_with_shape(Some(Shape::TextBlock)));
+        assert!(matches!(p.body, Body::TextBlock(_)));
+        if let Body::TextBlock(l) = p.body {
+            assert_eq!(l.lines.len(), 6);
+            assert!(l.lines.iter().all(|s| s.contains(": ")));
+        }
+    }
+}

@@ -36,3 +36,18 @@ impl RealtimeFetcher for SystemMonitorUptime {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn uptime_emits_text() {
+        let p = SystemMonitorUptime.compute(&ctx_with_shape(None));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(!t.value.is_empty());
+        }
+    }
+}

@@ -63,3 +63,43 @@ impl Fetcher for SystemMonitorDisk {
         Ok(payload)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn sample_body_matches_documented_shapes() {
+        assert!(matches!(
+            SystemMonitorDisk.sample_body(Shape::Ratio),
+            Some(Body::Ratio(ratio))
+                if ratio.label.as_deref() == Some("disk") && ratio.value == 0.58
+        ));
+        assert!(matches!(
+            SystemMonitorDisk.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "58% of 400 GB"
+        ));
+        assert!(matches!(
+            SystemMonitorDisk.sample_body(Shape::Bars),
+            Some(Body::Bars(bars))
+                if bars.bars.len() == 3
+                    && bars.bars[0].label == "/"
+                    && bars.bars[2].value == 200
+        ));
+    }
+
+    #[tokio::test]
+    async fn defaults_to_ratio_or_text_fallback() {
+        let ctx = ctx_with_shape(None);
+        let p = SystemMonitorDisk.fetch(&ctx).await.unwrap();
+        assert!(matches!(p.body, Body::Ratio(_) | Body::Text(_)));
+    }
+
+    #[tokio::test]
+    async fn bars_shape_emits_bars_body() {
+        let ctx = ctx_with_shape(Some(Shape::Bars));
+        let p = SystemMonitorDisk.fetch(&ctx).await.unwrap();
+        assert!(matches!(p.body, Body::Bars(_)));
+    }
+}

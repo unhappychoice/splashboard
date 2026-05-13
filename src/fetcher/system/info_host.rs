@@ -81,3 +81,36 @@ impl RealtimeFetcher for SystemInfoHost {
         payload(Body::Text(TextData { value }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_text;
+    use super::*;
+
+    #[test]
+    fn defaults_to_terminal_kind() {
+        let p = SystemInfoHost.compute(&ctx_text(None));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(!t.value.is_empty());
+        }
+    }
+
+    #[test]
+    fn emits_arch_when_requested() {
+        let p = SystemInfoHost.compute(&ctx_text(Some("kind = \"arch\"")));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert_eq!(t.value, std::env::consts::ARCH);
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_kind_to_placeholder() {
+        let p = SystemInfoHost.compute(&ctx_text(Some("kind = \"bogus\"")));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(t.value.starts_with("⚠"));
+        }
+    }
+}

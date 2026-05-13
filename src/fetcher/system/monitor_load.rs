@@ -49,3 +49,25 @@ impl RealtimeFetcher for SystemMonitorLoad {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn load_average_defaults_to_text() {
+        let p = SystemMonitorLoad.compute(&ctx_with_shape(None));
+        assert!(matches!(p.body, Body::Text(_)));
+    }
+
+    #[test]
+    fn load_average_entries_shape_has_three_windows() {
+        let p = SystemMonitorLoad.compute(&ctx_with_shape(Some(Shape::Entries)));
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
+            assert_eq!(keys, ["1min", "5min", "15min"]);
+        }
+    }
+}

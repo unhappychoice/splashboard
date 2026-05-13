@@ -162,7 +162,7 @@ impl RealtimeFetcher for SystemMonitorBattery {
 
 impl SystemMonitorBattery {
     fn read_snapshot(&self, index: usize) -> Option<BatterySnapshot> {
-        let manager = self.manager.lock().expect("battery manager mutex poisoned");
+        let manager = self.manager.lock().unwrap_or_else(|e| e.into_inner());
         let manager = manager.as_ref()?;
         let battery = manager.batteries().ok()?.nth(index)?.ok()?;
         Some(snapshot_from(&battery))
@@ -285,4 +285,214 @@ pub(crate) fn no_battery_payload(shape: Shape, kind: BatteryTextKind) -> Payload
 
 pub(crate) fn format_percent(ratio: f64) -> String {
     format!("{:.0}%", ratio.clamp(0.0, 1.0) * 100.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::{ctx_text, ctx_with_shape};
+    use super::*;
+
+    fn snapshot(charge: f64, state: BatteryState, secs: Option<u64>) -> BatterySnapshot {
+        BatterySnapshot {
+            charge,
+            state,
+            time_remaining_secs: secs,
+            cycle_count: Some(284),
+            health: Some(0.97),
+        }
+    }
+
+    #[test]
+    fn sample_body_matches_documented_shapes() {
+        let fetcher = SystemMonitorBattery::default();
+
+        assert!(matches!(
+            fetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(ratio))
+                if ratio.label.as_deref() == Some("battery") && ratio.value == 0.87
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(text)) if text.value == "87% • Charging • 1h 23m"
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(entries))
+                if entries.items.len() == 5
+                    && entries.items[0].key == "charge"
+                    && entries.items[4].value.as_deref() == Some("97%")
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Badge),
+            Some(Body::Badge(badge))
+                if badge.status == Status::Ok && badge.label == "87% · Charging"
+        ));
+    }
+
+    #[test]
+    fn summary_includes_time_when_available() {
+        let snap = snapshot(0.87, BatteryState::Charging, Some(83 * 60));
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::Summary),
+            "87% • Charging • 1h 23m"
+        );
+    }
+
+    #[test]
+    fn summary_omits_time_when_missing() {
+        let snap = snapshot(1.0, BatteryState::Full, None);
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::Summary),
+            "100% • Full"
+        );
+    }
+
+    #[test]
+    fn text_kinds_pick_distinct_fields() {
+        let snap = snapshot(0.5, BatteryState::Discharging, Some(45 * 60));
+        assert_eq!(format_battery_text(&snap, BatteryTextKind::Percent), "50%");
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::Status),
+            "Discharging"
+        );
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::TimeRemaining),
+            "45m"
+        );
+    }
+
+    #[test]
+    fn time_remaining_dash_when_missing() {
+        let snap = snapshot(1.0, BatteryState::Full, None);
+        assert_eq!(
+            format_battery_text(&snap, BatteryTextKind::TimeRemaining),
+            "—"
+        );
+    }
+
+    #[test]
+    fn state_mapping_and_labels_cover_all_variants() {
+        use starship_battery::State;
+
+        assert_eq!(map_battery_state(State::Charging).label(), "Charging");
+        assert_eq!(map_battery_state(State::Discharging).label(), "Discharging");
+        assert_eq!(map_battery_state(State::Full).label(), "Full");
+        assert_eq!(map_battery_state(State::Empty).label(), "Empty");
+        assert_eq!(map_battery_state(State::Unknown).label(), "Unknown");
+    }
+
+    #[test]
+    fn entries_include_optional_fields_only_when_present() {
+        let with = snapshot(0.5, BatteryState::Charging, Some(60));
+        let mut without = snapshot(0.5, BatteryState::Charging, None);
+        without.cycle_count = None;
+        without.health = None;
+        assert_eq!(battery_entries(&with).len(), 5);
+        assert_eq!(battery_entries(&without).len(), 2);
+    }
+
+    #[test]
+    fn no_battery_ratio_is_full_ac() {
+        let p = no_battery_payload(Shape::Ratio, BatteryTextKind::Summary);
+        assert!(matches!(p.body, Body::Ratio(_)));
+        if let Body::Ratio(r) = p.body {
+            assert_eq!(r.value, 1.0);
+            assert_eq!(r.label.as_deref(), Some("AC"));
+        }
+    }
+
+    #[test]
+    fn no_battery_text_varies_by_kind() {
+        let summary = no_battery_payload(Shape::Text, BatteryTextKind::Summary);
+        let percent = no_battery_payload(Shape::Text, BatteryTextKind::Percent);
+        let time = no_battery_payload(Shape::Text, BatteryTextKind::TimeRemaining);
+        assert!(matches!(summary.body, Body::Text(_)));
+        assert!(matches!(percent.body, Body::Text(_)));
+        assert!(matches!(time.body, Body::Text(_)));
+        if let Body::Text(text) = summary.body {
+            assert_eq!(text.value, "AC");
+        }
+        if let Body::Text(text) = percent.body {
+            assert_eq!(text.value, "100%");
+        }
+        if let Body::Text(text) = time.body {
+            assert_eq!(text.value, "—");
+        }
+    }
+
+    #[test]
+    fn no_battery_entries_and_badge_use_ac_placeholders() {
+        let entries = no_battery_payload(Shape::Entries, BatteryTextKind::Summary);
+        let badge = no_battery_payload(Shape::Badge, BatteryTextKind::Summary);
+        assert!(matches!(entries.body, Body::Entries(_)));
+        assert!(matches!(badge.body, Body::Badge(_)));
+        if let Body::Entries(entries) = entries.body {
+            assert_eq!(entries.items[0].key, "power");
+            assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
+        }
+        if let Body::Badge(badge) = badge.body {
+            assert_eq!(badge.status, Status::Ok);
+            assert_eq!(badge.label, "AC");
+        }
+    }
+
+    #[test]
+    fn compute_never_panics_on_any_shape() {
+        let f = SystemMonitorBattery::new();
+        for shape in [
+            None,
+            Some(Shape::Ratio),
+            Some(Shape::Text),
+            Some(Shape::Entries),
+            Some(Shape::Badge),
+        ] {
+            let p = f.compute(&ctx_with_shape(shape));
+            assert!(!matches!(p.body, Body::Image(_)));
+        }
+    }
+
+    #[test]
+    fn badge_status_reflects_charge_and_state() {
+        let low = snapshot(0.05, BatteryState::Discharging, None);
+        assert_eq!(battery_badge(&low).status, Status::Error);
+        let mid = snapshot(0.30, BatteryState::Discharging, None);
+        assert_eq!(battery_badge(&mid).status, Status::Warn);
+        let high = snapshot(0.95, BatteryState::Discharging, None);
+        assert_eq!(battery_badge(&high).status, Status::Ok);
+        let charging_low = snapshot(0.05, BatteryState::Charging, None);
+        assert_eq!(battery_badge(&charging_low).status, Status::Ok);
+    }
+
+    #[test]
+    fn rejects_unknown_option_to_placeholder() {
+        let f = SystemMonitorBattery::new();
+        let p = f.compute(&ctx_text(Some("bogus = true")));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(t) = p.body {
+            assert!(t.value.starts_with("⚠"));
+        }
+    }
+
+    #[test]
+    fn compute_without_manager_uses_no_battery_fallbacks() {
+        let fetcher = SystemMonitorBattery {
+            manager: Mutex::new(None),
+        };
+
+        let text = fetcher.compute(&ctx_text(Some("kind = \"percent\"")));
+        let entries = fetcher.compute(&ctx_with_shape(Some(Shape::Entries)));
+        let badge = fetcher.compute(&ctx_with_shape(Some(Shape::Badge)));
+        assert!(matches!(text.body, Body::Text(_)));
+        assert!(matches!(entries.body, Body::Entries(_)));
+        assert!(matches!(badge.body, Body::Badge(_)));
+        if let Body::Text(text) = text.body {
+            assert_eq!(text.value, "100%");
+        }
+        if let Body::Entries(entries) = entries.body {
+            assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
+        }
+        if let Body::Badge(badge) = badge.body {
+            assert_eq!(badge.label, "AC");
+        }
+    }
 }

@@ -80,3 +80,37 @@ impl RealtimeFetcher for SystemMonitorMemory {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn memory_defaults_to_ratio() {
+        let p = SystemMonitorMemory::new().compute(&ctx_with_shape(None));
+        assert!(matches!(p.body, Body::Ratio(_)));
+        if let Body::Ratio(r) = p.body {
+            assert!((0.0..=1.0).contains(&r.value));
+        }
+    }
+
+    #[test]
+    fn memory_entries_shape_has_three_rows() {
+        let p = SystemMonitorMemory::new().compute(&ctx_with_shape(Some(Shape::Entries)));
+        assert!(matches!(p.body, Body::Entries(_)));
+        if let Body::Entries(e) = p.body {
+            let keys: Vec<_> = e.items.iter().map(|i| i.key.as_str()).collect();
+            assert_eq!(keys, ["used", "total", "free"]);
+        }
+    }
+
+    #[test]
+    fn memory_text_shape_formats_used_over_total() {
+        let p = SystemMonitorMemory::new().compute(&ctx_with_shape(Some(Shape::Text)));
+        assert!(matches!(p.body, Body::Text(_)));
+        if let Body::Text(text) = p.body {
+            assert!(text.value.contains(" / "));
+        }
+    }
+}

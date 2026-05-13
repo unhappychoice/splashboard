@@ -67,3 +67,21 @@ impl RealtimeFetcher for SystemMonitorCpu {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_with_shape;
+    use super::*;
+
+    #[test]
+    fn cpu_load_defaults_to_ratio() {
+        let p = SystemMonitorCpu::new().compute(&ctx_with_shape(None));
+        assert!(matches!(p.body, Body::Ratio(_)));
+    }
+
+    #[test]
+    fn cpu_load_emits_text_when_requested() {
+        let p = SystemMonitorCpu::new().compute(&ctx_with_shape(Some(Shape::Text)));
+        assert!(matches!(p.body, Body::Text(_)));
+    }
+}
