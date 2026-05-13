@@ -34,7 +34,7 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
         type_hint: "\"neutral\" | \"fill\" | \"drain\"",
         required: false,
         default: Some("\"neutral\""),
-        description: "How the fill colour follows the value. `neutral` is single `theme.text` (matches the rest of the `gauge_*` family). `fill` treats the value as how-full (low → status_error, high → status_ok) — right for battery / quota progress. `drain` inverts (high → status_error) — right for `system_disk_usage` / `system_memory` / `system_cpu` where the ratio is \"fraction used\".",
+        description: "How the fill colour follows the value. `neutral` is single `theme.text` (matches the rest of the `gauge_*` family). `fill` treats the value as how-full (low → status_error, high → status_ok) — right for battery / quota progress. `drain` inverts (high → status_error) — right for `system_monitor_disk` / `system_monitor_memory` / `system_monitor_cpu` where the ratio is \"fraction used\".",
     },
 ];
 

@@ -168,7 +168,7 @@ layout logic:
 ```toml
 [[widget]]
 id = "hero"
-fetcher = "system"
+fetcher = "system_info_host"
 render = { type = "animated_postfx", inner = "text_ascii", effect = "particle_burst",
            duration_ms = 1500, style = "figlet", font = "ansi_shadow", align = "center" }
 ```

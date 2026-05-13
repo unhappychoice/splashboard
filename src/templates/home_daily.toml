@@ -64,7 +64,7 @@ render = { type = "grid_table", layout = "rows", column_align = ["left", "left"]
 # it matches the world-clock column height.
 [[widget]]
 id = "system"
-fetcher = "system"
+fetcher = "system_monitor_host"
 render = { type = "grid_table", layout = "rows", column_align = ["left", "left"] }
 
 # Gauge labels padded to 5 characters so the bars line up vertically across rows.

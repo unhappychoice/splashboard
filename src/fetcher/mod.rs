@@ -34,7 +34,6 @@ pub mod rss;
 pub mod static_text;
 pub mod stock_watchlist;
 pub mod system;
-pub mod system_dmi;
 pub mod thumbnails;
 pub mod todoist;
 pub mod weather;
@@ -160,7 +159,7 @@ pub trait RealtimeFetcher: Send + Sync {
 }
 
 /// Fetcher can't emit the shape the renderer expects. Surfaced as a placeholder so the splash
-/// keeps rendering even when the config pairs, say, `fetcher = "system_disk_usage"` with `render = "grid_calendar"`.
+/// keeps rendering even when the config pairs, say, `fetcher = "system_monitor_disk"` with `render = "grid_calendar"`.
 #[derive(Debug, Clone)]
 pub struct ShapeMismatch {
     pub fetcher: String,

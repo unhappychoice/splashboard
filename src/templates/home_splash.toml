@@ -10,7 +10,7 @@
 
 [[widget]]
 id = "hero"
-fetcher = "system"
+fetcher = "system_info_host"
 # Signature opening: particles radiate in from the centre and resolve into the figlet.
 # Swap `effect = "..."` to audition the siblings: `stagger_reveal`, `stagger_reveal_radial`,
 # `matrix_rain`. For the boot-log reveal swap the whole spec to

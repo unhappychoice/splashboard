@@ -140,7 +140,7 @@ fn representative_fetcher(shape: Shape, fetchers: &FetcherRegistry) -> String {
         Shape::MarkdownTextBlock => "wikipedia_featured",
         Shape::LinkedTextBlock => "rss",
         Shape::ImageLinkedList => "rss",
-        Shape::Entries => "system",
+        Shape::Entries => "system_monitor_host",
         Shape::Ratio => "clock_ratio",
         Shape::NumberSeries => "git_commits_activity",
         Shape::PointSeries => "weather",
@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(previews[0].renderer, "grid_table");
         assert_eq!(
             previews[0].config_snippet,
-            config_snippet("system", "grid_table")
+            config_snippet("system_monitor_host", "grid_table")
         );
         assert!(previews[0].html.contains("<pre class=\"splash-snapshot\">"));
     }
@@ -311,7 +311,7 @@ mod tests {
             (Shape::TextBlock, "git_recent_commits"),
             (Shape::MarkdownTextBlock, "basic_static"),
             (Shape::LinkedTextBlock, "rss"),
-            (Shape::Entries, "system"),
+            (Shape::Entries, "system_monitor_host"),
             (Shape::Ratio, "clock_ratio"),
             (Shape::NumberSeries, "git_commits_activity"),
             (Shape::PointSeries, "weather"),

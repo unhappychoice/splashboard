@@ -127,7 +127,7 @@ Body::Ratio(RatioData { value: f64, label: Option<String>, denominator: Option<u
 Renderers: `gauge_circle` (default), `gauge_line`.
 
 Typical fetchers: `clock_ratio` (year / quarter / month / week / day
-progress), `system_cpu`, `system_memory`, `system_disk_usage`.
+progress), `system_monitor_cpu`, `system_monitor_memory`, `system_monitor_disk`.
 
 ## `NumberSeries`
 
