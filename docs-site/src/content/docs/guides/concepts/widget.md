@@ -83,7 +83,7 @@ or realtime:
                              │                ▼
                              └─ writes ──── cache (next render sees fresh)
 
-  Realtime widget  (clock / system_cpu / clock_ratio / pomodoro / …)
+  Realtime widget  (clock / system_monitor_cpu / clock_ratio / pomodoro / …)
   ───────────────────────────────────────────────────────────────────
   draw tick ──▶ compute(ctx) ──▶ payload ──▶ renderer
   (per frame)   < 1 ms, no cache, no I/O
