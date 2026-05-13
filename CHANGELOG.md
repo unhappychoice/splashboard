@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-13
+
+### 💥 BREAKING CHANGES
+
+- refactor(fetcher)!: split system fetchers into per-file modules ([e2cd69f](https://github.com/unhappychoice/splashboard/commit/e2cd69f))
+- refactor(fetcher)!: split `system` into `system_{info,monitor}_*` family ([b23a8bd](https://github.com/unhappychoice/splashboard/commit/b23a8bd))
+
+### ✨ Features
+
+- feat(fetcher): extend system `kind` with CPU/memory/kernel/DMI/env identifiers ([2ffb24e](https://github.com/unhappychoice/splashboard/commit/2ffb24e))
+- feat(runtime): make scrollback flush opt-in via general.flush_to_scrollback ([8facb50](https://github.com/unhappychoice/splashboard/commit/8facb50))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher): address CodeRabbit review on system_monitor_* fetchers ([fa71bb3](https://github.com/unhappychoice/splashboard/commit/fa71bb3))
+- fix(fetcher): align system kind fallbacks with `(unset)` convention ([380cd52](https://github.com/unhappychoice/splashboard/commit/380cd52))
+- fix(release): create release as draft and publish after assets upload ([356856e](https://github.com/unhappychoice/splashboard/commit/356856e))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.0.0 ([b217c02](https://github.com/unhappychoice/splashboard/commit/b217c02))
+- docs(fetcher): update guides and doc comments to new system_* names ([61722d3](https://github.com/unhappychoice/splashboard/commit/61722d3))
+- test(fetcher): split system tests into per-fetcher modules + address review ([a17e2f7](https://github.com/unhappychoice/splashboard/commit/a17e2f7))
+- test(git): serialize stash_count CWD-reading test with TEST_ENV_LOCK ([fe7f689](https://github.com/unhappychoice/splashboard/commit/fe7f689))
+- chore: update flake.nix hashes for v1.6.0 ([8f66ccc](https://github.com/unhappychoice/splashboard/commit/8f66ccc))
+
+
 ## [1.6.0] - 2026-05-12
 
 ### ✨ Features
@@ -16,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v1.6.0 ([13553d2](https://github.com/unhappychoice/splashboard/commit/13553d2))
+- chore: bump version to v1.6.0 ([3638c58](https://github.com/unhappychoice/splashboard/commit/3638c58))
 - chore(fetcher/news): upgrade all feed URLs to https + lock policy in test ([8977c7d](https://github.com/unhappychoice/splashboard/commit/8977c7d))
 - chore: update flake.nix hashes for v1.5.0 ([8807cac](https://github.com/unhappychoice/splashboard/commit/8807cac))
 
