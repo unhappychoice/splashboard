@@ -52,7 +52,7 @@ impl RealtimeFetcher for SystemMonitorCpu {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().expect("cpu state mutex poisoned");
+        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
         sys.refresh_cpu_usage();
         let pct = sys.global_cpu_usage();
         let ratio = (f64::from(pct) / 100.0).clamp(0.0, 1.0);

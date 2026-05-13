@@ -57,7 +57,7 @@ impl RealtimeFetcher for SystemMonitorMemory {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().expect("memory state mutex poisoned");
+        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
         sys.refresh_memory();
         let total = sys.total_memory();
         let used = sys.used_memory();

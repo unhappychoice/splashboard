@@ -55,8 +55,10 @@ impl Fetcher for SystemMonitorDisk {
                     }))
                 })
                 .unwrap_or_else(|| {
-                    payload(Body::Text(TextData {
-                        value: "no disks".into(),
+                    payload(Body::Ratio(RatioData {
+                        value: 0.0,
+                        label: Some("no disks".into()),
+                        denominator: None,
                     }))
                 }),
         };

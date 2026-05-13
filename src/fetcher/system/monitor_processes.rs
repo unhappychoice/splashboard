@@ -64,7 +64,7 @@ impl RealtimeFetcher for SystemMonitorProcesses {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().expect("process state mutex poisoned");
+        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
         sys.refresh_processes(ProcessesToUpdate::All, true);
         let rows = top_processes(&sys, PROCESS_TOP_COUNT);
         match ctx.shape.unwrap_or(Shape::Entries) {

@@ -74,7 +74,7 @@ impl RealtimeFetcher for SystemMonitorHost {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().expect("system state mutex poisoned");
+        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
         sys.refresh_cpu_usage();
         sys.refresh_memory();
         let rows = [
