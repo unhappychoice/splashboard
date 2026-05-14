@@ -217,42 +217,44 @@ mod tests {
 
     use super::*;
 
+    /// Test-only RAII guard over the process-global `LINEAR_TOKEN`. Captures the current value,
+    /// applies a new one, and restores the captured value on drop.
+    ///
+    /// **The caller must hold [`crate::paths::TEST_ENV_LOCK`] for the guard's entire lifetime.**
+    /// The guard deliberately does *not* own the lock: an earlier design embedded the
+    /// `MutexGuard` here, but then `drop(guard)` released the lock *before* the test's trailing
+    /// assert / cleanup ran, so a sibling env-touching test could interleave and the cleanup's
+    /// `set_var` / `remove_var` would land in another test's critical section (the Windows-only
+    /// `LINEAR_TOKEN` flake). Keeping the lock in the test body and the guard lock-free means
+    /// every read, write, and restore happens inside one continuous critical section.
+    fn linear_token_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     struct LinearTokenGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
         previous: Option<String>,
     }
 
     impl LinearTokenGuard {
         fn set(value: Option<&str>) -> Self {
-            let lock = crate::paths::TEST_ENV_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            Self::set_inheriting(lock, value)
-        }
-
-        /// Same contract as [`Self::set`] but expects the caller to hand over an already-held
-        /// `TEST_ENV_LOCK` guard. Lets tests stage the env var under the lock and capture
-        /// `previous` inside the same critical section, instead of releasing + re-acquiring
-        /// (which lets a sibling test mutate `LINEAR_TOKEN` between setup and capture).
-        fn set_inheriting(lock: std::sync::MutexGuard<'static, ()>, value: Option<&str>) -> Self {
             let previous = std::env::var("LINEAR_TOKEN").ok();
-            match value {
-                Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
-                None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
-            }
-            Self {
-                _lock: lock,
-                previous,
-            }
+            apply_linear_token(value);
+            Self { previous }
         }
     }
 
     impl Drop for LinearTokenGuard {
         fn drop(&mut self) {
-            match &self.previous {
-                Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
-                None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
-            }
+            apply_linear_token(self.previous.as_deref());
+        }
+    }
+
+    fn apply_linear_token(value: Option<&str>) {
+        match value {
+            Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
+            None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
         }
     }
 
@@ -262,13 +264,6 @@ mod tests {
             .build()
             .unwrap()
             .block_on(future)
-    }
-
-    fn restore_linear_token(previous: Option<String>) {
-        match previous {
-            Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
-            None => unsafe { std::env::remove_var("LINEAR_TOKEN") },
-        }
     }
 
     fn unused_proxy_url() -> String {
@@ -305,6 +300,9 @@ mod tests {
 
     #[test]
     fn resolve_token_falls_back_to_env_value_when_config_is_blank() {
+        // `_lock` is declared before `_guard`, so it drops *after* the guard restores
+        // `LINEAR_TOKEN` — the whole test body is one critical section.
+        let _lock = linear_token_env_lock();
         let _guard = LinearTokenGuard::set(Some("  env-token  "));
         assert_eq!(resolve_token(Some("   ")).unwrap(), "env-token");
         assert_eq!(resolve_token(None).unwrap(), "env-token");
@@ -312,6 +310,7 @@ mod tests {
 
     #[test]
     fn resolve_token_errors_when_config_and_env_are_missing() {
+        let _lock = linear_token_env_lock();
         let _guard = LinearTokenGuard::set(None);
         assert!(matches!(
             resolve_token(None),
@@ -321,6 +320,7 @@ mod tests {
 
     #[test]
     fn resolve_token_rejects_blank_env_values() {
+        let _lock = linear_token_env_lock();
         let _guard = LinearTokenGuard::set(Some("   "));
         assert!(matches!(
             resolve_token(None),
@@ -365,6 +365,7 @@ mod tests {
 
     #[test]
     fn cache_extra_uses_empty_scope_when_no_token_is_available() {
+        let _lock = linear_token_env_lock();
         let _guard = LinearTokenGuard::set(None);
         assert_eq!(cache_extra(None, None), format!("{}|", token_scope("")));
     }
@@ -428,53 +429,44 @@ mod tests {
 
     #[test]
     fn linear_token_guard_restores_previous_value_on_drop() {
-        let (previous, guard) = {
-            let lock = crate::paths::TEST_ENV_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let previous = std::env::var("LINEAR_TOKEN").ok();
-            unsafe { std::env::set_var("LINEAR_TOKEN", "before") };
+        // The lock spans the whole test body — every `LINEAR_TOKEN` read, write, and the
+        // guard's restore-on-drop happen inside one critical section, so a sibling token
+        // test can never observe or clobber an intermediate value.
+        let _lock = linear_token_env_lock();
+        let original = std::env::var("LINEAR_TOKEN").ok();
+
+        unsafe { std::env::set_var("LINEAR_TOKEN", "before") };
+        {
             let guard = LinearTokenGuard {
-                _lock: lock,
                 previous: Some("before".into()),
             };
             unsafe { std::env::set_var("LINEAR_TOKEN", "during") };
-            (previous, guard)
-        };
-
-        drop(guard);
+            drop(guard);
+        }
         assert_eq!(
             std::env::var("LINEAR_TOKEN").ok().as_deref(),
             Some("before")
         );
 
-        restore_linear_token(previous);
+        apply_linear_token(original.as_deref());
     }
 
     #[test]
     fn linear_token_guard_set_restores_outer_previous_value() {
-        // Hold the lock continuously through `set` so a sibling test can't mutate
-        // `LINEAR_TOKEN` between the staged `"outer"` and `set`'s capture of `previous`.
-        // Previously this released the lock first and then called `LinearTokenGuard::set`,
-        // which re-acquired it — that gap was the Windows-only flake (sibling token tests
-        // would sneak in and `previous` would capture the wrong value).
-        let (outer_previous, captured_previous) = {
-            let lock = crate::paths::TEST_ENV_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let outer_previous = std::env::var("LINEAR_TOKEN").ok();
-            unsafe { std::env::set_var("LINEAR_TOKEN", "outer") };
-            let guard = LinearTokenGuard::set_inheriting(lock, Some("inner"));
-            let captured_previous = guard.previous.clone();
-            drop(guard);
-            (outer_previous, captured_previous)
-        };
+        // Same single-critical-section discipline: stage `"outer"`, let `set` capture it and
+        // swap in `"inner"`, then assert the guard's drop puts `"outer"` back — all under one
+        // continuously held `TEST_ENV_LOCK`.
+        let _lock = linear_token_env_lock();
+        let original = std::env::var("LINEAR_TOKEN").ok();
 
-        // The Drop-restores-previous contract is exercised by
-        // `linear_token_guard_restores_previous_value_on_drop`; here we only assert that
-        // `set` captures the value present at the call site.
-        assert_eq!(captured_previous.as_deref(), Some("outer"));
-        restore_linear_token(outer_previous);
+        unsafe { std::env::set_var("LINEAR_TOKEN", "outer") };
+        {
+            let _guard = LinearTokenGuard::set(Some("inner"));
+            assert_eq!(std::env::var("LINEAR_TOKEN").ok().as_deref(), Some("inner"));
+        }
+        assert_eq!(std::env::var("LINEAR_TOKEN").ok().as_deref(), Some("outer"));
+
+        apply_linear_token(original.as_deref());
     }
 
     #[test]
