@@ -8,13 +8,19 @@ use std::sync::Arc;
 
 use super::RealtimeFetcher;
 
+pub mod badge;
 pub mod common;
 pub mod image;
 pub mod links;
 
+pub use badge::BasicBadge;
 pub use image::BasicImage;
 pub use links::BasicLinks;
 
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
-    vec![Arc::new(BasicLinks), Arc::new(BasicImage)]
+    vec![
+        Arc::new(BasicLinks),
+        Arc::new(BasicImage),
+        Arc::new(BasicBadge),
+    ]
 }
