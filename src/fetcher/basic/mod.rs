@@ -9,12 +9,14 @@ use std::sync::Arc;
 use super::RealtimeFetcher;
 
 pub mod badge;
+pub mod bars;
 pub mod common;
 pub mod image;
 pub mod links;
 pub mod ratio;
 
 pub use badge::BasicBadge;
+pub use bars::BasicBars;
 pub use image::BasicImage;
 pub use links::BasicLinks;
 pub use ratio::BasicRatio;
@@ -25,5 +27,6 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
         Arc::new(BasicImage),
         Arc::new(BasicBadge),
         Arc::new(BasicRatio),
+        Arc::new(BasicBars),
     ]
 }
