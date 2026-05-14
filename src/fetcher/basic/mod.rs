@@ -10,6 +10,7 @@ use super::RealtimeFetcher;
 
 pub mod badge;
 pub mod bars;
+pub mod calendar;
 pub mod common;
 pub mod entries;
 pub mod image;
@@ -21,6 +22,7 @@ pub mod timeline;
 
 pub use badge::BasicBadge;
 pub use bars::BasicBars;
+pub use calendar::BasicCalendar;
 pub use entries::BasicEntries;
 pub use image::BasicImage;
 pub use links::BasicLinks;
@@ -40,5 +42,6 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
         Arc::new(BasicNumbers),
         Arc::new(BasicPoints),
         Arc::new(BasicTimeline),
+        Arc::new(BasicCalendar),
     ]
 }
