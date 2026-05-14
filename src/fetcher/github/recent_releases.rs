@@ -62,6 +62,9 @@ impl Fetcher for GithubRecentReleases {
     fn description(&self) -> &'static str {
         "Latest published releases for a repo with their tags and dates. Good for the cd-into-project view of what shipped recently."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

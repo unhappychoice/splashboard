@@ -54,6 +54,9 @@ impl Fetcher for GithubActionStatus {
     fn description(&self) -> &'static str {
         "The latest CI workflow run for a repo as a pass/fail badge or short text line. Use `github_action_history` for a series of recent runs rather than the single most recent one."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

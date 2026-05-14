@@ -206,6 +206,9 @@ mod tests {
         fn description(&self) -> &'static str {
             "test fixture"
         }
+        fn refresh_interval(&self) -> u64 {
+            60
+        }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]
         }

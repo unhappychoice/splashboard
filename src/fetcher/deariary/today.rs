@@ -62,6 +62,9 @@ impl Fetcher for DeariaryToday {
     fn description(&self) -> &'static str {
         "The most recent auto-generated deariary.com entry — typically today's, falling back to yesterday's when today's hasn't generated yet. Aggregated from external tools (GitHub, Calendar, Slack, Linear, ...); requires the Advanced plan. `TextBlock` shows the body, `MarkdownTextBlock` preserves formatting for `text_markdown`, `LinkedTextBlock` is a one-line clickable headline that opens the entry on deariary.com, `Entries` summarises title / date / tags / sources, `Text` is a one-line headline, `Badge` is a status pill."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

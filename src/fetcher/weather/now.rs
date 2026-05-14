@@ -71,6 +71,9 @@ impl Fetcher for WeatherFetcher {
     fn description(&self) -> &'static str {
         "Forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` / `Text` summarise current conditions; `PointSeries` carries the next 24h of hourly temperature (signed °C / °F); `NumberSeries` / `Bars` carry hourly precipitation in tenths of mm/inch; `Badge` flags severe weather codes (thunderstorm = error, freezing / snow / heavy rain = warn). Metric or imperial units, no API key required."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         &[
             Shape::Entries,

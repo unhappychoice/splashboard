@@ -77,6 +77,9 @@ impl Fetcher for GithubContributorsMonthly {
     fn description(&self) -> &'static str {
         "Top contributors to a repo over the last N days, ranked by commit count. Bars / Entries / LinkedTextBlock / TextBlock / MarkdownTextBlock all carry the ranking; Text collapses to a `\"@alice +42 / @bob +27 / …\"` headline."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

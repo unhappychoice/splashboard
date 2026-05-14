@@ -253,6 +253,9 @@ impl Fetcher for LinearIssues {
         "Linear issues snapshot with filter-first options (status, assignee, team, project, priority, due window, label). `Bars` groups by `group_by` (default priority). `Calendar` highlights due dates; list shapes link each row to the Linear issue."
     }
 
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

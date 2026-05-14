@@ -219,7 +219,6 @@ fn animation_still_due(animation_due: bool, real_animated: bool, loading_pending
     animation_due && (real_animated || loading_pending)
 }
 
-const DEFAULT_REFRESH_SECS: u64 = 60;
 const FAST_DEADLINE: Duration = Duration::from_millis(1500);
 const WAIT_DEADLINE: Duration = Duration::from_secs(5);
 const DAEMON_DEADLINE: Duration = Duration::from_secs(30);
@@ -630,9 +629,17 @@ fn entries_to_payloads(entries: &HashMap<WidgetId, CacheEntry>) -> HashMap<Widge
 }
 
 /// Short TTL for error/timeout cache entries so a transient blip doesn't pin the widget on the
-/// warning placeholder for long. Set well below the 60s default refresh so the next tick
-/// retries; long enough that back-to-back renders don't re-run a fetch that just failed.
+/// warning placeholder for long. Set well below typical success-path refresh intervals so the
+/// next tick retries; long enough that back-to-back renders don't re-run a fetch that just failed.
 const ERROR_CACHE_TTL_SECS: u64 = 30;
+
+/// TTL for a cached widget's successful payload: the per-widget config override wins, otherwise
+/// the fetcher's declared interval. There is no global fallback — every cached fetcher declares
+/// its own [`fetcher::Fetcher::refresh_interval`].
+fn resolve_refresh_interval(w: &WidgetConfig, fetcher: &dyn fetcher::Fetcher) -> u64 {
+    w.refresh_interval
+        .unwrap_or_else(|| fetcher.refresh_interval())
+}
 
 async fn fetch_all(
     registry: &Registry,
@@ -661,7 +668,7 @@ async fn fetch_all(
             None => None,
         };
         let id = w.id.clone();
-        let ttl = w.refresh_interval.unwrap_or(DEFAULT_REFRESH_SECS);
+        let ttl = resolve_refresh_interval(w, fetcher.as_ref());
         let fetcher_name = fetcher.name().to_string();
         set.spawn(async move {
             let _lock = lock;
@@ -1513,6 +1520,27 @@ mod tests {
         assert!(!should_refresh(&cached, &widget("a", "basic_static")));
     }
 
+    #[test]
+    fn resolve_refresh_interval_prefers_config_override() {
+        let registry = Registry::with_builtins();
+        let fetcher = registry.get_cached("basic_static").unwrap();
+        let mut w = widget("a", "basic_static");
+        w.refresh_interval = Some(99);
+        assert_eq!(resolve_refresh_interval(&w, fetcher.as_ref()), 99);
+    }
+
+    #[test]
+    fn resolve_refresh_interval_falls_back_to_fetcher_declared_value() {
+        let registry = Registry::with_builtins();
+        let fetcher = registry.get_cached("basic_static").unwrap();
+        let mut w = widget("a", "basic_static");
+        w.refresh_interval = None;
+        assert_eq!(
+            resolve_refresh_interval(&w, fetcher.as_ref()),
+            fetcher.refresh_interval()
+        );
+    }
+
     fn static_widget(id: &str, text: &str) -> WidgetConfig {
         WidgetConfig {
             id: id.into(),
@@ -1733,6 +1761,9 @@ mod tests {
             fn name(&self) -> &str {
                 "panics"
             }
+            fn refresh_interval(&self) -> u64 {
+                60
+            }
             fn safety(&self) -> fetcher::Safety {
                 fetcher::Safety::Safe
             }
@@ -1785,6 +1816,9 @@ mod tests {
         impl fetcher::Fetcher for Boom {
             fn name(&self) -> &str {
                 "boom"
+            }
+            fn refresh_interval(&self) -> u64 {
+                60
             }
             fn safety(&self) -> fetcher::Safety {
                 fetcher::Safety::Safe
@@ -1857,6 +1891,9 @@ mod tests {
         impl fetcher::Fetcher for Slow {
             fn name(&self) -> &str {
                 "slow"
+            }
+            fn refresh_interval(&self) -> u64 {
+                60
             }
             fn safety(&self) -> fetcher::Safety {
                 fetcher::Safety::Safe

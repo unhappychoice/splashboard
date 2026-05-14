@@ -61,6 +61,9 @@ impl Fetcher for GithubRepoPrs {
     fn description(&self) -> &'static str {
         "Open pull requests for a target repo, sorted by most recently updated. Use `github_my_prs` instead for PRs authored by the authenticated user across all repos."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

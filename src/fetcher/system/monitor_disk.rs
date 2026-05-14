@@ -23,6 +23,9 @@ impl Fetcher for SystemMonitorDisk {
     fn description(&self) -> &'static str {
         "Disk usage for the largest mounted volume. `Ratio` drives gauges with the used/total fraction; `Text` formats it as `\"45% of 500 GB\"`; `Bars` lists every mount with used bytes for chart_bar."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Ratio, Shape::Text, Shape::Bars]
     }

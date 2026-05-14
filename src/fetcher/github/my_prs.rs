@@ -51,6 +51,9 @@ impl Fetcher for GithubMyPrs {
     fn description(&self) -> &'static str {
         "Open pull requests authored by the authenticated user across every repo. Use `github_repo_prs` instead to list PRs against one specific repo regardless of who opened them."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

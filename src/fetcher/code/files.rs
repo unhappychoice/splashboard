@@ -41,6 +41,9 @@ impl Fetcher for CodeFiles {
     fn description(&self) -> &'static str {
         "Counts tracked files in the discovered git repo's index and ranks top-level directories by file count. `Text` is the headline file count (`\"342 files\"`); `TextBlock` lists `\"<dir> (<count>)\"` rows; `Entries` exposes the same as key/value rows; `Bars` ranks them as bar values; `MarkdownTextBlock` formats them as a Markdown bullet list with emphasis. Files at the repo root are grouped under `\"(root)\"`. Vendored / generated dirs (`node_modules` / `vendor` / `target` / `dist` / `build`) are filtered out even when committed."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

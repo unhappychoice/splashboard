@@ -103,6 +103,12 @@ pub trait Fetcher: Send + Sync {
     /// `git_stash_count`). No leading verb tense convention; just write so a config author
     /// scanning the catalog can decide whether this is the one they want.
     fn description(&self) -> &'static str;
+    /// How long a successful payload stays fresh in the disk cache, in seconds. Required, with no
+    /// default impl: the fetcher knows how volatile its data is, so every author must make a
+    /// deliberate choice. A per-widget `refresh_interval` in the dashboard config overrides this;
+    /// the runtime resolves the config override first and this value otherwise, with no global
+    /// fallback.
+    fn refresh_interval(&self) -> u64;
     /// Shapes this fetcher can emit. Single-shape fetchers (static_text, disk) return one
     /// variant; fetchers whose one physical read can be reshaped for different widgets (clock,
     /// read_store) list every variant they accept. Validated against the renderer-derived
@@ -445,6 +451,9 @@ mod tests {
         fn description(&self) -> &'static str {
             "test fixture"
         }
+        fn refresh_interval(&self) -> u64 {
+            60
+        }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]
         }
@@ -607,6 +616,7 @@ mod tests {
             Some(Body::Text(_))
         ));
         assert_eq!(cached.default_shape(), Shape::Text);
+        assert_eq!(cached.refresh_interval(), 60);
         assert_eq!(
             cached.cache_key(&ctx_with(Some("hi"))),
             default_cache_key("cached", &ctx_with(Some("hi")))
@@ -666,6 +676,28 @@ mod tests {
             .map(|fetcher| fetcher.name().to_string())
             .collect::<Vec<_>>();
         assert_eq!(sorted, vec!["alpha".to_string(), "bravo".to_string()]);
+    }
+
+    #[test]
+    fn every_cached_builtin_declares_a_sane_refresh_interval() {
+        // refresh_interval() is a required trait method with no default impl. This sweep guards
+        // the invariant the runtime relies on: a cached fetcher must never declare 0 (always
+        // stale — it would re-fetch on every frame), and values stay within a sane band.
+        let registry = Registry::with_builtins();
+        let cached: Vec<_> = registry
+            .sorted()
+            .into_iter()
+            .filter_map(|f| f.as_cached())
+            .collect();
+        assert!(!cached.is_empty(), "expected builtin cached fetchers");
+        for fetcher in cached {
+            let secs = fetcher.refresh_interval();
+            assert!(
+                (1..=60 * 60 * 24 * 7).contains(&secs),
+                "{} declared refresh_interval() = {secs}s, outside 1s..=1w",
+                fetcher.name(),
+            );
+        }
     }
 
     fn ctx_with(format: Option<&str>) -> FetchContext {

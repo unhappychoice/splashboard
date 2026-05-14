@@ -74,6 +74,9 @@ impl Fetcher for DeariaryOnThisDay {
     fn description(&self) -> &'static str {
         "Past auto-generated deariary.com entries from the same calendar day, fetched in parallel for 1m / 3m / 6m / 1y / 2y / 3y / 4y / 5y ago. Anchors with no entry are silently skipped. `TextBlock` is the default; `Timeline` plots the surviving anchors chronologically; `LinkedTextBlock` is a list of clickable rows; `Text` and `Badge` headline the most distant hit."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

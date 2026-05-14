@@ -99,6 +99,9 @@ impl Fetcher for YoutubeChannelFetcher {
     fn description(&self) -> &'static str {
         "Recent uploads from one or more public YouTube channels, merged newest-first. Reads each channel's Atom feed at `youtube.com/feeds/videos.xml`; no API key or OAuth required."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

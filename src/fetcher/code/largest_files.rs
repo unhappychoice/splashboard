@@ -91,6 +91,9 @@ impl Fetcher for CodeLargestFiles {
     fn description(&self) -> &'static str {
         "Ranks the largest tracked source files in the discovered git repo. `metric = \"loc\"` (default) counts text lines per file; `metric = \"bytes\"` measures raw size. `Text` headlines the single biggest file; `TextBlock` / `MarkdownTextBlock` / `Entries` / `Bars` carry the per-file ranking; `NumberSeries` sketches the size distribution; `Badge` flags whether the repo holds a refactor-candidate-sized file (`tidy` / `big` / `bloated` / `monster`). Vendored / generated dirs, lockfiles, and binaries are skipped via the shared scan helper."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

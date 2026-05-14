@@ -44,6 +44,9 @@ impl Fetcher for GitChurn {
     fn description(&self) -> &'static str {
         "Top files by change count over the last N days (default 30, override with `format = \"N\"`), capped at ten. Pairs with `code_largest_files` for 'where's the action vs where's the mass' framing."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

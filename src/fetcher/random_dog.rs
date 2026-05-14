@@ -72,6 +72,9 @@ impl Fetcher for RandomDogFetcher {
     fn description(&self) -> &'static str {
         "A random dog photo from dog.ceo, downloaded each refresh cycle and rendered as an image. Optional `breed` (e.g. `shiba`, `husky`) and `sub_breed` (with `breed`) narrow the pool."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

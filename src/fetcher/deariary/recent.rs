@@ -85,6 +85,9 @@ impl Fetcher for DeariaryRecent {
     fn description(&self) -> &'static str {
         "Recent auto-generated deariary.com entries, newest first. `Timeline` (default) carries the chronological ranking; `TextBlock` / `Entries` / `MarkdownTextBlock` / `LinkedTextBlock` carry the same ranking in their respective row formats; `Calendar` highlights this month's entry days; `Text` and `Badge` summarise the headline."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

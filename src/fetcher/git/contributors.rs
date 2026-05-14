@@ -41,6 +41,9 @@ impl Fetcher for GitContributors {
     fn description(&self) -> &'static str {
         "Top commit authors over the last N days (default 30, override with `format = \"N\"`), ranked by commit count and capped at ten. Bars/Entries/TextBlock/MarkdownTextBlock all carry the ranking; Text is the headline summary."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

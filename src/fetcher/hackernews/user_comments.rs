@@ -61,6 +61,9 @@ impl Fetcher for HackernewsUserCommentsFetcher {
     fn description(&self) -> &'static str {
         "Recent comments by one Hacker News account, each truncated and linked to the comment page on HN. Pair with `hackernews_user_submissions` for stories by the same user, or `hackernews_user` for the profile rollup."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

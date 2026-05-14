@@ -24,6 +24,9 @@ impl Fetcher for GitWorktrees {
     fn description(&self) -> &'static str {
         "Linked worktrees plus the main worktree, each with its checked-out branch and path. Useful when you juggle several feature branches in parallel checkouts."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

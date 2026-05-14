@@ -57,6 +57,9 @@ impl Fetcher for WikipediaFeaturedFetcher {
     fn description(&self) -> &'static str {
         "Today's English Wikipedia \"Today's Featured Article\" — the daily curated front-page pick, with title, summary, and link. Use `wikipedia_on_this_day` for historical events on this date or `wikipedia_random` for an arbitrary article."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

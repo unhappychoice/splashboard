@@ -24,6 +24,9 @@ impl Fetcher for GitStashCount {
     fn description(&self) -> &'static str {
         "Number of entries in the stash reflog, as a quiet reminder of work parked aside. `Text` collapses to empty when there are zero stashes; `Entries` always reports the count; `Badge` shows the count as a pill (Ok at zero, Warn otherwise)."
     }
+    fn refresh_interval(&self) -> u64 {
+        60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -23,6 +23,9 @@ impl Fetcher for StaticText {
     fn description(&self) -> &'static str {
         "Renders a constant string supplied by the widget's `format` option, split into lines on `\\n` for `TextBlock`, collapsed to single-spaces for `Text`, and passed through verbatim for `MarkdownTextBlock`. Use it for greetings, project banners, or fixed welcome notes that don't need a dedicated fetcher."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60 * 24
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text, Shape::TextBlock, Shape::MarkdownTextBlock]
     }

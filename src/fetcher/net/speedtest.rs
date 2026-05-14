@@ -76,6 +76,9 @@ impl Fetcher for NetSpeedtest {
     fn description(&self) -> &'static str {
         "Measured internet bandwidth — runs a real download / upload test against the fixed `speed.cloudflare.com` endpoint and reports connection capacity (not whatever happens to be flowing now). `Text` (default) headlines down + up; `TextBlock` / `MarkdownTextBlock` / `Entries` roll up download / upload / latency; `Bars` is download vs upload; `Badge` tiers the connection by download speed. No API key required."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

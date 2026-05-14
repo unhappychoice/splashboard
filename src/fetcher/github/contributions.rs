@@ -51,6 +51,9 @@ impl Fetcher for GithubContributions {
     fn description(&self) -> &'static str {
         "The GitHub contribution calendar (kusa) as a year-long heatmap of daily commit counts. Defaults to the authenticated viewer; pass `login` to show another user. `NumberSeries` collapses the calendar to one value per week for sparkline-style rendering."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

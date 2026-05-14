@@ -105,6 +105,9 @@ impl Fetcher for LobstersTopFetcher {
     fn description(&self) -> &'static str {
         "Lobsters front-page listings — `hottest` / `newest` / `active`, optionally filtered by a single tag. Each row shows score, comment count, and title, linked to the story URL (or the Lobsters comment page when there isn't one)."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

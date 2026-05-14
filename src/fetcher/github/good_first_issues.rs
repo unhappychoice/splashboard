@@ -70,6 +70,9 @@ impl Fetcher for GithubGoodFirstIssues {
     fn description(&self) -> &'static str {
         "Open issues labelled good-first-issue, either across all of GitHub or scoped to one repo via the `repo` option. Aimed at onboarding contributors and idle-browsing for something to pick up."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -49,6 +49,9 @@ impl Fetcher for GithubUser {
     fn description(&self) -> &'static str {
         "GitHub profile data for a user (display name, bio, location, join year, follower counts), aimed at the hero / subtitle band of a home preset. Pair with `github_avatar` for the matching image."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

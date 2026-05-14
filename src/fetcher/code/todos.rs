@@ -74,6 +74,9 @@ impl Fetcher for CodeTodos {
     fn description(&self) -> &'static str {
         "Greps tracked source files in the discovered git repo for `TODO:` / `FIXME:` style markers (trailing colon required, vendored / generated dirs skipped). `Text` summarises `\"N TODOs in M files\"`, `TextBlock` and `MarkdownTextBlock` list `path:line: snippet` (markdown variant uses inline-code formatting), and `Entries` / `Bars` rank files by hit count."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -34,6 +34,9 @@ impl Fetcher for NetInterfaces {
     fn description(&self) -> &'static str {
         "Every host network interface with its up/down state, primary IP, MTU and MAC. `Entries` (default) / `TextBlock` / `MarkdownTextBlock` list one row per interface; `Text` headlines the primary (default-route) interface; `Ratio` is the up-of-total fraction; `Bars` ranks interfaces by total bytes transferred; `Badge` is an online / offline pill."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

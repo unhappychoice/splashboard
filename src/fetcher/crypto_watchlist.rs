@@ -91,6 +91,9 @@ impl Fetcher for CryptoWatchlistFetcher {
     fn description(&self) -> &'static str {
         "CoinGecko price snapshot for a configurable list of coins. `Entries` (default) / `Text` / `TextBlock` / `MarkdownTextBlock` / `LinkedTextBlock` summarise spot price + 24h change; `NumberSeries` carries the first coin's 7-day hourly price as cents above the period low (so high-magnitude assets like BTC don't flatten the sparkline); `PointSeries` carries one series per coin for line / scatter charts; `Bars` ranks coins by 24h |% change| (basis points); `Badge` flags the top mover. No API key required."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

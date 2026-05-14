@@ -25,6 +25,9 @@ impl Fetcher for GitStatus {
     fn description(&self) -> &'static str {
         "Working-tree snapshot: current branch, clean/dirty flag, and ahead/behind counts vs upstream. Choose `Entries` for a key/value panel, `Text` for a one-liner, or `Badge` for a clean/dirty traffic light."
     }
+    fn refresh_interval(&self) -> u64 {
+        60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

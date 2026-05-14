@@ -82,6 +82,9 @@ impl Fetcher for CalendarHolidaysFetcher {
     fn description(&self) -> &'static str {
         "Public holidays for a country (ISO 3166-1 alpha-2) via date.nager.at. `Calendar` highlights this month's holiday dates, `Text` shows today's holiday name when one matches, and `TextBlock` lists the next few upcoming holidays."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60 * 24
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

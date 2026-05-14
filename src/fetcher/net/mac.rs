@@ -51,6 +51,9 @@ impl Fetcher for NetMac {
     fn description(&self) -> &'static str {
         "Link-layer (MAC) addresses. `Text` (default) shows the MAC of the `interface` option's target — the primary (default-route) interface by default; `TextBlock` / `MarkdownTextBlock` / `Entries` list every interface that has a MAC; `Badge` flags whether the selected MAC is universally administered or locally administered (i.e. randomized / spoofed)."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

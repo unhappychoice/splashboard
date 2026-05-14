@@ -125,6 +125,9 @@ impl Fetcher for RedditSubredditPostsFetcher {
     fn description(&self) -> &'static str {
         "Posts from a single subreddit's public listing — `top` / `hot` / `new` / `rising`, with a `period` window for `top`. Pair with `reddit_user_posts` for one user's submissions or `reddit_user_comments` for their comments."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 15
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }
