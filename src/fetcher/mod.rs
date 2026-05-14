@@ -12,6 +12,7 @@ use crate::payload::{Body, ErrorData, ErrorKind, Payload, Status};
 use crate::render::Shape;
 use crate::samples;
 
+pub mod basic;
 pub mod calendar;
 pub mod clock;
 pub mod code;
@@ -377,6 +378,9 @@ impl Registry {
         for f in code::fetchers() {
             r.register(f);
         }
+        for f in basic::realtime_fetchers() {
+            r.register_realtime(f);
+        }
         r
     }
 
@@ -516,6 +520,32 @@ mod tests {
     fn with_builtins_registers_basic_static_fetcher() {
         let r = Registry::with_builtins();
         assert!(r.get("basic_static").is_some());
+    }
+
+    #[test]
+    fn with_builtins_registers_basic_family_as_realtime() {
+        let r = Registry::with_builtins();
+        for name in [
+            "basic_links",
+            "basic_image",
+            "basic_badge",
+            "basic_ratio",
+            "basic_bars",
+            "basic_entries",
+            "basic_numbers",
+            "basic_points",
+            "basic_timeline",
+            "basic_calendar",
+            "basic_heatmap",
+        ] {
+            let entry = r
+                .get(name)
+                .unwrap_or_else(|| panic!("{name} must be registered"));
+            assert!(
+                matches!(entry, RegisteredFetcher::Realtime(_)),
+                "{name} must be registered as realtime"
+            );
+        }
     }
 
     #[test]
