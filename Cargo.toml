@@ -49,6 +49,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 chrono-tz = { version = "0.10", default-features = false }
 sysinfo = "0.39.0"
 starship-battery = "0.11"
+netdev = "0.43"
 gix = { version = "0.83", default-features = false, features = ["revision", "status", "blob-diff", "max-performance-safe", "comfort", "sha1"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
 url = "2"

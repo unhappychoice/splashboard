@@ -25,6 +25,7 @@ pub mod hackernews;
 pub mod linear;
 pub mod lobsters;
 pub mod nasa_apod;
+pub mod net;
 pub mod news;
 pub mod random_cat;
 pub mod random_dog;
@@ -370,6 +371,12 @@ impl Registry {
         }
         for f in system::cached_fetchers() {
             r.register(f);
+        }
+        for f in net::cached_fetchers() {
+            r.register(f);
+        }
+        for f in net::realtime_fetchers() {
+            r.register_realtime(f);
         }
         for f in git::fetchers() {
             r.register(f);
