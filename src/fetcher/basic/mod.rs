@@ -9,7 +9,10 @@ use std::sync::Arc;
 use super::RealtimeFetcher;
 
 pub mod common;
+pub mod links;
+
+pub use links::BasicLinks;
 
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
-    vec![]
+    vec![Arc::new(BasicLinks)]
 }
