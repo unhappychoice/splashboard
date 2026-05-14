@@ -60,6 +60,9 @@ impl Fetcher for NetIp {
     fn description(&self) -> &'static str {
         "The host's own IPv4 / IPv6 addresses. `Text` (default) shows one address for the primary (default-route) interface — `kind` picks v4 / v6 / first-available; `TextBlock` / `MarkdownTextBlock` / `Entries` list every interface that has an address; `Badge` flags dual-stack / IPv4 / IPv6-only / no-address."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

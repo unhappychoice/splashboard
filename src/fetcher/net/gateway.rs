@@ -58,6 +58,9 @@ impl Fetcher for NetGateway {
     fn description(&self) -> &'static str {
         "The host's default-route gateway. `Text` (default) shows the gateway address — `kind = \"interface\"` shows the interface it routes through instead; `TextBlock` / `MarkdownTextBlock` / `Entries` roll up gateway + interface; `Badge` is a has-default-route / no-route pill."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }
