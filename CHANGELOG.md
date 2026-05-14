@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-14
+
+### ✨ Features
+
+- feat(fetcher): declare refresh_interval for the net_* family ([1c08d6f](https://github.com/unhappychoice/splashboard/commit/1c08d6f))
+- feat(fetcher): per-fetcher refresh interval, drop global 60s default ([560a529](https://github.com/unhappychoice/splashboard/commit/560a529))
+- feat(fetcher): add net_* family — interfaces / ip / mac / gateway / proxy / speedtest ([133305c](https://github.com/unhappychoice/splashboard/commit/133305c))
+- feat(fetcher): add nasa_apod — NASA Astronomy Picture of the Day ([4e98f71](https://github.com/unhappychoice/splashboard/commit/4e98f71))
+- feat(fetcher): add basic_heatmap ([bff4bcb](https://github.com/unhappychoice/splashboard/commit/bff4bcb))
+- feat(fetcher): add basic_calendar ([7feab05](https://github.com/unhappychoice/splashboard/commit/7feab05))
+- feat(fetcher): add basic_timeline ([e1329b6](https://github.com/unhappychoice/splashboard/commit/e1329b6))
+- feat(fetcher): add basic_points ([70ba363](https://github.com/unhappychoice/splashboard/commit/70ba363))
+- feat(fetcher): add basic_numbers ([52d43c0](https://github.com/unhappychoice/splashboard/commit/52d43c0))
+- feat(fetcher): add basic_entries ([4e23043](https://github.com/unhappychoice/splashboard/commit/4e23043))
+- feat(fetcher): add basic_bars ([956a60b](https://github.com/unhappychoice/splashboard/commit/956a60b))
+- feat(fetcher): add basic_ratio ([c4d573f](https://github.com/unhappychoice/splashboard/commit/c4d573f))
+- feat(fetcher): add basic_badge ([bb0b77a](https://github.com/unhappychoice/splashboard/commit/bb0b77a))
+- feat(fetcher): add basic_image ([9e00689](https://github.com/unhappychoice/splashboard/commit/9e00689))
+- feat(fetcher): add basic_links ([cc65861](https://github.com/unhappychoice/splashboard/commit/cc65861))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher): gate net_proxy lowercase-precedence test to non-Windows ([54caacd](https://github.com/unhappychoice/splashboard/commit/54caacd))
+- fix(fetcher): make LinearTokenGuard lock-free so token tests stay in one critical section ([4ef7a09](https://github.com/unhappychoice/splashboard/commit/4ef7a09))
+- fix(fetcher): close LINEAR_TOKEN race in linear_token_guard_set_restores_outer_previous_value ([4ebab29](https://github.com/unhappychoice/splashboard/commit/4ebab29))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.1.0 ([55e2d82](https://github.com/unhappychoice/splashboard/commit/55e2d82))
+- docs: refresh README hero screenshot ([ed4457f](https://github.com/unhappychoice/splashboard/commit/ed4457f))
+- test(fetcher): sweep every cached builtin's refresh_interval ([fdfd761](https://github.com/unhappychoice/splashboard/commit/fdfd761))
+- docs(agents): drop pomodoro from RealtimeFetcher examples ([450af03](https://github.com/unhappychoice/splashboard/commit/450af03))
+- test(fetcher): close nasa_apod coverage gaps ([7391d4d](https://github.com/unhappychoice/splashboard/commit/7391d4d))
+- test(fetcher): broaden basic_* coverage — family contract sweep + branch gaps ([4247236](https://github.com/unhappychoice/splashboard/commit/4247236))
+- ci: stop caching ~/.cargo/bin so rust-cache can't clobber the toolchain ([5e4d65e](https://github.com/unhappychoice/splashboard/commit/5e4d65e))
+- style(fetcher): rustfmt + clippy fixups for basic_* ([6958fcd](https://github.com/unhappychoice/splashboard/commit/6958fcd))
+- chore(fetcher): register basic_numbers in basic/mod.rs ([bdfaa28](https://github.com/unhappychoice/splashboard/commit/bdfaa28))
+- chore(fetcher): scaffold basic_* family module ([2adeb72](https://github.com/unhappychoice/splashboard/commit/2adeb72))
+- docs: add Discord and blog mentions to Support section ([3125146](https://github.com/unhappychoice/splashboard/commit/3125146))
+- docs: add general hashtags to share links ([daba37a](https://github.com/unhappychoice/splashboard/commit/daba37a))
+- docs: add Support section with star and share links to README ([4224dce](https://github.com/unhappychoice/splashboard/commit/4224dce))
+- chore: update flake.nix hashes for v2.0.0 ([f665243](https://github.com/unhappychoice/splashboard/commit/f665243))
+
+
 ## [2.0.0] - 2026-05-13
 
 ### 💥 BREAKING CHANGES
@@ -25,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.0.0 ([b217c02](https://github.com/unhappychoice/splashboard/commit/b217c02))
+- chore: bump version to v2.0.0 ([0d08892](https://github.com/unhappychoice/splashboard/commit/0d08892))
 - docs(fetcher): update guides and doc comments to new system_* names ([61722d3](https://github.com/unhappychoice/splashboard/commit/61722d3))
 - test(fetcher): split system tests into per-fetcher modules + address review ([a17e2f7](https://github.com/unhappychoice/splashboard/commit/a17e2f7))
 - test(git): serialize stash_count CWD-reading test with TEST_ENV_LOCK ([fe7f689](https://github.com/unhappychoice/splashboard/commit/fe7f689))
