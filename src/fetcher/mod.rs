@@ -24,6 +24,7 @@ pub mod github;
 pub mod hackernews;
 pub mod linear;
 pub mod lobsters;
+pub mod nasa_apod;
 pub mod news;
 pub mod random_cat;
 pub mod random_dog;
@@ -327,6 +328,7 @@ impl Registry {
         r.register(Arc::new(stock_watchlist::StockWatchlistFetcher));
         r.register(Arc::new(random_cat::RandomCatFetcher));
         r.register(Arc::new(random_dog::RandomDogFetcher));
+        r.register(Arc::new(nasa_apod::NasaApodFetcher));
         r.register(Arc::new(youtube::YoutubeChannelFetcher));
         for f in calendar::fetchers() {
             r.register(f);
