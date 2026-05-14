@@ -133,4 +133,13 @@ mod tests {
         };
         assert!(d.lines[0].contains("`label` is required"));
     }
+
+    #[test]
+    fn whitespace_only_label_renders_placeholder() {
+        let p = compute(r#"label = "   ""#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("`label` is required"));
+    }
 }

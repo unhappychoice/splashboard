@@ -149,4 +149,13 @@ mod tests {
         };
         assert!(d.lines[0].contains("`value` is required"));
     }
+
+    #[test]
+    fn non_numeric_value_renders_placeholder() {
+        let p = compute(r#"value = "not a number""#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+    }
 }

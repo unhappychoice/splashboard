@@ -253,6 +253,49 @@ mod tests {
     }
 
     #[test]
+    fn text_block_shape_lists_labels_without_urls() {
+        let p = BasicLinks.compute(&ctx(
+            opts(
+                r#"
+                [[links]]
+                label = "GitHub"
+                url = "https://github.com/"
+                [[links]]
+                label = "Docs"
+                "#,
+            ),
+            Some(Shape::TextBlock),
+        ));
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected TextBlock");
+        };
+        assert_eq!(d.lines, vec!["GitHub".to_string(), "Docs".to_string()]);
+    }
+
+    #[test]
+    fn entries_shape_maps_label_to_optional_url() {
+        let p = BasicLinks.compute(&ctx(
+            opts(
+                r#"
+                [[links]]
+                label = "GitHub"
+                url = "https://github.com/"
+                [[links]]
+                label = "Docs"
+                "#,
+            ),
+            Some(Shape::Entries),
+        ));
+        let Body::Entries(d) = p.body else {
+            panic!("expected Entries");
+        };
+        assert_eq!(d.items[0].key, "GitHub");
+        assert_eq!(d.items[0].value.as_deref(), Some("https://github.com/"));
+        assert_eq!(d.items[1].key, "Docs");
+        assert!(d.items[1].value.is_none());
+    }
+
+    #[test]
     fn missing_options_yields_empty_list() {
         let p = BasicLinks.compute(&FetchContext::default());
         let Body::LinkedTextBlock(d) = p.body else {
