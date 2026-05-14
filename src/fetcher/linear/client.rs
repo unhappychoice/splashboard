@@ -227,6 +227,14 @@ mod tests {
             let lock = crate::paths::TEST_ENV_LOCK
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
+            Self::set_inheriting(lock, value)
+        }
+
+        /// Same contract as [`Self::set`] but expects the caller to hand over an already-held
+        /// `TEST_ENV_LOCK` guard. Lets tests stage the env var under the lock and capture
+        /// `previous` inside the same critical section, instead of releasing + re-acquiring
+        /// (which lets a sibling test mutate `LINEAR_TOKEN` between setup and capture).
+        fn set_inheriting(lock: std::sync::MutexGuard<'static, ()>, value: Option<&str>) -> Self {
             let previous = std::env::var("LINEAR_TOKEN").ok();
             match value {
                 Some(value) => unsafe { std::env::set_var("LINEAR_TOKEN", value) },
@@ -445,19 +453,27 @@ mod tests {
 
     #[test]
     fn linear_token_guard_set_restores_outer_previous_value() {
-        let outer_previous = {
-            let _lock = crate::paths::TEST_ENV_LOCK
+        // Hold the lock continuously through `set` so a sibling test can't mutate
+        // `LINEAR_TOKEN` between the staged `"outer"` and `set`'s capture of `previous`.
+        // Previously this released the lock first and then called `LinearTokenGuard::set`,
+        // which re-acquired it — that gap was the Windows-only flake (sibling token tests
+        // would sneak in and `previous` would capture the wrong value).
+        let (outer_previous, captured_previous) = {
+            let lock = crate::paths::TEST_ENV_LOCK
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             let outer_previous = std::env::var("LINEAR_TOKEN").ok();
             unsafe { std::env::set_var("LINEAR_TOKEN", "outer") };
-            outer_previous
+            let guard = LinearTokenGuard::set_inheriting(lock, Some("inner"));
+            let captured_previous = guard.previous.clone();
+            drop(guard);
+            (outer_previous, captured_previous)
         };
 
-        let guard = LinearTokenGuard::set(Some("inner"));
-        drop(guard);
-
-        assert_eq!(std::env::var("LINEAR_TOKEN").ok().as_deref(), Some("outer"));
+        // The Drop-restores-previous contract is exercised by
+        // `linear_token_guard_restores_previous_value_on_drop`; here we only assert that
+        // `set` captures the value present at the call site.
+        assert_eq!(captured_previous.as_deref(), Some("outer"));
         restore_linear_token(outer_previous);
     }
 
