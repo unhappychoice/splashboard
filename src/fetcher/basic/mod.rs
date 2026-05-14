@@ -17,6 +17,7 @@ pub mod links;
 pub mod numbers;
 pub mod points;
 pub mod ratio;
+pub mod timeline;
 
 pub use badge::BasicBadge;
 pub use bars::BasicBars;
@@ -26,6 +27,7 @@ pub use links::BasicLinks;
 pub use numbers::BasicNumbers;
 pub use points::BasicPoints;
 pub use ratio::BasicRatio;
+pub use timeline::BasicTimeline;
 
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
     vec![
@@ -37,5 +39,6 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
         Arc::new(BasicEntries),
         Arc::new(BasicNumbers),
         Arc::new(BasicPoints),
+        Arc::new(BasicTimeline),
     ]
 }
