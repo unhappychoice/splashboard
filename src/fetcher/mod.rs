@@ -12,6 +12,7 @@ use crate::payload::{Body, ErrorData, ErrorKind, Payload, Status};
 use crate::render::Shape;
 use crate::samples;
 
+pub mod basic;
 pub mod calendar;
 pub mod clock;
 pub mod code;
@@ -376,6 +377,9 @@ impl Registry {
         }
         for f in code::fetchers() {
             r.register(f);
+        }
+        for f in basic::realtime_fetchers() {
+            r.register_realtime(f);
         }
         r
     }
