@@ -18,7 +18,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      # cache-bin: false — never cache ~/.cargo/bin. Restoring it clobbers the fresh
+      # toolchain dtolnay/rust-toolchain just installed; a stale archive once left `cargo`
+      # acting as `rustup-init` on macOS. prefix-key bump abandons those poisoned v0 caches.
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1"
+          cache-bin: false
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -31,6 +37,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1"
+          cache-bin: false
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
@@ -47,6 +56,9 @@ jobs:
         with:
           components: ${{ matrix.os == 'ubuntu-latest' && 'llvm-tools-preview' || '' }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1"
+          cache-bin: false
       - if: matrix.os == 'ubuntu-latest'
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Run tests
