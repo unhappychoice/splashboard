@@ -217,6 +217,10 @@ mod tests {
         assert_eq!(proxy_badge(&direct).label, "direct");
     }
 
+    // Windows env vars are case-insensitive, so `https_proxy` and `HTTPS_PROXY` are the *same*
+    // variable there — the lowercase-vs-uppercase precedence this asserts only exists on Unix.
+    // `env_either` itself stays correct on Windows (it just reads the one variable twice).
+    #[cfg(not(windows))]
     #[test]
     fn compute_reads_live_env_lowercase_first() {
         let mut env = clear();
