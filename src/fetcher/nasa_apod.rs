@@ -118,33 +118,39 @@ impl Fetcher for NasaApodFetcher {
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let api_key = resolve_api_key(opts.api_key.as_deref());
-        let apod = fetch_apod(&api_key).await?;
+        let apod = fetch_apod(&build_api_url(&api_key)).await?;
         let shape = ctx.shape.unwrap_or(Shape::Image);
         let body = match shape {
             Shape::Image => image_body(&apod, &self.cache_key(ctx)).await?,
-            Shape::Text => Body::Text(TextData {
-                value: apod.title.clone(),
-            }),
-            Shape::TextBlock => text_block_body(vec![apod.title.clone(), apod.explanation.clone()]),
-            Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
-                value: format!("# {}\n\n{}", apod.title, apod.explanation),
-            }),
-            Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
-                items: vec![LinkedLine {
-                    text: apod.title.clone(),
-                    url: apod_page_url(&apod.date),
-                }],
-            }),
-            Shape::Entries => entries_body(&apod),
-            other => {
-                return Err(FetchError::Failed(format!(
-                    "nasa_apod can't emit {}",
-                    other.as_str()
-                )));
-            }
+            other => text_body(&apod, other).ok_or_else(|| {
+                FetchError::Failed(format!("nasa_apod can't emit {}", other.as_str()))
+            })?,
         };
         Ok(payload(body))
     }
+}
+
+/// Reshape a fetched APOD into one of the non-image shapes. `None` for `Image` (handled
+/// separately, since it needs an async download) or any shape outside `SHAPES`. Pure and sync
+/// so every text-shape branch is testable without a network round-trip.
+fn text_body(apod: &ApiResponse, shape: Shape) -> Option<Body> {
+    Some(match shape {
+        Shape::Text => Body::Text(TextData {
+            value: apod.title.clone(),
+        }),
+        Shape::TextBlock => text_block_body(vec![apod.title.clone(), apod.explanation.clone()]),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: format!("# {}\n\n{}", apod.title, apod.explanation),
+        }),
+        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
+            items: vec![LinkedLine {
+                text: apod.title.clone(),
+                url: apod_page_url(&apod.date),
+            }],
+        }),
+        Shape::Entries => entries_body(apod),
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,9 +195,11 @@ fn encode_segment(s: &str) -> String {
         .collect()
 }
 
-async fn fetch_apod(api_key: &str) -> Result<ApiResponse, FetchError> {
+/// GET + parse the APOD JSON. Takes the fully-built URL (rather than the api key) so tests can
+/// point it at a local server — mirrors `random_dog`'s `fetch_image_url`.
+async fn fetch_apod(url: &str) -> Result<ApiResponse, FetchError> {
     let res = http()
-        .get(build_api_url(api_key))
+        .get(url)
         .send()
         .await
         .map_err(|e| FetchError::Failed(format!("apod API request failed: {e}")))?;
@@ -662,32 +670,104 @@ mod tests {
     }
 
     #[test]
+    fn text_body_builds_each_text_shape() {
+        let apod = sample_apod("image");
+        let Some(Body::Text(t)) = text_body(&apod, Shape::Text) else {
+            panic!("expected Text");
+        };
+        assert_eq!(t.value, "Pillars of Creation");
+
+        let Some(Body::TextBlock(tb)) = text_body(&apod, Shape::TextBlock) else {
+            panic!("expected TextBlock");
+        };
+        assert_eq!(tb.lines, vec![apod.title.clone(), apod.explanation.clone()]);
+
+        let Some(Body::MarkdownTextBlock(md)) = text_body(&apod, Shape::MarkdownTextBlock) else {
+            panic!("expected MarkdownTextBlock");
+        };
+        assert!(md.value.starts_with("# Pillars of Creation\n\n"));
+        assert!(md.value.ends_with(&apod.explanation));
+
+        let Some(Body::LinkedTextBlock(lt)) = text_body(&apod, Shape::LinkedTextBlock) else {
+            panic!("expected LinkedTextBlock");
+        };
+        assert_eq!(lt.items.len(), 1);
+        assert_eq!(lt.items[0].text, "Pillars of Creation");
+        assert_eq!(
+            lt.items[0].url.as_deref(),
+            Some("https://apod.nasa.gov/apod/ap240115.html")
+        );
+
+        assert!(matches!(
+            text_body(&apod, Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+    }
+
+    #[test]
+    fn text_body_returns_none_for_image_and_unsupported_shapes() {
+        let apod = sample_apod("image");
+        assert!(text_body(&apod, Shape::Image).is_none());
+        assert!(text_body(&apod, Shape::Bars).is_none());
+        assert!(text_body(&apod, Shape::Heatmap).is_none());
+    }
+
+    #[test]
+    fn text_body_linked_block_drops_url_for_malformed_date() {
+        let mut apod = sample_apod("image");
+        apod.date = "not-a-date".into();
+        let Some(Body::LinkedTextBlock(lt)) = text_body(&apod, Shape::LinkedTextBlock) else {
+            panic!("expected LinkedTextBlock");
+        };
+        assert!(lt.items[0].url.is_none());
+    }
+
+    #[test]
     fn fetch_apod_reads_success_payload() {
         let body = br#"{"date":"2024-01-15","title":"Pillars of Creation","explanation":"Towers of gas.","url":"https://apod.nasa.gov/apod/image/2401/pillars.jpg","media_type":"image","copyright":"NASA"}"#;
         let (url, server) = serve_once("200 OK", body);
-        // fetch_apod builds its own URL, so exercise the parse path via the response struct.
-        let parsed: ApiResponse = run_async(async {
-            let res = http().get(&url).send().await.unwrap();
-            res.json().await.unwrap()
-        });
+        let apod = run_async(fetch_apod(&url)).unwrap();
         server.join().unwrap();
-        assert_eq!(parsed.title, "Pillars of Creation");
-        assert_eq!(parsed.media_type, "image");
+        assert_eq!(apod.title, "Pillars of Creation");
+        assert_eq!(apod.media_type, "image");
+        assert_eq!(apod.date, "2024-01-15");
     }
 
     #[test]
     fn fetch_apod_rejects_http_status() {
         let (url, server) = serve_once("403 Forbidden", br#"{"error":"over rate limit"}"#);
-        let err = run_async(async {
-            let res = http().get(&url).send().await.unwrap();
-            if !res.status().is_success() {
-                return Err(FetchError::Failed(format!("apod API {}", res.status())));
-            }
-            Ok(())
-        })
-        .unwrap_err();
+        let err = run_async(fetch_apod(&url)).unwrap_err();
         server.join().unwrap();
-        assert!(format!("{err}").contains("403"));
+        assert_eq!(format!("{err}"), "fetch failed: apod API 403 Forbidden");
+    }
+
+    #[test]
+    fn fetch_apod_rejects_invalid_json() {
+        let (url, server) = serve_once("200 OK", b"not-json");
+        let err = run_async(fetch_apod(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(format!("{err}").contains("apod API body"));
+    }
+
+    #[test]
+    fn fetch_apod_rejects_malformed_url() {
+        let err = run_async(fetch_apod("https://bad host")).unwrap_err();
+        assert!(format!("{err}").contains("apod API request failed"));
+    }
+
+    #[test]
+    fn fetch_bytes_reads_small_body() {
+        let bytes = b"\x89PNG\r\n\x1a\nrest";
+        let (url, server) = serve_once("200 OK", bytes);
+        let downloaded = run_async(fetch_bytes(&url)).unwrap();
+        server.join().unwrap();
+        assert_eq!(downloaded, bytes);
+    }
+
+    #[test]
+    fn fetch_bytes_rejects_malformed_url() {
+        let err = run_async(fetch_bytes("https://bad host")).unwrap_err();
+        assert!(format!("{err}").contains("apod image request failed"));
     }
 
     #[test]
@@ -712,6 +792,42 @@ mod tests {
         assert_eq!(format!("{err}"), "fetch failed: apod image 404 Not Found");
     }
 
+    #[test]
+    fn download_image_rejects_off_host_url_before_network() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let err = run_async(download_image(
+            "https://evil.example.com/x.jpg",
+            "test-apod",
+        ))
+        .unwrap_err();
+        restore_env("SPLASHBOARD_HOME", previous);
+        assert!(format!("{err}").contains("off-host image URL"));
+    }
+
+    #[test]
+    fn download_image_surfaces_cache_dir_creation_failure() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("not-a-dir");
+        std::fs::write(&file, b"x").unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", &file) };
+        let err = run_async(download_image(
+            "https://apod.nasa.gov/apod/image/x.jpg",
+            "test-apod",
+        ))
+        .unwrap_err();
+        restore_env("SPLASHBOARD_HOME", previous);
+        assert!(format!("{err}").contains("create apod cache dir"));
+    }
+
     /// Live smoke test — downloads today's APOD and verifies the file is a real image. `#[ignore]`
     /// keeps CI offline-safe; run with
     /// `cargo test -- --ignored fetcher::nasa_apod::tests::live --nocapture`.
@@ -724,7 +840,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
-        let apod = fetch_apod(DEFAULT_API_KEY).await.unwrap();
+        let apod = fetch_apod(&build_api_url(DEFAULT_API_KEY)).await.unwrap();
         eprintln!("APOD {}: {} ({})", apod.date, apod.title, apod.media_type);
         if apod.media_type == "image" {
             let path = download_image(&apod.url, "test-apod").await.unwrap();
