@@ -77,6 +77,9 @@ impl Fetcher for NasaApodFetcher {
     fn description(&self) -> &'static str {
         "NASA's Astronomy Picture of the Day — a fresh curated space photograph each day. The default `Image` shape renders the picture; text shapes surface the title, explanation, and date. On the occasional video day the image shape errors while text shapes still render."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

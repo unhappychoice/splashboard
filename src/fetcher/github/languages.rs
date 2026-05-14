@@ -69,6 +69,9 @@ impl Fetcher for GithubLanguages {
     fn description(&self) -> &'static str {
         "Language byte-count breakdown for a repo, sorted by size. `Bars` / `Entries` / `TextBlock` / `MarkdownTextBlock` carry the full ranking with percent values; `Text` collapses to a `\"Rust 87% · TOML 8% · …\"` headline. Languages beyond `limit` collapse into a single `other` bucket so totals stay honest."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60 * 24
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

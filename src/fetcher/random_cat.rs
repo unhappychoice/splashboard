@@ -60,6 +60,9 @@ impl Fetcher for RandomCatFetcher {
     fn description(&self) -> &'static str {
         "A random cat picture from cataas.com, downloaded each refresh cycle and rendered as an image. Optional `tag` filters by mood (`cute` / `orange` / `kitten` / …)."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

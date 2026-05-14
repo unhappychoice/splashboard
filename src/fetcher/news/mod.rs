@@ -88,6 +88,9 @@ impl Fetcher for NewsFeedFetcher {
     fn description(&self) -> &'static str {
         self.source.description
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 15
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

@@ -81,6 +81,9 @@ impl Fetcher for WeatherForecastFetcher {
     fn description(&self) -> &'static str {
         "Daily multi-day forecast for a fixed (latitude, longitude) via Open-Meteo. `TextBlock` / `Entries` / `Text` summarise highs / lows / precipitation per day; `Ratio` reports the worst precipitation probability in the window; `NumberSeries` carries per-day rainfall totals (tenths of mm or inch) for sparkline / histogram consumers; `Bars` carries per-day precipitation **probability** (%) so the bar chart stays informative even in dry forecasts; `PointSeries` carries high+low temperature curves across days; `Badge` flags the worst weather code; `Timeline` lays the days out chronologically. `days` defaults to 3 (range 1..=7), metric units by default, no API key required."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         &[
             Shape::TextBlock,

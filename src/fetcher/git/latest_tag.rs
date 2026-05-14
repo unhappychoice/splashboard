@@ -26,6 +26,9 @@ impl Fetcher for GitLatestTag {
     fn description(&self) -> &'static str {
         "Most recent git tag by committer time, suitable as a \"latest release\" line. `Text` shows just the tag name; `Entries` adds the short commit hash and ISO date."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

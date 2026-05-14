@@ -73,6 +73,9 @@ impl Fetcher for GithubActionHistory {
     fn description(&self) -> &'static str {
         "Recent CI workflow runs as a pass/fail sparkline (`NumberSeries`), a timeline of the last N runs, a duration scatter plot of `(run_number, seconds)` for spotting CI slowdowns (`PointSeries`), or a passed/failed count breakdown (`Bars`). Use `github_action_status` instead for just the current main-branch state."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

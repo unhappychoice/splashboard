@@ -5,7 +5,7 @@
 //! attach `GH_TOKEN`, avoiding accidental token exposure along the redirect chain.
 //!
 //! Caching: the PNG is written to `$SPLASHBOARD_HOME/cache/avatars/<user>-<size>.png`. The
-//! fetcher framework already gates re-downloads via `refresh_interval`; we default to one week
+//! fetcher framework already gates re-downloads via `refresh_interval`; we default to one day
 //! since avatars rarely change.
 
 use std::path::PathBuf;
@@ -63,7 +63,10 @@ impl Fetcher for GithubAvatar {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "A GitHub user's avatar PNG, downloaded once per week and rendered as an image. Useful as the visual hero next to a `github_user` text block."
+        "A GitHub user's avatar PNG, downloaded once a day and rendered as an image. Useful as the visual hero next to a `github_user` text block."
+    }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60 * 24
     }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Image]
@@ -236,7 +239,7 @@ mod tests {
         let fetcher = GithubAvatar;
         assert_eq!(
             fetcher.description(),
-            "A GitHub user's avatar PNG, downloaded once per week and rendered as an image. Useful as the visual hero next to a `github_user` text block."
+            "A GitHub user's avatar PNG, downloaded once a day and rendered as an image. Useful as the visual hero next to a `github_user` text block."
         );
         assert_eq!(fetcher.shapes(), &[Shape::Image]);
         assert_eq!(fetcher.option_schemas().len(), 2);

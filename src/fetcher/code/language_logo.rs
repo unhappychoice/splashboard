@@ -50,6 +50,9 @@ impl Fetcher for CodeLanguageLogo {
     fn description(&self) -> &'static str {
         "Detects the dominant language across the repo's tracked files and emits a bundled Devicon PNG (covers ~35 languages; falls back to a generic `</>` glyph). Pair with the `media_image` renderer for a `project_codebase`-style hero that scales to whatever cell the layout assigns."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

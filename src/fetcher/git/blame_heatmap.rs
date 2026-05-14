@@ -37,6 +37,9 @@ impl Fetcher for GitBlameHeatmap {
     fn description(&self) -> &'static str {
         "Per-file churn over the last 52 weeks: rows are the seven most-touched files, columns are weeks, cells are commit counts. Use it to spot hotspots; pair with `git_commits_activity` if you want overall cadence instead of per-file breakdown."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

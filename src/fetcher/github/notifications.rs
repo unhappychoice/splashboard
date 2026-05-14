@@ -67,6 +67,9 @@ impl Fetcher for GithubNotifications {
     fn description(&self) -> &'static str {
         "The authenticated user's GitHub notification inbox, unread by default, with each row tagged by reason (mention, review_requested, etc.). Set `all = true` to include already-read notifications."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

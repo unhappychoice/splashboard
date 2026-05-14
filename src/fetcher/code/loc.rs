@@ -101,6 +101,9 @@ impl Fetcher for CodeLoc {
     fn description(&self) -> &'static str {
         "Counts lines per language across tracked source files in the discovered git repo (extension-based classification, vendored / generated dirs and lockfiles skipped). `Text` summarises totals; `TextBlock` / `MarkdownTextBlock` / `Entries` / `Bars` rank languages; `Ratio` exposes the primary language's share; `NumberSeries` sketches the distribution; `Badge` tiers the codebase by size. The `unit` option toggles raw / kloc / percent display."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

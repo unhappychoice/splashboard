@@ -83,6 +83,9 @@ impl Fetcher for StockWatchlistFetcher {
     fn description(&self) -> &'static str {
         "Yahoo Finance price snapshot for a configurable list of tickers. `Entries` (default) / `Text` / `TextBlock` / `MarkdownTextBlock` / `LinkedTextBlock` summarise spot price + intraday change vs previous close; `NumberSeries` carries the first ticker's 5-day intraday price as cents above the period low (so high-magnitude tickers don't flatten the sparkline); `PointSeries` carries one series per ticker for line / scatter charts; `Bars` ranks tickers by |% change| (basis points); `Badge` flags the top mover. No API key required."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 15
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

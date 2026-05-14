@@ -43,6 +43,9 @@ impl Fetcher for GithubRepoStars {
     fn description(&self) -> &'static str {
         "Social counters for a repo: stargazers, forks, watchers, and open-issue count. Use `github_repo` instead for the identity fields (slug, description, license)."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

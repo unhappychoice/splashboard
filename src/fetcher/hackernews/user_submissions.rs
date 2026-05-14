@@ -65,6 +65,9 @@ impl Fetcher for HackernewsUserSubmissionsFetcher {
     fn description(&self) -> &'static str {
         "Recent stories submitted by one Hacker News account (story / show / ask / job — comments are excluded). Use `hackernews_user_comments` for that user's recent comments instead."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

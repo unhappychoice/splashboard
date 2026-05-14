@@ -213,6 +213,9 @@ impl Fetcher for LinearCycle {
         "Linear cycle (sprint) progress — completed/total issues, days remaining, burndown sparkline. `Ratio` is the headline (completion fraction); `NumberSeries` carries the daily completed-count history; `Bars` breaks down issue states; `Calendar` highlights cycle days + issue due dates; `Badge` summarises on-track vs at-risk vs behind."
     }
 
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

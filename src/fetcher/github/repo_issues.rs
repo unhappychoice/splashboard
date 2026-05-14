@@ -61,6 +61,9 @@ impl Fetcher for GithubRepoIssues {
     fn description(&self) -> &'static str {
         "Open issues for a target repo, sorted by most recently updated, with pull requests filtered out client-side. Use `github_assigned_issues` for the personal queue across all repos."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

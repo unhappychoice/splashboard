@@ -102,6 +102,12 @@ pub trait Fetcher: Send + Sync {
     /// `git_stash_count`). No leading verb tense convention; just write so a config author
     /// scanning the catalog can decide whether this is the one they want.
     fn description(&self) -> &'static str;
+    /// How long a successful payload stays fresh in the disk cache, in seconds. Required, with no
+    /// default impl: the fetcher knows how volatile its data is, so every author must make a
+    /// deliberate choice. A per-widget `refresh_interval` in the dashboard config overrides this;
+    /// the runtime resolves the config override first and this value otherwise, with no global
+    /// fallback.
+    fn refresh_interval(&self) -> u64;
     /// Shapes this fetcher can emit. Single-shape fetchers (static_text, disk) return one
     /// variant; fetchers whose one physical read can be reshaped for different widgets (clock,
     /// read_store) list every variant they accept. Validated against the renderer-derived
@@ -438,6 +444,9 @@ mod tests {
         fn description(&self) -> &'static str {
             "test fixture"
         }
+        fn refresh_interval(&self) -> u64 {
+            60
+        }
         fn shapes(&self) -> &[Shape] {
             &[Shape::Text]
         }
@@ -600,6 +609,7 @@ mod tests {
             Some(Body::Text(_))
         ));
         assert_eq!(cached.default_shape(), Shape::Text);
+        assert_eq!(cached.refresh_interval(), 60);
         assert_eq!(
             cached.cache_key(&ctx_with(Some("hi"))),
             default_cache_key("cached", &ctx_with(Some("hi")))

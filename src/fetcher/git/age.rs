@@ -47,6 +47,9 @@ impl Fetcher for GitAge {
     fn description(&self) -> &'static str {
         "Repository age from the first commit reachable from HEAD. Text/TextBlock/Markdown/Linked variants format the duration; Entries/Bars/NumberSeries expose the years/months/days split; Calendar highlights the first-commit day; Badge tags an age tier; Timeline emits the first-commit event."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

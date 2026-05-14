@@ -84,6 +84,9 @@ impl Fetcher for RedditUserCommentsFetcher {
     fn description(&self) -> &'static str {
         "Recent comments by a single Reddit user, each prefixed with subreddit and score and linked to the comment's permalink. Use `reddit_user_posts` for that user's submissions or `reddit_subreddit_posts` for a subreddit's listing."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 30
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

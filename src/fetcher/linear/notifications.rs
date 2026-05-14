@@ -228,6 +228,9 @@ impl Fetcher for LinearNotifications {
         "Linear inbox snapshot — mentions, assignments, comments, status changes — with structured filters for read state, type, and team. List shapes link each row to the originating issue."
     }
 
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

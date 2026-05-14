@@ -32,6 +32,9 @@ impl Fetcher for GitCommitsActivity {
     fn description(&self) -> &'static str {
         "GitHub-style commit calendar for the last 52 weeks, with today's week in the rightmost column. Pick this for overall repo cadence; `git_blame_heatmap` breaks the same window down by file."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

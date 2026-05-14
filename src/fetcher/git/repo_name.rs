@@ -24,6 +24,9 @@ impl Fetcher for GitRepoName {
     fn description(&self) -> &'static str {
         "Repository name as a single line, suitable for a hero header. Derived from the `origin` remote (parsed as `owner/name`); falls back to the working directory's basename when no remote is configured."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 60
+    }
     fn shapes(&self) -> &[Shape] {
         &[Shape::Text]
     }

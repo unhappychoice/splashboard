@@ -80,6 +80,9 @@ impl Fetcher for CodeComments {
     fn description(&self) -> &'static str {
         "Comment-density per language across tracked source files in the discovered git repo. tokei parses each file into `code` / `comments` / `blanks`; this fetcher surfaces the comment share. `Text` headlines the whole-repo ratio; `TextBlock` / `MarkdownTextBlock` / `Entries` / `Bars` rank per-language values (default `percent`, override with `unit = loc | kloc`); `Ratio` exposes the whole-repo share for gauges; `Badge` tiers documentation posture (`undocumented` / `light` / `balanced` / `documented` / `verbose`)."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 10
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }

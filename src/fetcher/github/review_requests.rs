@@ -50,6 +50,9 @@ impl Fetcher for GithubReviewRequests {
     fn description(&self) -> &'static str {
         "Open pull requests where the authenticated user is a requested reviewer, across every repo. The other side of `github_my_prs` for the personal queue."
     }
+    fn refresh_interval(&self) -> u64 {
+        60 * 5
+    }
     fn shapes(&self) -> &[Shape] {
         SHAPES
     }
