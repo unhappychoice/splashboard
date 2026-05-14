@@ -671,6 +671,28 @@ mod tests {
         assert_eq!(sorted, vec!["alpha".to_string(), "bravo".to_string()]);
     }
 
+    #[test]
+    fn every_cached_builtin_declares_a_sane_refresh_interval() {
+        // refresh_interval() is a required trait method with no default impl. This sweep guards
+        // the invariant the runtime relies on: a cached fetcher must never declare 0 (always
+        // stale — it would re-fetch on every frame), and values stay within a sane band.
+        let registry = Registry::with_builtins();
+        let cached: Vec<_> = registry
+            .sorted()
+            .into_iter()
+            .filter_map(|f| f.as_cached())
+            .collect();
+        assert!(!cached.is_empty(), "expected builtin cached fetchers");
+        for fetcher in cached {
+            let secs = fetcher.refresh_interval();
+            assert!(
+                (1..=60 * 60 * 24 * 7).contains(&secs),
+                "{} declared refresh_interval() = {secs}s, outside 1s..=1w",
+                fetcher.name(),
+            );
+        }
+    }
+
     fn ctx_with(format: Option<&str>) -> FetchContext {
         FetchContext {
             widget_id: "w".into(),
