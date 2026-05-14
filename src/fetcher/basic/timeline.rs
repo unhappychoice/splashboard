@@ -141,7 +141,10 @@ mod tests {
         assert_eq!(d.events.len(), 2);
         assert_eq!(d.events[0].timestamp, 1_704_067_200);
         assert_eq!(d.events[0].title, "v1.0");
-        assert_eq!(d.events[1].detail.as_deref(), Some("no new features after this"));
+        assert_eq!(
+            d.events[1].detail.as_deref(),
+            Some("no new features after this")
+        );
         assert_eq!(d.events[1].status, Some(Status::Warn));
     }
 

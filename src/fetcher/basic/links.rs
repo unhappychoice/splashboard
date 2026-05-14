@@ -115,7 +115,11 @@ fn body_for_shape(links: &[LinkConfig], shape: Shape) -> Body {
             lines: links.iter().map(|l| l.label.clone()).collect(),
         }),
         Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
-            value: links.iter().map(markdown_bullet).collect::<Vec<_>>().join("\n"),
+            value: links
+                .iter()
+                .map(markdown_bullet)
+                .collect::<Vec<_>>()
+                .join("\n"),
         }),
         Shape::Entries => Body::Entries(EntriesData {
             items: links
@@ -220,7 +224,12 @@ mod tests {
             ),
             Some(Shape::Text),
         ));
-        assert_eq!(p.body, Body::Text(TextData { value: "Docs".into() }));
+        assert_eq!(
+            p.body,
+            Body::Text(TextData {
+                value: "Docs".into()
+            })
+        );
     }
 
     #[test]

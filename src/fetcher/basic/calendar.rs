@@ -109,10 +109,10 @@ impl RealtimeFetcher for BasicCalendar {
         if !(1..=12).contains(&month) {
             return common::placeholder("basic_calendar: `month` must be 1..=12");
         }
-        if let Some(d) = day {
-            if !(1..=31).contains(&d) {
-                return common::placeholder("basic_calendar: `day` must be 1..=31");
-            }
+        if let Some(d) = day
+            && !(1..=31).contains(&d)
+        {
+            return common::placeholder("basic_calendar: `day` must be 1..=31");
         }
         common::bare(Body::Calendar(CalendarData {
             year,
