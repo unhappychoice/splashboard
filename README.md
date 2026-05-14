@@ -95,5 +95,7 @@ If you find this project useful, please consider:
 - 💼 [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A//github.com/unhappychoice/splashboard)
 - 📘 [Share on Facebook](https://www.facebook.com/sharer/sharer.php?u=https%3A//github.com/unhappychoice/splashboard)
 - 🟧 [Submit to Hacker News](https://news.ycombinator.com/submitlink?u=https%3A//github.com/unhappychoice/splashboard&t=splashboard%3A%20a%20customizable%20terminal%20splash%20screen%20with%20plugin-based%20data%20sources.%20Pretty%20up%20your%20shell%20startup%20%E2%9C%A8)
+- 💬 Drop it into your Discord server or developer chat
+- ✍️ Write about it on your blog or in a newsletter
 
 Every bit of support helps. Thanks!
