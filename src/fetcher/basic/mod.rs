@@ -14,6 +14,7 @@ pub mod common;
 pub mod entries;
 pub mod image;
 pub mod links;
+pub mod numbers;
 pub mod ratio;
 
 pub use badge::BasicBadge;
@@ -21,6 +22,7 @@ pub use bars::BasicBars;
 pub use entries::BasicEntries;
 pub use image::BasicImage;
 pub use links::BasicLinks;
+pub use numbers::BasicNumbers;
 pub use ratio::BasicRatio;
 
 pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
@@ -31,5 +33,6 @@ pub fn realtime_fetchers() -> Vec<Arc<dyn RealtimeFetcher>> {
         Arc::new(BasicRatio),
         Arc::new(BasicBars),
         Arc::new(BasicEntries),
+        Arc::new(BasicNumbers),
     ]
 }
