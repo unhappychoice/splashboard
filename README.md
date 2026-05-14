@@ -83,3 +83,17 @@ ISC
 - [gitlogue](https://github.com/unhappychoice/gitlogue) — cinematic git history replay
 - [gittype](https://github.com/unhappychoice/gittype) — CLI typing game from your source code
 - [mdts](https://github.com/unhappychoice/mdts) — local Markdown tree server
+
+## Support
+
+If you find this project useful, please consider:
+
+- ⭐️ [Star on GitHub](https://github.com/unhappychoice/splashboard)
+- 🐦 [Share on X](https://x.com/intent/post?text=splashboard%3A%20a%20customizable%20terminal%20splash%20screen%20with%20plugin-based%20data%20sources.%20Pretty%20up%20your%20shell%20startup%20%E2%9C%A8&url=https%3A//github.com/unhappychoice/splashboard&hashtags=splashboard)
+- 🦋 [Share on Bluesky](https://bsky.app/intent/compose?text=splashboard%3A%20a%20customizable%20terminal%20splash%20screen%20with%20plugin-based%20data%20sources.%20Pretty%20up%20your%20shell%20startup%20%E2%9C%A8%20%23splashboard%20https%3A//github.com/unhappychoice/splashboard)
+- 🧵 [Share on Threads](https://www.threads.net/intent/post?text=splashboard%3A%20a%20customizable%20terminal%20splash%20screen%20with%20plugin-based%20data%20sources.%20Pretty%20up%20your%20shell%20startup%20%E2%9C%A8%20%23splashboard%20https%3A//github.com/unhappychoice/splashboard)
+- 💼 [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A//github.com/unhappychoice/splashboard)
+- 📘 [Share on Facebook](https://www.facebook.com/sharer/sharer.php?u=https%3A//github.com/unhappychoice/splashboard)
+- 🟧 [Submit to Hacker News](https://news.ycombinator.com/submitlink?u=https%3A//github.com/unhappychoice/splashboard&t=splashboard%3A%20a%20customizable%20terminal%20splash%20screen%20with%20plugin-based%20data%20sources.%20Pretty%20up%20your%20shell%20startup%20%E2%9C%A8)
+
+Every bit of support helps. Thanks!
