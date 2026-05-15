@@ -997,7 +997,8 @@ fn draw<B: Backend>(
 /// natural `requested_height`, top-anchored — `draw_frame` distributes the layout's rows across
 /// whatever area it's handed, so a fullscreen area would stretch the dashboard down to fill the
 /// terminal. The whole screen is painted with the theme bg first so the band below the
-/// dashboard isn't a bare terminal-coloured strip.
+/// dashboard isn't a bare terminal-coloured strip, and the bottom row is reserved for the
+/// key-binding footer.
 #[allow(clippy::too_many_arguments)]
 fn draw_watch<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -1014,15 +1015,33 @@ fn draw_watch<B: Backend>(
     terminal.draw(|frame| {
         let full = frame.area();
         paint_viewport_bg(frame, full, theme);
-        let area = Rect {
-            height: requested_height.min(full.height),
+        let footer_height = u16::from(full.height >= 2);
+        let body = Rect {
+            height: requested_height.min(full.height - footer_height),
             ..full
         };
         draw_frame(
-            frame, area, root, payloads, specs, registry, theme, general, padding, 0, loading,
+            frame, body, root, payloads, specs, registry, theme, general, padding, 0, loading,
         );
+        if footer_height > 0 {
+            let footer = Rect {
+                y: full.y + full.height - 1,
+                height: 1,
+                ..full
+            };
+            render_watch_footer(frame, footer, theme);
+        }
     })?;
     Ok(())
+}
+
+/// One-line key-binding footer pinned to the bottom of the `watch` alternate screen, painted on
+/// the theme's subtle surface so it reads as chrome separate from the dashboard band.
+fn render_watch_footer(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let style = Style::default().bg(theme.bg_subtle).fg(theme.text_dim);
+    frame.render_widget(Block::default().style(style), area);
+    let hint = Paragraph::new(Line::from(" q / Ctrl-C  quit").style(style));
+    frame.render_widget(hint, area);
 }
 
 /// Same as [`draw`] but parks the cursor at the bottom-left of the inline area afterwards, so
@@ -1414,6 +1433,44 @@ mod tests {
         crate::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn draw_watch_pins_footer_to_bottom_row_and_keeps_dashboard_top_anchored() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("hello"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(50, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let loading = HashMap::new();
+        draw_watch(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            &General::default(),
+            (0, 0),
+            3,
+            &loading,
+        )
+        .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(
+            row_text(&buf, 0).contains("hello"),
+            "dashboard top-anchored"
+        );
+        let footer = row_text(&buf, 19);
+        assert!(footer.contains("quit"), "footer in bottom row: {footer:?}");
+        assert_eq!(
+            buf.cell((0, 19)).unwrap().bg,
+            theme.bg_subtle,
+            "footer painted on the subtle surface"
+        );
     }
 
     #[test]
