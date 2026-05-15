@@ -146,4 +146,35 @@ mod tests {
         };
         assert!(d.cells.is_empty());
     }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicHeatmap;
+        assert_eq!(f.safety(), Safety::Safe);
+        assert!(!f.description().is_empty());
+        let names: Vec<_> = f.option_schemas().iter().map(|s| s.name).collect();
+        assert_eq!(
+            names,
+            vec!["cells", "thresholds", "row_labels", "col_labels"]
+        );
+    }
+
+    #[test]
+    fn sample_body_matches_declared_shape_only() {
+        let f = BasicHeatmap;
+        assert!(matches!(
+            f.sample_body(Shape::Heatmap),
+            Some(Body::Heatmap(_))
+        ));
+        assert!(f.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn invalid_options_render_placeholder() {
+        let p = compute(r#"cells = "not-a-grid""#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+    }
 }

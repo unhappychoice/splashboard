@@ -127,4 +127,37 @@ mod tests {
         };
         assert!(d.series.is_empty());
     }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicPoints;
+        assert_eq!(f.safety(), Safety::Safe);
+        assert!(!f.description().is_empty());
+        assert_eq!(
+            f.option_schemas()
+                .iter()
+                .map(|s| s.name)
+                .collect::<Vec<_>>(),
+            vec!["series"]
+        );
+    }
+
+    #[test]
+    fn sample_body_matches_declared_shape_only() {
+        let f = BasicPoints;
+        assert!(matches!(
+            f.sample_body(Shape::PointSeries),
+            Some(Body::PointSeries(_))
+        ));
+        assert!(f.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn invalid_options_render_placeholder() {
+        let p = compute(r#"series = "not-a-list""#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+    }
 }
