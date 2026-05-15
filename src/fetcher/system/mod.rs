@@ -1088,6 +1088,100 @@ mod tests {
     }
 
     #[test]
+    fn detect_timezone_falls_back_without_tz_env() {
+        let _guard = EnvGuard::set(&[("TZ", None)]);
+        // Without TZ, reads /etc/localtime — zoneinfo-derived name, the symlink
+        // basename, or "unknown" if the read fails. Host-dependent value; just
+        // assert the function never returns an empty string.
+        assert!(!detect_timezone().is_empty());
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn detect_desktop_environment_strips_colon_and_falls_through() {
+        let _guard = EnvGuard::set(&[
+            ("XDG_CURRENT_DESKTOP", Some("GNOME:Unity")),
+            ("DESKTOP_SESSION", Some("kde")),
+            ("GDMSESSION", None),
+        ]);
+        assert_eq!(detect_desktop_environment(), "GNOME");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("XDG_CURRENT_DESKTOP", Some("")),
+            ("DESKTOP_SESSION", Some("plasma")),
+            ("GDMSESSION", None),
+        ]);
+        assert_eq!(detect_desktop_environment(), "plasma");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("XDG_CURRENT_DESKTOP", None),
+            ("DESKTOP_SESSION", None),
+            ("GDMSESSION", None),
+        ]);
+        assert_eq!(detect_desktop_environment(), "tty");
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn detect_window_manager_separates_wayland_x11_and_tty() {
+        let _guard = EnvGuard::set(&[
+            ("WAYLAND_DISPLAY", Some("wayland-0")),
+            ("DISPLAY", None),
+            ("XDG_SESSION_DESKTOP", Some("sway")),
+        ]);
+        assert_eq!(detect_window_manager(), "sway");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("WAYLAND_DISPLAY", Some("wayland-0")),
+            ("DISPLAY", None),
+            ("XDG_SESSION_DESKTOP", None),
+        ]);
+        assert_eq!(detect_window_manager(), "wayland");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("WAYLAND_DISPLAY", None),
+            ("DISPLAY", Some(":0")),
+            ("XDG_SESSION_DESKTOP", Some("i3")),
+        ]);
+        assert_eq!(detect_window_manager(), "i3");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("WAYLAND_DISPLAY", None),
+            ("DISPLAY", Some(":0")),
+            ("XDG_SESSION_DESKTOP", None),
+        ]);
+        assert_eq!(detect_window_manager(), "x11");
+        drop(_guard);
+
+        let _guard = EnvGuard::set(&[
+            ("WAYLAND_DISPLAY", None),
+            ("DISPLAY", None),
+            ("XDG_SESSION_DESKTOP", None),
+        ]);
+        assert_eq!(detect_window_manager(), "tty");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn detect_init_system_reads_proc_one_comm_on_linux() {
+        // /proc/1/comm is always non-empty on a live Linux host; the call
+        // exercises the read + trim + return path.
+        assert!(!detect_init_system().is_empty());
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn detect_init_system_returns_platform_constant() {
+        let name = detect_init_system();
+        assert!(matches!(name.as_str(), "launchd" | "wininit"));
+    }
+
+    #[test]
     fn cpu_info_cache_returns_non_empty_fields() {
         let info = cached_cpu_info();
         assert!(!info.model.is_empty());
