@@ -43,9 +43,6 @@ mod tests {
     #[test]
     fn compute_returns_non_empty_text() {
         let p = SystemInfoTimezone.compute(&ctx_text(None));
-        let Body::Text(t) = p.body else {
-            panic!("expected text");
-        };
-        assert!(!t.value.is_empty());
+        assert!(matches!(p.body, Body::Text(t) if !t.value.is_empty()));
     }
 }
