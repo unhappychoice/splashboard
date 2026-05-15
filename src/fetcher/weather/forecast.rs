@@ -868,6 +868,35 @@ mod tests {
         assert!(matches!(err, FetchError::Failed(msg) if msg.contains("days")));
     }
 
+    #[test]
+    fn weekday_short_returns_three_letter_label_for_every_weekday() {
+        // `Forecast::sample()` only spans Mon..Wed, so the Thu..Sun arms only get hit
+        // when we call `weekday_short` directly with each variant.
+        let cases = [
+            (Weekday::Mon, "Mon"),
+            (Weekday::Tue, "Tue"),
+            (Weekday::Wed, "Wed"),
+            (Weekday::Thu, "Thu"),
+            (Weekday::Fri, "Fri"),
+            (Weekday::Sat, "Sat"),
+            (Weekday::Sun, "Sun"),
+        ];
+        for (weekday, expected) in cases {
+            assert_eq!(weekday_short(weekday), expected);
+        }
+    }
+
+    #[test]
+    fn ratio_with_empty_forecast_collapses_to_zero_with_no_label() {
+        let forecast = forecast_with(Vec::new(), Units::Metric);
+        let Body::Ratio(data) = ratio(&forecast) else {
+            unreachable!("ratio always returns Body::Ratio");
+        };
+        assert_eq!(data.value, 0.0);
+        assert!(data.label.is_none());
+        assert_eq!(data.denominator, Some(100));
+    }
+
     /// Live smoke test — hits Open-Meteo. `#[ignore]` keeps CI offline-safe. Run with
     /// `cargo test -- --ignored fetcher::weather::forecast::tests::live` to verify the API
     /// shape and weekday rendering for "today + 2".
