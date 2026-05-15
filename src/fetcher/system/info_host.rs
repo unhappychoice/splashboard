@@ -113,4 +113,24 @@ mod tests {
             assert!(t.value.starts_with("⚠"));
         }
     }
+
+    /// Each remaining `kind` variant (`os` / `os_version` / `hostname` / `shell`) routes through
+    /// its own match arm in `compute`. We don't pin the value (it depends on the host), but the
+    /// branch must produce a non-empty `Text` body.
+    #[test]
+    fn every_kind_variant_produces_non_empty_text() {
+        for kind in ["terminal", "os", "os_version", "hostname", "shell", "arch"] {
+            let raw = format!("kind = \"{kind}\"");
+            let p = SystemInfoHost.compute(&ctx_text(Some(&raw)));
+            let Body::Text(t) = p.body else {
+                panic!("{kind}: expected Body::Text, got something else");
+            };
+            assert!(!t.value.is_empty(), "{kind}: value should not be empty");
+            assert!(
+                !t.value.starts_with('⚠'),
+                "{kind}: should not be a placeholder, got {:?}",
+                t.value
+            );
+        }
+    }
 }

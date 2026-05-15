@@ -107,4 +107,17 @@ mod tests {
         let p = SystemMonitorDisk.fetch(&ctx).await.unwrap();
         assert!(matches!(p.body, Body::Bars(_)));
     }
+
+    /// `Shape::Text` exercises the `disk_label` / "no disks" fallback arm. The exact label
+    /// depends on the host's mounted disks (and may legitimately be `"no disks"` in a sandbox);
+    /// we just assert the dispatch produces a non-empty `Text` body.
+    #[tokio::test]
+    async fn text_shape_emits_text_body() {
+        let ctx = ctx_with_shape(Some(Shape::Text));
+        let p = SystemMonitorDisk.fetch(&ctx).await.unwrap();
+        let Body::Text(t) = p.body else {
+            panic!("expected Body::Text");
+        };
+        assert!(!t.value.is_empty());
+    }
 }
