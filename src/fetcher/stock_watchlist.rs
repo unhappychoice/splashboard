@@ -1001,6 +1001,68 @@ mod tests {
         assert!(fetcher.sample_body(Shape::Ratio).is_none());
     }
 
+    #[test]
+    fn text_value_falls_back_to_no_symbols_when_snapshot_is_empty() {
+        // The `Some(top)` arm is exercised via `sample_snapshot` through `body_for_shape`; the
+        // `None` arm only fires when every fetch returned no row. Pin the placeholder so a
+        // future refactor doesn't silently change the empty-state hint.
+        let snap = Snapshot { stocks: vec![] };
+        assert_eq!(text_value(&snap), "no symbols");
+    }
+
+    #[test]
+    fn add_thousands_separators_groups_integer_only_inputs_without_a_decimal() {
+        // `format_amount` always emits a `.`, so this branch is unreachable through public
+        // callers — but the helper is reused locally and the integer-only fork would silently
+        // drop the leading `-` if it ever broke. Keep the contract pinned.
+        assert_eq!(add_thousands_separators("1234"), "1,234");
+        assert_eq!(add_thousands_separators("-1234567"), "-1,234,567");
+        assert_eq!(add_thousands_separators("0"), "0");
+    }
+
+    #[test]
+    fn from_api_change_pct_collapses_to_zero_when_price_and_prev_close_are_zero() {
+        // prev_close filters out 0.0 (fails > EPSILON) and falls back to `price`. With price
+        // also 0.0, the divisor is sub-EPSILON and the formula short-circuits to 0.0 — the
+        // only path that exercises the `else` arm of the change-percent computation.
+        let result = ApiResult {
+            meta: ApiMeta {
+                symbol: "zero".into(),
+                currency: Some("USD".into()),
+                regular_market_price: Some(0.0),
+                chart_previous_close: Some(0.0),
+                previous_close: None,
+            },
+            indicators: None,
+        };
+        let stock = StockPoint::from_api(result).unwrap();
+        assert_eq!(stock.price, 0.0);
+        assert_eq!(stock.change_pct, 0.0);
+    }
+
+    #[test]
+    fn payload_helper_wraps_body_with_no_chrome_metadata() {
+        // The helper is only invoked through `fetch` (network-bound), so the chrome-free
+        // wrapper isn't otherwise covered. Document that the family forwards the body as-is.
+        let p = payload(Body::Text(TextData {
+            value: "hello".into(),
+        }));
+        assert!(p.icon.is_none());
+        assert!(p.status.is_none());
+        assert!(p.format.is_none());
+        let Body::Text(t) = p.body else {
+            panic!("expected text body");
+        };
+        assert_eq!(t.value, "hello");
+    }
+
+    #[test]
+    fn http_returns_a_singleton_client() {
+        // Cheap guard against a refactor that swaps the `OnceLock` for a per-call builder —
+        // every fetch in the watchlist family shares the same connection pool today.
+        assert!(std::ptr::eq(http(), http()));
+    }
+
     /// Live smoke test — hits Yahoo Finance. `#[ignore]` keeps CI offline-safe; run with
     /// `cargo test -- --ignored fetcher::stock_watchlist::tests::live` to verify the real API.
     #[tokio::test]
