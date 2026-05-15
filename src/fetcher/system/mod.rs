@@ -1045,6 +1045,27 @@ mod tests {
         assert_eq!(env_basename("EDITOR", "(unset)"), "(unset)");
     }
 
+    /// `Path::new("/").file_name()` is `None` on Unix-y hosts, so a `$EDITOR` of just `/` must
+    /// drop into the `unwrap_or_else(|| trimmed.to_string())` arm and return the original
+    /// (trimmed) value rather than the fallback. Guards the carve-out that keeps environments
+    /// whose `$EDITOR` resolves to a filename-less path from being silently rewritten to
+    /// `"(unset)"`.
+    #[test]
+    #[cfg(unix)]
+    fn env_basename_returns_trimmed_path_when_file_name_is_empty() {
+        let _guard = EnvGuard::set(&[("EDITOR", Some("/"))]);
+        assert_eq!(env_basename("EDITOR", "(unset)"), "/");
+    }
+
+    /// `Hyper` is the one `TERM_PROGRAM` arm not exercised by the existing terminal-detect
+    /// tests — the other arm covering "Hyper" appears as a *deprioritised* alternative under
+    /// `WT_SESSION`, which preempts it. Drive only `TERM_PROGRAM=Hyper` so the dedicated
+    /// match arm reports back.
+    #[test]
+    fn detect_terminal_recognises_hyper_term_program() {
+        assert_eq!(detect_terminal_with(&[("TERM_PROGRAM", "Hyper")]), "Hyper");
+    }
+
     #[test]
     #[cfg(target_os = "linux")]
     fn cpu_mhz_from_proc_cpuinfo_returns_some_on_linux() {
