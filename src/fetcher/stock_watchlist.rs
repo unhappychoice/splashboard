@@ -1063,6 +1063,20 @@ mod tests {
         assert!(std::ptr::eq(http(), http()));
     }
 
+    /// `resolve_symbols` already rejects empty input via the public `fetch` entrypoint, so this
+    /// exercises the otherwise-unreachable "no symbols returned data" fallback inside
+    /// `fetch_snapshot` directly. With an empty slice the `JoinSet` stays empty,
+    /// `set.join_next().await` immediately returns `None`, `indexed` is empty, and the
+    /// `last_error.unwrap_or_else(...)` arm materialises the fallback message.
+    #[tokio::test]
+    async fn fetch_snapshot_surfaces_no_data_when_no_symbols_were_requested() {
+        let err = fetch_snapshot(&[]).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref message) if message.contains("no symbols returned data")
+        ));
+    }
+
     /// Live smoke test — hits Yahoo Finance. `#[ignore]` keeps CI offline-safe; run with
     /// `cargo test -- --ignored fetcher::stock_watchlist::tests::live` to verify the real API.
     #[tokio::test]
