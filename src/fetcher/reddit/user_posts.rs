@@ -218,18 +218,47 @@ mod tests {
     #[tokio::test]
     async fn render_for_shape_image_linked_returns_empty_image_list_for_no_posts() {
         let body = render_for_shape(&[], Shape::ImageLinkedList).await;
-        match body {
-            Body::ImageLinkedList(data) => assert!(data.items.is_empty()),
-            other => panic!("expected ImageLinkedList, got {other:?}"),
-        }
+        assert!(matches!(body, Body::ImageLinkedList(data) if data.items.is_empty()));
     }
 
     #[tokio::test]
     async fn render_for_shape_non_image_dispatches_to_sync_renderer() {
         let body = render_for_shape(&[], Shape::TextBlock).await;
-        match body {
-            Body::TextBlock(data) => assert!(data.lines.is_empty()),
-            other => panic!("expected TextBlock, got {other:?}"),
-        }
+        assert!(matches!(body, Body::TextBlock(data) if data.lines.is_empty()));
+    }
+
+    /// Exercises the iterator+collect closure body in `render_for_shape`'s ImageLinkedList arm
+    /// with non-empty input. Both posts use Reddit's non-URL thumbnail placeholders (`"self"`,
+    /// empty string), so `Post::thumbnail_url()` filters them to `None` and `download_many`
+    /// short-circuits without hitting the network — covering the closure path that the
+    /// empty-posts test bypasses.
+    #[tokio::test]
+    async fn render_for_shape_image_linked_with_posts_runs_thumbnail_resolution_closure() {
+        let posts = vec![
+            Post {
+                title: Some("first".into()),
+                score: Some(10),
+                num_comments: Some(2),
+                subreddit: Some("rust".into()),
+                permalink: Some("/r/rust/comments/abc/first/".into()),
+                url: Some("https://example.com/first".into()),
+                thumbnail: Some("self".into()),
+            },
+            Post {
+                title: Some("second".into()),
+                score: Some(5),
+                num_comments: Some(0),
+                subreddit: Some("rust".into()),
+                permalink: Some("/r/rust/comments/def/second/".into()),
+                url: Some("https://example.com/second".into()),
+                thumbnail: Some("".into()),
+            },
+        ];
+        let body = render_for_shape(&posts, Shape::ImageLinkedList).await;
+        assert!(matches!(body, Body::ImageLinkedList(data)
+            if data.items.len() == 2
+                && data.items.iter().all(|i| i.thumbnail_path.is_none())
+                && data.items[0].title == "first"
+                && data.items[1].title == "second"));
     }
 }
