@@ -403,6 +403,26 @@ mod tests {
         restore_home(previous);
     }
 
+    #[test]
+    fn restore_home_reapplies_previous_value_when_present() {
+        // The standard save→mutate→restore flow only fires the None arm because tests start
+        // with SPLASHBOARD_HOME unset. Pre-seeding the var captures `Some(...)` so restore_home
+        // exercises the `Some(value) => set_var` arm explicitly.
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prior = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", "/tmp/splashboard-cat-restore-prior") };
+        let captured = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", "/tmp/splashboard-cat-restore-other") };
+        restore_home(captured);
+        assert_eq!(
+            std::env::var("SPLASHBOARD_HOME").ok().as_deref(),
+            Some("/tmp/splashboard-cat-restore-prior")
+        );
+        restore_home(prior);
+    }
+
     #[tokio::test]
     async fn fetch_rejects_unknown_options_before_network() {
         let err = RandomCatFetcher
