@@ -334,3 +334,383 @@ pub(crate) fn link_for(entry: &Entry) -> Option<String> {
         .or_else(|| entry.links.iter().find(|l| !l.href.is_empty()))
         .map(|l| l.href.clone())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+    use feed_rs::model::{
+        Content, Entry as FeedEntry, Feed as FeedDoc, FeedType, Image, Link, MediaContent,
+        MediaObject, MediaThumbnail, Text,
+    };
+
+    fn empty_feed() -> FeedDoc {
+        FeedDoc {
+            feed_type: FeedType::RSS2,
+            id: String::new(),
+            updated: None,
+            authors: vec![],
+            title: None,
+            description: None,
+            links: vec![],
+            categories: vec![],
+            contributors: vec![],
+            generator: None,
+            icon: None,
+            language: None,
+            logo: None,
+            published: None,
+            rating: None,
+            rights: None,
+            ttl: None,
+            entries: vec![],
+        }
+    }
+
+    fn entry_with_title_and_link(title: &str, href: &str) -> FeedEntry {
+        FeedEntry {
+            title: Some(Text {
+                content_type: "text/plain".parse().unwrap(),
+                src: None,
+                content: title.into(),
+            }),
+            published: Some(Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
+            links: vec![Link {
+                href: href.into(),
+                rel: None,
+                media_type: None,
+                href_lang: None,
+                title: None,
+                length: None,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn render_body_text_uses_first_entry_title_or_empty() {
+        let mut feed = empty_feed();
+        feed.entries
+            .push(entry_with_title_and_link("First", "https://example.com/1"));
+        feed.entries
+            .push(entry_with_title_and_link("Second", "https://example.com/2"));
+        let body = render_body(&feed, 5, Shape::Text, Some("UTC"), None);
+        let Body::Text(t) = body else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, "First");
+
+        let body_empty = render_body(&empty_feed(), 5, Shape::Text, None, None);
+        let Body::Text(t) = body_empty else {
+            panic!("expected text");
+        };
+        assert!(t.value.is_empty());
+    }
+
+    #[test]
+    fn render_body_markdown_text_block_wraps_each_entry_with_link_syntax() {
+        let mut feed = empty_feed();
+        feed.entries
+            .push(entry_with_title_and_link("First", "https://example.com/1"));
+        feed.entries
+            .push(entry_with_title_and_link("Second", "https://example.com/2"));
+        let body = render_body(&feed, 5, Shape::MarkdownTextBlock, Some("UTC"), None);
+        let Body::MarkdownTextBlock(md) = body else {
+            panic!("expected markdown text block");
+        };
+        let lines: Vec<&str> = md.value.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("- ["), "got: {}", lines[0]);
+        assert!(lines[0].contains("First"));
+        assert!(lines[0].contains("https://example.com/1"));
+        assert!(lines[0].contains("Apr 26"));
+    }
+
+    #[test]
+    fn render_body_markdown_drops_link_syntax_when_no_url_and_no_date() {
+        let entry = FeedEntry {
+            title: Some(Text {
+                content_type: "text/plain".parse().unwrap(),
+                src: None,
+                content: "Bare".into(),
+            }),
+            ..Default::default()
+        };
+        let mut feed = empty_feed();
+        feed.entries.push(entry);
+        let body = render_body(&feed, 5, Shape::MarkdownTextBlock, None, None);
+        let Body::MarkdownTextBlock(md) = body else {
+            panic!("expected markdown text block");
+        };
+        // No link wrapper, no date prefix — just the bullet + title.
+        assert_eq!(md.value, "- Bare");
+    }
+
+    #[test]
+    fn render_body_entries_emits_title_value_pairs_with_optional_date() {
+        let mut feed = empty_feed();
+        feed.entries
+            .push(entry_with_title_and_link("First", "https://example.com/1"));
+        let body = render_body(&feed, 5, Shape::Entries, Some("UTC"), None);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].key, "First");
+        assert_eq!(e.items[0].value.as_deref(), Some("Apr 26"));
+    }
+
+    #[test]
+    fn render_body_entries_omits_value_when_date_missing() {
+        let mut feed = empty_feed();
+        let mut e = entry_with_title_and_link("First", "https://example.com/1");
+        e.published = None;
+        e.updated = None;
+        feed.entries.push(e);
+        let body = render_body(&feed, 5, Shape::Entries, Some("UTC"), None);
+        let Body::Entries(e) = body else {
+            panic!("expected entries");
+        };
+        assert!(e.items[0].value.is_none());
+    }
+
+    #[test]
+    fn render_body_timeline_carries_link_host_and_timestamp() {
+        let mut feed = empty_feed();
+        feed.entries.push(entry_with_title_and_link(
+            "First",
+            "https://blog.example.com/post",
+        ));
+        let body = render_body(&feed, 5, Shape::Timeline, None, None);
+        let Body::Timeline(t) = body else {
+            panic!("expected timeline");
+        };
+        assert_eq!(t.events.len(), 1);
+        assert_eq!(t.events[0].title, "First");
+        assert_eq!(t.events[0].detail.as_deref(), Some("blog.example.com"));
+        // Apr 26 2026 12:00:00 UTC.
+        assert_eq!(
+            t.events[0].timestamp,
+            Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0)
+                .unwrap()
+                .timestamp(),
+        );
+    }
+
+    #[test]
+    fn render_body_timeline_falls_back_to_zero_timestamp_and_none_detail() {
+        let entry = FeedEntry {
+            title: Some(Text {
+                content_type: "text/plain".parse().unwrap(),
+                src: None,
+                content: "Bare".into(),
+            }),
+            ..Default::default()
+        };
+        let mut feed = empty_feed();
+        feed.entries.push(entry);
+        let body = render_body(&feed, 5, Shape::Timeline, None, None);
+        let Body::Timeline(t) = body else {
+            panic!("expected timeline");
+        };
+        assert_eq!(t.events[0].timestamp, 0);
+        assert!(t.events[0].detail.is_none());
+    }
+
+    #[test]
+    fn link_for_prefers_alternate_over_self() {
+        let entry = FeedEntry {
+            links: vec![
+                Link {
+                    href: "https://example.com/feed.xml".into(),
+                    rel: Some("self".into()),
+                    media_type: None,
+                    href_lang: None,
+                    title: None,
+                    length: None,
+                },
+                Link {
+                    href: "https://example.com/post".into(),
+                    rel: Some("alternate".into()),
+                    media_type: None,
+                    href_lang: None,
+                    title: None,
+                    length: None,
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            link_for(&entry).as_deref(),
+            Some("https://example.com/post")
+        );
+    }
+
+    #[test]
+    fn link_for_falls_back_to_any_link_when_no_alternate_or_default_rel() {
+        let entry = FeedEntry {
+            links: vec![Link {
+                href: "https://example.com/enclosure.mp3".into(),
+                rel: Some("enclosure".into()),
+                media_type: None,
+                href_lang: None,
+                title: None,
+                length: None,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            link_for(&entry).as_deref(),
+            Some("https://example.com/enclosure.mp3"),
+        );
+    }
+
+    #[test]
+    fn link_for_returns_none_when_links_empty() {
+        assert!(link_for(&FeedEntry::default()).is_none());
+    }
+
+    #[test]
+    fn thumbnail_url_falls_back_to_media_content_when_no_thumbnail_set() {
+        let media = MediaObject {
+            title: None,
+            content: vec![MediaContent {
+                url: Some(Url::parse("https://example.com/full.jpg").unwrap()),
+                content_type: None,
+                height: None,
+                width: None,
+                duration: None,
+                size: None,
+                rating: None,
+            }],
+            duration: None,
+            thumbnails: vec![],
+            texts: vec![],
+            description: None,
+            community: None,
+            credits: vec![],
+        };
+        let entry = FeedEntry {
+            media: vec![media],
+            ..Default::default()
+        };
+        assert_eq!(
+            thumbnail_url_for(&entry).as_deref(),
+            Some("https://example.com/full.jpg"),
+        );
+    }
+
+    #[test]
+    fn thumbnail_url_falls_back_to_summary_inline_img_when_content_absent() {
+        let entry = FeedEntry {
+            summary: Some(Text {
+                content_type: "text/html".parse().unwrap(),
+                src: None,
+                content: r#"<img src="https://example.com/cover.png"/>"#.into(),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            thumbnail_url_for(&entry).as_deref(),
+            Some("https://example.com/cover.png"),
+        );
+    }
+
+    #[test]
+    fn thumbnail_url_skips_empty_media_thumbnail_uri() {
+        // An entry that carries a Media block whose thumbnail URI is empty falls through to the
+        // next source (in this case, content body inline img).
+        let media = MediaObject {
+            title: None,
+            content: vec![],
+            duration: None,
+            thumbnails: vec![MediaThumbnail {
+                image: Image {
+                    uri: String::new(),
+                    title: None,
+                    link: None,
+                    width: None,
+                    height: None,
+                    description: None,
+                },
+                time: None,
+            }],
+            texts: vec![],
+            description: None,
+            community: None,
+            credits: vec![],
+        };
+        let entry = FeedEntry {
+            media: vec![media],
+            content: Some(Content {
+                body: Some(r#"<img src="https://example.com/hero.png">"#.into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            thumbnail_url_for(&entry).as_deref(),
+            Some("https://example.com/hero.png"),
+        );
+    }
+
+    #[test]
+    fn format_short_falls_back_to_local_when_timezone_is_unknown() {
+        // An unparseable timezone string drops back to the local tz; we only assert the format
+        // doesn't blow up and returns a non-empty short month-day label.
+        let dt = Utc.with_ymd_and_hms(2026, 4, 30, 23, 30, 0).unwrap();
+        let label = format_short(dt, Some("Not/A_Real_Timezone"), None);
+        assert!(!label.is_empty());
+    }
+
+    #[tokio::test]
+    async fn render_image_body_returns_empty_path_for_empty_feed() {
+        let feed = empty_feed();
+        let body = render_image_body(&feed).await;
+        let Body::Image(img) = body else {
+            panic!("expected image body");
+        };
+        assert!(img.path.is_empty());
+    }
+
+    #[tokio::test]
+    async fn render_image_body_returns_empty_path_when_entry_has_no_thumbnail() {
+        let mut feed = empty_feed();
+        feed.entries
+            .push(entry_with_title_and_link("Bare", "https://example.com/1"));
+        let body = render_image_body(&feed).await;
+        let Body::Image(img) = body else {
+            panic!("expected image body");
+        };
+        assert!(img.path.is_empty());
+    }
+
+    #[tokio::test]
+    async fn render_image_linked_returns_items_with_missing_thumbnails() {
+        let mut feed = empty_feed();
+        feed.entries
+            .push(entry_with_title_and_link("First", "https://example.com/1"));
+        let ctx = FetchContext {
+            timezone: Some("UTC".into()),
+            ..Default::default()
+        };
+        let body = render_image_linked(&feed, 5, &ctx).await;
+        let Body::ImageLinkedList(d) = body else {
+            panic!("expected image linked list");
+        };
+        assert_eq!(d.items.len(), 1);
+        assert_eq!(d.items[0].title, "First");
+        assert_eq!(d.items[0].url.as_deref(), Some("https://example.com/1"));
+        // No thumbnail source on the entry → no thumbnail path on the row.
+        assert!(d.items[0].thumbnail_path.is_none());
+    }
+
+    #[test]
+    fn parse_feed_surfaces_label_in_error() {
+        let err = parse_feed(b"not a feed", "rss").unwrap_err();
+        match err {
+            FetchError::Failed(msg) => assert!(msg.contains("rss"), "msg: {msg}"),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+}
