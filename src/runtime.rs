@@ -581,6 +581,13 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
         shape_invalid: &shape_invalid,
     };
     let real_animated = render::any_widget_animates(&config.widgets, &render_registry);
+    // The dashboard is drawn at its natural height, top-anchored on the alternate screen —
+    // handing the layout the whole fullscreen area would stretch its rows down to fill the
+    // terminal. Same height resolution as the inline splash in `run`.
+    let requested_height = config
+        .general
+        .height
+        .unwrap_or_else(|| config.computed_height().max(DEFAULT_VIEWPORT_LINES));
 
     install_watch_panic_hook();
     let mut terminal = WatchTerminal::enter()?;
@@ -631,7 +638,7 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
             None => true,
         };
         if watch_should_draw(resized, changed, animating, !loading.is_empty()) {
-            draw(
+            draw_watch(
                 &mut terminal.inner,
                 &layout,
                 &payloads,
@@ -640,7 +647,7 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
                 &theme,
                 &config.general,
                 padding,
-                0,
+                requested_height,
                 &loading,
             )?;
             prev = Some((payloads.clone(), loading));
@@ -982,6 +989,38 @@ fn draw<B: Backend>(
             hidden_rows,
             loading,
         )
+    })?;
+    Ok(())
+}
+
+/// Draw used by `watch`. The alternate screen is fullscreen, but the dashboard is drawn at its
+/// natural `requested_height`, top-anchored — `draw_frame` distributes the layout's rows across
+/// whatever area it's handed, so a fullscreen area would stretch the dashboard down to fill the
+/// terminal. The whole screen is painted with the theme bg first so the band below the
+/// dashboard isn't a bare terminal-coloured strip.
+#[allow(clippy::too_many_arguments)]
+fn draw_watch<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+    theme: &Theme,
+    general: &General,
+    padding: (u16, u16),
+    requested_height: u16,
+    loading: &HashMap<WidgetId, Shape>,
+) -> Result<(), B::Error> {
+    terminal.draw(|frame| {
+        let full = frame.area();
+        paint_viewport_bg(frame, full, theme);
+        let area = Rect {
+            height: requested_height.min(full.height),
+            ..full
+        };
+        draw_frame(
+            frame, area, root, payloads, specs, registry, theme, general, padding, 0, loading,
+        );
     })?;
     Ok(())
 }
