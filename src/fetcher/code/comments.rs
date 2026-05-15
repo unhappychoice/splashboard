@@ -462,6 +462,58 @@ mod tests {
         assert_eq!(rust.1.comments, 2);
     }
 
+    /// Two languages with distinct comment ratios drive `scan_repo`'s production sort_by
+    /// closure (the dedicated `sort_order_picks_higher_ratio_first` test below uses an inline
+    /// sort and doesn't touch the closure inside `scan_repo`). A Rust file has one comment
+    /// against one code line (50%), while a Python file has only code (0%) — partial_cmp
+    /// returns Some(non-Equal) and the high-ratio entry must come first.
+    #[test]
+    fn scan_repo_sorts_languages_by_descending_comment_ratio() {
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "src/main.rs", "fn main() {}\n// note\n");
+        commit_touching(&repo, "script.py", "x = 1\ny = 2\nz = 3\n");
+        let t = scan_repo(&repo).unwrap();
+        let names: Vec<_> = t.by_language.iter().map(|(n, _)| n.as_str()).collect();
+        let rust = names.iter().position(|n| *n == "Rust").expect("Rust entry");
+        let python = names
+            .iter()
+            .position(|n| *n == "Python")
+            .expect("Python entry");
+        assert!(
+            rust < python,
+            "higher comment ratio (Rust 50%) must outrank lower (Python 0%); got {names:?}",
+        );
+    }
+
+    /// Two languages tied on comment ratio (both 0%) fall through to the secondary `then_with`
+    /// arm of `scan_repo`'s production sort closure, which orders by name ascending.
+    #[test]
+    fn scan_repo_sort_breaks_ratio_ties_alphabetically_by_language_name() {
+        let (_tmp, repo) = make_repo();
+        commit_touching(&repo, "src/main.rs", "fn main() {}\n");
+        commit_touching(&repo, "script.py", "x = 1\n");
+        let t = scan_repo(&repo).unwrap();
+        let names: Vec<_> = t.by_language.iter().map(|(n, _)| n.as_str()).collect();
+        let rust = names.iter().position(|n| *n == "Rust").expect("Rust entry");
+        let python = names
+            .iter()
+            .position(|n| *n == "Python")
+            .expect("Python entry");
+        assert!(
+            python < rust,
+            "ratio tie must order by name ascending — Python before Rust; got {names:?}",
+        );
+    }
+
+    /// Direct call to `ratio_of` with a zero-denominator stat exercises the `if denom == 0`
+    /// arm. Production callers can't reach it (the `code + comments > 0` filter in `scan_repo`
+    /// drops empty entries before they make it into `by_language`), so the only way to pin this
+    /// branch is to feed `ratio_of` an empty `LangStat` directly.
+    #[test]
+    fn ratio_of_returns_zero_for_empty_lang_stat() {
+        assert_eq!(ratio_of(&LangStat::default()), 0.0);
+    }
+
     #[test]
     fn sort_order_picks_higher_ratio_first() {
         // Hand-built Totals — bypasses tokei's per-language quirks (Markdown / TOML
