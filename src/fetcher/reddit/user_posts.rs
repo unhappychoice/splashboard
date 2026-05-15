@@ -206,4 +206,30 @@ mod tests {
             .unwrap_err();
         assert!(format!("{err}").contains("user must not be empty"));
     }
+
+    #[test]
+    fn description_mentions_sibling_widgets() {
+        let desc = RedditUserPostsFetcher.description();
+        assert!(desc.contains("submissions"), "desc: {desc}");
+        assert!(desc.contains("reddit_user_comments"), "desc: {desc}");
+        assert!(desc.contains("reddit_subreddit_posts"), "desc: {desc}");
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_image_linked_returns_empty_image_list_for_no_posts() {
+        let body = render_for_shape(&[], Shape::ImageLinkedList).await;
+        match body {
+            Body::ImageLinkedList(data) => assert!(data.items.is_empty()),
+            other => panic!("expected ImageLinkedList, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_non_image_dispatches_to_sync_renderer() {
+        let body = render_for_shape(&[], Shape::TextBlock).await;
+        match body {
+            Body::TextBlock(data) => assert!(data.lines.is_empty()),
+            other => panic!("expected TextBlock, got {other:?}"),
+        }
+    }
 }
