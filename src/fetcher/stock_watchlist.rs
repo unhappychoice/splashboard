@@ -729,8 +729,10 @@ mod tests {
     #[test]
     fn currency_symbol_known_codes_get_glyphs_others_get_iso() {
         assert_eq!(format_price(1234.5, "usd"), "$1,234.50");
+        assert_eq!(format_price(1234.5, "eur"), "€1,234.50");
         assert_eq!(format_price(1234.5, "jpy"), "¥1,234.50");
         assert_eq!(format_price(1234.5, "gbp"), "£1,234.50");
+        assert_eq!(format_price(1234.5, "krw"), "₩1,234.50");
         // Unknown codes (CAD, AUD, CHF, …) fall through to "<amount> <CODE>" so a multi-listing
         // watchlist still formats sensibly.
         assert_eq!(format_price(1234.5, "cad"), "1,234.50 CAD");
@@ -819,6 +821,27 @@ mod tests {
             panic!("expected number series");
         };
         assert_eq!(d.values, vec![0, 200_000, 400_000]);
+    }
+
+    #[test]
+    fn number_series_falls_back_to_zero_baseline_when_every_sample_is_non_finite() {
+        // `fold(INFINITY, f64::min)` on an empty iterator (every value filtered out by
+        // `is_finite`) stays `INFINITY`, which `baseline.is_finite()` rejects so the `else`
+        // arm pins the baseline to 0.0. Exercised here so the all-NaN sparkline doesn't
+        // silently flip to an INFINITY-anchored series that overflows when cast to u64.
+        let snap = Snapshot {
+            stocks: vec![StockPoint {
+                symbol: "X".into(),
+                currency: "usd".into(),
+                price: 0.0,
+                change_pct: 0.0,
+                sparkline: vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY],
+            }],
+        };
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values.len() == 3,
+        ));
     }
 
     #[test]
@@ -958,6 +981,25 @@ mod tests {
         };
         let stock = StockPoint::from_api(result).unwrap();
         assert_eq!(stock.change_pct, 0.0);
+    }
+
+    #[test]
+    fn from_api_defaults_currency_to_usd_when_api_omits_it() {
+        // Yahoo's chart endpoint sometimes omits `currency` for OTC tickers and indices.
+        // The unwrap_or_else fallback keeps the formatter happy with a sensible default
+        // rather than emitting an empty glyph; pin the contract so it can't silently shift.
+        let result = ApiResult {
+            meta: ApiMeta {
+                symbol: "noccy".into(),
+                currency: None,
+                regular_market_price: Some(10.0),
+                chart_previous_close: Some(9.0),
+                previous_close: None,
+            },
+            indicators: None,
+        };
+        let stock = StockPoint::from_api(result).unwrap();
+        assert_eq!(stock.currency, "usd");
     }
 
     #[test]
