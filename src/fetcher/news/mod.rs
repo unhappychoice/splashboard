@@ -478,6 +478,39 @@ mod tests {
         }
     }
 
+    /// `fetch` reads options before issuing the request, so an `Options` blob that fails to
+    /// deserialise (the `deny_unknown_fields` arm) surfaces as a `Failed` error from the
+    /// first line of the body without any network I/O. Pins the early-return path so a future
+    /// refactor that defers option validation past `fetch_bytes` shows up as a coverage drop.
+    #[tokio::test]
+    async fn fetch_surfaces_invalid_options_before_network() {
+        let f = NewsFeedFetcher { source: bbc() };
+        let mut ctx = ctx(Some(Shape::LinkedTextBlock), None);
+        ctx.options = Some(parse_opts("bogus = true"));
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref msg) if msg.contains("invalid options:")
+        ));
+    }
+
+    /// `resolve_feed` runs after option parsing but still before the HTTP call, so an unknown
+    /// `feed` key surfaces as a labelled `Failed` error without touching the network. Covers
+    /// the second early-return arm of `fetch` and reuses `resolve_feed`'s "available keys"
+    /// listing so the operator gets the valid set in the message.
+    #[tokio::test]
+    async fn fetch_surfaces_unknown_feed_key_before_network() {
+        let f = NewsFeedFetcher { source: bbc() };
+        let mut ctx = ctx(Some(Shape::LinkedTextBlock), None);
+        ctx.options = Some(parse_opts("feed = \"definitely-not-a-feed\""));
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref msg)
+                if msg.contains("unknown feed key") && msg.contains("definitely-not-a-feed")
+        ));
+    }
+
     /// Live smoke test for every bundled `news_*` feed. Hits each URL in parallel, parses with
     /// feed-rs, and asserts at least one entry comes back. `#[ignore]` keeps CI offline-safe;
     /// run with `cargo test -- --ignored fetcher::news::tests::live_every_bundled_feed_parses`
