@@ -607,22 +607,18 @@ mod tests {
     #[test]
     fn text_block_emits_one_line_per_day() {
         let forecast = Forecast::sample();
-        let Body::TextBlock(data) = text_block(&forecast) else {
-            panic!("expected text block");
-        };
-        assert_eq!(data.lines.len(), 3);
-        assert!(data.lines[0].starts_with("Mon  "));
-        assert!(data.lines[0].contains("22°/15°"));
-        assert!(data.lines[1].contains("💧80%"));
-        // Tue has 8.4mm precip → label includes the amount.
-        assert!(
-            data.lines[1].ends_with("8.4mm"),
-            "expected precip amount on rainy day: {:?}",
-            data.lines[1]
-        );
-        // Mon and Wed are dry → no mm suffix.
-        assert!(!data.lines[0].contains("mm"));
-        assert!(!data.lines[2].contains("mm"));
+        // Tue has 8.4mm precip → label includes the amount; Mon and Wed are dry → no mm suffix.
+        assert!(matches!(
+            text_block(&forecast),
+            Body::TextBlock(data)
+                if data.lines.len() == 3
+                    && data.lines[0].starts_with("Mon  ")
+                    && data.lines[0].contains("22°/15°")
+                    && data.lines[1].contains("💧80%")
+                    && data.lines[1].ends_with("8.4mm")
+                    && !data.lines[0].contains("mm")
+                    && !data.lines[2].contains("mm")
+        ));
     }
 
     #[test]
@@ -637,78 +633,87 @@ mod tests {
 
     #[test]
     fn text_emits_arrow_joined_summary() {
-        let Body::Text(data) = text(&Forecast::sample()) else {
-            panic!("expected text");
-        };
-        assert!(data.value.contains("→"));
-        assert_eq!(data.value.matches('→').count(), 2);
-        assert!(data.value.contains("22°/15°"));
+        assert!(matches!(
+            text(&Forecast::sample()),
+            Body::Text(data)
+                if data.value.contains("→")
+                    && data.value.matches('→').count() == 2
+                    && data.value.contains("22°/15°")
+        ));
     }
 
     #[test]
     fn entries_emit_one_row_per_day_with_weekday_key() {
-        let Body::Entries(data) = entries(&Forecast::sample()) else {
-            panic!("expected entries");
-        };
-        assert_eq!(data.items.len(), 3);
-        assert!(data.items[0].key.starts_with("Mon "));
-        assert!(data.items[0].value.as_deref().unwrap().contains("💧10%"));
+        assert!(matches!(
+            entries(&Forecast::sample()),
+            Body::Entries(data)
+                if data.items.len() == 3
+                    && data.items[0].key.starts_with("Mon ")
+                    && data.items[0]
+                        .value
+                        .as_deref()
+                        .is_some_and(|v| v.contains("💧10%"))
+        ));
     }
 
     #[test]
     fn ratio_picks_max_precip_probability_and_names_the_day() {
-        let Body::Ratio(data) = ratio(&Forecast::sample()) else {
-            panic!("expected ratio");
-        };
-        assert!((data.value - 0.80).abs() < 1e-9);
-        assert_eq!(data.denominator, Some(100));
-        assert!(data.label.unwrap().starts_with("Tue "));
+        assert!(matches!(
+            ratio(&Forecast::sample()),
+            Body::Ratio(data)
+                if (data.value - 0.80).abs() < 1e-9
+                    && data.denominator == Some(100)
+                    && data.label.as_deref().is_some_and(|s| s.starts_with("Tue "))
+        ));
     }
 
     #[test]
     fn number_series_holds_per_day_precipitation_in_tenths() {
-        let Body::NumberSeries(data) = number_series(&Forecast::sample()) else {
-            panic!("expected number series");
-        };
-        assert_eq!(data.values, vec![0, 84, 0]);
+        assert!(matches!(
+            number_series(&Forecast::sample()),
+            Body::NumberSeries(data) if data.values == vec![0, 84, 0]
+        ));
     }
 
     #[test]
     fn point_series_carries_high_and_low_with_unit_labels() {
-        let Body::PointSeries(data) = point_series(&Forecast::sample()) else {
-            panic!("expected point series");
-        };
-        assert_eq!(data.series.len(), 2);
-        assert_eq!(data.series[0].name, "high (°C)");
-        assert_eq!(data.series[1].name, "low (°C)");
-        assert_eq!(data.series[0].points.len(), 3);
-        assert_eq!(data.series[0].points[1], (1.0, 18.2));
-        assert_eq!(data.series[1].points[2], (2.0, 14.7));
+        assert!(matches!(
+            point_series(&Forecast::sample()),
+            Body::PointSeries(data)
+                if data.series.len() == 2
+                    && data.series[0].name == "high (°C)"
+                    && data.series[1].name == "low (°C)"
+                    && data.series[0].points.len() == 3
+                    && data.series[0].points[1] == (1.0, 18.2)
+                    && data.series[1].points[2] == (2.0, 14.7)
+        ));
     }
 
     #[test]
     fn point_series_preserves_negative_temperatures() {
         let date = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
         let forecast = forecast_with(vec![day(71, -2.0, -8.5, 0.4, 60, date)], Units::Metric);
-        let Body::PointSeries(data) = point_series(&forecast) else {
-            panic!("expected point series");
-        };
-        assert_eq!(data.series[0].points[0].1, -2.0);
-        assert_eq!(data.series[1].points[0].1, -8.5);
+        assert!(matches!(
+            point_series(&forecast),
+            Body::PointSeries(data)
+                if data.series[0].points[0].1 == -2.0
+                    && data.series[1].points[0].1 == -8.5
+        ));
     }
 
     #[test]
     fn bars_carry_per_day_precipitation_probability_with_weekday_labels() {
-        let Body::Bars(data) = bars(&Forecast::sample()) else {
-            panic!("expected bars");
-        };
-        assert_eq!(data.bars.len(), 3);
-        assert_eq!(data.bars[0].label, "Mon");
         // Sample probabilities: Mon=10, Tue=80, Wed=30. Bars now expose probability so the
         // chart stays informative in dry forecasts where `precipitation_sum` is all zero.
-        assert_eq!(data.bars[0].value, 10);
-        assert_eq!(data.bars[1].value, 80);
-        assert_eq!(data.bars[2].value, 30);
+        assert!(matches!(
+            bars(&Forecast::sample()),
+            Body::Bars(data)
+                if data.bars.len() == 3
+                    && data.bars[0].label == "Mon"
+                    && data.bars[0].value == 10
+                    && data.bars[1].value == 80
+                    && data.bars[2].value == 30
+        ));
     }
 
     #[test]
@@ -722,11 +727,10 @@ mod tests {
             ],
             Units::Metric,
         );
-        let Body::Badge(data) = badge(&forecast) else {
-            panic!("expected badge");
-        };
-        assert_eq!(data.status, Status::Error);
-        assert_eq!(data.label, "thunderstorm");
+        assert!(matches!(
+            badge(&forecast),
+            Body::Badge(data) if data.status == Status::Error && data.label == "thunderstorm"
+        ));
     }
 
     #[test]
@@ -739,24 +743,24 @@ mod tests {
             ],
             Units::Metric,
         );
-        let Body::Badge(data) = badge(&forecast) else {
-            panic!("expected badge");
-        };
-        assert_eq!(data.status, Status::Ok);
-        assert_eq!(data.label, "clear ahead");
+        assert!(matches!(
+            badge(&forecast),
+            Body::Badge(data) if data.status == Status::Ok && data.label == "clear ahead"
+        ));
     }
 
     #[test]
     fn timeline_carries_one_event_per_day_with_midnight_utc_timestamps() {
-        let Body::Timeline(data) = timeline(&Forecast::sample()) else {
-            panic!("expected timeline");
-        };
-        assert_eq!(data.events.len(), 3);
         // 2026-05-11 midnight UTC.
-        assert_eq!(data.events[0].timestamp, 1_778_457_600);
-        assert_eq!(data.events[1].timestamp - data.events[0].timestamp, 86_400);
-        assert!(data.events[0].title.contains("partly cloudy"));
-        assert_eq!(data.events[1].status, Some(Status::Warn));
+        assert!(matches!(
+            timeline(&Forecast::sample()),
+            Body::Timeline(data)
+                if data.events.len() == 3
+                    && data.events[0].timestamp == 1_778_457_600
+                    && data.events[1].timestamp - data.events[0].timestamp == 86_400
+                    && data.events[0].title.contains("partly cloudy")
+                    && data.events[1].status == Some(Status::Warn)
+        ));
     }
 
     #[test]
@@ -765,32 +769,32 @@ mod tests {
             units: Units::Imperial,
             ..Forecast::sample()
         };
-        let Body::PointSeries(data) = point_series(&forecast) else {
-            panic!("expected point series");
-        };
-        assert_eq!(data.series[0].name, "high (°F)");
-        let Body::TextBlock(block) = text_block(&forecast) else {
-            panic!("expected text block");
-        };
-        assert!(block.lines[0].contains("22°/15°F"));
+        assert!(matches!(
+            point_series(&forecast),
+            Body::PointSeries(data) if data.series[0].name == "high (°F)"
+        ));
+        assert!(matches!(
+            text_block(&forecast),
+            Body::TextBlock(block) if block.lines[0].contains("22°/15°F")
+        ));
     }
 
     #[test]
     fn single_day_window_collapses_all_shapes_cleanly() {
         let date = NaiveDate::from_ymd_opt(2026, 5, 12).unwrap();
         let forecast = forecast_with(vec![day(2, 22.0, 15.0, 0.5, 20, date)], Units::Metric);
-        let Body::TextBlock(tb) = text_block(&forecast) else {
-            panic!("text block");
-        };
-        let Body::Text(t) = text(&forecast) else {
-            panic!("text");
-        };
-        let Body::Bars(b) = bars(&forecast) else {
-            panic!("bars");
-        };
-        assert_eq!(tb.lines.len(), 1);
-        assert!(!t.value.contains('→'));
-        assert_eq!(b.bars.len(), 1);
+        assert!(matches!(
+            text_block(&forecast),
+            Body::TextBlock(tb) if tb.lines.len() == 1
+        ));
+        assert!(matches!(
+            text(&forecast),
+            Body::Text(t) if !t.value.contains('→')
+        ));
+        assert!(matches!(
+            bars(&forecast),
+            Body::Bars(b) if b.bars.len() == 1
+        ));
     }
 
     #[test]
@@ -889,12 +893,13 @@ mod tests {
     #[test]
     fn ratio_with_empty_forecast_collapses_to_zero_with_no_label() {
         let forecast = forecast_with(Vec::new(), Units::Metric);
-        let Body::Ratio(data) = ratio(&forecast) else {
-            unreachable!("ratio always returns Body::Ratio");
-        };
-        assert_eq!(data.value, 0.0);
-        assert!(data.label.is_none());
-        assert_eq!(data.denominator, Some(100));
+        assert!(matches!(
+            ratio(&forecast),
+            Body::Ratio(data)
+                if data.value == 0.0
+                    && data.label.is_none()
+                    && data.denominator == Some(100)
+        ));
     }
 
     /// Live smoke test — hits Open-Meteo. `#[ignore]` keeps CI offline-safe. Run with
