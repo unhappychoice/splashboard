@@ -41,7 +41,7 @@ tui-big-text = "0.8"
 tui-piechart = "0.3"
 tachyonfx = { version = "0.25", default-features = false, features = ["std"] }
 ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process"] }
 async-trait = "0.1"
 sha2 = "0.11"
