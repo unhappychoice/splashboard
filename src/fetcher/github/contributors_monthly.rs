@@ -381,109 +381,100 @@ mod tests {
         assert_eq!(fetcher.option_schemas()[1].name, "limit");
         assert_eq!(fetcher.option_schemas()[2].name, "days");
 
-        let bars = fetcher.sample_body(Shape::Bars).unwrap();
-        assert!(matches!(&bars, Body::Bars(_)));
-        if let Body::Bars(bars) = bars {
-            assert_eq!(bars.bars[0].label, "alice");
-            assert_eq!(bars.bars[1].value, 27);
-        }
+        assert!(matches!(
+            fetcher.sample_body(Shape::Bars),
+            Some(Body::Bars(bars))
+                if bars.bars[0].label == "alice" && bars.bars[1].value == 27
+        ));
 
-        let entries = fetcher.sample_body(Shape::Entries).unwrap();
-        assert!(matches!(&entries, Body::Entries(_)));
-        if let Body::Entries(entries) = entries {
-            assert_eq!(entries.items[0].key, "alice");
-            assert_eq!(entries.items[2].value.as_deref(), Some("11"));
-        }
+        assert!(matches!(
+            fetcher.sample_body(Shape::Entries),
+            Some(Body::Entries(entries))
+                if entries.items[0].key == "alice"
+                    && entries.items[2].value.as_deref() == Some("11")
+        ));
 
-        let linked = fetcher.sample_body(Shape::LinkedTextBlock).unwrap();
-        assert!(matches!(&linked, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = linked {
-            assert_eq!(linked.items[0].text, "alice  42");
-            assert_eq!(
-                linked.items[2].url.as_deref(),
-                Some("https://github.com/charlie")
-            );
-        }
+        assert!(matches!(
+            fetcher.sample_body(Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(linked))
+                if linked.items[0].text == "alice  42"
+                    && linked.items[2].url.as_deref()
+                        == Some("https://github.com/charlie")
+        ));
 
-        let text_block = fetcher.sample_body(Shape::TextBlock).unwrap();
-        assert!(matches!(&text_block, Body::TextBlock(_)));
-        if let Body::TextBlock(text) = text_block {
-            assert_eq!(text.lines[1], "bob  27");
-        }
+        assert!(matches!(
+            fetcher.sample_body(Shape::TextBlock),
+            Some(Body::TextBlock(text)) if text.lines[1] == "bob  27"
+        ));
 
-        let markdown = fetcher.sample_body(Shape::MarkdownTextBlock).unwrap();
-        assert!(matches!(&markdown, Body::MarkdownTextBlock(_)));
-        if let Body::MarkdownTextBlock(markdown) = markdown {
-            assert!(markdown.value.contains("1. **@alice** — 42"));
-        }
+        assert!(matches!(
+            fetcher.sample_body(Shape::MarkdownTextBlock),
+            Some(Body::MarkdownTextBlock(markdown))
+                if markdown.value.contains("1. **@alice** — 42")
+        ));
 
-        let text = fetcher.sample_body(Shape::Text).unwrap();
-        assert!(matches!(&text, Body::Text(_)));
-        if let Body::Text(text) = text {
-            assert_eq!(text.value, "@alice +42 · @bob +27 · @charlie +11");
-        }
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(text))
+                if text.value == "@alice +42 · @bob +27 · @charlie +11"
+        ));
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
     fn text_body_collapses_to_at_handles_with_plus_counts() {
-        let body = render_body(&rows(), Shape::Text);
-        assert!(matches!(&body, Body::Text(_)));
-        if let Body::Text(d) = body {
-            assert_eq!(d.value, "@alice +42 · @bob +27");
-        }
+        assert!(matches!(
+            render_body(&rows(), Shape::Text),
+            Body::Text(d) if d.value == "@alice +42 · @bob +27"
+        ));
     }
 
     #[test]
     fn markdown_text_block_lists_handles_and_counts() {
-        let body = render_body(&rows(), Shape::MarkdownTextBlock);
-        assert!(matches!(&body, Body::MarkdownTextBlock(_)));
-        if let Body::MarkdownTextBlock(d) = body {
-            assert!(d.value.contains("1. **@alice** — 42"));
-            assert!(d.value.contains("2. **@bob** — 27"));
-        }
+        assert!(matches!(
+            render_body(&rows(), Shape::MarkdownTextBlock),
+            Body::MarkdownTextBlock(d)
+                if d.value.contains("1. **@alice** — 42")
+                    && d.value.contains("2. **@bob** — 27")
+        ));
     }
 
     #[test]
     fn text_block_has_one_line_per_contributor() {
-        let body = render_body(&rows(), Shape::TextBlock);
-        assert!(matches!(&body, Body::TextBlock(_)));
-        if let Body::TextBlock(d) = body {
-            assert_eq!(d.lines.len(), 2);
-        }
+        assert!(matches!(
+            render_body(&rows(), Shape::TextBlock),
+            Body::TextBlock(d) if d.lines.len() == 2
+        ));
     }
 
     #[test]
     fn entries_body_keeps_name_to_count_pairs() {
-        let body = render_body(&rows(), Shape::Entries);
-        assert!(matches!(&body, Body::Entries(_)));
-        if let Body::Entries(entries) = body {
-            assert_eq!(entries.items[0].key, "alice");
-            assert_eq!(entries.items[1].value.as_deref(), Some("27"));
-        }
+        assert!(matches!(
+            render_body(&rows(), Shape::Entries),
+            Body::Entries(entries)
+                if entries.items[0].key == "alice"
+                    && entries.items[1].value.as_deref() == Some("27")
+        ));
     }
 
     #[test]
     fn linked_text_block_uses_profile_urls() {
-        let body = render_body(&rows(), Shape::LinkedTextBlock);
-        assert!(matches!(&body, Body::LinkedTextBlock(_)));
-        if let Body::LinkedTextBlock(linked) = body {
-            assert_eq!(linked.items[0].text, "alice  42");
-            assert_eq!(
-                linked.items[1].url.as_deref(),
-                Some("https://github.com/bob")
-            );
-        }
+        assert!(matches!(
+            render_body(&rows(), Shape::LinkedTextBlock),
+            Body::LinkedTextBlock(linked)
+                if linked.items[0].text == "alice  42"
+                    && linked.items[1].url.as_deref()
+                        == Some("https://github.com/bob")
+        ));
     }
 
     #[test]
     fn bars_body_preserves_labels_and_values() {
-        let body = render_body(&rows(), Shape::Bars);
-        assert!(matches!(&body, Body::Bars(_)));
-        if let Body::Bars(bars) = body {
-            assert_eq!(bars.bars[0].label, "alice");
-            assert_eq!(bars.bars[1].value, 27);
-        }
+        assert!(matches!(
+            render_body(&rows(), Shape::Bars),
+            Body::Bars(bars)
+                if bars.bars[0].label == "alice" && bars.bars[1].value == 27
+        ));
     }
 
     #[test]
