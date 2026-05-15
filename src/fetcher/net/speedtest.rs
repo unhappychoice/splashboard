@@ -368,12 +368,13 @@ mod tests {
     fn text_and_entries_carry_both_directions() {
         let s = sample_speedtest();
         assert_eq!(text_value(&s), "↓ 487 Mbps  ↑ 42 Mbps");
-        let Body::Entries(d) = body_for_shape(&s, Shape::Entries).unwrap() else {
-            panic!("expected entries");
-        };
-        assert_eq!(d.items.len(), 3);
-        assert_eq!(d.items[2].key, "latency");
-        assert_eq!(d.items[2].value.as_deref(), Some("12 ms"));
+        assert!(matches!(
+            body_for_shape(&s, Shape::Entries),
+            Some(Body::Entries(d))
+                if d.items.len() == 3
+                    && d.items[2].key == "latency"
+                    && d.items[2].value.as_deref() == Some("12 ms"),
+        ));
     }
 
     #[test]
@@ -381,7 +382,12 @@ mod tests {
         assert_eq!(NetSpeedtest.name(), "net_speedtest");
         assert_eq!(NetSpeedtest.safety(), Safety::Safe);
         assert_eq!(NetSpeedtest.default_shape(), Shape::Text);
+        assert_eq!(NetSpeedtest.shapes(), SHAPES);
+        assert_eq!(NetSpeedtest.refresh_interval(), 60 * 60);
         assert!(NetSpeedtest.option_schemas().is_empty());
+        let description = NetSpeedtest.description();
+        assert!(description.contains("Measured internet bandwidth"));
+        assert!(description.contains("speed.cloudflare.com"));
         for &shape in SHAPES {
             assert!(NetSpeedtest.sample_body(shape).is_some());
         }
@@ -397,10 +403,7 @@ mod tests {
     async fn measure_download_errors_when_no_chunk_returns_bytes() {
         let client = unreachable_client();
         let err = measure_download(&client).await.unwrap_err();
-        let FetchError::Failed(msg) = err else {
-            panic!("expected Failed");
-        };
-        assert!(msg.contains("no data"), "got: {msg}");
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("no data")));
     }
 
     #[tokio::test]
@@ -413,20 +416,14 @@ mod tests {
     async fn measure_upload_surfaces_request_failure() {
         let client = unreachable_client();
         let err = measure_upload(&client).await.unwrap_err();
-        let FetchError::Failed(msg) = err else {
-            panic!("expected Failed");
-        };
-        assert!(msg.contains("upload"), "got: {msg}");
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("upload")));
     }
 
     #[tokio::test]
     async fn download_chunk_surfaces_request_failure() {
         let client = unreachable_client();
         let err = download_chunk(&client).await.unwrap_err();
-        let FetchError::Failed(msg) = err else {
-            panic!("expected Failed");
-        };
-        assert!(msg.contains("download"), "got: {msg}");
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("download")));
     }
 
     /// Live smoke test — hits Cloudflare. `#[ignore]` keeps CI offline-safe; run with

@@ -394,11 +394,10 @@ mod tests {
     #[test]
     fn no_battery_ratio_is_full_ac() {
         let p = no_battery_payload(Shape::Ratio, BatteryTextKind::Summary);
-        assert!(matches!(p.body, Body::Ratio(_)));
-        if let Body::Ratio(r) = p.body {
-            assert_eq!(r.value, 1.0);
-            assert_eq!(r.label.as_deref(), Some("AC"));
-        }
+        assert!(matches!(
+            p.body,
+            Body::Ratio(r) if r.value == 1.0 && r.label.as_deref() == Some("AC"),
+        ));
     }
 
     #[test]
@@ -406,34 +405,26 @@ mod tests {
         let summary = no_battery_payload(Shape::Text, BatteryTextKind::Summary);
         let percent = no_battery_payload(Shape::Text, BatteryTextKind::Percent);
         let time = no_battery_payload(Shape::Text, BatteryTextKind::TimeRemaining);
-        assert!(matches!(summary.body, Body::Text(_)));
-        assert!(matches!(percent.body, Body::Text(_)));
-        assert!(matches!(time.body, Body::Text(_)));
-        if let Body::Text(text) = summary.body {
-            assert_eq!(text.value, "AC");
-        }
-        if let Body::Text(text) = percent.body {
-            assert_eq!(text.value, "100%");
-        }
-        if let Body::Text(text) = time.body {
-            assert_eq!(text.value, "—");
-        }
+        assert!(matches!(summary.body, Body::Text(t) if t.value == "AC"));
+        assert!(matches!(percent.body, Body::Text(t) if t.value == "100%"));
+        assert!(matches!(time.body, Body::Text(t) if t.value == "—"));
     }
 
     #[test]
     fn no_battery_entries_and_badge_use_ac_placeholders() {
         let entries = no_battery_payload(Shape::Entries, BatteryTextKind::Summary);
         let badge = no_battery_payload(Shape::Badge, BatteryTextKind::Summary);
-        assert!(matches!(entries.body, Body::Entries(_)));
-        assert!(matches!(badge.body, Body::Badge(_)));
-        if let Body::Entries(entries) = entries.body {
-            assert_eq!(entries.items[0].key, "power");
-            assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
-        }
-        if let Body::Badge(badge) = badge.body {
-            assert_eq!(badge.status, Status::Ok);
-            assert_eq!(badge.label, "AC");
-        }
+        assert!(matches!(
+            entries.body,
+            Body::Entries(d)
+                if d.items.len() == 1
+                    && d.items[0].key == "power"
+                    && d.items[0].value.as_deref() == Some("AC"),
+        ));
+        assert!(matches!(
+            badge.body,
+            Body::Badge(d) if d.status == Status::Ok && d.label == "AC",
+        ));
     }
 
     #[test]
@@ -467,10 +458,7 @@ mod tests {
     fn rejects_unknown_option_to_placeholder() {
         let f = SystemMonitorBattery::new();
         let p = f.compute(&ctx_text(Some("bogus = true")));
-        assert!(matches!(p.body, Body::Text(_)));
-        if let Body::Text(t) = p.body {
-            assert!(t.value.starts_with("⚠"));
-        }
+        assert!(matches!(p.body, Body::Text(t) if t.value.starts_with('⚠')));
     }
 
     #[test]
@@ -482,17 +470,11 @@ mod tests {
         let text = fetcher.compute(&ctx_text(Some("kind = \"percent\"")));
         let entries = fetcher.compute(&ctx_with_shape(Some(Shape::Entries)));
         let badge = fetcher.compute(&ctx_with_shape(Some(Shape::Badge)));
-        assert!(matches!(text.body, Body::Text(_)));
-        assert!(matches!(entries.body, Body::Entries(_)));
-        assert!(matches!(badge.body, Body::Badge(_)));
-        if let Body::Text(text) = text.body {
-            assert_eq!(text.value, "100%");
-        }
-        if let Body::Entries(entries) = entries.body {
-            assert_eq!(entries.items[0].value.as_deref(), Some("AC"));
-        }
-        if let Body::Badge(badge) = badge.body {
-            assert_eq!(badge.label, "AC");
-        }
+        assert!(matches!(text.body, Body::Text(t) if t.value == "100%"));
+        assert!(matches!(
+            entries.body,
+            Body::Entries(d) if d.items[0].value.as_deref() == Some("AC"),
+        ));
+        assert!(matches!(badge.body, Body::Badge(b) if b.label == "AC"));
     }
 }
