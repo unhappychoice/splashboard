@@ -437,6 +437,17 @@ mod tests {
         assert_eq!(point_series.series[0].name, "ci duration (s)");
         assert_eq!(point_series.series[0].points[16], (4236.0, 220.0));
         assert!(fetcher.sample_body(Shape::Text).is_none());
+
+        // Bars summarizes a 30-run window — see SHAPES; covers the `Shape::Bars` sample arm
+        // alongside the other declared shapes.
+        assert!(matches!(
+            fetcher.sample_body(Shape::Bars),
+            Some(Body::Bars(bars)) if bars.bars.len() == 2
+                && bars.bars[0].label == "passed"
+                && bars.bars[0].value == 25
+                && bars.bars[1].label == "failed"
+                && bars.bars[1].value == 5
+        ));
     }
 
     #[test]
@@ -552,6 +563,59 @@ mod tests {
         assert_eq!(data.events[2].title, "#8 release");
         assert_eq!(data.events[2].status, Some(Status::Error));
         assert_eq!(data.events[2].timestamp, 1_776_852_150);
+    }
+
+    #[test]
+    fn bars_body_counts_successes_and_treats_non_success_conclusion_as_failed() {
+        let runs = vec![
+            workflow_run(3, "completed", Some("success"), Some("main")),
+            workflow_run(2, "completed", Some("failure"), Some("main")),
+            // In-progress / queued runs without a `success` conclusion fall into "failed"
+            // via `saturating_sub`, mirroring the badge-state policy.
+            workflow_run(1, "queued", None, Some("main")),
+        ];
+        assert!(matches!(
+            render_body(&runs, Shape::Bars),
+            Body::Bars(bars) if bars.bars[0].label == "passed"
+                && bars.bars[0].value == 1
+                && bars.bars[1].label == "failed"
+                && bars.bars[1].value == 2
+        ));
+    }
+
+    #[test]
+    fn bars_body_empty_runs_yields_zero_counts_on_both_axes() {
+        assert!(matches!(
+            render_body(&[], Shape::Bars),
+            Body::Bars(bars) if bars.bars[0].value == 0 && bars.bars[1].value == 0
+        ));
+    }
+
+    #[test]
+    fn cache_key_without_repo_option_falls_back_to_local_git_remote() {
+        // `repo_for_key` short-circuits when `options.repo` is set; without it the cache key has
+        // to fall through to `resolve_repo(None)`, which discovers the cwd's git remote. Running
+        // under `cargo test` from this workspace means resolution succeeds and the resulting key
+        // must therefore differ from the no-context baseline (empty extra string).
+        let fetcher = GithubActionHistory;
+        let resolved = fetcher.cache_key(&ctx(
+            Some("limit = 5"),
+            Some(Shape::NumberSeries),
+            Some("compact"),
+        ));
+        let with_repo = fetcher.cache_key(&ctx(
+            Some("repo = \"owner/name\"\nlimit = 5"),
+            Some(Shape::NumberSeries),
+            Some("compact"),
+        ));
+        assert_ne!(resolved, with_repo);
+        // Stable across calls with the same context.
+        let again = fetcher.cache_key(&ctx(
+            Some("limit = 5"),
+            Some(Shape::NumberSeries),
+            Some("compact"),
+        ));
+        assert_eq!(resolved, again);
     }
 
     #[test]
