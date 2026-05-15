@@ -62,6 +62,7 @@ export default defineConfig({
             { label: 'ReadStore', link: '/guides/read-store/' },
             { label: 'Trust model', link: '/guides/trust/' },
             { label: 'Watch mode', link: '/guides/watch/' },
+            { label: 'Performance', link: '/guides/performance/' },
             { label: 'Cookbook', link: '/guides/cookbook/' },
           ],
         },
