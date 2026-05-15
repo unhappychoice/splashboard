@@ -720,13 +720,17 @@ mod tests {
     #[test]
     fn entries_body_marks_each_row_with_volatility_status() {
         let snap = snapshot_with(&[(100.0, 1.0), (200.0, 6.0)]);
-        let Body::Entries(data) = entries_body(&snap) else {
-            panic!("expected entries");
-        };
-        assert_eq!(data.items.len(), 2);
-        assert_eq!(data.items[0].status, Some(Status::Ok));
-        assert_eq!(data.items[1].status, Some(Status::Warn));
-        assert!(data.items[0].value.as_deref().unwrap().contains("(+1.00%)"));
+        assert!(matches!(
+            entries_body(&snap),
+            Body::Entries(data)
+                if data.items.len() == 2
+                    && data.items[0].status == Some(Status::Ok)
+                    && data.items[1].status == Some(Status::Warn)
+                    && data.items[0]
+                        .value
+                        .as_deref()
+                        .is_some_and(|v| v.contains("(+1.00%)"))
+        ));
     }
 
     #[test]
@@ -741,11 +745,11 @@ mod tests {
                 sparkline: vec![1.234, -0.5, 0.0, 12.345_678],
             }],
         };
-        let Body::NumberSeries(d) = number_series_body(&snap) else {
-            panic!("expected number series");
-        };
         // baseline = -0.5; deviations (cents): 1.734→173, 0.0→0, 0.5→50, 12.845_678→1285.
-        assert_eq!(d.values, vec![173, 0, 50, 1285]);
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values == vec![173, 0, 50, 1285]
+        ));
     }
 
     #[test]
@@ -763,55 +767,56 @@ mod tests {
                 sparkline: vec![40_000.0, 40_200.0, 40_400.0],
             }],
         };
-        let Body::NumberSeries(d) = number_series_body(&snap) else {
-            panic!("expected number series");
-        };
-        assert_eq!(d.values, vec![0, 20_000, 40_000]);
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values == vec![0, 20_000, 40_000]
+        ));
     }
 
     #[test]
     fn point_series_caps_to_max_series_coins_and_indexes_x_by_hour() {
         let snap = snapshot_with(&[(1.0, 0.0); 7]);
-        let Body::PointSeries(d) = point_series_body(&snap) else {
-            panic!("expected point series");
-        };
-        assert_eq!(d.series.len(), MAX_SERIES_COINS);
-        assert_eq!(d.series[0].points.first().unwrap().0, 0.0);
+        assert!(matches!(
+            point_series_body(&snap),
+            Body::PointSeries(d)
+                if d.series.len() == MAX_SERIES_COINS
+                    && d.series[0].points.first().is_some_and(|p| p.0 == 0.0)
+        ));
     }
 
     #[test]
     fn bars_body_encodes_basis_points_and_direction_arrow() {
         let snap = snapshot_with(&[(1.0, 2.5), (1.0, -3.0), (1.0, 0.0)]);
-        let Body::Bars(d) = bars_body(&snap) else {
-            panic!("expected bars");
-        };
-        assert_eq!(d.bars[0].value, 250);
-        assert_eq!(d.bars[1].value, 300);
-        assert_eq!(d.bars[2].value, 0);
-        assert!(d.bars[0].label.starts_with('▲'));
-        assert!(d.bars[1].label.starts_with('▼'));
-        assert!(d.bars[2].label.starts_with('·'));
+        assert!(matches!(
+            bars_body(&snap),
+            Body::Bars(d)
+                if d.bars[0].value == 250
+                    && d.bars[1].value == 300
+                    && d.bars[2].value == 0
+                    && d.bars[0].label.starts_with('▲')
+                    && d.bars[1].label.starts_with('▼')
+                    && d.bars[2].label.starts_with('·')
+        ));
     }
 
     #[test]
     fn linked_text_block_links_each_row_to_the_coin_page() {
         let snap = snapshot_with(&[(1.0, 1.0)]);
-        let Body::LinkedTextBlock(d) = linked_text_block_body(&snap) else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(
-            d.items[0].url.as_deref(),
-            Some("https://www.coingecko.com/en/coins/coin-0")
-        );
+        assert!(matches!(
+            linked_text_block_body(&snap),
+            Body::LinkedTextBlock(d)
+                if d.items[0].url.as_deref()
+                    == Some("https://www.coingecko.com/en/coins/coin-0")
+        ));
     }
 
     #[test]
     fn markdown_block_lists_coins_with_bold_symbol() {
         let snap = snapshot_with(&[(1.0, 1.0)]);
-        let Body::MarkdownTextBlock(d) = markdown_block_body(&snap) else {
-            panic!("expected markdown text block");
-        };
-        assert!(d.value.starts_with("- **C0**"));
+        assert!(matches!(
+            markdown_block_body(&snap),
+            Body::MarkdownTextBlock(d) if d.value.starts_with("- **C0**")
+        ));
     }
 
     #[test]
@@ -835,12 +840,13 @@ mod tests {
     #[test]
     fn text_block_body_emits_one_line_per_coin() {
         let snap = snapshot_with(&[(1.0, 1.0), (2.0, 0.0)]);
-        let Body::TextBlock(d) = text_block_body(&snap) else {
-            panic!("expected text block");
-        };
-        assert_eq!(d.lines.len(), 2);
-        assert!(d.lines[0].contains("C0"));
-        assert!(d.lines[1].contains("C1"));
+        assert!(matches!(
+            text_block_body(&snap),
+            Body::TextBlock(d)
+                if d.lines.len() == 2
+                    && d.lines[0].contains("C0")
+                    && d.lines[1].contains("C1")
+        ));
     }
 
     #[test]
@@ -895,10 +901,10 @@ mod tests {
                 sparkline: vec![f64::NAN, f64::NAN],
             }],
         };
-        let Body::NumberSeries(d) = number_series_body(&snap) else {
-            panic!("expected number series");
-        };
-        assert_eq!(d.values, vec![0, 0]);
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values == vec![0, 0]
+        ));
     }
 
     #[test]
@@ -986,11 +992,19 @@ mod tests {
         assert_eq!(fetcher.default_shape(), Shape::Entries);
         assert_ne!(fetcher.cache_key(&ctx), fetcher.cache_key(&with_options));
         for &shape in fetcher.shapes() {
-            let body = fetcher
-                .sample_body(shape)
-                .unwrap_or_else(|| panic!("missing sample for {shape:?}"));
-            let observed = crate::render::shape_of(&body);
-            assert_eq!(observed, shape, "sample shape mismatch for {shape:?}");
+            // Avoid `unwrap_or_else(|| panic!(...))` — its panic arm registers as an uncovered
+            // region per [[feedback_coverage_test_panic_arms]]. Two-step: assert presence, then
+            // re-fetch under matches! with the shape-equality guard inside the arm.
+            assert!(
+                fetcher.sample_body(shape).is_some(),
+                "missing sample for {shape:?}",
+            );
+            let body = fetcher.sample_body(shape).unwrap();
+            assert_eq!(
+                crate::render::shape_of(&body),
+                shape,
+                "sample shape mismatch for {shape:?}"
+            );
         }
         assert!(fetcher.sample_body(Shape::Image).is_none());
         assert!(fetcher.sample_body(Shape::Calendar).is_none());
