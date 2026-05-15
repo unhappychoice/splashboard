@@ -250,6 +250,67 @@ mod tests {
     }
 
     #[test]
+    fn news_category_label_uses_lowercase_table() {
+        let cases = [
+            (NewsCategory::General, "general"),
+            (NewsCategory::Tech, "tech"),
+            (NewsCategory::Gadget, "gadget"),
+            (NewsCategory::Business, "business"),
+            (NewsCategory::Science, "science"),
+            (NewsCategory::Security, "security"),
+            (NewsCategory::Linux, "linux"),
+            (NewsCategory::Gaming, "gaming"),
+            (NewsCategory::Ai, "ai"),
+            (NewsCategory::Hardware, "hardware"),
+            (NewsCategory::Web, "web"),
+            (NewsCategory::Apple, "apple"),
+            (NewsCategory::Android, "android"),
+            (NewsCategory::Space, "space"),
+            (NewsCategory::Climate, "climate"),
+            (NewsCategory::Politics, "politics"),
+            (NewsCategory::Photography, "photography"),
+            (NewsCategory::Entertainment, "entertainment"),
+            (NewsCategory::Music, "music"),
+            (NewsCategory::Crypto, "crypto"),
+        ];
+        for (variant, expected) in cases {
+            assert_eq!(variant.label(), expected);
+        }
+    }
+
+    #[test]
+    fn default_feed_returns_first_feed_for_every_source() {
+        for source in SOURCES {
+            let default = source.default_feed();
+            assert_eq!(
+                default.key, source.feeds[0].key,
+                "{}: default_feed should return feeds[0]",
+                source.name
+            );
+            assert_eq!(default.url, source.feeds[0].url);
+            assert_eq!(default.label, source.feeds[0].label);
+        }
+    }
+
+    #[test]
+    fn find_feed_matches_known_key_and_misses_unknown_key() {
+        let src = bbc();
+        // BBC ships multiple sub-feeds — pick a non-default one to prove the
+        // lookup walks the whole slice, not just the first entry.
+        let tech = src.find_feed("tech").expect("tech feed must exist");
+        assert_eq!(tech.key, "tech");
+        assert!(tech.url.contains("technology"));
+
+        assert!(src.find_feed("does-not-exist").is_none());
+        assert!(src.find_feed("").is_none());
+
+        // Single-feed source still resolves its only key.
+        let alj = aljazeera();
+        assert_eq!(alj.find_feed("all").map(|f| f.key), Some("all"));
+        assert!(alj.find_feed("missing").is_none());
+    }
+
+    #[test]
     fn all_sources_are_news_prefixed_and_have_at_least_one_feed() {
         for source in SOURCES {
             assert!(
