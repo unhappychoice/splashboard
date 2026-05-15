@@ -198,7 +198,7 @@ The themes page renders one "demo dashboard" (currently `home_daily`) under ever
 
 - **Plugin protocol (#5)** — closed. Splashboard is a curated splash renderer, not a dashboard framework. Subprocess plugins can't be bounded in blast radius (a generic `http_fetch` plugin breaks every mitigation). Custom widgets land as built-in PRs or use ReadStore.
 - **Command widget (#20)** — closed. No `command = "..."` fetcher, in any config scope. Local-vs-global rule carve-outs are not worth the footgun potential or the threat-model complexity.
-- **Screensaver sub-mode** — out of scope. Animation lives within the existing 2-second ANIMATION_WINDOW; a persistent idle loop is a different product.
+- **Screensaver / idle eye-candy loop** — out of scope. `splashboard watch` (#232) is a persistent *functional* dashboard mode (the data updates, the user is watching the data); that's fine and shipped. What stays rejected is a persistent loop that exists purely to animate — intro animations still live within the one-shot 2-second ANIMATION_WINDOW and play once at `watch` startup, they do not replay on every data update.
 - **XDG paths via the `dirs` crate** — migrated away. One user-visible `$HOME/.splashboard/` for all platforms, because `~/Library/Application Support/splashboard/` is a surprising place for a CLI tool's state.
 
 ## When in doubt

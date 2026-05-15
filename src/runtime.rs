@@ -1,20 +1,26 @@
 use std::collections::HashMap;
-use std::io::{self, stdout};
-use std::path::Path;
-use std::time::Duration;
+use std::io::{self, Stdout, stdout};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ratatui::{
     Frame, Terminal, TerminalOptions, Viewport,
     backend::{Backend, CrosstermBackend, TestBackend},
     buffer::Buffer,
+    crossterm::{
+        cursor::{Hide, Show},
+        event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+        execute,
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    },
     layout::{Alignment, Position, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Paragraph},
 };
 use tokio::task::JoinSet;
 
-use crate::cache::{Cache, CacheEntry, CacheEntryKind};
+use crate::cache::{Cache, CacheBackend, CacheEntry, CacheEntryKind, MemCache};
 use crate::config::{Config, General, WidgetConfig};
 use crate::daemon;
 use crate::fetcher::{self, FetchContext, Registry, ShapeMismatch};
@@ -137,19 +143,33 @@ fn compute_realtime_payloads(
     general: &General,
     shapes: &HashMap<WidgetId, Shape>,
 ) -> HashMap<WidgetId, Payload> {
-    widgets
-        .iter()
-        .filter_map(|w| {
-            let fetcher = registry.get_realtime(&w.fetcher)?;
-            let ctx = fetch_context(
-                w,
-                general,
-                shapes.get(&w.id).copied(),
-                Duration::from_secs(0),
-            );
-            Some((w.id.clone(), fetcher.compute(&ctx)))
-        })
-        .collect()
+    let mut out = HashMap::new();
+    compute_realtime_payloads_into(registry, widgets, general, shapes, &mut out);
+    out
+}
+
+/// Recomputes every realtime widget directly into `out`, overwriting existing keys. The
+/// allocation-free variant `watch` uses on every realtime tick — building a fresh `HashMap`
+/// every 200ms and `extend`-ing it into `payloads` was wasted work.
+fn compute_realtime_payloads_into(
+    registry: &Registry,
+    widgets: &[WidgetConfig],
+    general: &General,
+    shapes: &HashMap<WidgetId, Shape>,
+    out: &mut HashMap<WidgetId, Payload>,
+) {
+    for w in widgets {
+        let Some(fetcher) = registry.get_realtime(&w.fetcher) else {
+            continue;
+        };
+        let ctx = fetch_context(
+            w,
+            general,
+            shapes.get(&w.id).copied(),
+            Duration::from_secs(0),
+        );
+        out.insert(w.id.clone(), fetcher.compute(&ctx));
+    }
 }
 
 /// Widgets whose data we're still waiting on. Two cases are both treated as "loading":
@@ -267,7 +287,7 @@ pub async fn run(
     let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
 
     let entries = load_entries(
-        cache.as_ref(),
+        as_backend(&cache),
         &registry,
         &cached_widgets,
         &config.general,
@@ -387,7 +407,7 @@ pub async fn run(
             let mut daemon_done = !wait;
             loop {
                 let entries = refresh_payloads(
-                    &cache,
+                    as_backend(&cache),
                     &registry,
                     &buckets,
                     &config.general,
@@ -439,7 +459,7 @@ pub async fn run(
                 }
             }
             let entries = refresh_payloads(
-                &cache,
+                as_backend(&cache),
                 &registry,
                 &buckets,
                 &config.general,
@@ -467,7 +487,7 @@ pub async fn run(
             let fetch_deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
             let fresh = fetch_all(
                 &registry,
-                cache.as_ref(),
+                as_backend(&cache),
                 &cached_widgets,
                 &entries,
                 &config.general,
@@ -501,13 +521,296 @@ pub async fn run(
     Ok(())
 }
 
+/// Frame cadence for `watch` mode — the same 50ms as the splash animation loop. Drives input
+/// polling and the redraw check; actual repaints are gated by [`watch_should_draw`].
+const WATCH_FRAME_TICK: Duration = Duration::from_millis(50);
+/// How often realtime fetchers are recomputed inside `watch`. Realtime fetchers run per-frame
+/// in the one-shot splash, but a 50ms recompute loop is wasteful for a persistent dashboard —
+/// 200ms keeps `clock` / `system_*` visibly live without a frame-rate fetch loop.
+const WATCH_REALTIME_TICK: Duration = Duration::from_millis(200);
+/// How often the in-process fetch loop checks cached widgets. Each pass only refetches widgets
+/// whose cache entry is stale (see `should_refresh`), so this is a poll interval, not a fetch
+/// interval — each fetcher's TTL sets the real cadence.
+const WATCH_FETCH_TICK: Duration = Duration::from_secs(2);
+
+/// Persistent dashboard mode. Unlike [`run`], which paints once and hands the terminal back to
+/// the shell, `watch` holds the alternate screen and keeps the dashboard live: realtime
+/// fetchers tick, cached fetchers refresh on their TTL via an in-process fetch loop, and the
+/// screen repaints as data lands. Exits on `q` or Ctrl-C.
+pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::Result<()> {
+    let layout = config.to_layout();
+    // Disk is only touched at the boundaries: warm `mem_cache` from disk at the top, flush back
+    // at the bottom. The hot path (foreground reads + fetch-task writes) lives entirely in
+    // memory — the disk cache exists for the splash/daemon IPC and watch has no daemon.
+    let disk_cache = Cache::open_default();
+    let registry = Registry::with_builtins();
+    let render_registry = render::Registry::with_builtins();
+    let specs = render_specs(&config.widgets);
+    let theme = Theme::from_config(&config.theme);
+    let padding = config.general.padding.map(|p| p.xy()).unwrap_or((0, 0));
+
+    // Same widget partitioning as `run`: trust gate, unknown-fetcher divert, shape validation,
+    // then split cached vs realtime.
+    let decision = TrustStore::load().decide(config_ident);
+    let (fetchable, gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
+    let (fetchable, unknown) = partition_by_known_fetcher(&fetchable, &registry);
+    let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
+    let (fetchable, shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
+    let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
+
+    // Warm the in-memory cache from disk for the cached widgets we know about. Anything
+    // missing on disk simply starts as `loading` and the fetch loop populates it.
+    let cache_keys = cache_keys_for(&cached_widgets, &registry, &config.general, &shapes);
+    let mem_cache = MemCache::warm_from(disk_cache.as_ref(), cache_keys.iter().map(String::as_str));
+
+    let entries = load_entries(
+        Some(&mem_cache),
+        &registry,
+        &cached_widgets,
+        &config.general,
+        &shapes,
+    );
+    let mut payloads = entries_to_payloads(&entries);
+    payloads.extend(compute_realtime_payloads(
+        &registry,
+        &realtime_widgets,
+        &config.general,
+        &shapes,
+    ));
+    for w in &gated {
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
+    for w in &unknown {
+        payloads.insert(
+            w.id.clone(),
+            fetcher::unknown_fetcher_placeholder(&w.fetcher),
+        );
+    }
+    for (w, err) in &shape_invalid {
+        payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
+    }
+
+    // In-process replacement for the detached fetch daemon: re-runs the cached fetchers on a
+    // loop so the foreground only ever reads from `mem_cache`. Owned clones because the task
+    // outlives this stack frame; aborted on exit.
+    let fetch_ident = config_ident.map(|(p, h)| (p.to_path_buf(), h.to_string()));
+    let fetch_loop = tokio::spawn(watch_fetch_loop(
+        config.clone(),
+        fetch_ident,
+        mem_cache.clone(),
+    ));
+
+    // Placeholders for gated / unknown / shape-invalid widgets are inserted into `payloads`
+    // above and never change after startup in watch mode (the fetch loop excludes them by
+    // construction), so the splash's per-frame re-application via `refresh_payloads` would be
+    // wasted work here.
+    let real_animated = render::any_widget_animates(&config.widgets, &render_registry);
+    // The dashboard is drawn at its natural height, top-anchored on the alternate screen —
+    // handing the layout the whole fullscreen area would stretch its rows down to fill the
+    // terminal. Same height resolution as the inline splash in `run`.
+    let requested_height = config
+        .general
+        .height
+        .unwrap_or_else(|| config.computed_height().max(DEFAULT_VIEWPORT_LINES));
+
+    install_watch_panic_hook();
+    let mut terminal = WatchTerminal::enter()?;
+    let start = Instant::now();
+    let mut last_realtime = Instant::now();
+    // Cached entries are carried across iterations and only re-pulled from `mem_cache` when its
+    // generation advances. The footer's `next refresh in N` countdown reads from this every
+    // frame, so we have to keep it around — but the per-frame work was the wasteful part.
+    let mut cached_entries = entries;
+    let mut cache_gen = mem_cache.generation();
+    let mut prev_status: Option<WatchStatus> = None;
+
+    // Loop body errors are funnelled through `break Err(...)` rather than `?` so the teardown
+    // below (`fetch_loop.abort()` + `mem_cache.flush_to(disk)`) always runs. A transient
+    // terminal I/O error should still flush, otherwise this session's fetches would be lost.
+    let result: io::Result<()> = loop {
+        // Drain pending input. `q` / Ctrl-C quit; a resize forces a repaint (ratatui picks up
+        // the new size on the next `draw`).
+        let mut resized = false;
+        let mut quit = false;
+        let drain: io::Result<()> = (|| {
+            while event::poll(Duration::ZERO)? {
+                match event::read()? {
+                    Event::Key(k) if k.kind == KeyEventKind::Press => quit |= is_quit_key(&k),
+                    Event::Resize(_, _) => resized = true,
+                    _ => {}
+                }
+            }
+            Ok(())
+        })();
+        if let Err(e) = drain {
+            break Err(e);
+        }
+        if quit {
+            break Ok(());
+        }
+
+        let realtime_recomputed = last_realtime.elapsed() >= WATCH_REALTIME_TICK;
+        if realtime_recomputed {
+            compute_realtime_payloads_into(
+                &registry,
+                &realtime_widgets,
+                &config.general,
+                &shapes,
+                &mut payloads,
+            );
+            last_realtime = Instant::now();
+        }
+
+        // Re-pull cached entries only when the fetch task has actually written something. In
+        // steady state this branch is taken once every widget TTL, not once per frame.
+        let cur_gen = mem_cache.generation();
+        let cache_changed = cur_gen != cache_gen;
+        if cache_changed {
+            cached_entries = load_entries(
+                Some(&mem_cache),
+                &registry,
+                &cached_widgets,
+                &config.general,
+                &shapes,
+            );
+            for (id, entry) in &cached_entries {
+                payloads.insert(id.clone(), entry.payload.clone());
+            }
+            cache_gen = cur_gen;
+        }
+
+        let loading = compute_loading(&cached_widgets, &payloads, &cached_entries, &shapes, false);
+        let status = WatchStatus {
+            next_refresh_secs: next_refresh_secs(&cached_entries),
+            loading: loading.len(),
+        };
+
+        let animating = real_animated && start.elapsed() < ANIMATION_WINDOW;
+        let status_changed = prev_status != Some(status);
+        if watch_should_draw(
+            resized,
+            cache_changed || realtime_recomputed || status_changed,
+            animating,
+            !loading.is_empty(),
+        ) {
+            if let Err(e) = draw_watch(
+                &mut terminal.inner,
+                &layout,
+                &payloads,
+                &specs,
+                &render_registry,
+                &theme,
+                &config.general,
+                padding,
+                requested_height,
+                &loading,
+                &status,
+            ) {
+                break Err(e);
+            }
+            prev_status = Some(status);
+        }
+
+        tokio::time::sleep(WATCH_FRAME_TICK).await;
+    };
+
+    fetch_loop.abort();
+    drop(terminal);
+    // Best-effort flush. Runs on every exit path that reaches here (`q`, Ctrl-C, panic
+    // unwinding past `Drop`, or a terminal I/O error funneled through the loop's `break`).
+    // SIGKILL is the only path that skips this, and the cost there is just a refetch next
+    // session.
+    if let Some(disk) = disk_cache.as_ref() {
+        mem_cache.flush_to(disk);
+    }
+    result
+}
+
+/// In-process fetch loop for `watch`. Mirrors the detached `fetch-only` daemon: each pass runs
+/// the cached fetchers and writes the cache, then sleeps. `fetch_and_persist` only refetches
+/// widgets whose cache entry is stale, so widget TTLs — not `WATCH_FETCH_TICK` — set the real
+/// refresh cadence.
+async fn watch_fetch_loop(config: Config, ident: Option<(PathBuf, String)>, cache: MemCache) {
+    loop {
+        let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
+        fetch_and_persist(&config, ident_ref, Some(&cache as &dyn CacheBackend)).await;
+        tokio::time::sleep(WATCH_FETCH_TICK).await;
+    }
+}
+
+/// Whether the `watch` loop should repaint this frame. A persistent dashboard on an idle laptop
+/// should not redraw 20x/s for nothing, so a repaint happens only when there is a reason: the
+/// terminal resized, a payload or loading-set changed, the intro animation is still playing, or
+/// a widget is still showing its loading spinner.
+fn watch_should_draw(resized: bool, changed: bool, animating: bool, loading_active: bool) -> bool {
+    resized || changed || animating || loading_active
+}
+
+/// `q` or Ctrl-C exit `watch`. Ctrl-C arrives as a key event rather than SIGINT because raw
+/// mode is enabled, so both quit paths are handled here.
+fn is_quit_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('q'))
+        || (matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL))
+}
+
+/// RAII wrapper for the alternate-screen session `watch` runs in. `enter` enables raw mode and
+/// switches to the alternate screen; `Drop` restores both, so the terminal is left sane whether
+/// `watch` returns normally, bails on a `?`, or unwinds on a panic.
+struct WatchTerminal {
+    inner: Terminal<CrosstermBackend<Stdout>>,
+}
+
+impl WatchTerminal {
+    fn enter() -> io::Result<Self> {
+        // Stepwise so a failure after we've already mutated terminal state rolls each previous
+        // step back. `Drop` only fires on a constructed `Self`, so a `?` on the final step
+        // would otherwise leave the user in raw mode on the alternate screen with no recovery.
+        enable_raw_mode()?;
+        if let Err(e) = execute!(stdout(), EnterAlternateScreen, Hide) {
+            let _ = disable_raw_mode();
+            return Err(e);
+        }
+        match Terminal::new(CrosstermBackend::new(stdout())) {
+            Ok(inner) => Ok(Self { inner }),
+            Err(e) => {
+                let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+                let _ = disable_raw_mode();
+                Err(e)
+            }
+        }
+    }
+}
+
+impl Drop for WatchTerminal {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+    }
+}
+
+/// Restores the terminal from the panic hook so a panic inside the `watch` loop doesn't leave
+/// the user in raw mode on the alternate screen. `WatchTerminal`'s `Drop` also restores during
+/// unwind, but the default hook prints the panic message first — this runs before that so the
+/// message lands on the normal screen.
+fn install_watch_panic_hook() {
+    let original = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+        original(info);
+    }));
+}
+
 /// Runs fetchers and persists the results. Called by the detached `fetch-only` subcommand so the
 /// main invocation can exit without waiting for I/O. Errors from individual fetchers are logged
 /// nowhere (daemon has no stdio) and simply leave stale cache in place. The daemon re-checks
 /// trust itself because it loads config via its own command-line argument, not from shared
 /// state.
-pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &str)>) {
-    let cache = Cache::open_default();
+pub async fn fetch_and_persist(
+    config: &Config,
+    config_ident: Option<(&Path, &str)>,
+    cache: Option<&dyn CacheBackend>,
+) {
     let registry = Registry::with_builtins();
     let render_registry = render::Registry::with_builtins();
     let decision = TrustStore::load().decide(config_ident);
@@ -521,16 +824,10 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
     let (fetchable, _shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
     // Daemon only persists cached-fetcher output. Realtime widgets have no disk representation.
     let (cached_widgets, _realtime) = split_by_fetcher_kind(&fetchable, &registry);
-    let entries = load_entries(
-        cache.as_ref(),
-        &registry,
-        &cached_widgets,
-        &config.general,
-        &shapes,
-    );
+    let entries = load_entries(cache, &registry, &cached_widgets, &config.general, &shapes);
     let _ = fetch_all(
         &registry,
-        cache.as_ref(),
+        cache,
         &cached_widgets,
         &entries,
         &config.general,
@@ -556,14 +853,14 @@ struct WidgetBuckets<'a> {
 /// scale badly. Trust-gate and shape-mismatch placeholders are re-applied defensively so a
 /// daemon-written entry can't leak into a gated slot.
 fn refresh_payloads(
-    cache: &Option<Cache>,
+    cache: Option<&dyn CacheBackend>,
     registry: &Registry,
     buckets: &WidgetBuckets<'_>,
     general: &General,
     shapes: &HashMap<WidgetId, Shape>,
     payloads: &mut HashMap<WidgetId, Payload>,
 ) -> HashMap<WidgetId, CacheEntry> {
-    let entries = load_entries(cache.as_ref(), registry, buckets.cached, general, shapes);
+    let entries = load_entries(cache, registry, buckets.cached, general, shapes);
     for (id, payload) in entries_to_payloads(&entries) {
         payloads.insert(id, payload);
     }
@@ -600,8 +897,37 @@ fn fetch_context(
     }
 }
 
+/// Coerces the owned `Option<Cache>` callers carry into the trait-object form the cache
+/// plumbing accepts. One liner, but kept named so call sites don't repeat the cast.
+fn as_backend(cache: &Option<Cache>) -> Option<&dyn CacheBackend> {
+    cache.as_ref().map(|c| c as &dyn CacheBackend)
+}
+
+/// Derives the on-disk cache key for every cached widget. Used by `watch` to know which disk
+/// entries to copy into its `MemCache` at start-up.
+fn cache_keys_for(
+    widgets: &[WidgetConfig],
+    registry: &Registry,
+    general: &General,
+    shapes: &HashMap<WidgetId, Shape>,
+) -> Vec<String> {
+    widgets
+        .iter()
+        .filter_map(|w| {
+            let fetcher = registry.get_cached(&w.fetcher)?;
+            let ctx = fetch_context(
+                w,
+                general,
+                shapes.get(&w.id).copied(),
+                Duration::from_secs(0),
+            );
+            Some(fetcher.cache_key(&ctx))
+        })
+        .collect()
+}
+
 fn load_entries(
-    cache: Option<&Cache>,
+    cache: Option<&dyn CacheBackend>,
     registry: &Registry,
     widgets: &[WidgetConfig],
     general: &General,
@@ -643,7 +969,7 @@ fn resolve_refresh_interval(w: &WidgetConfig, fetcher: &dyn fetcher::Fetcher) ->
 
 async fn fetch_all(
     registry: &Registry,
-    cache: Option<&Cache>,
+    cache: Option<&dyn CacheBackend>,
     widgets: &[WidgetConfig],
     cached: &HashMap<WidgetId, CacheEntry>,
     general: &General,
@@ -768,6 +1094,127 @@ fn draw<B: Backend>(
         )
     })?;
     Ok(())
+}
+
+/// Draw used by `watch`. The alternate screen is fullscreen, but the dashboard is drawn at its
+/// natural `requested_height`, top-anchored — `draw_frame` distributes the layout's rows across
+/// whatever area it's handed, so a fullscreen area would stretch the dashboard down to fill the
+/// terminal. The whole screen is painted with the theme bg first so the band below the
+/// dashboard isn't a bare terminal-coloured strip, and the bottom row is reserved for the
+/// key-binding footer.
+#[allow(clippy::too_many_arguments)]
+fn draw_watch<B: Backend>(
+    terminal: &mut Terminal<B>,
+    root: &Layout,
+    payloads: &HashMap<WidgetId, Payload>,
+    specs: &HashMap<WidgetId, RenderSpec>,
+    registry: &render::Registry,
+    theme: &Theme,
+    general: &General,
+    padding: (u16, u16),
+    requested_height: u16,
+    loading: &HashMap<WidgetId, Shape>,
+    status: &WatchStatus,
+) -> Result<(), B::Error> {
+    terminal.draw(|frame| {
+        let full = frame.area();
+        paint_viewport_bg(frame, full, theme);
+        let footer_height = u16::from(full.height >= 2);
+        let body = Rect {
+            height: requested_height.min(full.height - footer_height),
+            ..full
+        };
+        draw_frame(
+            frame, body, root, payloads, specs, registry, theme, general, padding, 0, loading,
+        );
+        if footer_height > 0 {
+            let footer = Rect {
+                y: full.y + full.height - 1,
+                height: 1,
+                ..full
+            };
+            render_watch_footer(frame, footer, status, theme);
+        }
+    })?;
+    Ok(())
+}
+
+/// Footer status shown by `watch`. The loop tracks the last-drawn copy of this so the
+/// countdown still ticks when widget data is otherwise idle. `Copy` so change detection is a
+/// trivial value comparison, no clone needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WatchStatus {
+    /// Seconds until the soonest cached widget goes stale — when `watch` next has new data.
+    /// `None` for a realtime-only dashboard (no cached widgets).
+    next_refresh_secs: Option<u64>,
+    /// Cached widgets still waiting on their first payload.
+    loading: usize,
+}
+
+/// Seconds until the soonest cached widget goes stale. `None` when there are no cached widgets.
+fn next_refresh_secs(entries: &HashMap<WidgetId, CacheEntry>) -> Option<u64> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    entries
+        .values()
+        .map(|e| {
+            e.refreshed_at
+                .saturating_add(e.ttl_seconds)
+                .saturating_sub(now)
+        })
+        .min()
+}
+
+/// The left-hand meta segment of the watch footer: what the dashboard is doing right now.
+fn watch_footer_meta(status: &WatchStatus) -> String {
+    if status.loading > 0 {
+        let plural = if status.loading == 1 { "" } else { "s" };
+        return format!("loading {} widget{plural}…", status.loading);
+    }
+    match status.next_refresh_secs {
+        None => "realtime".to_string(),
+        Some(0) => "refreshing…".to_string(),
+        Some(secs) => format!("next refresh in {}", fmt_duration_compact(secs)),
+    }
+}
+
+/// Compact duration for the footer: `45s`, `3m`, `2h`. Status-bar granularity, not precise.
+fn fmt_duration_compact(secs: u64) -> String {
+    match secs {
+        s if s < 60 => format!("{s}s"),
+        s if s < 3600 => format!("{}m", s / 60),
+        s => format!("{}h", s / 3600),
+    }
+}
+
+/// One-line status footer pinned to the bottom of the `watch` alternate screen: live meta info
+/// on the left, key bindings on the right, on the theme's subtle surface so it reads as chrome
+/// separate from the dashboard band.
+fn render_watch_footer(frame: &mut Frame, area: Rect, status: &WatchStatus, theme: &Theme) {
+    let bg = theme.bg_subtle;
+    let label = Style::default().bg(bg).fg(theme.text_secondary);
+    let key = Style::default()
+        .bg(bg)
+        .fg(theme.text)
+        .add_modifier(Modifier::BOLD);
+
+    frame.render_widget(Block::default().style(Style::default().bg(bg)), area);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(" ⟳ {}", watch_footer_meta(status)),
+            label,
+        ))),
+        area,
+    );
+    let controls = Line::from(vec![
+        Span::styled("q", key),
+        Span::styled(" / ", label),
+        Span::styled("Ctrl-C", key),
+        Span::styled(" quit ", label),
+    ]);
+    frame.render_widget(Paragraph::new(controls).alignment(Alignment::Right), area);
 }
 
 /// Same as [`draw`] but parks the cursor at the bottom-left of the inline area afterwards, so
@@ -1159,6 +1606,94 @@ mod tests {
         crate::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn draw_watch_pins_footer_to_bottom_row_and_keeps_dashboard_top_anchored() {
+        let root = single_widget_tree("x");
+        let mut payloads = HashMap::new();
+        payloads.insert("x".into(), text_payload("hello"));
+        let specs = HashMap::new();
+        let registry = render::Registry::with_builtins();
+        let backend = TestBackend::new(50, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::default();
+        let loading = HashMap::new();
+        let status = WatchStatus {
+            next_refresh_secs: Some(45),
+            loading: 0,
+        };
+        draw_watch(
+            &mut terminal,
+            &root,
+            &payloads,
+            &specs,
+            &registry,
+            &theme,
+            &General::default(),
+            (0, 0),
+            3,
+            &loading,
+            &status,
+        )
+        .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(
+            row_text(&buf, 0).contains("hello"),
+            "dashboard top-anchored"
+        );
+        let footer = row_text(&buf, 19);
+        assert!(footer.contains("quit"), "key binding in footer: {footer:?}");
+        assert!(
+            footer.contains("next refresh in 45s"),
+            "meta info in footer: {footer:?}"
+        );
+        assert_eq!(
+            buf.cell((0, 19)).unwrap().bg,
+            theme.bg_subtle,
+            "footer painted on the subtle surface"
+        );
+    }
+
+    #[test]
+    fn watch_footer_meta_prioritises_loading_then_refresh_countdown() {
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(10),
+                loading: 2,
+            }),
+            "loading 2 widgets…",
+            "loading wins over the countdown"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(1),
+                loading: 1,
+            }),
+            "loading 1 widget…"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(90),
+                loading: 0,
+            }),
+            "next refresh in 1m"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(0),
+                loading: 0,
+            }),
+            "refreshing…"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: None,
+                loading: 0,
+            }),
+            "realtime",
+            "no cached widgets → realtime-only dashboard"
+        );
     }
 
     #[test]
@@ -1997,11 +2532,17 @@ mod tests {
             ..Default::default()
         };
 
+        let disk = Cache::open_default();
+        let backend = disk.as_ref().map(|c| c as &dyn CacheBackend);
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(fetch_and_persist(&config, Some((&config_path, &hash))));
+            .block_on(fetch_and_persist(
+                &config,
+                Some((&config_path, &hash)),
+                backend,
+            ));
 
         let cache = Cache::open_default().unwrap();
         let registry = Registry::with_builtins();
@@ -2184,7 +2725,7 @@ mod tests {
         };
         let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
         let _ = refresh_payloads(
-            &None,
+            None,
             &registry,
             &buckets,
             &General::default(),
@@ -2243,7 +2784,7 @@ mod tests {
         ]);
 
         let entries = refresh_payloads(
-            &cache,
+            as_backend(&cache),
             &registry,
             &buckets,
             &General::default(),
@@ -2389,6 +2930,48 @@ mod tests {
             loop_should_exit(true, true, true),
             "hard deadline always wins"
         );
+    }
+
+    #[test]
+    fn watch_should_draw_only_when_there_is_a_reason() {
+        // Idle steady state: nothing changed, no animation, no spinner → skip the repaint so a
+        // persistent dashboard doesn't burn CPU at the frame rate.
+        assert!(!watch_should_draw(false, false, false, false));
+        assert!(watch_should_draw(true, false, false, false), "resized");
+        assert!(watch_should_draw(false, true, false, false), "data changed");
+        assert!(
+            watch_should_draw(false, false, true, false),
+            "intro animation playing"
+        );
+        assert!(
+            watch_should_draw(false, false, false, true),
+            "loading spinner active"
+        );
+    }
+
+    #[test]
+    fn is_quit_key_matches_q_and_ctrl_c_only() {
+        assert!(is_quit_key(&KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE
+        )));
+        assert!(is_quit_key(&KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL
+        )));
+        // Bare `c` is just a keystroke, not a quit — only Ctrl-C is.
+        assert!(!is_quit_key(&KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::NONE
+        )));
+        assert!(!is_quit_key(&KeyEvent::new(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE
+        )));
+        assert!(!is_quit_key(&KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE
+        )));
     }
 
     #[test]

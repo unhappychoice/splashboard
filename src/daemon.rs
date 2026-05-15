@@ -44,7 +44,9 @@ pub async fn run_fetch_only(kind: DashboardKind, path: Option<&Path>) -> io::Res
     let settings = load_settings_or_default();
     let config = Config::from_parts(settings, dashboard);
     let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
-    runtime::fetch_and_persist(&config, ident_ref).await;
+    let cache = crate::cache::Cache::open_default();
+    let backend = cache.as_ref().map(|c| c as &dyn crate::cache::CacheBackend);
+    runtime::fetch_and_persist(&config, ident_ref, backend).await;
     Ok(())
 }
 

@@ -167,6 +167,8 @@ From here:
   adopt verbatim.
 - [Themes](/guides/themes/) — 26 built-in palettes plus
   per-token overrides.
+- [Watch mode](/guides/watch/) — `splashboard watch` keeps the
+  dashboard live in the foreground instead of painting once.
 - The [reference](/reference/matrix/) — the complete list of
   fetchers and renderers with their options and compatible shapes.
 

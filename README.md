@@ -68,6 +68,7 @@ echo 'Invoke-Expression (& splashboard init powershell | Out-String)' >> $PROFIL
 - [Configuration](https://splashboard.unhappychoice.com/guides/configuration/) — the full TOML schema
 - [Presets](https://splashboard.unhappychoice.com/guides/presets/) & [Themes](https://splashboard.unhappychoice.com/guides/themes/) — curated dashboards and palettes
 - [Trust model](https://splashboard.unhappychoice.com/guides/trust/) — how per-directory configs are sandboxed
+- [Watch mode](https://splashboard.unhappychoice.com/guides/watch/) — persistent foreground dashboard via `splashboard watch`
 - [Reference](https://splashboard.unhappychoice.com/reference/matrix/) — every fetcher and renderer with options and compatible shapes
 
 ## Status
