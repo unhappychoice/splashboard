@@ -624,17 +624,26 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
     let mut cache_gen = mem_cache.generation();
     let mut prev_status: Option<WatchStatus> = None;
 
-    let result = loop {
+    // Loop body errors are funnelled through `break Err(...)` rather than `?` so the teardown
+    // below (`fetch_loop.abort()` + `mem_cache.flush_to(disk)`) always runs. A transient
+    // terminal I/O error should still flush, otherwise this session's fetches would be lost.
+    let result: io::Result<()> = loop {
         // Drain pending input. `q` / Ctrl-C quit; a resize forces a repaint (ratatui picks up
         // the new size on the next `draw`).
         let mut resized = false;
         let mut quit = false;
-        while event::poll(Duration::ZERO)? {
-            match event::read()? {
-                Event::Key(k) if k.kind == KeyEventKind::Press => quit |= is_quit_key(&k),
-                Event::Resize(_, _) => resized = true,
-                _ => {}
+        let drain: io::Result<()> = (|| {
+            while event::poll(Duration::ZERO)? {
+                match event::read()? {
+                    Event::Key(k) if k.kind == KeyEventKind::Press => quit |= is_quit_key(&k),
+                    Event::Resize(_, _) => resized = true,
+                    _ => {}
+                }
             }
+            Ok(())
+        })();
+        if let Err(e) = drain {
+            break Err(e);
         }
         if quit {
             break Ok(());
@@ -684,7 +693,7 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
             animating,
             !loading.is_empty(),
         ) {
-            draw_watch(
+            if let Err(e) = draw_watch(
                 &mut terminal.inner,
                 &layout,
                 &payloads,
@@ -696,7 +705,9 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
                 requested_height,
                 &loading,
                 &status,
-            )?;
+            ) {
+                break Err(e);
+            }
             prev_status = Some(status);
         }
 
@@ -705,9 +716,10 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
 
     fetch_loop.abort();
     drop(terminal);
-    // Best-effort flush. Losing the most recent fetch on a SIGKILL just forces a refetch next
-    // session; for clean exits (`q`, Ctrl-C, `?` bail) the disk reflects the latest values so
-    // the next splash / watch warm-starts.
+    // Best-effort flush. Runs on every exit path that reaches here (`q`, Ctrl-C, panic
+    // unwinding past `Drop`, or a terminal I/O error funneled through the loop's `break`).
+    // SIGKILL is the only path that skips this, and the cost there is just a refetch next
+    // session.
     if let Some(disk) = disk_cache.as_ref() {
         mem_cache.flush_to(disk);
     }
@@ -750,10 +762,22 @@ struct WatchTerminal {
 
 impl WatchTerminal {
     fn enter() -> io::Result<Self> {
+        // Stepwise so a failure after we've already mutated terminal state rolls each previous
+        // step back. `Drop` only fires on a constructed `Self`, so a `?` on the final step
+        // would otherwise leave the user in raw mode on the alternate screen with no recovery.
         enable_raw_mode()?;
-        execute!(stdout(), EnterAlternateScreen, Hide)?;
-        let inner = Terminal::new(CrosstermBackend::new(stdout()))?;
-        Ok(Self { inner })
+        if let Err(e) = execute!(stdout(), EnterAlternateScreen, Hide) {
+            let _ = disable_raw_mode();
+            return Err(e);
+        }
+        match Terminal::new(CrosstermBackend::new(stdout())) {
+            Ok(inner) => Ok(Self { inner }),
+            Err(e) => {
+                let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+                let _ = disable_raw_mode();
+                Err(e)
+            }
+        }
     }
 }
 

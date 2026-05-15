@@ -150,15 +150,11 @@ impl MemCache {
     /// skipped — the watch fetch loop will populate them on its first pass.
     pub fn warm_from<'a>(disk: Option<&Cache>, keys: impl IntoIterator<Item = &'a str>) -> Self {
         let mem = Self::new();
-        let Some(d) = disk else {
-            return mem;
-        };
-        if let Ok(mut entries) = mem.entries.write() {
-            for key in keys {
-                if let Some(e) = d.load(key) {
-                    entries.insert(key.to_string(), e);
-                }
-            }
+        if let (Some(d), Ok(mut entries)) = (disk, mem.entries.write()) {
+            entries.extend(
+                keys.into_iter()
+                    .filter_map(|k| d.load(k).map(|e| (k.to_string(), e))),
+            );
         }
         mem
     }
