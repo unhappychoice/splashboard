@@ -815,6 +815,93 @@ mod tests {
     }
 
     #[test]
+    fn text_value_falls_back_to_no_coins_for_empty_snapshot() {
+        let snap = Snapshot {
+            vs_currency: "usd".into(),
+            coins: vec![],
+        };
+        assert_eq!(text_value(&snap), "no coins");
+    }
+
+    #[test]
+    fn text_value_includes_arrow_symbol_and_change_for_top_mover() {
+        let snap = snapshot_with(&[(1.0, 1.0), (2.0, -7.5)]);
+        let value = text_value(&snap);
+        assert!(value.contains("C1"), "value: {value}");
+        assert!(value.contains("-7.50%"), "value: {value}");
+        assert!(value.starts_with('▼'), "value: {value}");
+    }
+
+    #[test]
+    fn text_block_body_emits_one_line_per_coin() {
+        let snap = snapshot_with(&[(1.0, 1.0), (2.0, 0.0)]);
+        let Body::TextBlock(d) = text_block_body(&snap) else {
+            panic!("expected text block");
+        };
+        assert_eq!(d.lines.len(), 2);
+        assert!(d.lines[0].contains("C0"));
+        assert!(d.lines[1].contains("C1"));
+    }
+
+    #[test]
+    fn currency_symbol_covers_eur_and_gbp_glyphs() {
+        // Earlier test exercises usd / jpy / krw / unknown. eur / gbp are the remaining
+        // members of the symbol table — pin them here so the table can't drift silently.
+        assert_eq!(format_price(1234.5, "eur"), "€1,234.50");
+        assert_eq!(format_price(1234.5, "gbp"), "£1,234.50");
+    }
+
+    #[test]
+    fn add_thousands_separators_handles_integer_only_strings() {
+        // `format_amount` always emits a fractional part, so the integer-only branch is
+        // unreachable through it. Pin the helper directly so the no-fractional formatter
+        // (used if a caller ever emits a bare integer) keeps working.
+        assert_eq!(add_thousands_separators("1000000"), "1,000,000");
+        assert_eq!(add_thousands_separators("-1000000"), "-1,000,000");
+        assert_eq!(add_thousands_separators("42"), "42");
+    }
+
+    #[test]
+    fn payload_helper_strips_chrome_and_wraps_body() {
+        let p = payload(Body::Text(TextData {
+            value: "hello".into(),
+        }));
+        assert!(p.icon.is_none());
+        assert!(p.status.is_none());
+        assert!(p.format.is_none());
+        assert!(matches!(p.body, Body::Text(t) if t.value == "hello"));
+    }
+
+    #[test]
+    fn http_singleton_returns_the_same_client_across_calls() {
+        // Mirrors the `OnceLock` reuse assertion used by every other family with a shared
+        // client (stock_watchlist, deariary, github, reddit). Catches a regression where the
+        // builder gets called per invocation instead of memoised once.
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[test]
+    fn number_series_body_uses_zero_baseline_when_sparkline_has_no_finite_points() {
+        // The `if baseline.is_finite()` branch only flips to `0.0` when every sample in the
+        // sparkline is non-finite, so `fold(INFINITY, min)` never finds a real low. With
+        // NaN inputs `(NaN - 0).max(0)` returns 0, so every output cell collapses to 0.
+        let snap = Snapshot {
+            vs_currency: "usd".into(),
+            coins: vec![CoinPoint {
+                id: "x".into(),
+                symbol: "X".into(),
+                price: 0.0,
+                change_24h: 0.0,
+                sparkline: vec![f64::NAN, f64::NAN],
+            }],
+        };
+        let Body::NumberSeries(d) = number_series_body(&snap) else {
+            panic!("expected number series");
+        };
+        assert_eq!(d.values, vec![0, 0]);
+    }
+
+    #[test]
     fn badge_carries_top_mover_label_with_volatility_status() {
         let snap = snapshot_with(&[(1.0, 1.0), (1.0, -7.5)]);
         let badge = badge_for(&snap);
