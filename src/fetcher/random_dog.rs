@@ -441,6 +441,16 @@ mod tests {
     }
 
     #[test]
+    fn build_api_url_keeps_digits_unencoded() {
+        // Digits are URL-path safe so `encode_segment` lets them through the unescaped arm —
+        // exercises the `b'0'..=b'9'` branch that letters-only inputs skip.
+        assert_eq!(
+            build_api_url(Some("breed99"), None),
+            "https://dog.ceo/api/breed/breed99/images/random"
+        );
+    }
+
+    #[test]
     fn enforce_allowed_host_accepts_cdn() {
         assert!(enforce_allowed_host("https://images.dog.ceo/breeds/foo/x.jpg").is_ok());
     }
@@ -454,6 +464,21 @@ mod tests {
     fn enforce_allowed_host_rejects_off_host() {
         assert!(enforce_allowed_host("https://evil.example.com/x.jpg").is_err());
         assert!(enforce_allowed_host("https://dog.ceo.evil.com/x.jpg").is_err());
+    }
+
+    #[test]
+    fn enforce_allowed_host_accepts_http_scheme() {
+        // dog.ceo also serves over plain http; the strip_prefix `or_else` arm picks the
+        // `http://` branch instead of the `https://` one we hit elsewhere.
+        assert!(enforce_allowed_host("http://images.dog.ceo/x.jpg").is_ok());
+    }
+
+    #[test]
+    fn enforce_allowed_host_rejects_url_without_scheme() {
+        // No `http://` / `https://` prefix → both strips return None → host falls back to
+        // the empty string, which is never in `ALLOWED_IMAGE_HOSTS`, so the call rejects.
+        assert!(enforce_allowed_host("images.dog.ceo/x.jpg").is_err());
+        assert!(enforce_allowed_host("ftp://images.dog.ceo/x.jpg").is_err());
     }
 
     #[test]
@@ -472,6 +497,8 @@ mod tests {
     #[test]
     fn image_extension_detects_gif() {
         assert_eq!(image_extension(b"GIF89a..."), Some("gif"));
+        // GIF87a is the legacy magic and shares the `gif` arm with GIF89a.
+        assert_eq!(image_extension(b"GIF87a..."), Some("gif"));
     }
 
     #[test]

@@ -317,6 +317,13 @@ mod tests {
     }
 
     #[test]
+    fn build_url_keeps_digits_unencoded() {
+        // Digits are URL-path safe so `encode_tag` lets them through the unescaped arm —
+        // exercises the `b'0'..=b'9'` branch that letter-only tags skip.
+        assert_eq!(build_url(Some("cute123")), "https://cataas.com/cat/cute123");
+    }
+
+    #[test]
     fn image_extension_detects_png() {
         assert_eq!(image_extension(b"\x89PNG\r\n\x1a\nrest"), Some("png"));
     }
