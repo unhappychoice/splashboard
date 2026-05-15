@@ -291,7 +291,26 @@ fn sample_speedtest() -> Speedtest {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{SocketAddr, TcpListener};
+
     use super::*;
+
+    /// Borrow a free local port, drop the listener so the port is unbound, then point the
+    /// cloudflare host at it via reqwest's resolver override. Every chunk request now fails
+    /// fast with connection refused (or the TLS handshake fails if something rebinds it) —
+    /// either way we exercise the error path without hitting the real network.
+    fn unreachable_client() -> Client {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead: SocketAddr = listener.local_addr().unwrap();
+        drop(listener);
+        Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_millis(500))
+            .gzip(false)
+            .resolve("speed.cloudflare.com", dead)
+            .build()
+            .unwrap()
+    }
 
     #[test]
     fn body_for_shape_covers_every_supported_shape() {
@@ -367,6 +386,47 @@ mod tests {
             assert!(NetSpeedtest.sample_body(shape).is_some());
         }
         assert!(NetSpeedtest.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn http_reuses_the_same_client() {
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[tokio::test]
+    async fn measure_download_errors_when_no_chunk_returns_bytes() {
+        let client = unreachable_client();
+        let err = measure_download(&client).await.unwrap_err();
+        let FetchError::Failed(msg) = err else {
+            panic!("expected Failed");
+        };
+        assert!(msg.contains("no data"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn measure_latency_returns_none_when_request_fails() {
+        let client = unreachable_client();
+        assert!(measure_latency(&client).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn measure_upload_surfaces_request_failure() {
+        let client = unreachable_client();
+        let err = measure_upload(&client).await.unwrap_err();
+        let FetchError::Failed(msg) = err else {
+            panic!("expected Failed");
+        };
+        assert!(msg.contains("upload"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn download_chunk_surfaces_request_failure() {
+        let client = unreachable_client();
+        let err = download_chunk(&client).await.unwrap_err();
+        let FetchError::Failed(msg) = err else {
+            panic!("expected Failed");
+        };
+        assert!(msg.contains("download"), "got: {msg}");
     }
 
     /// Live smoke test — hits Cloudflare. `#[ignore]` keeps CI offline-safe; run with
