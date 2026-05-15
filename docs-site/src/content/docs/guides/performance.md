@@ -71,8 +71,11 @@ expired entry just signals "this widget will be refreshed when the next
 
 A widget with **no cache entry yet** (first run, after `cache clear`, or
 after a config change that invalidated the cache key) shows a loading
-placeholder that spins through the 2-second animation window, then settles.
-The next splash picks up the entry.
+placeholder while the background fetcher runs. The splash holds for up to 2
+seconds when a single widget is missing, or up to 5 seconds when the whole
+cache is cold (no entry for any cached widget). If the data lands inside
+that window it paints; otherwise the placeholder stays for the rest of the
+splash, and the entry shows up on the next paint.
 
 ### Failure semantics
 
@@ -83,7 +86,7 @@ for. Three outcomes:
 |---|---|---|---|
 | `ok` | `fetch` returned `Ok(payload)` | the widget's configured TTL | the payload |
 | `err` | `fetch` returned `Err(_)` | 30 s | a `⚠ <error>` placeholder |
-| `timeout` | `fetch` didn't return inside the per-fetch deadline | 30 s | a `⏱ timeout` placeholder |
+| `timeout` | `fetch` didn't return inside the per-fetch deadline | 30 s | a `⏱ timed out` placeholder |
 
 Errors have a 30 s mini-TTL so a flaky backend retries soon, but a
 consistently failing widget doesn't hammer it on every splash. The error
@@ -108,10 +111,12 @@ render in the current directory. If you're standing in a project whose
 dashboard doesn't contain that widget, `cd` to a matching directory first,
 or use `cache list` plus a manual delete by key.
 
-Cache keys default to `<fetcher>-<format-hash>`; fetchers whose output
-depends on more (`cwd`, repo URL, options) override `cache_key()` to
-include those. That's why two `clock` widgets with the same `format` share a
-payload — one fetch refreshes both.
+The default cache key is `<fetcher>-<digest>`, where the digest is the
+leading 8 bytes of `sha256("<name>|<shape>|<format>")` rendered in hex.
+Fetchers whose output depends on more (`cwd`, repo URL, options) override
+`cache_key()` to fold those in. That's why two `clock` widgets with the
+same `format` (and therefore the same key) share a payload — one fetch
+refreshes both.
 
 ## Tuning
 
