@@ -240,4 +240,45 @@ mod tests {
         }
         assert!(NetGateway.sample_body(Shape::Bars).is_none());
     }
+
+    #[test]
+    fn description_and_refresh_interval_are_populated() {
+        // `description()` and `refresh_interval()` round out the catalog metadata surface but
+        // weren't hit by the bare contract checks above — keep them honest so a copy-paste of the
+        // fetcher template can't silently leave either empty / unset.
+        assert!(NetGateway.description().contains("default-route"));
+        assert_eq!(NetGateway.refresh_interval(), 60 * 10);
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_options_sensitive() {
+        // The fetcher delegates to the shared `super::cache_key` helper; pin the name prefix plus
+        // options-partitioning so a regression in the family helper can't drift the gateway slot
+        // into a sibling fetcher's cache.
+        let base = FetchContext {
+            shape: Some(Shape::Text),
+            ..Default::default()
+        };
+        let with_opts = FetchContext {
+            options: Some(toml::from_str("kind = \"interface\"").unwrap()),
+            ..base.clone()
+        };
+        assert!(NetGateway.cache_key(&base).starts_with("net_gateway-"));
+        assert_ne!(
+            NetGateway.cache_key(&base),
+            NetGateway.cache_key(&with_opts)
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_unsupported_shape_falls_back_to_text() {
+        // `body_for_shape` returns `None` for any shape outside `SHAPES`; `fetch` then materialises
+        // a `Text` fallback so a misconfigured widget still renders rather than dropping the body.
+        let ctx = FetchContext {
+            shape: Some(Shape::Ratio),
+            ..Default::default()
+        };
+        let body = NetGateway.fetch(&ctx).await.unwrap().body;
+        assert!(matches!(&body, Body::Text(t) if !t.value.is_empty()));
+    }
 }
