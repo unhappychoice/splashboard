@@ -17,6 +17,7 @@ pub mod calendar;
 pub mod clock;
 pub mod code;
 pub mod crypto_watchlist;
+pub mod deal;
 pub mod deariary;
 pub mod feed;
 pub mod git;
@@ -338,6 +339,9 @@ impl Registry {
         r.register(Arc::new(nasa_apod::NasaApodFetcher));
         r.register(Arc::new(youtube::YoutubeChannelFetcher));
         for f in calendar::fetchers() {
+            r.register(f);
+        }
+        for f in deal::fetchers() {
             r.register(f);
         }
         for f in deariary::fetchers() {
