@@ -187,6 +187,51 @@ mod tests {
         assert_eq!(f.shapes(), SHAPES);
     }
 
+    /// Standard `basic_*` trio metadata cover: `description` mentions every shape variant
+    /// `compute` can return so the catalog blurb stays in sync with the dispatch table, and
+    /// `option_schemas` exposes the single `links` schema entry that the docs / TOML editor
+    /// rely on. Pins the `&'static str` / `&[OptionSchema]` return paths that the bare contract
+    /// test bypasses.
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicLinks;
+        let description = f.description();
+        for needle in [
+            "LinkedTextBlock",
+            "ImageLinkedList",
+            "Text",
+            "TextBlock",
+            "MarkdownTextBlock",
+            "Entries",
+        ] {
+            assert!(
+                description.contains(needle),
+                "description missing {needle}: {description}",
+            );
+        }
+        let schemas = f.option_schemas();
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, "links");
+        assert!(!schemas[0].required);
+    }
+
+    /// `sample_body` returns `Some` for every declared shape and `None` for any shape outside
+    /// `SHAPES` so the catalog page and the live preview can both rely on the slot being filled
+    /// (or explicitly empty). Pins the wildcard `_ => return None` arm against future shapes
+    /// landing in the enum before the match arm catches up.
+    #[test]
+    fn sample_body_covers_every_declared_shape() {
+        let f = BasicLinks;
+        for shape in SHAPES {
+            assert!(
+                f.sample_body(*shape).is_some(),
+                "sample missing for {shape:?}",
+            );
+        }
+        assert!(f.sample_body(Shape::Ratio).is_none());
+        assert!(f.sample_body(Shape::Image).is_none());
+    }
+
     #[test]
     fn linked_text_block_default_wraps_rows_with_optional_urls() {
         let p = BasicLinks.compute(&ctx(
@@ -201,14 +246,15 @@ mod tests {
             ),
             None,
         ));
-        let Body::LinkedTextBlock(d) = p.body else {
-            panic!("expected LinkedTextBlock");
-        };
-        assert_eq!(d.items.len(), 2);
-        assert_eq!(d.items[0].text, "GitHub");
-        assert_eq!(d.items[0].url.as_deref(), Some("https://github.com/"));
-        assert_eq!(d.items[1].text, "Local Notes");
-        assert!(d.items[1].url.is_none());
+        assert!(matches!(
+            &p.body,
+            Body::LinkedTextBlock(d)
+                if d.items.len() == 2
+                    && d.items[0].text == "GitHub"
+                    && d.items[0].url.as_deref() == Some("https://github.com/")
+                    && d.items[1].text == "Local Notes"
+                    && d.items[1].url.is_none()
+        ));
     }
 
     #[test]
@@ -246,10 +292,10 @@ mod tests {
             ),
             Some(Shape::MarkdownTextBlock),
         ));
-        let Body::MarkdownTextBlock(d) = p.body else {
-            panic!("expected markdown");
-        };
-        assert_eq!(d.value, "- [GitHub](https://github.com/)\n- TODO");
+        assert!(matches!(
+            &p.body,
+            Body::MarkdownTextBlock(d) if d.value == "- [GitHub](https://github.com/)\n- TODO"
+        ));
     }
 
     #[test]
@@ -266,10 +312,10 @@ mod tests {
             ),
             Some(Shape::TextBlock),
         ));
-        let Body::TextBlock(d) = p.body else {
-            panic!("expected TextBlock");
-        };
-        assert_eq!(d.lines, vec!["GitHub".to_string(), "Docs".to_string()]);
+        assert!(matches!(
+            &p.body,
+            Body::TextBlock(d) if d.lines == ["GitHub".to_string(), "Docs".to_string()]
+        ));
     }
 
     #[test]
@@ -286,31 +332,29 @@ mod tests {
             ),
             Some(Shape::Entries),
         ));
-        let Body::Entries(d) = p.body else {
-            panic!("expected Entries");
-        };
-        assert_eq!(d.items[0].key, "GitHub");
-        assert_eq!(d.items[0].value.as_deref(), Some("https://github.com/"));
-        assert_eq!(d.items[1].key, "Docs");
-        assert!(d.items[1].value.is_none());
+        assert!(matches!(
+            &p.body,
+            Body::Entries(d)
+                if d.items[0].key == "GitHub"
+                    && d.items[0].value.as_deref() == Some("https://github.com/")
+                    && d.items[1].key == "Docs"
+                    && d.items[1].value.is_none()
+        ));
     }
 
     #[test]
     fn missing_options_yields_empty_list() {
         let p = BasicLinks.compute(&FetchContext::default());
-        let Body::LinkedTextBlock(d) = p.body else {
-            panic!("expected LinkedTextBlock");
-        };
-        assert!(d.items.is_empty());
+        assert!(matches!(&p.body, Body::LinkedTextBlock(d) if d.items.is_empty()));
     }
 
     #[test]
     fn unknown_option_key_renders_placeholder() {
         let p = BasicLinks.compute(&ctx(opts(r#"bogus = "x""#), None));
-        let Body::TextBlock(d) = p.body else {
-            panic!("expected placeholder TextBlock");
-        };
-        assert!(d.lines[0].contains("invalid options"));
+        assert!(matches!(
+            &p.body,
+            Body::TextBlock(d) if d.lines[0].contains("invalid options")
+        ));
     }
 
     #[test]
@@ -327,11 +371,12 @@ mod tests {
             ),
             Some(Shape::ImageLinkedList),
         ));
-        let Body::ImageLinkedList(d) = p.body else {
-            panic!("expected ImageLinkedList");
-        };
-        assert_eq!(d.items[0].title, "Logo");
-        assert_eq!(d.items[0].thumbnail_path.as_deref(), Some("/tmp/logo.png"));
-        assert_eq!(d.items[0].subtitle.as_deref(), Some("tagline"));
+        assert!(matches!(
+            &p.body,
+            Body::ImageLinkedList(d)
+                if d.items[0].title == "Logo"
+                    && d.items[0].thumbnail_path.as_deref() == Some("/tmp/logo.png")
+                    && d.items[0].subtitle.as_deref() == Some("tagline")
+        ));
     }
 }
