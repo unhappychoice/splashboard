@@ -705,6 +705,129 @@ mod tests {
         assert!(d.items[0].thumbnail_path.is_none());
     }
 
+    /// Helper for building a `MediaObject` whose only thumbnail is a single image URI. The
+    /// surrounding fields are required by `feed_rs` but unused by `thumbnail_url_for`.
+    fn entry_with_thumbnail(title: &str, href: &str, thumbnail_uri: &str) -> FeedEntry {
+        let mut entry = entry_with_title_and_link(title, href);
+        entry.media = vec![MediaObject {
+            title: None,
+            content: vec![],
+            duration: None,
+            thumbnails: vec![MediaThumbnail {
+                image: Image {
+                    uri: thumbnail_uri.into(),
+                    title: None,
+                    link: None,
+                    width: None,
+                    height: None,
+                    description: None,
+                },
+                time: None,
+            }],
+            texts: vec![],
+            description: None,
+            community: None,
+            credits: vec![],
+        }];
+        entry
+    }
+
+    /// SHA-256-hex of the URL bytes; matches `thumbnails::download_to_cache`'s on-disk cache key
+    /// scheme so pre-seeding a cached file under `cache/thumbnails/<hash>.png` lets the helper
+    /// short-circuit to the existing path without any network call.
+    fn url_hash(url: &str) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(url.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    fn restore_splashboard_home(previous: Option<String>) {
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+    }
+
+    /// Pre-seeding the thumbnail cache lets `download_to_cache` short-circuit to
+    /// `existing_cached`, so `render_image_body`'s `Some(url) => …` arm fires without touching
+    /// the network. The `.ok()`/`.flatten()`/`.map(...)`/`.unwrap_or_default()` chain on the
+    /// `Ok(Some(path))` returns the file's path string.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn render_image_body_returns_cached_thumbnail_path() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let url = "https://example.com/feed-thumb.png";
+        let dir = tmp.path().join("cache").join("thumbnails");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join(format!("{}.png", url_hash(url)));
+        std::fs::write(&cached, b"pretend-png").unwrap();
+
+        let mut feed = empty_feed();
+        feed.entries
+            .push(entry_with_thumbnail("Story", "https://example.com/1", url));
+        let body = render_image_body(&feed).await;
+
+        restore_splashboard_home(previous);
+        assert!(matches!(
+            body,
+            Body::Image(img) if img.path == cached.to_string_lossy().into_owned()
+        ));
+    }
+
+    /// Same cache-pre-seed trick exercises `render_image_linked`'s `path.map(|p| …)` arm —
+    /// `download_many` returns `Some(cached_path)` for the seeded entry and `None` for the
+    /// thumbnail-less one, pinning both row shapes in a single test.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn render_image_linked_carries_thumbnail_path_when_cached() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let url = "https://example.com/linked-thumb.png";
+        let dir = tmp.path().join("cache").join("thumbnails");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join(format!("{}.png", url_hash(url)));
+        std::fs::write(&cached, b"pretend-png").unwrap();
+
+        let mut feed = empty_feed();
+        feed.entries.push(entry_with_thumbnail(
+            "Hero",
+            "https://example.com/hero",
+            url,
+        ));
+        feed.entries.push(entry_with_title_and_link(
+            "Bare",
+            "https://example.com/bare",
+        ));
+        let ctx = FetchContext {
+            timezone: Some("UTC".into()),
+            ..Default::default()
+        };
+        let body = render_image_linked(&feed, 5, &ctx).await;
+
+        restore_splashboard_home(previous);
+        let cached_str = cached.to_string_lossy().into_owned();
+        assert!(matches!(
+            &body,
+            Body::ImageLinkedList(d)
+                if d.items.len() == 2
+                    && d.items[0].thumbnail_path.as_deref() == Some(cached_str.as_str())
+                    && d.items[1].thumbnail_path.is_none()
+        ));
+    }
+
     #[test]
     fn parse_feed_surfaces_label_in_error() {
         let err = parse_feed(b"not a feed", "rss").unwrap_err();
