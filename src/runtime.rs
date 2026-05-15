@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{self, Stdout, stdout};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ratatui::{
     Frame, Terminal, TerminalOptions, Viewport,
@@ -15,7 +15,7 @@ use ratatui::{
     },
     layout::{Alignment, Position, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Paragraph},
 };
 use tokio::task::JoinSet;
@@ -593,8 +593,9 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
     let mut terminal = WatchTerminal::enter()?;
     let start = Instant::now();
     let mut last_realtime = Instant::now();
-    // Snapshot of the last-drawn state, used to skip repaints when nothing changed.
-    let mut prev: Option<(HashMap<WidgetId, Payload>, HashMap<WidgetId, Shape>)> = None;
+    // Snapshot of the last-drawn state, used to skip repaints when nothing changed. The footer
+    // is part of it so its countdown still ticks when widget data is otherwise idle.
+    let mut prev: Option<WatchSnapshot> = None;
 
     let result = loop {
         // Drain pending input. `q` / Ctrl-C quit; a resize forces a repaint (ratatui picks up
@@ -631,10 +632,14 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
             &mut payloads,
         );
         let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, false);
+        let status = WatchStatus {
+            next_refresh_secs: next_refresh_secs(&entries),
+            loading: loading.len(),
+        };
 
         let animating = real_animated && start.elapsed() < ANIMATION_WINDOW;
         let changed = match &prev {
-            Some((p, l)) => p != &payloads || l != &loading,
+            Some(p) => p.payloads != payloads || p.loading != loading || p.status != status,
             None => true,
         };
         if watch_should_draw(resized, changed, animating, !loading.is_empty()) {
@@ -649,8 +654,13 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
                 padding,
                 requested_height,
                 &loading,
+                &status,
             )?;
-            prev = Some((payloads.clone(), loading));
+            prev = Some(WatchSnapshot {
+                payloads: payloads.clone(),
+                loading,
+                status,
+            });
         }
 
         tokio::time::sleep(WATCH_FRAME_TICK).await;
@@ -1011,6 +1021,7 @@ fn draw_watch<B: Backend>(
     padding: (u16, u16),
     requested_height: u16,
     loading: &HashMap<WidgetId, Shape>,
+    status: &WatchStatus,
 ) -> Result<(), B::Error> {
     terminal.draw(|frame| {
         let full = frame.area();
@@ -1029,19 +1040,95 @@ fn draw_watch<B: Backend>(
                 height: 1,
                 ..full
             };
-            render_watch_footer(frame, footer, theme);
+            render_watch_footer(frame, footer, status, theme);
         }
     })?;
     Ok(())
 }
 
-/// One-line key-binding footer pinned to the bottom of the `watch` alternate screen, painted on
-/// the theme's subtle surface so it reads as chrome separate from the dashboard band.
-fn render_watch_footer(frame: &mut Frame, area: Rect, theme: &Theme) {
-    let style = Style::default().bg(theme.bg_subtle).fg(theme.text_dim);
-    frame.render_widget(Block::default().style(style), area);
-    let hint = Paragraph::new(Line::from(" q / Ctrl-C  quit").style(style));
-    frame.render_widget(hint, area);
+/// The last-drawn state of the `watch` loop. Compared against the current frame's state to
+/// skip redundant repaints — an idle dashboard shouldn't redraw at the frame rate.
+struct WatchSnapshot {
+    payloads: HashMap<WidgetId, Payload>,
+    loading: HashMap<WidgetId, Shape>,
+    status: WatchStatus,
+}
+
+/// Footer status shown by `watch`, kept in the redraw snapshot so its countdown still ticks
+/// when widget data is otherwise idle.
+#[derive(Debug, Clone, PartialEq)]
+struct WatchStatus {
+    /// Seconds until the soonest cached widget goes stale — when `watch` next has new data.
+    /// `None` for a realtime-only dashboard (no cached widgets).
+    next_refresh_secs: Option<u64>,
+    /// Cached widgets still waiting on their first payload.
+    loading: usize,
+}
+
+/// Seconds until the soonest cached widget goes stale. `None` when there are no cached widgets.
+fn next_refresh_secs(entries: &HashMap<WidgetId, CacheEntry>) -> Option<u64> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    entries
+        .values()
+        .map(|e| {
+            e.refreshed_at
+                .saturating_add(e.ttl_seconds)
+                .saturating_sub(now)
+        })
+        .min()
+}
+
+/// The left-hand meta segment of the watch footer: what the dashboard is doing right now.
+fn watch_footer_meta(status: &WatchStatus) -> String {
+    if status.loading > 0 {
+        let plural = if status.loading == 1 { "" } else { "s" };
+        return format!("loading {} widget{plural}…", status.loading);
+    }
+    match status.next_refresh_secs {
+        None => "realtime".to_string(),
+        Some(0) => "refreshing…".to_string(),
+        Some(secs) => format!("next refresh in {}", fmt_duration_compact(secs)),
+    }
+}
+
+/// Compact duration for the footer: `45s`, `3m`, `2h`. Status-bar granularity, not precise.
+fn fmt_duration_compact(secs: u64) -> String {
+    match secs {
+        s if s < 60 => format!("{s}s"),
+        s if s < 3600 => format!("{}m", s / 60),
+        s => format!("{}h", s / 3600),
+    }
+}
+
+/// One-line status footer pinned to the bottom of the `watch` alternate screen: live meta info
+/// on the left, key bindings on the right, on the theme's subtle surface so it reads as chrome
+/// separate from the dashboard band.
+fn render_watch_footer(frame: &mut Frame, area: Rect, status: &WatchStatus, theme: &Theme) {
+    let bg = theme.bg_subtle;
+    let label = Style::default().bg(bg).fg(theme.text_secondary);
+    let key = Style::default()
+        .bg(bg)
+        .fg(theme.text)
+        .add_modifier(Modifier::BOLD);
+
+    frame.render_widget(Block::default().style(Style::default().bg(bg)), area);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(" ⟳ {}", watch_footer_meta(status)),
+            label,
+        ))),
+        area,
+    );
+    let controls = Line::from(vec![
+        Span::styled("q", key),
+        Span::styled(" / ", label),
+        Span::styled("Ctrl-C", key),
+        Span::styled(" quit ", label),
+    ]);
+    frame.render_widget(Paragraph::new(controls).alignment(Alignment::Right), area);
 }
 
 /// Same as [`draw`] but parks the cursor at the bottom-left of the inline area afterwards, so
@@ -1446,6 +1533,10 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let theme = Theme::default();
         let loading = HashMap::new();
+        let status = WatchStatus {
+            next_refresh_secs: Some(45),
+            loading: 0,
+        };
         draw_watch(
             &mut terminal,
             &root,
@@ -1457,6 +1548,7 @@ mod tests {
             (0, 0),
             3,
             &loading,
+            &status,
         )
         .unwrap();
         let buf = terminal.backend().buffer().clone();
@@ -1465,11 +1557,56 @@ mod tests {
             "dashboard top-anchored"
         );
         let footer = row_text(&buf, 19);
-        assert!(footer.contains("quit"), "footer in bottom row: {footer:?}");
+        assert!(footer.contains("quit"), "key binding in footer: {footer:?}");
+        assert!(
+            footer.contains("next refresh in 45s"),
+            "meta info in footer: {footer:?}"
+        );
         assert_eq!(
             buf.cell((0, 19)).unwrap().bg,
             theme.bg_subtle,
             "footer painted on the subtle surface"
+        );
+    }
+
+    #[test]
+    fn watch_footer_meta_prioritises_loading_then_refresh_countdown() {
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(10),
+                loading: 2,
+            }),
+            "loading 2 widgets…",
+            "loading wins over the countdown"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(1),
+                loading: 1,
+            }),
+            "loading 1 widget…"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(90),
+                loading: 0,
+            }),
+            "next refresh in 1m"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: Some(0),
+                loading: 0,
+            }),
+            "refreshing…"
+        );
+        assert_eq!(
+            watch_footer_meta(&WatchStatus {
+                next_refresh_secs: None,
+                loading: 0,
+            }),
+            "realtime",
+            "no cached widgets → realtime-only dashboard"
         );
     }
 
