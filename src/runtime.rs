@@ -1,12 +1,18 @@
 use std::collections::HashMap;
-use std::io::{self, stdout};
-use std::path::Path;
-use std::time::Duration;
+use std::io::{self, Stdout, stdout};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use ratatui::{
     Frame, Terminal, TerminalOptions, Viewport,
     backend::{Backend, CrosstermBackend, TestBackend},
     buffer::Buffer,
+    crossterm::{
+        cursor::{Hide, Show},
+        event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+        execute,
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    },
     layout::{Alignment, Position, Rect},
     style::{Color, Modifier, Style},
     text::Line,
@@ -499,6 +505,216 @@ pub async fn run(
 
     finalize_splash(&mut terminal);
     Ok(())
+}
+
+/// Frame cadence for `watch` mode — the same 50ms as the splash animation loop. Drives input
+/// polling and the redraw check; actual repaints are gated by [`watch_should_draw`].
+const WATCH_FRAME_TICK: Duration = Duration::from_millis(50);
+/// How often realtime fetchers are recomputed inside `watch`. Realtime fetchers run per-frame
+/// in the one-shot splash, but a 50ms recompute loop is wasteful for a persistent dashboard —
+/// 200ms keeps `clock` / `system_*` visibly live without a frame-rate fetch loop.
+const WATCH_REALTIME_TICK: Duration = Duration::from_millis(200);
+/// How often the in-process fetch loop checks cached widgets. Each pass only refetches widgets
+/// whose cache entry is stale (see `should_refresh`), so this is a poll interval, not a fetch
+/// interval — each fetcher's TTL sets the real cadence.
+const WATCH_FETCH_TICK: Duration = Duration::from_secs(2);
+
+/// Persistent dashboard mode. Unlike [`run`], which paints once and hands the terminal back to
+/// the shell, `watch` holds the alternate screen and keeps the dashboard live: realtime
+/// fetchers tick, cached fetchers refresh on their TTL via an in-process fetch loop, and the
+/// screen repaints as data lands. Exits on `q` or Ctrl-C.
+pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::Result<()> {
+    let layout = config.to_layout();
+    let cache = Cache::open_default();
+    let registry = Registry::with_builtins();
+    let render_registry = render::Registry::with_builtins();
+    let specs = render_specs(&config.widgets);
+    let theme = Theme::from_config(&config.theme);
+    let padding = config.general.padding.map(|p| p.xy()).unwrap_or((0, 0));
+
+    // Same widget partitioning as `run`: trust gate, unknown-fetcher divert, shape validation,
+    // then split cached vs realtime.
+    let decision = TrustStore::load().decide(config_ident);
+    let (fetchable, gated) = trust::partition_by_trust(&config.widgets, &registry, decision);
+    let (fetchable, unknown) = partition_by_known_fetcher(&fetchable, &registry);
+    let shapes = derive_shapes(&config.widgets, &registry, &render_registry);
+    let (fetchable, shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
+    let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
+
+    let entries = load_entries(
+        cache.as_ref(),
+        &registry,
+        &cached_widgets,
+        &config.general,
+        &shapes,
+    );
+    let mut payloads = entries_to_payloads(&entries);
+    payloads.extend(compute_realtime_payloads(
+        &registry,
+        &realtime_widgets,
+        &config.general,
+        &shapes,
+    ));
+    for w in &gated {
+        payloads.insert(w.id.clone(), trust::requires_trust_placeholder());
+    }
+    for w in &unknown {
+        payloads.insert(
+            w.id.clone(),
+            fetcher::unknown_fetcher_placeholder(&w.fetcher),
+        );
+    }
+    for (w, err) in &shape_invalid {
+        payloads.insert(w.id.clone(), fetcher::shape_mismatch_placeholder(err));
+    }
+
+    // In-process replacement for the detached fetch daemon: re-runs the cached fetchers on a
+    // loop so the foreground only ever reads from cache. Owned clones because the task outlives
+    // this stack frame; aborted on exit.
+    let fetch_ident = config_ident.map(|(p, h)| (p.to_path_buf(), h.to_string()));
+    let fetch_loop = tokio::spawn(watch_fetch_loop(config.clone(), fetch_ident));
+
+    let buckets = WidgetBuckets {
+        cached: &cached_widgets,
+        gated: &gated,
+        unknown: &unknown,
+        shape_invalid: &shape_invalid,
+    };
+    let real_animated = render::any_widget_animates(&config.widgets, &render_registry);
+
+    install_watch_panic_hook();
+    let mut terminal = WatchTerminal::enter()?;
+    let start = Instant::now();
+    let mut last_realtime = Instant::now();
+    // Snapshot of the last-drawn state, used to skip repaints when nothing changed.
+    let mut prev: Option<(HashMap<WidgetId, Payload>, HashMap<WidgetId, Shape>)> = None;
+
+    let result = loop {
+        // Drain pending input. `q` / Ctrl-C quit; a resize forces a repaint (ratatui picks up
+        // the new size on the next `draw`).
+        let mut resized = false;
+        let mut quit = false;
+        while event::poll(Duration::ZERO)? {
+            match event::read()? {
+                Event::Key(k) if k.kind == KeyEventKind::Press => quit |= is_quit_key(&k),
+                Event::Resize(_, _) => resized = true,
+                _ => {}
+            }
+        }
+        if quit {
+            break Ok(());
+        }
+
+        if last_realtime.elapsed() >= WATCH_REALTIME_TICK {
+            payloads.extend(compute_realtime_payloads(
+                &registry,
+                &realtime_widgets,
+                &config.general,
+                &shapes,
+            ));
+            last_realtime = Instant::now();
+        }
+
+        let entries = refresh_payloads(
+            &cache,
+            &registry,
+            &buckets,
+            &config.general,
+            &shapes,
+            &mut payloads,
+        );
+        let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, false);
+
+        let animating = real_animated && start.elapsed() < ANIMATION_WINDOW;
+        let changed = match &prev {
+            Some((p, l)) => p != &payloads || l != &loading,
+            None => true,
+        };
+        if watch_should_draw(resized, changed, animating, !loading.is_empty()) {
+            draw(
+                &mut terminal.inner,
+                &layout,
+                &payloads,
+                &specs,
+                &render_registry,
+                &theme,
+                &config.general,
+                padding,
+                0,
+                &loading,
+            )?;
+            prev = Some((payloads.clone(), loading));
+        }
+
+        tokio::time::sleep(WATCH_FRAME_TICK).await;
+    };
+
+    fetch_loop.abort();
+    drop(terminal);
+    result
+}
+
+/// In-process fetch loop for `watch`. Mirrors the detached `fetch-only` daemon: each pass runs
+/// the cached fetchers and writes the cache, then sleeps. `fetch_and_persist` only refetches
+/// widgets whose cache entry is stale, so widget TTLs — not `WATCH_FETCH_TICK` — set the real
+/// refresh cadence.
+async fn watch_fetch_loop(config: Config, ident: Option<(PathBuf, String)>) {
+    loop {
+        let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
+        fetch_and_persist(&config, ident_ref).await;
+        tokio::time::sleep(WATCH_FETCH_TICK).await;
+    }
+}
+
+/// Whether the `watch` loop should repaint this frame. A persistent dashboard on an idle laptop
+/// should not redraw 20x/s for nothing, so a repaint happens only when there is a reason: the
+/// terminal resized, a payload or loading-set changed, the intro animation is still playing, or
+/// a widget is still showing its loading spinner.
+fn watch_should_draw(resized: bool, changed: bool, animating: bool, loading_active: bool) -> bool {
+    resized || changed || animating || loading_active
+}
+
+/// `q` or Ctrl-C exit `watch`. Ctrl-C arrives as a key event rather than SIGINT because raw
+/// mode is enabled, so both quit paths are handled here.
+fn is_quit_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('q'))
+        || (matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL))
+}
+
+/// RAII wrapper for the alternate-screen session `watch` runs in. `enter` enables raw mode and
+/// switches to the alternate screen; `Drop` restores both, so the terminal is left sane whether
+/// `watch` returns normally, bails on a `?`, or unwinds on a panic.
+struct WatchTerminal {
+    inner: Terminal<CrosstermBackend<Stdout>>,
+}
+
+impl WatchTerminal {
+    fn enter() -> io::Result<Self> {
+        enable_raw_mode()?;
+        execute!(stdout(), EnterAlternateScreen, Hide)?;
+        let inner = Terminal::new(CrosstermBackend::new(stdout()))?;
+        Ok(Self { inner })
+    }
+}
+
+impl Drop for WatchTerminal {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+    }
+}
+
+/// Restores the terminal from the panic hook so a panic inside the `watch` loop doesn't leave
+/// the user in raw mode on the alternate screen. `WatchTerminal`'s `Drop` also restores during
+/// unwind, but the default hook prints the panic message first — this runs before that so the
+/// message lands on the normal screen.
+fn install_watch_panic_hook() {
+    let original = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+        original(info);
+    }));
 }
 
 /// Runs fetchers and persists the results. Called by the detached `fetch-only` subcommand so the
@@ -2389,6 +2605,48 @@ mod tests {
             loop_should_exit(true, true, true),
             "hard deadline always wins"
         );
+    }
+
+    #[test]
+    fn watch_should_draw_only_when_there_is_a_reason() {
+        // Idle steady state: nothing changed, no animation, no spinner → skip the repaint so a
+        // persistent dashboard doesn't burn CPU at the frame rate.
+        assert!(!watch_should_draw(false, false, false, false));
+        assert!(watch_should_draw(true, false, false, false), "resized");
+        assert!(watch_should_draw(false, true, false, false), "data changed");
+        assert!(
+            watch_should_draw(false, false, true, false),
+            "intro animation playing"
+        );
+        assert!(
+            watch_should_draw(false, false, false, true),
+            "loading spinner active"
+        );
+    }
+
+    #[test]
+    fn is_quit_key_matches_q_and_ctrl_c_only() {
+        assert!(is_quit_key(&KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE
+        )));
+        assert!(is_quit_key(&KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL
+        )));
+        // Bare `c` is just a keystroke, not a quit — only Ctrl-C is.
+        assert!(!is_quit_key(&KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::NONE
+        )));
+        assert!(!is_quit_key(&KeyEvent::new(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE
+        )));
+        assert!(!is_quit_key(&KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE
+        )));
     }
 
     #[test]

@@ -123,6 +123,11 @@ enum Command {
         #[command(subcommand)]
         subcommand: CacheSubcommand,
     },
+    /// Persistent dashboard mode: render the splash full-screen and keep it live — realtime
+    /// widgets tick, cached widgets refresh on their TTL, and the screen repaints as data
+    /// lands. Press `q` or Ctrl-C to exit. Unlike the shell-hook splash this is a deliberate
+    /// foreground invocation and ignores `auto_home` / `auto_on_cd`.
+    Watch,
 }
 
 #[derive(Subcommand)]
@@ -217,6 +222,11 @@ fn main() -> io::Result<()> {
         Some(Command::Catalog { target }) => run_catalog(target),
         Some(Command::License { own }) => run_license(own),
         Some(Command::Cache { subcommand }) => run_cache(subcommand),
+        Some(Command::Watch) => run_async({
+            logging::init();
+            apply_secrets();
+            run_watch()
+        }),
         None => {
             if !should_render() {
                 return Ok(());
@@ -271,6 +281,20 @@ async fn render_for_cd(wait: bool) -> io::Result<()> {
     }
     let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
     runtime::run(&config, &source, ident_ref, wait).await
+}
+
+/// Entry point for `splashboard watch`. A deliberate foreground invocation, so it skips the
+/// `auto_home` / `auto_on_cd` opt-out gates the shell-hook splash honours — but still needs an
+/// interactive terminal for raw mode and the alternate screen.
+async fn run_watch() -> io::Result<()> {
+    if !stdout().is_terminal() || !stdin().is_terminal() {
+        eprintln!("splashboard watch requires an interactive terminal");
+        return Ok(());
+    }
+    let source = config::resolve_dashboard_source();
+    let (config, ident) = load_full_config(&source)?;
+    let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
+    runtime::watch(&config, ident_ref).await
 }
 
 fn should_render() -> bool {
