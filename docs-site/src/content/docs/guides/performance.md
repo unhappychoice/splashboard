@@ -135,13 +135,24 @@ Three knobs cover most use cases:
 
 ## Realtime budget
 
-Realtime fetchers (`clock`, `system_cpu`, `system_memory`, …) are
-re-evaluated on every draw tick — no cache, no I/O. The contract is
+Realtime fetchers (`clock`, `clock_*`, `system_*`) run synchronously
+without I/O. The contract is
 [documented in concepts/fetcher](/guides/concepts/fetcher/#the-realtime-contract):
-**< 1 ms, infallible, no I/O.** If you want HTTP / git / filesystem in a
-"realtime-feeling" widget, write a cached fetcher with a short
-`refresh_interval` instead — the splash will pick up the new value on the
-next paint.
+**< 1 ms, infallible, no I/O.**
+
+How often they actually run depends on mode:
+
+- **Splash (one-shot)** — computed once at startup and painted, even when
+  the multi-frame animation / wait loop is active. The budget exists so the
+  single paint isn't delayed; the loop only re-reads the cache and ticks
+  animated renderers, it does not recompute realtime payloads.
+- **`splashboard watch`** — recomputed on a ~200 ms throttle inside the
+  foreground loop. The seconds digit on a `clock` ticks once per second;
+  `system_*` gauges fluctuate as you load the host.
+
+If you want HTTP / git / filesystem in a "realtime-feeling" widget, write a
+cached fetcher with a short `refresh_interval` instead — the splash will
+pick up the new value on the next paint.
 
 ## Watch mode is different
 
