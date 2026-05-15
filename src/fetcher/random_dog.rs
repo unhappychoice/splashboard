@@ -641,6 +641,16 @@ mod tests {
         );
     }
 
+    /// A raw space in the authority is rejected by `reqwest::Url::parse` at `send()` time, so
+    /// `fetch_image_url` materialises the `map_err` branch synchronously without touching the
+    /// network — same trick the sibling `fetch_bytes_rejects_malformed_url` uses for the image
+    /// download leg.
+    #[test]
+    fn fetch_image_url_rejects_malformed_url() {
+        let err = run_async(fetch_image_url("https://bad host")).unwrap_err();
+        assert!(format!("{err}").contains("dog API request failed"));
+    }
+
     #[test]
     fn fetch_bytes_reads_small_body() {
         let bytes = b"\x89PNG\r\n\x1a\nrest";
