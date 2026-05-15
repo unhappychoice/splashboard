@@ -702,6 +702,80 @@ mod tests {
         ));
     }
 
+    /// Pins the catalog-facing trait methods so they don't quietly drop content. The Fetcher
+    /// derive isn't enough — `description` / `option_schemas` / `name` / `safety` /
+    /// `refresh_interval` / `shapes` are read by `splashboard catalog`, the docs preset
+    /// gallery, and trust-gating; touching the trait body without re-running these would
+    /// regress without a test failure.
+    #[test]
+    fn fetcher_metadata_methods_have_content() {
+        let fetcher = LinearNotifications;
+        assert_eq!(fetcher.name(), "linear_notifications");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().to_lowercase().contains("linear"));
+        assert!(fetcher.refresh_interval() > 0);
+        assert_eq!(fetcher.shapes(), SHAPES);
+        let names: Vec<&str> = fetcher.option_schemas().iter().map(|s| s.name).collect();
+        assert!(names.contains(&"token"));
+        assert!(names.contains(&"limit"));
+    }
+
+    /// Walks every declared shape through `sample_body` so the catalog preview and the docs
+    /// snapshot pipeline both have a Body to render. Shapes outside `SHAPES` (`Image`,
+    /// `Ratio`, …) must return `None` so the runtime falls back to the shared placeholder
+    /// rather than rendering an unrelated default.
+    #[test]
+    fn sample_body_covers_every_declared_shape() {
+        let fetcher = LinearNotifications;
+        for &shape in SHAPES {
+            let body = fetcher
+                .sample_body(shape)
+                .unwrap_or_else(|| panic!("missing sample for {shape:?}"));
+            assert_eq!(crate::render::shape_of(&body), shape);
+        }
+        assert!(fetcher.sample_body(Shape::Image).is_none());
+        assert!(fetcher.sample_body(Shape::Ratio).is_none());
+    }
+
+    /// `markdown_line_for` builds a `- **ID** *type* by @actor · title` line via four
+    /// independent `if let` arms; the `render_markdown_*` test only exercises the all-None
+    /// path. Drives every arm at once so a future tweak to the formatting (e.g. dropping the
+    /// `**` around the identifier) trips an assertion.
+    #[test]
+    fn markdown_line_for_includes_identifier_actor_and_title() {
+        let v = view_for_test("issueMention", true, Some("ENG-9"));
+        let line = markdown_line_for(&v);
+        assert_eq!(line, "- **ENG-9** · *mention* · by @sarah · Issue ENG-9");
+
+        let mut snippet_only = view_for_test("issueCommentCreated", true, Some("ENG-2"));
+        snippet_only.issue_title = None;
+        snippet_only.snippet = Some("Need eyes here".into());
+        let line = markdown_line_for(&snippet_only);
+        assert!(line.contains("Need eyes here"), "snippet fallback: {line}");
+    }
+
+    /// `entry_value` mirrors `markdown_line_for` but for the `Entries` shape — the existing
+    /// `render_markdown_entries_*` test only checks the row's `key`, leaving the value
+    /// formatting (`@actor · type · title`) unverified. Pinning it ensures the structured
+    /// renderers keep their per-row signal when the formatter changes.
+    #[test]
+    fn entry_value_joins_actor_type_label_and_title_with_separators() {
+        let v = view_for_test("issueMention", true, Some("ENG-1"));
+        assert_eq!(entry_value(&v), "@sarah · mention · Issue ENG-1");
+
+        let mut without_actor = view_for_test("issueMention", true, Some("ENG-1"));
+        without_actor.actor = None;
+        assert_eq!(entry_value(&without_actor), "mention · Issue ENG-1");
+
+        let mut snippet_only = view_for_test("issueCommentCreated", true, Some("ENG-2"));
+        snippet_only.issue_title = None;
+        snippet_only.snippet = Some("inline reply".into());
+        assert_eq!(
+            entry_value(&snippet_only),
+            "@sarah · comment · inline reply"
+        );
+    }
+
     #[test]
     fn matches_type_and_pretty_type_cover_remaining_labels() {
         let comment = view_for_test("issueCommentCreated", true, Some("ENG-1"));
