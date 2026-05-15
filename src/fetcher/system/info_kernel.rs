@@ -70,3 +70,36 @@ impl RealtimeFetcher for SystemInfoKernel {
         payload(Body::Text(TextData { value }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_text;
+    use super::*;
+
+    fn assert_text(p: &Payload) -> &str {
+        match &p.body {
+            Body::Text(t) => t.value.as_str(),
+            _ => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn defaults_to_name_kind() {
+        let p = SystemInfoKernel.compute(&ctx_text(None));
+        assert!(!assert_text(&p).is_empty());
+    }
+
+    #[test]
+    fn each_known_kind_returns_non_empty_text() {
+        for kind in ["name", "version"] {
+            let p = SystemInfoKernel.compute(&ctx_text(Some(&format!("kind = \"{kind}\""))));
+            assert!(!assert_text(&p).is_empty(), "kind = {kind}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_kind_to_placeholder() {
+        let p = SystemInfoKernel.compute(&ctx_text(Some("kind = \"bogus\"")));
+        assert!(assert_text(&p).starts_with("⚠"));
+    }
+}

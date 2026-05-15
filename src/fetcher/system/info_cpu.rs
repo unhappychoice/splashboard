@@ -80,3 +80,54 @@ impl RealtimeFetcher for SystemInfoCpu {
         payload(Body::Text(TextData { value }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_text;
+    use super::*;
+
+    #[test]
+    fn defaults_to_model_kind() {
+        let p = SystemInfoCpu.compute(&ctx_text(None));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(!t.value.is_empty());
+    }
+
+    #[test]
+    fn cores_kind_returns_non_empty_text() {
+        let p = SystemInfoCpu.compute(&ctx_text(Some("kind = \"cores\"")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(!t.value.is_empty());
+    }
+
+    #[test]
+    fn frequency_kind_returns_non_empty_text() {
+        let p = SystemInfoCpu.compute(&ctx_text(Some("kind = \"frequency\"")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(!t.value.is_empty());
+    }
+
+    #[test]
+    fn vendor_kind_returns_non_empty_text() {
+        let p = SystemInfoCpu.compute(&ctx_text(Some("kind = \"vendor\"")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(!t.value.is_empty());
+    }
+
+    #[test]
+    fn rejects_unknown_kind_to_placeholder() {
+        let p = SystemInfoCpu.compute(&ctx_text(Some("kind = \"bogus\"")));
+        let Body::Text(t) = p.body else {
+            panic!("expected text");
+        };
+        assert!(t.value.starts_with("⚠"));
+    }
+}
