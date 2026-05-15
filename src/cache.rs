@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -86,11 +88,116 @@ impl Cache {
     pub fn path_for(&self, widget_id: &str) -> PathBuf {
         self.dir.join(format!("{}.json", sanitize(widget_id)))
     }
+}
 
-    /// Non-blocking: returns None if another process already holds the lock for this key. Locks
-    /// older than `STALE_LOCK_THRESHOLD` are stolen (assumed crashed).
-    pub fn try_lock(&self, key: &str) -> Option<Lock> {
-        Lock::try_acquire(&self.dir, key)
+/// Abstraction over the storage backend used by `fetch_all` / `load_entries`. The one-shot
+/// splash uses the disk-backed `Cache`; `watch` runs against `MemCache` because the disk is
+/// only justified as IPC between the splash parent and the detached fetch daemon — `watch`
+/// has no child process, so a write-through to disk on every refresh is pure waste.
+pub trait CacheBackend: Send + Sync {
+    fn load(&self, key: &str) -> Option<CacheEntry>;
+    fn store(&self, key: &str, entry: &CacheEntry) -> std::io::Result<()>;
+    /// Non-blocking. `None` if a parallel fetch already holds the slot. Held across the fetch
+    /// await so the same widget can't be refetched twice in one pass.
+    fn try_lock(&self, key: &str) -> Option<CacheLockGuard>;
+}
+
+/// Token returned by [`CacheBackend::try_lock`]. Dropping it releases the lock — removes the
+/// `.lock` file for the disk path, takes the key out of the in-flight set for the in-memory one.
+pub enum CacheLockGuard {
+    File(Lock),
+    Memory(MemLockGuard),
+}
+
+impl CacheBackend for Cache {
+    fn load(&self, key: &str) -> Option<CacheEntry> {
+        Cache::load(self, key)
+    }
+    fn store(&self, key: &str, entry: &CacheEntry) -> std::io::Result<()> {
+        Cache::store(self, key, entry)
+    }
+    fn try_lock(&self, key: &str) -> Option<CacheLockGuard> {
+        Lock::try_acquire(&self.dir, key).map(CacheLockGuard::File)
+    }
+}
+
+/// In-memory cache backend for `watch`. Same TTL semantics as the disk `Cache` (entries carry
+/// `refreshed_at` + `ttl_seconds`), but all reads and writes are HashMap operations and the
+/// per-key locks are a HashSet of in-flight keys. The disk `Cache` is only touched for
+/// warm-start at the top of `watch` and best-effort flush at the bottom.
+#[derive(Clone, Default)]
+pub struct MemCache {
+    entries: Arc<RwLock<HashMap<String, CacheEntry>>>,
+    in_flight: Arc<Mutex<HashSet<String>>>,
+}
+
+impl MemCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Copy entries matching `keys` from `disk` into a fresh `MemCache`. Missing keys are
+    /// skipped — the watch fetch loop will populate them on its first pass.
+    pub fn warm_from<'a>(disk: Option<&Cache>, keys: impl IntoIterator<Item = &'a str>) -> Self {
+        let mem = Self::new();
+        let Some(d) = disk else {
+            return mem;
+        };
+        if let Ok(mut entries) = mem.entries.write() {
+            for key in keys {
+                if let Some(e) = d.load(key) {
+                    entries.insert(key.to_string(), e);
+                }
+            }
+        }
+        mem
+    }
+
+    /// Write every in-memory entry back to disk. Errors per-key are swallowed — losing one
+    /// write on shutdown only forces a refetch next session.
+    pub fn flush_to(&self, disk: &Cache) {
+        let Ok(entries) = self.entries.read() else {
+            return;
+        };
+        for (key, entry) in entries.iter() {
+            let _ = disk.store(key, entry);
+        }
+    }
+}
+
+impl CacheBackend for MemCache {
+    fn load(&self, key: &str) -> Option<CacheEntry> {
+        self.entries.read().ok()?.get(key).cloned()
+    }
+    fn store(&self, key: &str, entry: &CacheEntry) -> std::io::Result<()> {
+        if let Ok(mut e) = self.entries.write() {
+            e.insert(key.to_string(), entry.clone());
+        }
+        Ok(())
+    }
+    fn try_lock(&self, key: &str) -> Option<CacheLockGuard> {
+        let mut set = self.in_flight.lock().ok()?;
+        if set.contains(key) {
+            return None;
+        }
+        set.insert(key.to_string());
+        Some(CacheLockGuard::Memory(MemLockGuard {
+            key: key.to_string(),
+            in_flight: Arc::clone(&self.in_flight),
+        }))
+    }
+}
+
+pub struct MemLockGuard {
+    key: String,
+    in_flight: Arc<Mutex<HashSet<String>>>,
+}
+
+impl Drop for MemLockGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.in_flight.lock() {
+            set.remove(&self.key);
+        }
     }
 }
 
@@ -375,6 +482,68 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let _a = Lock::try_acquire(dir.path(), "a").unwrap();
         let _b = Lock::try_acquire(dir.path(), "b").unwrap();
+    }
+
+    #[test]
+    fn mem_cache_round_trips_through_the_trait() {
+        let mem = MemCache::new();
+        let entry = CacheEntry::new(sample(), 60);
+        let backend: &dyn CacheBackend = &mem;
+        backend.store("k", &entry).unwrap();
+        assert_eq!(backend.load("k"), Some(entry));
+    }
+
+    #[test]
+    fn mem_cache_try_lock_is_exclusive_until_dropped() {
+        let mem = MemCache::new();
+        let backend: &dyn CacheBackend = &mem;
+        let held = backend.try_lock("k").expect("first acquire succeeds");
+        assert!(
+            backend.try_lock("k").is_none(),
+            "second acquire must fail while held"
+        );
+        drop(held);
+        assert!(
+            backend.try_lock("k").is_some(),
+            "acquire succeeds after drop"
+        );
+    }
+
+    #[test]
+    fn mem_cache_try_lock_separates_keys() {
+        let mem = MemCache::new();
+        let _a = mem.try_lock("a").unwrap();
+        let _b = mem.try_lock("b").unwrap();
+    }
+
+    #[test]
+    fn mem_cache_warm_from_copies_matching_disk_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let disk = Cache::open(dir.path().to_path_buf()).unwrap();
+        let entry = CacheEntry::new(sample(), 60);
+        disk.store("present", &entry).unwrap();
+
+        let mem = MemCache::warm_from(Some(&disk), ["present", "absent"]);
+        assert_eq!(
+            <MemCache as CacheBackend>::load(&mem, "present"),
+            Some(entry)
+        );
+        assert!(<MemCache as CacheBackend>::load(&mem, "absent").is_none());
+    }
+
+    #[test]
+    fn mem_cache_flush_to_writes_every_entry_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let disk = Cache::open(dir.path().to_path_buf()).unwrap();
+        let mem = MemCache::new();
+        let a = CacheEntry::new(sample(), 60);
+        let b = CacheEntry::new(sample(), 120);
+        <MemCache as CacheBackend>::store(&mem, "a", &a).unwrap();
+        <MemCache as CacheBackend>::store(&mem, "b", &b).unwrap();
+
+        mem.flush_to(&disk);
+        assert_eq!(disk.load("a"), Some(a));
+        assert_eq!(disk.load("b"), Some(b));
     }
 
     #[test]

@@ -20,7 +20,7 @@ use ratatui::{
 };
 use tokio::task::JoinSet;
 
-use crate::cache::{Cache, CacheEntry, CacheEntryKind};
+use crate::cache::{Cache, CacheBackend, CacheEntry, CacheEntryKind, MemCache};
 use crate::config::{Config, General, WidgetConfig};
 use crate::daemon;
 use crate::fetcher::{self, FetchContext, Registry, ShapeMismatch};
@@ -273,7 +273,7 @@ pub async fn run(
     let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
 
     let entries = load_entries(
-        cache.as_ref(),
+        as_backend(&cache),
         &registry,
         &cached_widgets,
         &config.general,
@@ -393,7 +393,7 @@ pub async fn run(
             let mut daemon_done = !wait;
             loop {
                 let entries = refresh_payloads(
-                    &cache,
+                    as_backend(&cache),
                     &registry,
                     &buckets,
                     &config.general,
@@ -445,7 +445,7 @@ pub async fn run(
                 }
             }
             let entries = refresh_payloads(
-                &cache,
+                as_backend(&cache),
                 &registry,
                 &buckets,
                 &config.general,
@@ -473,7 +473,7 @@ pub async fn run(
             let fetch_deadline = if wait { WAIT_DEADLINE } else { FAST_DEADLINE };
             let fresh = fetch_all(
                 &registry,
-                cache.as_ref(),
+                as_backend(&cache),
                 &cached_widgets,
                 &entries,
                 &config.general,
@@ -525,7 +525,10 @@ const WATCH_FETCH_TICK: Duration = Duration::from_secs(2);
 /// screen repaints as data lands. Exits on `q` or Ctrl-C.
 pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::Result<()> {
     let layout = config.to_layout();
-    let cache = Cache::open_default();
+    // Disk is only touched at the boundaries: warm `mem_cache` from disk at the top, flush back
+    // at the bottom. The hot path (foreground reads + fetch-task writes) lives entirely in
+    // memory — the disk cache exists for the splash/daemon IPC and watch has no daemon.
+    let disk_cache = Cache::open_default();
     let registry = Registry::with_builtins();
     let render_registry = render::Registry::with_builtins();
     let specs = render_specs(&config.widgets);
@@ -541,8 +544,13 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
     let (fetchable, shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
     let (cached_widgets, realtime_widgets) = split_by_fetcher_kind(&fetchable, &registry);
 
+    // Warm the in-memory cache from disk for the cached widgets we know about. Anything
+    // missing on disk simply starts as `loading` and the fetch loop populates it.
+    let cache_keys = cache_keys_for(&cached_widgets, &registry, &config.general, &shapes);
+    let mem_cache = MemCache::warm_from(disk_cache.as_ref(), cache_keys.iter().map(String::as_str));
+
     let entries = load_entries(
-        cache.as_ref(),
+        Some(&mem_cache),
         &registry,
         &cached_widgets,
         &config.general,
@@ -569,10 +577,14 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
     }
 
     // In-process replacement for the detached fetch daemon: re-runs the cached fetchers on a
-    // loop so the foreground only ever reads from cache. Owned clones because the task outlives
-    // this stack frame; aborted on exit.
+    // loop so the foreground only ever reads from `mem_cache`. Owned clones because the task
+    // outlives this stack frame; aborted on exit.
     let fetch_ident = config_ident.map(|(p, h)| (p.to_path_buf(), h.to_string()));
-    let fetch_loop = tokio::spawn(watch_fetch_loop(config.clone(), fetch_ident));
+    let fetch_loop = tokio::spawn(watch_fetch_loop(
+        config.clone(),
+        fetch_ident,
+        mem_cache.clone(),
+    ));
 
     let buckets = WidgetBuckets {
         cached: &cached_widgets,
@@ -624,7 +636,7 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
         }
 
         let entries = refresh_payloads(
-            &cache,
+            Some(&mem_cache),
             &registry,
             &buckets,
             &config.general,
@@ -668,6 +680,12 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
 
     fetch_loop.abort();
     drop(terminal);
+    // Best-effort flush. Losing the most recent fetch on a SIGKILL just forces a refetch next
+    // session; for clean exits (`q`, Ctrl-C, `?` bail) the disk reflects the latest values so
+    // the next splash / watch warm-starts.
+    if let Some(disk) = disk_cache.as_ref() {
+        mem_cache.flush_to(disk);
+    }
     result
 }
 
@@ -675,10 +693,10 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
 /// the cached fetchers and writes the cache, then sleeps. `fetch_and_persist` only refetches
 /// widgets whose cache entry is stale, so widget TTLs — not `WATCH_FETCH_TICK` — set the real
 /// refresh cadence.
-async fn watch_fetch_loop(config: Config, ident: Option<(PathBuf, String)>) {
+async fn watch_fetch_loop(config: Config, ident: Option<(PathBuf, String)>, cache: MemCache) {
     loop {
         let ident_ref = ident.as_ref().map(|(p, h)| (p.as_path(), h.as_str()));
-        fetch_and_persist(&config, ident_ref).await;
+        fetch_and_persist(&config, ident_ref, Some(&cache as &dyn CacheBackend)).await;
         tokio::time::sleep(WATCH_FETCH_TICK).await;
     }
 }
@@ -739,8 +757,11 @@ fn install_watch_panic_hook() {
 /// nowhere (daemon has no stdio) and simply leave stale cache in place. The daemon re-checks
 /// trust itself because it loads config via its own command-line argument, not from shared
 /// state.
-pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &str)>) {
-    let cache = Cache::open_default();
+pub async fn fetch_and_persist(
+    config: &Config,
+    config_ident: Option<(&Path, &str)>,
+    cache: Option<&dyn CacheBackend>,
+) {
     let registry = Registry::with_builtins();
     let render_registry = render::Registry::with_builtins();
     let decision = TrustStore::load().decide(config_ident);
@@ -754,16 +775,10 @@ pub async fn fetch_and_persist(config: &Config, config_ident: Option<(&Path, &st
     let (fetchable, _shape_invalid) = partition_by_shape_support(&fetchable, &shapes, &registry);
     // Daemon only persists cached-fetcher output. Realtime widgets have no disk representation.
     let (cached_widgets, _realtime) = split_by_fetcher_kind(&fetchable, &registry);
-    let entries = load_entries(
-        cache.as_ref(),
-        &registry,
-        &cached_widgets,
-        &config.general,
-        &shapes,
-    );
+    let entries = load_entries(cache, &registry, &cached_widgets, &config.general, &shapes);
     let _ = fetch_all(
         &registry,
-        cache.as_ref(),
+        cache,
         &cached_widgets,
         &entries,
         &config.general,
@@ -789,14 +804,14 @@ struct WidgetBuckets<'a> {
 /// scale badly. Trust-gate and shape-mismatch placeholders are re-applied defensively so a
 /// daemon-written entry can't leak into a gated slot.
 fn refresh_payloads(
-    cache: &Option<Cache>,
+    cache: Option<&dyn CacheBackend>,
     registry: &Registry,
     buckets: &WidgetBuckets<'_>,
     general: &General,
     shapes: &HashMap<WidgetId, Shape>,
     payloads: &mut HashMap<WidgetId, Payload>,
 ) -> HashMap<WidgetId, CacheEntry> {
-    let entries = load_entries(cache.as_ref(), registry, buckets.cached, general, shapes);
+    let entries = load_entries(cache, registry, buckets.cached, general, shapes);
     for (id, payload) in entries_to_payloads(&entries) {
         payloads.insert(id, payload);
     }
@@ -833,8 +848,37 @@ fn fetch_context(
     }
 }
 
+/// Coerces the owned `Option<Cache>` callers carry into the trait-object form the cache
+/// plumbing accepts. One liner, but kept named so call sites don't repeat the cast.
+fn as_backend(cache: &Option<Cache>) -> Option<&dyn CacheBackend> {
+    cache.as_ref().map(|c| c as &dyn CacheBackend)
+}
+
+/// Derives the on-disk cache key for every cached widget. Used by `watch` to know which disk
+/// entries to copy into its `MemCache` at start-up.
+fn cache_keys_for(
+    widgets: &[WidgetConfig],
+    registry: &Registry,
+    general: &General,
+    shapes: &HashMap<WidgetId, Shape>,
+) -> Vec<String> {
+    widgets
+        .iter()
+        .filter_map(|w| {
+            let fetcher = registry.get_cached(&w.fetcher)?;
+            let ctx = fetch_context(
+                w,
+                general,
+                shapes.get(&w.id).copied(),
+                Duration::from_secs(0),
+            );
+            Some(fetcher.cache_key(&ctx))
+        })
+        .collect()
+}
+
 fn load_entries(
-    cache: Option<&Cache>,
+    cache: Option<&dyn CacheBackend>,
     registry: &Registry,
     widgets: &[WidgetConfig],
     general: &General,
@@ -876,7 +920,7 @@ fn resolve_refresh_interval(w: &WidgetConfig, fetcher: &dyn fetcher::Fetcher) ->
 
 async fn fetch_all(
     registry: &Registry,
-    cache: Option<&Cache>,
+    cache: Option<&dyn CacheBackend>,
     widgets: &[WidgetConfig],
     cached: &HashMap<WidgetId, CacheEntry>,
     general: &General,
@@ -2446,11 +2490,17 @@ mod tests {
             ..Default::default()
         };
 
+        let disk = Cache::open_default();
+        let backend = disk.as_ref().map(|c| c as &dyn CacheBackend);
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(fetch_and_persist(&config, Some((&config_path, &hash))));
+            .block_on(fetch_and_persist(
+                &config,
+                Some((&config_path, &hash)),
+                backend,
+            ));
 
         let cache = Cache::open_default().unwrap();
         let registry = Registry::with_builtins();
@@ -2633,7 +2683,7 @@ mod tests {
         };
         let mut payloads: HashMap<WidgetId, Payload> = HashMap::new();
         let _ = refresh_payloads(
-            &None,
+            None,
             &registry,
             &buckets,
             &General::default(),
@@ -2692,7 +2742,7 @@ mod tests {
         ]);
 
         let entries = refresh_payloads(
-            &cache,
+            as_backend(&cache),
             &registry,
             &buckets,
             &General::default(),
