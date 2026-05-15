@@ -129,11 +129,21 @@ impl CacheBackend for Cache {
 pub struct MemCache {
     entries: Arc<RwLock<HashMap<String, CacheEntry>>>,
     in_flight: Arc<Mutex<HashSet<String>>>,
+    /// Monotonic counter bumped on every successful `store`. Watch's foreground reads it to
+    /// decide whether to re-walk the entries map at all — when it hasn't advanced since last
+    /// check, nothing has been written, and the per-frame cache read can be skipped.
+    generation: Arc<AtomicU64>,
 }
 
 impl MemCache {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Current write generation. Use this to short-circuit redundant `load` walks when the
+    /// memory map hasn't been mutated since last check.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
     }
 
     /// Copy entries matching `keys` from `disk` into a fresh `MemCache`. Missing keys are
@@ -170,9 +180,12 @@ impl CacheBackend for MemCache {
         self.entries.read().ok()?.get(key).cloned()
     }
     fn store(&self, key: &str, entry: &CacheEntry) -> std::io::Result<()> {
-        if let Ok(mut e) = self.entries.write() {
-            e.insert(key.to_string(), entry.clone());
-        }
+        let Ok(mut e) = self.entries.write() else {
+            return Ok(());
+        };
+        e.insert(key.to_string(), entry.clone());
+        drop(e);
+        self.generation.fetch_add(1, Ordering::Release);
         Ok(())
     }
     fn try_lock(&self, key: &str) -> Option<CacheLockGuard> {
@@ -529,6 +542,20 @@ mod tests {
             Some(entry)
         );
         assert!(<MemCache as CacheBackend>::load(&mem, "absent").is_none());
+    }
+
+    #[test]
+    fn mem_cache_generation_bumps_only_on_store() {
+        let mem = MemCache::new();
+        let gen0 = mem.generation();
+        let backend: &dyn CacheBackend = &mem;
+        // Pure reads / lock acquires must not advance the generation — readers gate per-frame
+        // work on this, so a spurious bump would cause unnecessary redraws.
+        let _ = backend.load("absent");
+        let _held = backend.try_lock("k");
+        assert_eq!(mem.generation(), gen0);
+        backend.store("k", &CacheEntry::new(sample(), 60)).unwrap();
+        assert_eq!(mem.generation(), gen0 + 1);
     }
 
     #[test]

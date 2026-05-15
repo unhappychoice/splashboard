@@ -143,19 +143,33 @@ fn compute_realtime_payloads(
     general: &General,
     shapes: &HashMap<WidgetId, Shape>,
 ) -> HashMap<WidgetId, Payload> {
-    widgets
-        .iter()
-        .filter_map(|w| {
-            let fetcher = registry.get_realtime(&w.fetcher)?;
-            let ctx = fetch_context(
-                w,
-                general,
-                shapes.get(&w.id).copied(),
-                Duration::from_secs(0),
-            );
-            Some((w.id.clone(), fetcher.compute(&ctx)))
-        })
-        .collect()
+    let mut out = HashMap::new();
+    compute_realtime_payloads_into(registry, widgets, general, shapes, &mut out);
+    out
+}
+
+/// Recomputes every realtime widget directly into `out`, overwriting existing keys. The
+/// allocation-free variant `watch` uses on every realtime tick — building a fresh `HashMap`
+/// every 200ms and `extend`-ing it into `payloads` was wasted work.
+fn compute_realtime_payloads_into(
+    registry: &Registry,
+    widgets: &[WidgetConfig],
+    general: &General,
+    shapes: &HashMap<WidgetId, Shape>,
+    out: &mut HashMap<WidgetId, Payload>,
+) {
+    for w in widgets {
+        let Some(fetcher) = registry.get_realtime(&w.fetcher) else {
+            continue;
+        };
+        let ctx = fetch_context(
+            w,
+            general,
+            shapes.get(&w.id).copied(),
+            Duration::from_secs(0),
+        );
+        out.insert(w.id.clone(), fetcher.compute(&ctx));
+    }
 }
 
 /// Widgets whose data we're still waiting on. Two cases are both treated as "loading":
@@ -586,12 +600,10 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
         mem_cache.clone(),
     ));
 
-    let buckets = WidgetBuckets {
-        cached: &cached_widgets,
-        gated: &gated,
-        unknown: &unknown,
-        shape_invalid: &shape_invalid,
-    };
+    // Placeholders for gated / unknown / shape-invalid widgets are inserted into `payloads`
+    // above and never change after startup in watch mode (the fetch loop excludes them by
+    // construction), so the splash's per-frame re-application via `refresh_payloads` would be
+    // wasted work here.
     let real_animated = render::any_widget_animates(&config.widgets, &render_registry);
     // The dashboard is drawn at its natural height, top-anchored on the alternate screen —
     // handing the layout the whole fullscreen area would stretch its rows down to fill the
@@ -605,9 +617,12 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
     let mut terminal = WatchTerminal::enter()?;
     let start = Instant::now();
     let mut last_realtime = Instant::now();
-    // Snapshot of the last-drawn state, used to skip repaints when nothing changed. The footer
-    // is part of it so its countdown still ticks when widget data is otherwise idle.
-    let mut prev: Option<WatchSnapshot> = None;
+    // Cached entries are carried across iterations and only re-pulled from `mem_cache` when its
+    // generation advances. The footer's `next refresh in N` countdown reads from this every
+    // frame, so we have to keep it around — but the per-frame work was the wasteful part.
+    let mut cached_entries = entries;
+    let mut cache_gen = mem_cache.generation();
+    let mut prev_status: Option<WatchStatus> = None;
 
     let result = loop {
         // Drain pending input. `q` / Ctrl-C quit; a resize forces a repaint (ratatui picks up
@@ -625,36 +640,50 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
             break Ok(());
         }
 
-        if last_realtime.elapsed() >= WATCH_REALTIME_TICK {
-            payloads.extend(compute_realtime_payloads(
+        let realtime_recomputed = last_realtime.elapsed() >= WATCH_REALTIME_TICK;
+        if realtime_recomputed {
+            compute_realtime_payloads_into(
                 &registry,
                 &realtime_widgets,
                 &config.general,
                 &shapes,
-            ));
+                &mut payloads,
+            );
             last_realtime = Instant::now();
         }
 
-        let entries = refresh_payloads(
-            Some(&mem_cache),
-            &registry,
-            &buckets,
-            &config.general,
-            &shapes,
-            &mut payloads,
-        );
-        let loading = compute_loading(&cached_widgets, &payloads, &entries, &shapes, false);
+        // Re-pull cached entries only when the fetch task has actually written something. In
+        // steady state this branch is taken once every widget TTL, not once per frame.
+        let cur_gen = mem_cache.generation();
+        let cache_changed = cur_gen != cache_gen;
+        if cache_changed {
+            cached_entries = load_entries(
+                Some(&mem_cache),
+                &registry,
+                &cached_widgets,
+                &config.general,
+                &shapes,
+            );
+            for (id, entry) in &cached_entries {
+                payloads.insert(id.clone(), entry.payload.clone());
+            }
+            cache_gen = cur_gen;
+        }
+
+        let loading = compute_loading(&cached_widgets, &payloads, &cached_entries, &shapes, false);
         let status = WatchStatus {
-            next_refresh_secs: next_refresh_secs(&entries),
+            next_refresh_secs: next_refresh_secs(&cached_entries),
             loading: loading.len(),
         };
 
         let animating = real_animated && start.elapsed() < ANIMATION_WINDOW;
-        let changed = match &prev {
-            Some(p) => p.payloads != payloads || p.loading != loading || p.status != status,
-            None => true,
-        };
-        if watch_should_draw(resized, changed, animating, !loading.is_empty()) {
+        let status_changed = prev_status != Some(status);
+        if watch_should_draw(
+            resized,
+            cache_changed || realtime_recomputed || status_changed,
+            animating,
+            !loading.is_empty(),
+        ) {
             draw_watch(
                 &mut terminal.inner,
                 &layout,
@@ -668,11 +697,7 @@ pub async fn watch(config: &Config, config_ident: Option<(&Path, &str)>) -> io::
                 &loading,
                 &status,
             )?;
-            prev = Some(WatchSnapshot {
-                payloads: payloads.clone(),
-                loading,
-                status,
-            });
+            prev_status = Some(status);
         }
 
         tokio::time::sleep(WATCH_FRAME_TICK).await;
@@ -1090,17 +1115,10 @@ fn draw_watch<B: Backend>(
     Ok(())
 }
 
-/// The last-drawn state of the `watch` loop. Compared against the current frame's state to
-/// skip redundant repaints — an idle dashboard shouldn't redraw at the frame rate.
-struct WatchSnapshot {
-    payloads: HashMap<WidgetId, Payload>,
-    loading: HashMap<WidgetId, Shape>,
-    status: WatchStatus,
-}
-
-/// Footer status shown by `watch`, kept in the redraw snapshot so its countdown still ticks
-/// when widget data is otherwise idle.
-#[derive(Debug, Clone, PartialEq)]
+/// Footer status shown by `watch`. The loop tracks the last-drawn copy of this so the
+/// countdown still ticks when widget data is otherwise idle. `Copy` so change detection is a
+/// trivial value comparison, no clone needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WatchStatus {
     /// Seconds until the soonest cached widget goes stale — when `watch` next has new data.
     /// `None` for a realtime-only dashboard (no cached widgets).
