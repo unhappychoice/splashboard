@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-15
+
+### ✨ Features
+
+- feat(runtime): make watch footer a status bar with refresh meta ([17cdd99](https://github.com/unhappychoice/splashboard/commit/17cdd99))
+- feat(runtime): add key-binding footer to watch mode ([0d9d3a1](https://github.com/unhappychoice/splashboard/commit/0d9d3a1))
+- feat(runtime): add persistent watch mode (splashboard watch) ([7df31cb](https://github.com/unhappychoice/splashboard/commit/7df31cb))
+
+### 🐛 Bug Fixes
+
+- fix(watch): always run teardown + tighten WatchTerminal::enter ([10520c7](https://github.com/unhappychoice/splashboard/commit/10520c7))
+- fix(runtime): draw watch dashboard at natural height, not stretched ([8dd8091](https://github.com/unhappychoice/splashboard/commit/8dd8091))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.2.0 ([d25c484](https://github.com/unhappychoice/splashboard/commit/d25c484))
+- docs: cover `splashboard watch` in guides + README ([44527b3](https://github.com/unhappychoice/splashboard/commit/44527b3))
+- perf(watch): cut per-frame clones via generation-tracked cache reads ([5ccd828](https://github.com/unhappychoice/splashboard/commit/5ccd828))
+- perf(watch): swap disk cache for in-memory backend during watch mode ([5df3ae1](https://github.com/unhappychoice/splashboard/commit/5df3ae1))
+- chore: update flake.nix hashes for v2.1.0 ([612d765](https://github.com/unhappychoice/splashboard/commit/612d765))
+
+
 ## [2.1.0] - 2026-05-14
 
 ### ✨ Features
@@ -33,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.1.0 ([55e2d82](https://github.com/unhappychoice/splashboard/commit/55e2d82))
+- chore: bump version to v2.1.0 ([2ec08cd](https://github.com/unhappychoice/splashboard/commit/2ec08cd))
 - docs: refresh README hero screenshot ([ed4457f](https://github.com/unhappychoice/splashboard/commit/ed4457f))
 - test(fetcher): sweep every cached builtin's refresh_interval ([fdfd761](https://github.com/unhappychoice/splashboard/commit/fdfd761))
 - docs(agents): drop pomodoro from RealtimeFetcher examples ([450af03](https://github.com/unhappychoice/splashboard/commit/450af03))
