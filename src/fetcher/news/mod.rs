@@ -497,6 +497,36 @@ mod tests {
     /// `resolve_feed` runs after option parsing but still before the HTTP call, so an unknown
     /// `feed` key surfaces as a labelled `Failed` error without touching the network. Covers
     /// the second early-return arm of `fetch` and reuses `resolve_feed`'s "available keys"
+    /// `selected.url` is hardcoded in `SOURCES`, so the malformed-URL arm in `fetch` is
+    /// otherwise unreachable. Construct a custom `NewsSource` whose bundled URL fails
+    /// `Url::parse` and assert the error labels the source + feed key.
+    #[tokio::test]
+    async fn fetch_surfaces_malformed_bundled_url_before_network() {
+        static BAD_FEEDS: &[NewsFeed] = &[NewsFeed {
+            key: "broken",
+            url: "not a url",
+            label: "Broken",
+        }];
+        static BAD_SOURCE: NewsSource = NewsSource {
+            name: "news_test_bad_url",
+            display: "Test",
+            category: NewsCategory::General,
+            description: "test-only source with a malformed bundled feed URL",
+            feeds: BAD_FEEDS,
+        };
+        let f = NewsFeedFetcher {
+            source: &BAD_SOURCE,
+        };
+        let ctx = ctx(Some(Shape::LinkedTextBlock), None);
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref msg)
+                if msg.contains("news_test_bad_url")
+                    && msg.contains("bundled feed url for `broken` is malformed")
+        ));
+    }
+
     /// listing so the operator gets the valid set in the message.
     #[tokio::test]
     async fn fetch_surfaces_unknown_feed_key_before_network() {
