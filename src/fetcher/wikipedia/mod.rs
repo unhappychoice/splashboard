@@ -11,6 +11,7 @@ pub mod client;
 pub mod featured;
 pub mod on_this_day;
 pub mod random;
+pub mod trending;
 
 use std::sync::Arc;
 
@@ -21,5 +22,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(on_this_day::WikipediaOnThisDayFetcher),
         Arc::new(featured::WikipediaFeaturedFetcher),
         Arc::new(random::WikipediaRandomFetcher),
+        Arc::new(trending::WikipediaTrendingFetcher),
     ]
 }
