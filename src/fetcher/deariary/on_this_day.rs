@@ -411,31 +411,27 @@ mod tests {
             (0, entry("2026-03-27", "Recent")),
             (3, entry("2025-04-27", "Year ago")),
         ];
-        let Body::TextBlock(t) = render_body(&hits, Shape::TextBlock, ymd(2026, 4, 27)) else {
-            panic!("expected TextBlock");
-        };
-        assert_eq!(
-            t.lines,
-            vec![
-                "1 month ago — Recent".to_string(),
-                "1 year ago — Year ago".to_string(),
-            ]
-        );
+        assert!(matches!(
+            render_body(&hits, Shape::TextBlock, ymd(2026, 4, 27)),
+            Body::TextBlock(t)
+                if t.lines == vec![
+                    "1 month ago — Recent".to_string(),
+                    "1 year ago — Year ago".to_string(),
+                ]
+        ));
     }
 
     #[test]
     fn linked_text_block_rows_link_to_each_anchor_entry() {
         let hits = vec![(0, entry("2026-03-27", "Recent"))];
-        let Body::LinkedTextBlock(l) = render_body(&hits, Shape::LinkedTextBlock, ymd(2026, 4, 27))
-        else {
-            panic!("expected LinkedTextBlock");
-        };
-        assert_eq!(l.items.len(), 1);
-        assert_eq!(
-            l.items[0].url.as_deref(),
-            Some("https://app.deariary.com/entries/2026/03/27")
-        );
-        assert!(l.items[0].text.contains("Recent"));
+        assert!(matches!(
+            render_body(&hits, Shape::LinkedTextBlock, ymd(2026, 4, 27)),
+            Body::LinkedTextBlock(l)
+                if l.items.len() == 1
+                    && l.items[0].url.as_deref()
+                        == Some("https://app.deariary.com/entries/2026/03/27")
+                    && l.items[0].text.contains("Recent")
+        ));
     }
 
     #[test]
@@ -444,11 +440,11 @@ mod tests {
             (0, entry("2026-03-27", "Recent")),
             (7, entry("2021-04-27", "Five years")),
         ];
-        let Body::Text(t) = render_body(&hits, Shape::Text, ymd(2026, 4, 27)) else {
-            panic!("expected Text");
-        };
-        assert!(t.value.contains("5 years ago"));
-        assert!(t.value.contains("Five years"));
+        assert!(matches!(
+            render_body(&hits, Shape::Text, ymd(2026, 4, 27)),
+            Body::Text(t)
+                if t.value.contains("5 years ago") && t.value.contains("Five years")
+        ));
     }
 
     #[test]
@@ -457,38 +453,39 @@ mod tests {
             (0, entry("2026-03-27", "Recent")),
             (3, entry("2025-04-27", "Year ago")),
         ];
-        let Body::Timeline(t) = render_body(&hits, Shape::Timeline, ymd(2026, 4, 27)) else {
-            panic!("expected Timeline");
-        };
-        assert_eq!(t.events.len(), 2);
-        assert_eq!(t.events[0].title, "Recent");
-        assert_eq!(t.events[0].detail.as_deref(), Some("1 month ago"));
-        assert!(t.events[0].timestamp > t.events[1].timestamp);
+        assert!(matches!(
+            render_body(&hits, Shape::Timeline, ymd(2026, 4, 27)),
+            Body::Timeline(t)
+                if t.events.len() == 2
+                    && t.events[0].title == "Recent"
+                    && t.events[0].detail.as_deref() == Some("1 month ago")
+                    && t.events[0].timestamp > t.events[1].timestamp
+        ));
     }
 
     #[test]
     fn empty_hits_yields_empty_text_block() {
-        let Body::TextBlock(t) = render_body(&[], Shape::TextBlock, ymd(2026, 4, 27)) else {
-            panic!("expected TextBlock");
-        };
-        assert!(t.lines.is_empty());
+        assert!(matches!(
+            render_body(&[], Shape::TextBlock, ymd(2026, 4, 27)),
+            Body::TextBlock(t) if t.lines.is_empty()
+        ));
     }
 
     #[test]
     fn empty_hits_yields_empty_text() {
-        let Body::Text(t) = render_body(&[], Shape::Text, ymd(2026, 4, 27)) else {
-            panic!("expected Text");
-        };
-        assert!(t.value.is_empty());
+        assert!(matches!(
+            render_body(&[], Shape::Text, ymd(2026, 4, 27)),
+            Body::Text(t) if t.value.is_empty()
+        ));
     }
 
     #[test]
     fn empty_hits_yields_warn_badge() {
-        let Body::Badge(b) = render_body(&[], Shape::Badge, ymd(2026, 4, 27)) else {
-            panic!("expected Badge");
-        };
-        assert_eq!(b.status, Status::Warn);
-        assert!(b.label.contains("no past entries"));
+        assert!(matches!(
+            render_body(&[], Shape::Badge, ymd(2026, 4, 27)),
+            Body::Badge(b)
+                if b.status == Status::Warn && b.label.contains("no past entries")
+        ));
     }
 
     #[test]
@@ -497,41 +494,39 @@ mod tests {
             (0, entry("2026-03-27", "Recent")),
             (7, entry("2021-04-27", "Five years")),
         ];
-        let Body::Badge(b) = render_body(&hits, Shape::Badge, ymd(2026, 4, 27)) else {
-            panic!("expected Badge");
-        };
-        assert_eq!(b.status, Status::Ok);
-        assert_eq!(b.label, "📔 5 years ago");
+        assert!(matches!(
+            render_body(&hits, Shape::Badge, ymd(2026, 4, 27)),
+            Body::Badge(b) if b.status == Status::Ok && b.label == "📔 5 years ago"
+        ));
     }
 
     #[test]
     fn entries_keys_with_anchor_label() {
         let hits = vec![(2, entry("2025-10-27", "Half year"))];
-        let Body::Entries(e) = render_body(&hits, Shape::Entries, ymd(2026, 4, 27)) else {
-            panic!("expected Entries");
-        };
-        assert_eq!(e.items[0].key, "6 months ago");
-        assert_eq!(e.items[0].value.as_deref(), Some("Half year"));
+        assert!(matches!(
+            render_body(&hits, Shape::Entries, ymd(2026, 4, 27)),
+            Body::Entries(e)
+                if e.items[0].key == "6 months ago"
+                    && e.items[0].value.as_deref() == Some("Half year")
+        ));
     }
 
     #[test]
     fn markdown_uses_bold_anchor_labels() {
         let hits = vec![(0, entry("2026-03-27", "Recent"))];
-        let Body::MarkdownTextBlock(m) =
-            render_body(&hits, Shape::MarkdownTextBlock, ymd(2026, 4, 27))
-        else {
-            panic!("expected MarkdownTextBlock");
-        };
-        assert!(m.value.contains("**1 month ago**"));
+        assert!(matches!(
+            render_body(&hits, Shape::MarkdownTextBlock, ymd(2026, 4, 27)),
+            Body::MarkdownTextBlock(m) if m.value.contains("**1 month ago**")
+        ));
     }
 
     #[test]
     fn unsupported_shape_falls_back_to_text_block() {
         let hits = vec![(0, entry("2026-03-27", "Recent"))];
-        let Body::TextBlock(t) = render_body(&hits, Shape::Heatmap, ymd(2026, 4, 27)) else {
-            panic!("expected TextBlock");
-        };
-        assert_eq!(t.lines, vec!["1 month ago — Recent".to_string()]);
+        assert!(matches!(
+            render_body(&hits, Shape::Heatmap, ymd(2026, 4, 27)),
+            Body::TextBlock(t) if t.lines == vec!["1 month ago — Recent".to_string()]
+        ));
     }
 
     #[test]
@@ -583,10 +578,10 @@ mod tests {
 
     #[test]
     fn empty_hits_yields_empty_timeline() {
-        let Body::Timeline(t) = render_body(&[], Shape::Timeline, ymd(2026, 4, 27)) else {
-            panic!("expected Timeline");
-        };
-        assert!(t.events.is_empty());
+        assert!(matches!(
+            render_body(&[], Shape::Timeline, ymd(2026, 4, 27)),
+            Body::Timeline(t) if t.events.is_empty()
+        ));
     }
 
     #[test]

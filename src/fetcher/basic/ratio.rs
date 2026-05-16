@@ -158,4 +158,20 @@ mod tests {
         };
         assert!(d.lines[0].contains("invalid options"));
     }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicRatio;
+        assert_eq!(f.safety(), Safety::Safe);
+        assert!(!f.description().is_empty());
+        let names: Vec<_> = f.option_schemas().iter().map(|s| s.name).collect();
+        assert_eq!(names, vec!["value", "label", "denominator"]);
+    }
+
+    #[test]
+    fn sample_body_matches_declared_shape_only() {
+        let f = BasicRatio;
+        assert!(matches!(f.sample_body(Shape::Ratio), Some(Body::Ratio(_))));
+        assert!(f.sample_body(Shape::Text).is_none());
+    }
 }

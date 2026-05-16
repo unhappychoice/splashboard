@@ -444,6 +444,22 @@ mod tests {
         assert_eq!(feed.entries[0].id, "video-id");
     }
 
+    /// `validated_channel_ids` already rejects empty input via the public `fetch` entrypoint,
+    /// so this exercises the otherwise-unreachable "no channels yielded entries" fallback inside
+    /// `fetch_and_merge` directly. With an empty slice the JoinSet stays empty,
+    /// `set.join_next().await` immediately returns `None`, `any_success` stays `false`, and
+    /// `first_error.unwrap_or_else(...)` materializes the fallback message.
+    #[tokio::test]
+    async fn fetch_and_merge_surfaces_no_channels_error_when_input_empty() {
+        let err = fetch_and_merge(&[], false).await.unwrap_err();
+        match err {
+            FetchError::Failed(m) => {
+                assert!(m.contains("no channels yielded entries"), "msg: {m}");
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
     #[test]
     fn fetcher_catalog_surface_matches_contract() {
         let f = YoutubeChannelFetcher;

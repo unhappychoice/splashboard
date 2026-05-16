@@ -905,6 +905,53 @@ mod tests {
     }
 
     #[test]
+    fn cmp_views_falls_back_to_content_when_due_and_priority_match() {
+        // Equal `due_sort_key` AND equal `priority` exercises the third `.then_with` arm:
+        // the comparator falls through to lexicographic content ordering. Without this,
+        // ties between same-priority same-due tasks would have undefined order.
+        let mut tasks = vec![
+            task("zebra", 3, Some("today"), Some(10), Some(10), false),
+            task("apple", 3, Some("today"), Some(10), Some(10), false),
+        ];
+        tasks.sort_by(cmp_views);
+        let ordered: Vec<_> = tasks.into_iter().map(|t| t.content).collect();
+        assert_eq!(ordered, vec!["apple", "zebra"]);
+    }
+
+    #[test]
+    fn cmp_views_uses_i64_max_fallback_for_missing_due_sort_keys() {
+        // Both views miss `due_sort_key` → both compare as `i64::MAX`, hitting the
+        // `.unwrap_or(i64::MAX)` arm for both sides; priority then breaks the tie.
+        let mut tasks = vec![
+            task("low", 1, None, None, None, false),
+            task("high", 4, None, None, None, false),
+        ];
+        tasks.sort_by(cmp_views);
+        let ordered: Vec<_> = tasks.into_iter().map(|t| t.content).collect();
+        assert_eq!(ordered, vec!["high", "low"]);
+    }
+
+    #[test]
+    fn to_task_view_uses_now_when_created_at_is_missing() {
+        // `created_at = None` hits the `.unwrap_or_else(|| now.timestamp())` arm in
+        // `to_task_view`; without a due date either, `timeline_ts` should fall back
+        // to the synthesized "now" timestamp.
+        let now = fixed_now();
+        let task = ApiTask {
+            id: "7".into(),
+            content: "Untimed".into(),
+            priority: 1,
+            created_at: None,
+            due: None,
+        };
+        let view = to_task_view(task, &now);
+        assert_eq!(view.timeline_ts, Some(now.timestamp()));
+        assert!(view.due_label.is_none());
+        assert!(view.due_sort_key.is_none());
+        assert!(!view.is_overdue);
+    }
+
+    #[test]
     fn badge_status_covers_ok_warn_and_error_states() {
         assert_eq!(badge_status(0, 0), Status::Ok);
         assert_eq!(badge_status(2, 0), Status::Warn);
@@ -947,11 +994,10 @@ mod tests {
             is_overdue: true,
         }];
         let body = render_body(&tasks, Shape::Badge, 10);
-        let Body::Badge(b) = body else {
-            panic!("expected badge");
-        };
-        assert_eq!(b.status, Status::Error);
-        assert!(b.label.contains("overdue"));
+        assert!(matches!(
+            body,
+            Body::Badge(b) if b.status == Status::Error && b.label.contains("overdue")
+        ));
     }
 
     #[test]
@@ -961,29 +1007,31 @@ mod tests {
             task("Future task", 2, Some("tomorrow"), Some(2), None, false),
         ];
 
-        let Body::Text(text) = render_body(&tasks, Shape::Text, 10) else {
-            panic!("expected text");
-        };
-        assert_eq!(text.value, "todo 2 tasks (1 overdue)");
+        assert!(matches!(
+            render_body(&tasks, Shape::Text, 10),
+            Body::Text(text) if text.value == "todo 2 tasks (1 overdue)"
+        ));
 
-        let Body::Entries(entries) = render_body(&tasks, Shape::Entries, 1) else {
-            panic!("expected entries");
-        };
-        assert_eq!(entries.items.len(), 1);
-        assert_eq!(entries.items[0].key, "Overdue fix");
-        assert_eq!(entries.items[0].value.as_deref(), Some("overdue · P4"));
+        assert!(matches!(
+            render_body(&tasks, Shape::Entries, 1),
+            Body::Entries(entries)
+                if entries.items.len() == 1
+                    && entries.items[0].key == "Overdue fix"
+                    && entries.items[0].value.as_deref() == Some("overdue · P4")
+        ));
 
-        let Body::Timeline(timeline) = render_body(&tasks, Shape::Timeline, 10) else {
-            panic!("expected timeline");
-        };
-        assert_eq!(timeline.events.len(), 1);
-        assert_eq!(timeline.events[0].title, "Overdue fix");
-        assert_eq!(timeline.events[0].status, Some(Status::Error));
+        assert!(matches!(
+            render_body(&tasks, Shape::Timeline, 10),
+            Body::Timeline(timeline)
+                if timeline.events.len() == 1
+                    && timeline.events[0].title == "Overdue fix"
+                    && timeline.events[0].status == Some(Status::Error)
+        ));
 
-        let Body::TextBlock(block) = render_body(&tasks, Shape::TextBlock, 10) else {
-            panic!("expected text block");
-        };
-        assert_eq!(block.lines[0], "overdue · P4 Overdue fix");
+        assert!(matches!(
+            render_body(&tasks, Shape::TextBlock, 10),
+            Body::TextBlock(block) if block.lines[0] == "overdue · P4 Overdue fix"
+        ));
     }
 
     #[test]
@@ -998,14 +1046,12 @@ mod tests {
             is_overdue: false,
         }];
         let body = render_body(&tasks, Shape::LinkedTextBlock, 10);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked_text_block");
-        };
-        assert_eq!(b.items.len(), 1);
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://app.todoist.com/app/task/42")
-        );
+        assert!(matches!(
+            body,
+            Body::LinkedTextBlock(b)
+                if b.items.len() == 1
+                    && b.items[0].url.as_deref() == Some("https://app.todoist.com/app/task/42")
+        ));
     }
 
     #[test]

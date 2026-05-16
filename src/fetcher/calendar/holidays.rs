@@ -418,6 +418,32 @@ mod tests {
         assert!(upcoming_lines(&list, ymd(2026, 12, 31), Language::Local, 5).is_empty());
     }
 
+    /// `upcoming_lines` uses `.filter_map(|h| Some((h.parse_date()?, h)))` so an entry whose
+    /// `date` fails ISO parsing must drop out via the `?` short-circuit and leave the valid
+    /// rows untouched. Real nager.at responses are always well-formed, but pinning the arm
+    /// guards against a future upstream schema flip silently dropping the entire upcoming list.
+    #[test]
+    fn upcoming_lines_drops_entries_with_unparseable_dates() {
+        let list = vec![
+            h("not-a-date", "Broken", "Broken"),
+            h("2026-05-03", "Constitution", "Constitution Day"),
+        ];
+        let lines = upcoming_lines(&list, ymd(2026, 5, 1), Language::English, 5);
+        assert_eq!(lines, vec!["05/03 — Constitution Day"]);
+    }
+
+    /// Same pattern as above, but for `month_calendar`'s `.filter_map(|h| h.parse_date())` —
+    /// a malformed `date` field drops out instead of poisoning the events list.
+    #[test]
+    fn month_calendar_drops_entries_with_unparseable_dates() {
+        let list = vec![
+            h("not-a-date", "Broken", "Broken"),
+            h("2026-04-29", "Showa", "Showa Day"),
+        ];
+        let cal = month_calendar(&list, ymd(2026, 4, 15));
+        assert_eq!(cal.events, vec![29]);
+    }
+
     #[test]
     fn month_calendar_filters_events_to_current_month() {
         let list = vec![
@@ -435,17 +461,11 @@ mod tests {
     #[test]
     fn render_body_text_emits_today_match_or_empty_string() {
         let list = vec![h("2026-04-29", "Showa", "Showa Day")];
-        let body = render_body(&list, Shape::Text, ymd(2026, 4, 29), Language::English, 5);
-        let Body::Text(t) = body else {
-            panic!("expected Text")
-        };
-        assert_eq!(t.value, "🎌 Showa Day");
+        let matched = render_body(&list, Shape::Text, ymd(2026, 4, 29), Language::English, 5);
+        assert!(matches!(matched, Body::Text(t) if t.value == "🎌 Showa Day"));
 
-        let body = render_body(&list, Shape::Text, ymd(2026, 5, 1), Language::English, 5);
-        let Body::Text(t) = body else {
-            panic!("expected Text")
-        };
-        assert!(t.value.is_empty());
+        let no_match = render_body(&list, Shape::Text, ymd(2026, 5, 1), Language::English, 5);
+        assert!(matches!(no_match, Body::Text(t) if t.value.is_empty()));
     }
 
     #[test]
@@ -458,19 +478,16 @@ mod tests {
             Language::English,
             5,
         );
-        let Body::TextBlock(t) = body else {
-            panic!("expected TextBlock")
-        };
-        assert_eq!(t.lines, vec!["05/03 — x"]);
+        assert!(matches!(body, Body::TextBlock(t) if t.lines == ["05/03 — x"]));
     }
 
     #[test]
     fn render_body_calendar_default_branch_emits_calendar() {
         let body = render_body(&[], Shape::Calendar, ymd(2026, 4, 15), Language::Local, 5);
-        let Body::Calendar(c) = body else {
-            panic!("expected Calendar")
-        };
-        assert_eq!((c.year, c.month, c.day), (2026, 4, Some(15)));
+        assert!(matches!(
+            body,
+            Body::Calendar(c) if (c.year, c.month, c.day) == (2026, 4, Some(15))
+        ));
     }
 
     #[test]

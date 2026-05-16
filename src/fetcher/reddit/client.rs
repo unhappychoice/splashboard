@@ -171,6 +171,34 @@ mod tests {
         ));
     }
 
+    /// A space in the authority is rejected by `reqwest::Url::parse` at `send()` time, so the
+    /// request never reaches the wire — exactly what we want to exercise the
+    /// `.map_err(|e| FetchError::Failed("reddit request failed: {e}"))` arm without depending on
+    /// a real network outage or a flaky `Connection refused` against a known-closed port.
+    #[test]
+    fn get_with_profile_surfaces_request_failures() {
+        let err =
+            run_async(get_with_profile("https://bad host", HeaderProfile::Minimal)).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.starts_with("reddit request failed:")
+        ));
+    }
+
+    /// Both retry profiles fail when the URL itself is malformed, so `fetch_listing` propagates
+    /// the second `get_with_profile` error through `get_with_retry?`. Covers the otherwise
+    /// network-bound `format!("{SITE_BASE}{path_and_query}")` build + the `?` propagation arm
+    /// without invoking the JSON parser. Uses a path containing a raw space so the concatenated
+    /// URL `"https://www.reddit.com bad"` trips `reqwest::Url::parse` before any socket is opened.
+    #[test]
+    fn fetch_listing_propagates_get_with_retry_failures() {
+        let err = run_async(fetch_listing::<TestChild>(" bad")).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.starts_with("reddit request failed:")
+        ));
+    }
+
     #[test]
     fn get_with_retry_returns_first_success_without_retry() {
         let (url, server) = serve_sequence(&[("200 OK", r#"{"ok":true}"#)]);

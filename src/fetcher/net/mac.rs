@@ -278,5 +278,58 @@ mod tests {
             assert!(NetMac.sample_body(shape).is_some());
         }
         assert!(NetMac.sample_body(Shape::Bars).is_none());
+        assert!(NetMac.description().contains("MAC"));
+        assert_eq!(NetMac.refresh_interval(), 60 * 60);
+    }
+
+    #[test]
+    fn cache_key_partitions_per_options_blob() {
+        let bare = FetchContext {
+            shape: Some(Shape::Text),
+            ..Default::default()
+        };
+        let with_options = FetchContext {
+            options: Some(toml::from_str("interface = \"eth0\"").unwrap()),
+            ..bare.clone()
+        };
+        assert!(NetMac.cache_key(&bare).contains("net_mac"));
+        assert_ne!(NetMac.cache_key(&bare), NetMac.cache_key(&with_options));
+    }
+
+    #[test]
+    fn text_value_returns_na_when_named_interface_has_no_mac() {
+        // Existing tests cover the "primary path / iface has no MAC" branch via the `None`
+        // arm. The `Some(name)` arm has its own `unwrap_or_else(|| "n/a".into())` that fires
+        // only when the named iface is *found* but its `mac` field is `None`.
+        let mut no_mac = iface("eth0", &["10.0.0.2"], true);
+        no_mac.mac = None;
+        assert_eq!(text_value(&[no_mac], Some("eth0")), "n/a");
+    }
+
+    #[test]
+    fn mac_badge_falls_back_to_raw_mac_when_unparseable() {
+        // `is_locally_administered` returns `None` when the first octet isn't valid hex.
+        // The badge's `Some(_) => None` arm has to surface *something*, so it pins the raw
+        // MAC into the label and tags `Warn` — that's the branch the existing tests skip.
+        let mut weird = iface("eth0", &["10.0.0.2"], true);
+        weird.mac = Some("zz:zz:zz:zz:zz:zz".into());
+        weird.is_default = true;
+        let badge = mac_badge(&[weird], None);
+        assert_eq!(badge.status, Status::Warn);
+        assert_eq!(badge.label, "zz:zz:zz:zz:zz:zz");
+    }
+
+    #[tokio::test]
+    async fn fetch_with_unsupported_shape_falls_back_to_text_value() {
+        // `body_for_shape` returns `None` for any shape outside `SHAPES`. `fetch()`'s
+        // `unwrap_or_else` arm then synthesises a `Body::Text` from `text_value` — that
+        // fallback path was unexercised because every public `Fetcher::fetch` test stays
+        // within declared shapes.
+        let ctx = FetchContext {
+            shape: Some(Shape::Ratio),
+            ..Default::default()
+        };
+        let body = NetMac.fetch(&ctx).await.unwrap().body;
+        assert!(matches!(body, Body::Text(_)));
     }
 }

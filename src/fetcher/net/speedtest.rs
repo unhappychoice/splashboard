@@ -291,7 +291,26 @@ fn sample_speedtest() -> Speedtest {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{SocketAddr, TcpListener};
+
     use super::*;
+
+    /// Borrow a free local port, drop the listener so the port is unbound, then point the
+    /// cloudflare host at it via reqwest's resolver override. Every chunk request now fails
+    /// fast with connection refused (or the TLS handshake fails if something rebinds it) —
+    /// either way we exercise the error path without hitting the real network.
+    fn unreachable_client() -> Client {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead: SocketAddr = listener.local_addr().unwrap();
+        drop(listener);
+        Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_millis(500))
+            .gzip(false)
+            .resolve("speed.cloudflare.com", dead)
+            .build()
+            .unwrap()
+    }
 
     #[test]
     fn body_for_shape_covers_every_supported_shape() {
@@ -349,12 +368,13 @@ mod tests {
     fn text_and_entries_carry_both_directions() {
         let s = sample_speedtest();
         assert_eq!(text_value(&s), "↓ 487 Mbps  ↑ 42 Mbps");
-        let Body::Entries(d) = body_for_shape(&s, Shape::Entries).unwrap() else {
-            panic!("expected entries");
-        };
-        assert_eq!(d.items.len(), 3);
-        assert_eq!(d.items[2].key, "latency");
-        assert_eq!(d.items[2].value.as_deref(), Some("12 ms"));
+        assert!(matches!(
+            body_for_shape(&s, Shape::Entries),
+            Some(Body::Entries(d))
+                if d.items.len() == 3
+                    && d.items[2].key == "latency"
+                    && d.items[2].value.as_deref() == Some("12 ms"),
+        ));
     }
 
     #[test]
@@ -362,11 +382,48 @@ mod tests {
         assert_eq!(NetSpeedtest.name(), "net_speedtest");
         assert_eq!(NetSpeedtest.safety(), Safety::Safe);
         assert_eq!(NetSpeedtest.default_shape(), Shape::Text);
+        assert_eq!(NetSpeedtest.shapes(), SHAPES);
+        assert_eq!(NetSpeedtest.refresh_interval(), 60 * 60);
         assert!(NetSpeedtest.option_schemas().is_empty());
+        let description = NetSpeedtest.description();
+        assert!(description.contains("Measured internet bandwidth"));
+        assert!(description.contains("speed.cloudflare.com"));
         for &shape in SHAPES {
             assert!(NetSpeedtest.sample_body(shape).is_some());
         }
         assert!(NetSpeedtest.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn http_reuses_the_same_client() {
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[tokio::test]
+    async fn measure_download_errors_when_no_chunk_returns_bytes() {
+        let client = unreachable_client();
+        let err = measure_download(&client).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("no data")));
+    }
+
+    #[tokio::test]
+    async fn measure_latency_returns_none_when_request_fails() {
+        let client = unreachable_client();
+        assert!(measure_latency(&client).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn measure_upload_surfaces_request_failure() {
+        let client = unreachable_client();
+        let err = measure_upload(&client).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("upload")));
+    }
+
+    #[tokio::test]
+    async fn download_chunk_surfaces_request_failure() {
+        let client = unreachable_client();
+        let err = download_chunk(&client).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("download")));
     }
 
     /// Live smoke test — hits Cloudflare. `#[ignore]` keeps CI offline-safe; run with

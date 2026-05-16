@@ -283,6 +283,54 @@ mod tests {
         ));
     }
 
+    /// `\n` in a bearer token makes `reqwest::RequestBuilder::send()` fail synchronously
+    /// at builder time — the `map_err` arm wrapping `send` is otherwise only reachable on
+    /// real network failure to `api.github.com`, which we don't want in tests.
+    #[test]
+    fn rest_get_send_error_surfaces_request_failed() {
+        let _g = EnvGuard::set(&[("GH_TOKEN", Some("tok\nbreak")), ("GITHUB_TOKEN", None)]);
+
+        let err = run_async(rest_get::<TestPayload>("/user")).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.starts_with("github request failed:")
+        ));
+    }
+
+    /// Same `\n`-in-token trick for the GraphQL POST path: covers the `send().await.map_err`
+    /// arm in `graphql` without needing to mock or reach the live API.
+    #[test]
+    fn graphql_send_error_surfaces_request_failed() {
+        let _g = EnvGuard::set(&[("GH_TOKEN", Some("tok\nbreak")), ("GITHUB_TOKEN", None)]);
+
+        let err = run_async(graphql::<TestPayload>(
+            "query { viewer { login } }",
+            serde_json::json!({}),
+        ))
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.starts_with("github graphql request failed:")
+        ));
+    }
+
+    /// Cache miss → `rest_get("/user")` error propagates through `?` to the caller; verifies
+    /// the `if let Some(cached) = ...` Some-arm is not the only path being exercised.
+    #[test]
+    fn resolve_authenticated_user_propagates_rest_get_error_on_cache_miss() {
+        let _g = EnvGuard::set(&[("GH_TOKEN", Some("tok\nbreak")), ("GITHUB_TOKEN", None)]);
+        clear_authenticated_user_cache();
+
+        let err = run_async(resolve_authenticated_user()).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FetchError::Failed(message) if message.starts_with("github request failed:")
+        ));
+    }
+
     #[test]
     fn parse_json_deserializes_success_bodies() {
         let payload = parse_test_payload("200 OK", r#"{"login":"octocat"}"#).unwrap();

@@ -729,8 +729,10 @@ mod tests {
     #[test]
     fn currency_symbol_known_codes_get_glyphs_others_get_iso() {
         assert_eq!(format_price(1234.5, "usd"), "$1,234.50");
+        assert_eq!(format_price(1234.5, "eur"), "€1,234.50");
         assert_eq!(format_price(1234.5, "jpy"), "¥1,234.50");
         assert_eq!(format_price(1234.5, "gbp"), "£1,234.50");
+        assert_eq!(format_price(1234.5, "krw"), "₩1,234.50");
         // Unknown codes (CAD, AUD, CHF, …) fall through to "<amount> <CODE>" so a multi-listing
         // watchlist still formats sensibly.
         assert_eq!(format_price(1234.5, "cad"), "1,234.50 CAD");
@@ -775,13 +777,17 @@ mod tests {
     #[test]
     fn entries_body_marks_each_row_with_volatility_status() {
         let snap = snapshot_with(&[("A", 100.0, 1.0), ("B", 200.0, 6.0)]);
-        let Body::Entries(data) = entries_body(&snap) else {
-            panic!("expected entries");
-        };
-        assert_eq!(data.items.len(), 2);
-        assert_eq!(data.items[0].status, Some(Status::Ok));
-        assert_eq!(data.items[1].status, Some(Status::Warn));
-        assert!(data.items[0].value.as_deref().unwrap().contains("(+1.00%)"));
+        assert!(matches!(
+            entries_body(&snap),
+            Body::Entries(data)
+                if data.items.len() == 2
+                    && data.items[0].status == Some(Status::Ok)
+                    && data.items[1].status == Some(Status::Warn)
+                    && data.items[0]
+                        .value
+                        .as_deref()
+                        .is_some_and(|v| v.contains("(+1.00%)")),
+        ));
     }
 
     #[test]
@@ -795,11 +801,11 @@ mod tests {
                 sparkline: vec![1.234, -0.5, 0.0, 12.345_678],
             }],
         };
-        let Body::NumberSeries(d) = number_series_body(&snap) else {
-            panic!("expected number series");
-        };
         // baseline = -0.5; deviations (cents): 1.734→173, 0.0→0, 0.5→50, 12.845_678→1285.
-        assert_eq!(d.values, vec![173, 0, 50, 1285]);
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values == vec![173, 0, 50, 1285],
+        ));
     }
 
     #[test]
@@ -815,10 +821,31 @@ mod tests {
                 sparkline: vec![600_000.0, 602_000.0, 604_000.0],
             }],
         };
-        let Body::NumberSeries(d) = number_series_body(&snap) else {
-            panic!("expected number series");
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values == vec![0, 200_000, 400_000],
+        ));
+    }
+
+    #[test]
+    fn number_series_falls_back_to_zero_baseline_when_every_sample_is_non_finite() {
+        // `fold(INFINITY, f64::min)` on an empty iterator (every value filtered out by
+        // `is_finite`) stays `INFINITY`, which `baseline.is_finite()` rejects so the `else`
+        // arm pins the baseline to 0.0. Exercised here so the all-NaN sparkline doesn't
+        // silently flip to an INFINITY-anchored series that overflows when cast to u64.
+        let snap = Snapshot {
+            stocks: vec![StockPoint {
+                symbol: "X".into(),
+                currency: "usd".into(),
+                price: 0.0,
+                change_pct: 0.0,
+                sparkline: vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY],
+            }],
         };
-        assert_eq!(d.values, vec![0, 200_000, 400_000]);
+        assert!(matches!(
+            number_series_body(&snap),
+            Body::NumberSeries(d) if d.values.len() == 3,
+        ));
     }
 
     #[test]
@@ -832,50 +859,46 @@ mod tests {
             ("F", 1.0, 0.0),
             ("G", 1.0, 0.0),
         ]);
-        let Body::PointSeries(d) = point_series_body(&snap) else {
-            panic!("expected point series");
-        };
-        assert_eq!(d.series.len(), MAX_SERIES_STOCKS);
+        assert!(matches!(
+            point_series_body(&snap),
+            Body::PointSeries(d) if d.series.len() == MAX_SERIES_STOCKS,
+        ));
     }
 
     #[test]
     fn bars_body_encodes_basis_points_and_direction_arrow() {
         let snap = snapshot_with(&[("A", 1.0, 2.5), ("B", 1.0, -3.0), ("C", 1.0, 0.0)]);
-        let Body::Bars(d) = bars_body(&snap) else {
-            panic!("expected bars");
-        };
-        assert_eq!(d.bars[0].value, 250);
-        assert_eq!(d.bars[1].value, 300);
-        assert_eq!(d.bars[2].value, 0);
-        assert!(d.bars[0].label.starts_with('▲'));
-        assert!(d.bars[1].label.starts_with('▼'));
-        assert!(d.bars[2].label.starts_with('·'));
+        assert!(matches!(
+            bars_body(&snap),
+            Body::Bars(d)
+                if d.bars[0].value == 250
+                    && d.bars[1].value == 300
+                    && d.bars[2].value == 0
+                    && d.bars[0].label.starts_with('▲')
+                    && d.bars[1].label.starts_with('▼')
+                    && d.bars[2].label.starts_with('·'),
+        ));
     }
 
     #[test]
     fn linked_text_block_links_each_row_to_yahoo_quote_page() {
         let snap = snapshot_with(&[("AAPL", 1.0, 1.0), ("^GSPC", 5000.0, 0.5)]);
-        let Body::LinkedTextBlock(d) = linked_text_block_body(&snap) else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(
-            d.items[0].url.as_deref(),
-            Some("https://finance.yahoo.com/quote/AAPL")
-        );
         // `^` in the symbol must reach the URL percent-encoded so the link works in a browser.
-        assert_eq!(
-            d.items[1].url.as_deref(),
-            Some("https://finance.yahoo.com/quote/%5EGSPC")
-        );
+        assert!(matches!(
+            linked_text_block_body(&snap),
+            Body::LinkedTextBlock(d)
+                if d.items[0].url.as_deref() == Some("https://finance.yahoo.com/quote/AAPL")
+                    && d.items[1].url.as_deref() == Some("https://finance.yahoo.com/quote/%5EGSPC"),
+        ));
     }
 
     #[test]
     fn markdown_block_lists_tickers_with_bold_symbol() {
         let snap = snapshot_with(&[("AAPL", 1.0, 1.0)]);
-        let Body::MarkdownTextBlock(d) = markdown_block_body(&snap) else {
-            panic!("expected markdown text block");
-        };
-        assert!(d.value.starts_with("- **AAPL**"));
+        assert!(matches!(
+            markdown_block_body(&snap),
+            Body::MarkdownTextBlock(d) if d.value.starts_with("- **AAPL**"),
+        ));
     }
 
     #[test]
@@ -961,6 +984,25 @@ mod tests {
     }
 
     #[test]
+    fn from_api_defaults_currency_to_usd_when_api_omits_it() {
+        // Yahoo's chart endpoint sometimes omits `currency` for OTC tickers and indices.
+        // The unwrap_or_else fallback keeps the formatter happy with a sensible default
+        // rather than emitting an empty glyph; pin the contract so it can't silently shift.
+        let result = ApiResult {
+            meta: ApiMeta {
+                symbol: "noccy".into(),
+                currency: None,
+                regular_market_price: Some(10.0),
+                chart_previous_close: Some(9.0),
+                previous_close: None,
+            },
+            indicators: None,
+        };
+        let stock = StockPoint::from_api(result).unwrap();
+        assert_eq!(stock.currency, "usd");
+    }
+
+    #[test]
     fn fetcher_metadata_cache_key_and_samples_cover_supported_shapes() {
         let fetcher = StockWatchlistFetcher;
         let ctx = FetchContext {
@@ -999,6 +1041,79 @@ mod tests {
         assert!(fetcher.sample_body(Shape::Heatmap).is_none());
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
         assert!(fetcher.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn text_value_falls_back_to_no_symbols_when_snapshot_is_empty() {
+        // The `Some(top)` arm is exercised via `sample_snapshot` through `body_for_shape`; the
+        // `None` arm only fires when every fetch returned no row. Pin the placeholder so a
+        // future refactor doesn't silently change the empty-state hint.
+        let snap = Snapshot { stocks: vec![] };
+        assert_eq!(text_value(&snap), "no symbols");
+    }
+
+    #[test]
+    fn add_thousands_separators_groups_integer_only_inputs_without_a_decimal() {
+        // `format_amount` always emits a `.`, so this branch is unreachable through public
+        // callers — but the helper is reused locally and the integer-only fork would silently
+        // drop the leading `-` if it ever broke. Keep the contract pinned.
+        assert_eq!(add_thousands_separators("1234"), "1,234");
+        assert_eq!(add_thousands_separators("-1234567"), "-1,234,567");
+        assert_eq!(add_thousands_separators("0"), "0");
+    }
+
+    #[test]
+    fn from_api_change_pct_collapses_to_zero_when_price_and_prev_close_are_zero() {
+        // prev_close filters out 0.0 (fails > EPSILON) and falls back to `price`. With price
+        // also 0.0, the divisor is sub-EPSILON and the formula short-circuits to 0.0 — the
+        // only path that exercises the `else` arm of the change-percent computation.
+        let result = ApiResult {
+            meta: ApiMeta {
+                symbol: "zero".into(),
+                currency: Some("USD".into()),
+                regular_market_price: Some(0.0),
+                chart_previous_close: Some(0.0),
+                previous_close: None,
+            },
+            indicators: None,
+        };
+        let stock = StockPoint::from_api(result).unwrap();
+        assert_eq!(stock.price, 0.0);
+        assert_eq!(stock.change_pct, 0.0);
+    }
+
+    #[test]
+    fn payload_helper_wraps_body_with_no_chrome_metadata() {
+        // The helper is only invoked through `fetch` (network-bound), so the chrome-free
+        // wrapper isn't otherwise covered. Document that the family forwards the body as-is.
+        let p = payload(Body::Text(TextData {
+            value: "hello".into(),
+        }));
+        assert!(p.icon.is_none());
+        assert!(p.status.is_none());
+        assert!(p.format.is_none());
+        assert!(matches!(p.body, Body::Text(t) if t.value == "hello"));
+    }
+
+    #[test]
+    fn http_returns_a_singleton_client() {
+        // Cheap guard against a refactor that swaps the `OnceLock` for a per-call builder —
+        // every fetch in the watchlist family shares the same connection pool today.
+        assert!(std::ptr::eq(http(), http()));
+    }
+
+    /// `resolve_symbols` already rejects empty input via the public `fetch` entrypoint, so this
+    /// exercises the otherwise-unreachable "no symbols returned data" fallback inside
+    /// `fetch_snapshot` directly. With an empty slice the `JoinSet` stays empty,
+    /// `set.join_next().await` immediately returns `None`, `indexed` is empty, and the
+    /// `last_error.unwrap_or_else(...)` arm materialises the fallback message.
+    #[tokio::test]
+    async fn fetch_snapshot_surfaces_no_data_when_no_symbols_were_requested() {
+        let err = fetch_snapshot(&[]).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref message) if message.contains("no symbols returned data")
+        ));
     }
 
     /// Live smoke test — hits Yahoo Finance. `#[ignore]` keeps CI offline-safe; run with

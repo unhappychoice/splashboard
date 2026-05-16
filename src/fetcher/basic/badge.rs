@@ -142,4 +142,33 @@ mod tests {
         };
         assert!(d.lines[0].contains("`label` is required"));
     }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicBadge;
+        assert!(!f.description().is_empty());
+        assert_eq!(
+            f.option_schemas()
+                .iter()
+                .map(|s| s.name)
+                .collect::<Vec<_>>(),
+            vec!["status", "label"]
+        );
+    }
+
+    #[test]
+    fn sample_body_matches_declared_shape_only() {
+        let f = BasicBadge;
+        assert!(matches!(f.sample_body(Shape::Badge), Some(Body::Badge(_))));
+        assert!(f.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn invalid_options_render_placeholder() {
+        let p = compute(r#"label = 42"#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+    }
 }

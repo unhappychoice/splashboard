@@ -74,3 +74,32 @@ impl RealtimeFetcher for SystemInfoDesktop {
         payload(Body::Text(TextData { value }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_text;
+    use super::*;
+
+    #[test]
+    fn defaults_to_de_kind() {
+        let p = SystemInfoDesktop.compute(&ctx_text(None));
+        assert!(matches!(p.body, Body::Text(t) if !t.value.is_empty()));
+    }
+
+    #[test]
+    fn each_known_kind_returns_non_empty_text() {
+        for kind in ["de", "wm", "init"] {
+            let p = SystemInfoDesktop.compute(&ctx_text(Some(&format!("kind = \"{kind}\""))));
+            assert!(
+                matches!(&p.body, Body::Text(t) if !t.value.is_empty()),
+                "kind = {kind}",
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_kind_to_placeholder() {
+        let p = SystemInfoDesktop.compute(&ctx_text(Some("kind = \"bogus\"")));
+        assert!(matches!(p.body, Body::Text(t) if t.value.starts_with('⚠')));
+    }
+}

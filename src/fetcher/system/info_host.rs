@@ -90,27 +90,34 @@ mod tests {
     #[test]
     fn defaults_to_terminal_kind() {
         let p = SystemInfoHost.compute(&ctx_text(None));
-        assert!(matches!(p.body, Body::Text(_)));
-        if let Body::Text(t) = p.body {
-            assert!(!t.value.is_empty());
-        }
+        assert!(matches!(p.body, Body::Text(t) if !t.value.is_empty()));
     }
 
     #[test]
     fn emits_arch_when_requested() {
         let p = SystemInfoHost.compute(&ctx_text(Some("kind = \"arch\"")));
-        assert!(matches!(p.body, Body::Text(_)));
-        if let Body::Text(t) = p.body {
-            assert_eq!(t.value, std::env::consts::ARCH);
-        }
+        assert!(matches!(p.body, Body::Text(t) if t.value == std::env::consts::ARCH));
     }
 
     #[test]
     fn rejects_unknown_kind_to_placeholder() {
         let p = SystemInfoHost.compute(&ctx_text(Some("kind = \"bogus\"")));
-        assert!(matches!(p.body, Body::Text(_)));
-        if let Body::Text(t) = p.body {
-            assert!(t.value.starts_with("⚠"));
+        assert!(matches!(p.body, Body::Text(t) if t.value.starts_with('⚠')));
+    }
+
+    /// Each remaining `kind` variant (`os` / `os_version` / `hostname` / `shell`) routes through
+    /// its own match arm in `compute`. We don't pin the value (it depends on the host), but the
+    /// branch must produce a non-empty `Text` body that isn't an options-error placeholder.
+    #[test]
+    fn every_kind_variant_produces_non_empty_text() {
+        for kind in ["terminal", "os", "os_version", "hostname", "shell", "arch"] {
+            let raw = format!("kind = \"{kind}\"");
+            let p = SystemInfoHost.compute(&ctx_text(Some(&raw)));
+            assert!(
+                matches!(&p.body, Body::Text(t) if !t.value.is_empty() && !t.value.starts_with('⚠')),
+                "{kind}: expected non-placeholder text body, got {:?}",
+                p.body,
+            );
         }
     }
 }

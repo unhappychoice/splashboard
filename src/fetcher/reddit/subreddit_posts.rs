@@ -369,4 +369,32 @@ mod tests {
             .unwrap_err();
         assert!(format!("{err}").contains("subreddit must not be empty"));
     }
+
+    #[test]
+    fn description_mentions_listing_types_and_siblings() {
+        let desc = RedditSubredditPostsFetcher.description();
+        assert!(desc.contains("top"), "desc: {desc}");
+        assert!(desc.contains("hot"), "desc: {desc}");
+        assert!(desc.contains("rising"), "desc: {desc}");
+        assert!(desc.contains("reddit_user_posts"), "desc: {desc}");
+        assert!(desc.contains("reddit_user_comments"), "desc: {desc}");
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_image_linked_returns_empty_image_list_for_no_posts() {
+        let body = render_for_shape(&[], Shape::ImageLinkedList).await;
+        match body {
+            Body::ImageLinkedList(data) => assert!(data.items.is_empty()),
+            other => panic!("expected ImageLinkedList, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_non_image_dispatches_to_sync_renderer() {
+        let body = render_for_shape(&[], Shape::Entries).await;
+        match body {
+            Body::Entries(data) => assert!(data.items.is_empty()),
+            other => panic!("expected Entries, got {other:?}"),
+        }
+    }
 }

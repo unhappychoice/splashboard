@@ -250,6 +250,67 @@ mod tests {
     }
 
     #[test]
+    fn news_category_label_uses_lowercase_table() {
+        let cases = [
+            (NewsCategory::General, "general"),
+            (NewsCategory::Tech, "tech"),
+            (NewsCategory::Gadget, "gadget"),
+            (NewsCategory::Business, "business"),
+            (NewsCategory::Science, "science"),
+            (NewsCategory::Security, "security"),
+            (NewsCategory::Linux, "linux"),
+            (NewsCategory::Gaming, "gaming"),
+            (NewsCategory::Ai, "ai"),
+            (NewsCategory::Hardware, "hardware"),
+            (NewsCategory::Web, "web"),
+            (NewsCategory::Apple, "apple"),
+            (NewsCategory::Android, "android"),
+            (NewsCategory::Space, "space"),
+            (NewsCategory::Climate, "climate"),
+            (NewsCategory::Politics, "politics"),
+            (NewsCategory::Photography, "photography"),
+            (NewsCategory::Entertainment, "entertainment"),
+            (NewsCategory::Music, "music"),
+            (NewsCategory::Crypto, "crypto"),
+        ];
+        for (variant, expected) in cases {
+            assert_eq!(variant.label(), expected);
+        }
+    }
+
+    #[test]
+    fn default_feed_returns_first_feed_for_every_source() {
+        for source in SOURCES {
+            let default = source.default_feed();
+            assert_eq!(
+                default.key, source.feeds[0].key,
+                "{}: default_feed should return feeds[0]",
+                source.name
+            );
+            assert_eq!(default.url, source.feeds[0].url);
+            assert_eq!(default.label, source.feeds[0].label);
+        }
+    }
+
+    #[test]
+    fn find_feed_matches_known_key_and_misses_unknown_key() {
+        let src = bbc();
+        // BBC ships multiple sub-feeds — pick a non-default one to prove the
+        // lookup walks the whole slice, not just the first entry.
+        let tech = src.find_feed("tech").expect("tech feed must exist");
+        assert_eq!(tech.key, "tech");
+        assert!(tech.url.contains("technology"));
+
+        assert!(src.find_feed("does-not-exist").is_none());
+        assert!(src.find_feed("").is_none());
+
+        // Single-feed source still resolves its only key.
+        let alj = aljazeera();
+        assert_eq!(alj.find_feed("all").map(|f| f.key), Some("all"));
+        assert!(alj.find_feed("missing").is_none());
+    }
+
+    #[test]
     fn all_sources_are_news_prefixed_and_have_at_least_one_feed() {
         for source in SOURCES {
             assert!(
@@ -415,6 +476,69 @@ mod tests {
                 source.name
             );
         }
+    }
+
+    /// `fetch` reads options before issuing the request, so an `Options` blob that fails to
+    /// deserialise (the `deny_unknown_fields` arm) surfaces as a `Failed` error from the
+    /// first line of the body without any network I/O. Pins the early-return path so a future
+    /// refactor that defers option validation past `fetch_bytes` shows up as a coverage drop.
+    #[tokio::test]
+    async fn fetch_surfaces_invalid_options_before_network() {
+        let f = NewsFeedFetcher { source: bbc() };
+        let mut ctx = ctx(Some(Shape::LinkedTextBlock), None);
+        ctx.options = Some(parse_opts("bogus = true"));
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref msg) if msg.contains("invalid options:")
+        ));
+    }
+
+    /// `resolve_feed` runs after option parsing but still before the HTTP call, so an unknown
+    /// `feed` key surfaces as a labelled `Failed` error without touching the network. Covers
+    /// the second early-return arm of `fetch` and reuses `resolve_feed`'s "available keys"
+    /// `selected.url` is hardcoded in `SOURCES`, so the malformed-URL arm in `fetch` is
+    /// otherwise unreachable. Construct a custom `NewsSource` whose bundled URL fails
+    /// `Url::parse` and assert the error labels the source + feed key.
+    #[tokio::test]
+    async fn fetch_surfaces_malformed_bundled_url_before_network() {
+        static BAD_FEEDS: &[NewsFeed] = &[NewsFeed {
+            key: "broken",
+            url: "not a url",
+            label: "Broken",
+        }];
+        static BAD_SOURCE: NewsSource = NewsSource {
+            name: "news_test_bad_url",
+            display: "Test",
+            category: NewsCategory::General,
+            description: "test-only source with a malformed bundled feed URL",
+            feeds: BAD_FEEDS,
+        };
+        let f = NewsFeedFetcher {
+            source: &BAD_SOURCE,
+        };
+        let ctx = ctx(Some(Shape::LinkedTextBlock), None);
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref msg)
+                if msg.contains("news_test_bad_url")
+                    && msg.contains("bundled feed url for `broken` is malformed")
+        ));
+    }
+
+    /// listing so the operator gets the valid set in the message.
+    #[tokio::test]
+    async fn fetch_surfaces_unknown_feed_key_before_network() {
+        let f = NewsFeedFetcher { source: bbc() };
+        let mut ctx = ctx(Some(Shape::LinkedTextBlock), None);
+        ctx.options = Some(parse_opts("feed = \"definitely-not-a-feed\""));
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(ref msg)
+                if msg.contains("unknown feed key") && msg.contains("definitely-not-a-feed")
+        ));
     }
 
     /// Live smoke test for every bundled `news_*` feed. Hits each URL in parallel, parses with

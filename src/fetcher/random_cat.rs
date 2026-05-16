@@ -317,6 +317,13 @@ mod tests {
     }
 
     #[test]
+    fn build_url_keeps_digits_unencoded() {
+        // Digits are URL-path safe so `encode_tag` lets them through the unescaped arm —
+        // exercises the `b'0'..=b'9'` branch that letter-only tags skip.
+        assert_eq!(build_url(Some("cute123")), "https://cataas.com/cat/cute123");
+    }
+
+    #[test]
     fn image_extension_detects_png() {
         assert_eq!(image_extension(b"\x89PNG\r\n\x1a\nrest"), Some("png"));
     }
@@ -394,6 +401,26 @@ mod tests {
         unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
         assert_eq!(cat_dir(), Some(tmp.path().join("cache").join("cats")));
         restore_home(previous);
+    }
+
+    #[test]
+    fn restore_home_reapplies_previous_value_when_present() {
+        // The standard save→mutate→restore flow only fires the None arm because tests start
+        // with SPLASHBOARD_HOME unset. Pre-seeding the var captures `Some(...)` so restore_home
+        // exercises the `Some(value) => set_var` arm explicitly.
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prior = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", "/tmp/splashboard-cat-restore-prior") };
+        let captured = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", "/tmp/splashboard-cat-restore-other") };
+        restore_home(captured);
+        assert_eq!(
+            std::env::var("SPLASHBOARD_HOME").ok().as_deref(),
+            Some("/tmp/splashboard-cat-restore-prior")
+        );
+        restore_home(prior);
     }
 
     #[tokio::test]

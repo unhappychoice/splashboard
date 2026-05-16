@@ -34,3 +34,15 @@ impl RealtimeFetcher for SystemInfoTimezone {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::ctx_text;
+    use super::*;
+
+    #[test]
+    fn compute_returns_non_empty_text() {
+        let p = SystemInfoTimezone.compute(&ctx_text(None));
+        assert!(matches!(p.body, Body::Text(t) if !t.value.is_empty()));
+    }
+}

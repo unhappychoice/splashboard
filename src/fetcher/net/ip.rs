@@ -244,6 +244,33 @@ mod tests {
         assert_eq!(text_value(&[], IpKind::Primary), "no address");
     }
 
+    /// `IpKind::V6` on a v4-only default interface hits the `first_v6(i).unwrap_or_else`
+    /// fall-back arm — symmetrical to the v4 case above, but unreachable from the dual-stack
+    /// `sample_snapshot()` where the default eth0 already carries an IPv6 address.
+    #[test]
+    fn text_value_v6_kind_falls_back_when_default_interface_has_no_ipv6() {
+        let v4_only = vec![{
+            let mut i = iface("eth0", &["10.0.0.2"], true);
+            i.is_default = true;
+            i
+        }];
+        assert_eq!(text_value(&v4_only, IpKind::V6), "no IPv6");
+    }
+
+    /// `IpKind::Primary` short-circuits to "no address" when the default interface exists but
+    /// carries neither IPv4 nor IPv6. The `text_value(&[], IpKind::Primary)` case above only
+    /// covers the `primary_interface(...) == None` arm at the top of the function; this drives
+    /// the `first_v4(i).or_else(first_v6(i)).unwrap_or_else(...)` chain to its terminal fallback.
+    #[test]
+    fn text_value_primary_returns_no_address_when_default_interface_has_no_addresses() {
+        let no_addrs = vec![{
+            let mut i = iface("eth0", &[], true);
+            i.is_default = true;
+            i
+        }];
+        assert_eq!(text_value(&no_addrs, IpKind::Primary), "no address");
+    }
+
     #[test]
     fn entries_skip_interfaces_without_an_address() {
         let snap = vec![
@@ -267,6 +294,20 @@ mod tests {
         v4.is_default = true;
         assert!(ip_badge(&[v4]).label.starts_with("IPv4"));
         assert_eq!(ip_badge(&[]).status, Status::Error);
+    }
+
+    /// IPv6-only default interface → the `Some(i) if !i.ipv6.is_empty()` arm of `ip_badge`,
+    /// distinct from the IPv4-only and dual-stack arms exercised in `badge_classifies_stack`.
+    /// The label is a fixed string (no address content) so the rendered badge stays
+    /// stable-width when the host roams across networks.
+    #[test]
+    fn badge_reports_ipv6_only_when_default_interface_has_no_ipv4() {
+        let mut v6_only = iface("eth0", &[], true);
+        v6_only.is_default = true;
+        v6_only.ipv6 = vec!["fe80::1ab2".parse().unwrap()];
+        let badge = ip_badge(&[v6_only]);
+        assert_eq!(badge.label, "IPv6 only");
+        assert_eq!(badge.status, Status::Ok);
     }
 
     #[test]
@@ -297,6 +338,11 @@ mod tests {
         assert_eq!(NetIp.safety(), Safety::Safe);
         assert_eq!(NetIp.default_shape(), Shape::Text);
         assert_eq!(NetIp.option_schemas().len(), 1);
+        let description = NetIp.description();
+        // Each declared shape's role is named in the catalog blurb so the description doubles
+        // as in-CLI documentation; check the family of mentions rather than the exact string.
+        assert!(description.contains("Text"), "{description}");
+        assert!(description.contains("Badge"), "{description}");
         for &shape in SHAPES {
             assert!(NetIp.sample_body(shape).is_some());
         }

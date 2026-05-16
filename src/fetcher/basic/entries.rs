@@ -154,4 +154,37 @@ mod tests {
         };
         assert!(d.items.is_empty());
     }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicEntries;
+        assert_eq!(f.safety(), Safety::Safe);
+        assert!(!f.description().is_empty());
+        assert_eq!(
+            f.option_schemas()
+                .iter()
+                .map(|s| s.name)
+                .collect::<Vec<_>>(),
+            vec!["entries"]
+        );
+    }
+
+    #[test]
+    fn sample_body_matches_declared_shape_only() {
+        let f = BasicEntries;
+        assert!(matches!(
+            f.sample_body(Shape::Entries),
+            Some(Body::Entries(_))
+        ));
+        assert!(f.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn invalid_options_render_placeholder() {
+        let p = compute(r#"entries = "not-a-list""#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+    }
 }

@@ -289,4 +289,41 @@ mod tests {
         };
         assert_eq!(t.value, "⚠ bad config");
     }
+
+    #[test]
+    fn default_gateway_returns_a_consistent_snapshot() {
+        // The function walks `netdev::get_interfaces()` looking for a default-flagged interface,
+        // and falls back to `get_default_gateway()` if none is found. Both branches end in a
+        // `GatewayInfo` with optional `ip` / `interface` — the resolved values depend on the host,
+        // but the call itself must never panic and must produce IP / interface fields that agree
+        // with the helper invariant (no interface naming without an IP isn't promised, so we only
+        // assert the call surface plus that repeated calls produce the same shape).
+        let first = default_gateway();
+        let again = default_gateway();
+        assert_eq!(first.ip.is_some(), again.ip.is_some());
+        assert_eq!(first.interface.is_some(), again.interface.is_some());
+    }
+
+    #[test]
+    fn gateway_ip_prefers_ipv4_then_falls_back_to_ipv6() {
+        // `gateway_ip` is private; exercise both arms through the documented preference order.
+        // Reach in via `netdev::NetworkDevice` so a future swap of the underlying crate has to
+        // re-confirm the IPv4-first contract.
+        let mut dev = netdev::NetworkDevice::new();
+        dev.ipv4 = vec![Ipv4Addr::new(10, 0, 0, 1)];
+        assert_eq!(
+            gateway_ip(&dev),
+            Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)))
+        );
+
+        let mut v6_only = netdev::NetworkDevice::new();
+        v6_only.ipv6 = vec!["fe80::1".parse().unwrap()];
+        assert_eq!(
+            gateway_ip(&v6_only),
+            Some(IpAddr::V6("fe80::1".parse().unwrap())),
+        );
+
+        let empty = netdev::NetworkDevice::new();
+        assert!(gateway_ip(&empty).is_none());
+    }
 }

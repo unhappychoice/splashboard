@@ -135,6 +135,47 @@ fn hex(digest: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn restore_home(previous: Option<String>) {
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+    }
+
+    fn serve_once(
+        status: &str,
+        content_type: &str,
+        body: &[u8],
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let content_type = content_type.to_owned();
+        let body = body.to_vec();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let header = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}/img.bin"), handle)
+    }
+
+    fn hash_of(url: &str) -> String {
+        hex(&Sha256::digest(url.as_bytes()))
+    }
 
     #[test]
     fn image_extension_detects_known_signatures() {
@@ -220,5 +261,106 @@ mod tests {
         // happy-path coverage which lives under the live ignored tests in fetcher/rss.rs.
         let res = download_to_cache("ftp://example.com/x.png").await.unwrap();
         assert!(res.is_none());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn download_to_cache_returns_existing_cached_path_without_network() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let url = "https://example.com/cached.png";
+        let dir = tmp.path().join("cache").join("thumbnails");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join(format!("{}.png", hash_of(url)));
+        std::fs::write(&cached, b"pretend-png").unwrap();
+        let result = download_to_cache(url).await.unwrap();
+        restore_home(previous);
+        assert_eq!(result, Some(cached));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn download_to_cache_writes_new_thumbnail_to_disk() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let payload = b"\x89PNG\r\n\x1a\nfreshly-downloaded";
+        let (url, server) = serve_once("200 OK", "image/png", payload);
+        let result = download_to_cache(&url).await.unwrap();
+        server.join().unwrap();
+        restore_home(previous);
+        let path = result.expect("happy path should yield a cached path");
+        assert_eq!(path.extension().unwrap(), "png");
+        let written = std::fs::read(&path).unwrap();
+        assert_eq!(written, payload);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn download_to_cache_propagates_http_error_status() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let (url, server) = serve_once("404 Not Found", "text/plain", b"missing");
+        let err = download_to_cache(&url).await.unwrap_err();
+        server.join().unwrap();
+        restore_home(previous);
+        let FetchError::Failed(msg) = err else {
+            panic!("expected Failed, got {err:?}");
+        };
+        assert!(msg.contains("thumbnail 404"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn download_to_cache_rejects_oversized_payload() {
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let oversize = vec![b'x'; MAX_BYTES + 1];
+        let (url, server) = serve_once("200 OK", "image/png", &oversize);
+        let err = download_to_cache(&url).await.unwrap_err();
+        server.join().unwrap();
+        restore_home(previous);
+        let FetchError::Failed(msg) = err else {
+            panic!("expected Failed, got {err:?}");
+        };
+        assert!(
+            msg.contains("thumbnail response too large"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn download_many_collapses_individual_failures_to_none() {
+        // A 404 mid-list returns Err inside download_to_cache; download_many is expected to
+        // swallow it via .ok().flatten() so the remaining slots still line up with input order.
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let (bad_url, server) = serve_once("500 Internal Server Error", "text/plain", b"boom");
+        let urls = vec![None, Some(bad_url), Some("not-a-url".into())];
+        let paths = download_many(&urls).await;
+        server.join().unwrap();
+        restore_home(previous);
+        assert_eq!(paths.len(), 3);
+        assert!(paths.iter().all(|p| p.is_none()));
     }
 }

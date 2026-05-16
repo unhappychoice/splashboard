@@ -288,6 +288,34 @@ mod tests {
         }
     }
 
+    /// `Shape::Text` over an all-zero grid drops the headline rather than rendering "0
+    /// commits in the last 52 weeks" — the empty payload is what triggers the shared
+    /// "nothing here yet" placeholder upstream. This pins the zero-total branch.
+    #[test]
+    fn text_shape_empty_grid_returns_empty_body() {
+        let grid = vec![vec![0u32; WEEKS]; DAYS_PER_WEEK];
+        let body = render_body(grid, any_weekday(), Shape::Text);
+        assert!(matches!(body, Body::Text(d) if d.value.is_empty()));
+    }
+
+    /// `Shape::NumberSeries` flattens the 7×52 grid into a 364-entry chronological series.
+    /// `flatten_by_day` is unit-tested separately; this exercises the `render_body` match
+    /// arm that wraps it in a `NumberSeriesData`.
+    #[test]
+    fn render_body_number_series_wraps_flatten_output() {
+        let mut grid = vec![vec![0u32; WEEKS]; DAYS_PER_WEEK];
+        grid[0][0] = 7;
+        grid[6][WEEKS - 1] = 3;
+        let body = render_body(grid, any_weekday(), Shape::NumberSeries);
+        assert!(matches!(
+            body,
+            Body::NumberSeries(d)
+                if d.values.len() == WEEKS * DAYS_PER_WEEK
+                    && d.values[0] == 7
+                    && d.values[WEEKS * DAYS_PER_WEEK - 1] == 3,
+        ));
+    }
+
     #[test]
     fn heatmap_shape_carries_month_labels() {
         let grid = vec![vec![0u32; WEEKS]; DAYS_PER_WEEK];

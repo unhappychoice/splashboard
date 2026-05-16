@@ -791,4 +791,105 @@ mod tests {
         let headers = reqwest::header::HeaderMap::new();
         assert!(header_str(&headers, "X-RateLimit-Limit").is_none());
     }
+
+    /// A newline in the token makes `bearer_auth` build an invalid `Authorization` header
+    /// value (header values must be visible ASCII). reqwest surfaces the builder error
+    /// synchronously at `send()` time, so we exercise the cache-miss branch +
+    /// `send_with_retry` `map_err` arm without any DNS / connect round-trip and without
+    /// depending on `api.deariary.com` actually being reachable from the test host.
+    #[tokio::test]
+    async fn cached_get_entry_propagates_send_failure_when_header_value_invalid() {
+        let err = cached_get_entry("tok\nbreak-A", "2026-04-27")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, FetchError::Failed(msg) if msg.starts_with("deariary request failed:")),
+            "got {err:?}",
+        );
+    }
+
+    /// Same send-failure path, but reached after the cache fast-path observes an *expired*
+    /// slot. Covers the `Instant::now() < cached.expires` false arm — production callers can
+    /// only reach it via wall-clock drift across refresh cycles, so seeding an expired slot
+    /// manually is the only test-side way to drive it.
+    #[tokio::test]
+    async fn cached_get_entry_falls_through_expired_slot_then_propagates_error() {
+        let token = "tok\nbreak-B";
+        let date = "2026-04-27";
+        let slot = entry_slot(token, date);
+        *slot.lock().await = Some(CacheSlot {
+            expires: Instant::now() - Duration::from_secs(1),
+            value: Some(sample_entry(date, "stale")),
+        });
+        drop(slot);
+        let err = cached_get_entry(token, date).await.unwrap_err();
+        assert!(
+            matches!(&err, FetchError::Failed(msg) if msg.starts_with("deariary request failed:")),
+            "got {err:?}",
+        );
+    }
+
+    /// `cached_get_entries` has a fixed `"/entries"` path so the public API can't inject a
+    /// malformed URL; the bearer-auth trick is the cleanest way to drive its post-cache-miss
+    /// HTTP path without a fake `api.deariary.com`. Combined with an expired list-slot, this
+    /// covers the `Instant::now() < cached.expires` false arm of `cached_get_entries`.
+    #[tokio::test]
+    async fn cached_get_entries_falls_through_expired_slot_then_propagates_error() {
+        let token = "tok\nbreak-C";
+        let tag = "travel";
+        let slot = list_slot(token, tag);
+        *slot.lock().await = Some(CacheSlot {
+            expires: Instant::now() - Duration::from_secs(1),
+            value: vec![sample_entry("2026-04-27", "stale")],
+        });
+        drop(slot);
+        let err = cached_get_entries(token, Some(tag)).await.unwrap_err();
+        assert!(
+            matches!(&err, FetchError::Failed(msg) if msg.starts_with("deariary request failed:")),
+            "got {err:?}",
+        );
+    }
+
+    /// Direct exercise of `send_with_retry`'s `http().get(...).send().await.map_err(...)`
+    /// arm. The `?`-propagated request failure leaves `attempt` at 0, so the retry loop never
+    /// runs — same payload-free reproduction used elsewhere in the codebase for send-failure
+    /// arms (see [[reddit_client]] tests).
+    #[tokio::test]
+    async fn send_with_retry_surfaces_send_failure_for_invalid_header_token() {
+        match send_with_retry("tok\nbreak-D", "/entries/2026-04-27", &[]).await {
+            Err(FetchError::Failed(msg)) => {
+                assert!(msg.starts_with("deariary request failed:"), "got {msg}");
+            }
+            Err(other) => panic!("expected Failed, got {other:?}"),
+            Ok(_) => panic!("expected request-failure error, got success"),
+        }
+    }
+
+    /// `get_optional` bubbles up `send_with_retry`'s error via `?` before either the
+    /// `FetchOutcome` match or the JSON parser get a chance to run. Pins the function
+    /// entry + `await?` arm without needing a successful body fixture.
+    #[tokio::test]
+    async fn get_optional_propagates_send_failure_before_json_parse() {
+        let err: FetchError = get_optional::<ApiEntry>("tok\nbreak-E", "/entries/2026-04-27")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, FetchError::Failed(msg) if msg.starts_with("deariary request failed:")),
+            "got {err:?}",
+        );
+    }
+
+    /// `get_required` mirrors `get_optional`'s `?`-propagation arm — same trick covers it
+    /// directly without going through the wrapper or any HTTP round-trip.
+    #[tokio::test]
+    async fn get_required_propagates_send_failure_before_json_parse() {
+        let err: FetchError =
+            get_required::<EntriesResponse>("tok\nbreak-F", "/entries", &[("limit", "100".into())])
+                .await
+                .unwrap_err();
+        assert!(
+            matches!(&err, FetchError::Failed(msg) if msg.starts_with("deariary request failed:")),
+            "got {err:?}",
+        );
+    }
 }

@@ -191,4 +191,32 @@ mod tests {
         };
         assert!(d.lines[0].contains("`day` must be 1..=31"));
     }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let f = BasicCalendar;
+        assert_eq!(f.safety(), Safety::Safe);
+        assert!(!f.description().is_empty());
+        let names: Vec<_> = f.option_schemas().iter().map(|s| s.name).collect();
+        assert_eq!(names, vec!["year", "month", "day", "events", "timezone"]);
+    }
+
+    #[test]
+    fn sample_body_matches_declared_shape_only() {
+        let f = BasicCalendar;
+        assert!(matches!(
+            f.sample_body(Shape::Calendar),
+            Some(Body::Calendar(_))
+        ));
+        assert!(f.sample_body(Shape::Text).is_none());
+    }
+
+    #[test]
+    fn invalid_options_render_placeholder() {
+        let p = compute(r#"month = "june""#);
+        let Body::TextBlock(d) = p.body else {
+            panic!("expected placeholder");
+        };
+        assert!(d.lines[0].contains("invalid options"));
+    }
 }

@@ -586,6 +586,7 @@ mod tests {
         assert!(number_series_data(Body::Bars(BarsData { bars: vec![] })).is_none());
         assert!(bars_data(Body::NumberSeries(NumberSeriesData { values: vec![] })).is_none());
         assert!(text_data(Body::Badge(weather_badge(0))).is_none());
+        assert!(badge_data(Body::Text(TextData { value: "x".into() })).is_none());
     }
 
     #[tokio::test]

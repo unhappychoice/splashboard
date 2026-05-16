@@ -480,6 +480,25 @@ mod tests {
         drop(permit);
     }
 
+    /// Drives `graphql_query` end-to-end with an invalid bearer token (`\n` inside) so the
+    /// reqwest `RequestBuilder::header("Authorization", ...)` deferred error surfaces synchronously
+    /// at `.send().await`, exercising the `send_with_retry` `map_err` arm and the `?`-propagation
+    /// through `graphql_query` in-process — unlike the child-process proxy test, this one's
+    /// coverage actually attaches to the parent's report.
+    #[test]
+    fn graphql_query_surfaces_invalid_authorization_header() {
+        let result = run_async(graphql_query::<serde_json::Value>(
+            "tok\nbreak",
+            "query Viewer { viewer { id } }",
+            serde_json::json!({}),
+        ));
+
+        assert!(matches!(
+            result,
+            Err(FetchError::Failed(msg)) if msg.starts_with("linear request failed:")
+        ));
+    }
+
     #[test]
     fn graphql_query_surfaces_request_failures_via_child_process() {
         let proxy = unused_proxy_url();

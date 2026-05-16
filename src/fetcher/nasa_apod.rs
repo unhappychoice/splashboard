@@ -501,6 +501,28 @@ mod tests {
             fetcher.sample_body(Shape::Entries),
             Some(Body::Entries(_))
         ));
+        // Shapes outside `SHAPES` drop into the `_ => return None` arm — sibling fetchers
+        // (`nasa_apod` exposes Image plus a curated text-shape set) reject the rest.
+        assert!(fetcher.sample_body(Shape::Bars).is_none());
+        assert!(fetcher.sample_body(Shape::Ratio).is_none());
+    }
+
+    /// Drives `restore_env`'s `Some(value) =>` arm by pre-setting the env var before the test
+    /// captures its prior value. Without this, the standard "save → mutate → restore" flow
+    /// always observes `None` (env var unset before the test) and only the `None` arm fires.
+    #[test]
+    fn restore_env_writes_back_previous_value_when_some() {
+        const KEY: &str = "SPLASHBOARD_NASA_APOD_RESTORE_TEST";
+        let _lock = paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::set_var(KEY, "initial") };
+        let previous = std::env::var(KEY).ok();
+        assert_eq!(previous.as_deref(), Some("initial"));
+        unsafe { std::env::set_var(KEY, "temp") };
+        restore_env(KEY, previous);
+        assert_eq!(std::env::var(KEY).ok().as_deref(), Some("initial"));
+        unsafe { std::env::remove_var(KEY) };
     }
 
     #[test]
@@ -577,27 +599,32 @@ mod tests {
 
     #[test]
     fn entries_body_includes_copyright_when_present() {
-        let Body::Entries(data) = entries_body(&sample_apod("image")) else {
-            panic!("expected Entries");
-        };
-        let keys: Vec<_> = data.items.iter().map(|e| e.key.as_str()).collect();
-        assert_eq!(keys, vec!["date", "title", "media", "copyright"]);
-        assert_eq!(data.items[3].value.as_deref(), Some("NASA, ESA"));
+        assert!(matches!(
+            entries_body(&sample_apod("image")),
+            Body::Entries(data)
+                if data
+                    .items
+                    .iter()
+                    .map(|e| e.key.as_str())
+                    .collect::<Vec<_>>()
+                    == vec!["date", "title", "media", "copyright"]
+                    && data.items[3].value.as_deref() == Some("NASA, ESA")
+        ));
     }
 
     #[test]
     fn entries_body_omits_copyright_when_absent_or_blank() {
         let mut apod = sample_apod("image");
         apod.copyright = None;
-        let Body::Entries(data) = entries_body(&apod) else {
-            panic!("expected Entries");
-        };
-        assert_eq!(data.items.len(), 3);
+        assert!(matches!(
+            entries_body(&apod),
+            Body::Entries(data) if data.items.len() == 3
+        ));
         apod.copyright = Some("   \n  ".into());
-        let Body::Entries(data) = entries_body(&apod) else {
-            panic!("expected Entries");
-        };
-        assert_eq!(data.items.len(), 3);
+        assert!(matches!(
+            entries_body(&apod),
+            Body::Entries(data) if data.items.len() == 3
+        ));
     }
 
     #[test]
@@ -675,32 +702,29 @@ mod tests {
     #[test]
     fn text_body_builds_each_text_shape() {
         let apod = sample_apod("image");
-        let Some(Body::Text(t)) = text_body(&apod, Shape::Text) else {
-            panic!("expected Text");
-        };
-        assert_eq!(t.value, "Pillars of Creation");
-
-        let Some(Body::TextBlock(tb)) = text_body(&apod, Shape::TextBlock) else {
-            panic!("expected TextBlock");
-        };
-        assert_eq!(tb.lines, vec![apod.title.clone(), apod.explanation.clone()]);
-
-        let Some(Body::MarkdownTextBlock(md)) = text_body(&apod, Shape::MarkdownTextBlock) else {
-            panic!("expected MarkdownTextBlock");
-        };
-        assert!(md.value.starts_with("# Pillars of Creation\n\n"));
-        assert!(md.value.ends_with(&apod.explanation));
-
-        let Some(Body::LinkedTextBlock(lt)) = text_body(&apod, Shape::LinkedTextBlock) else {
-            panic!("expected LinkedTextBlock");
-        };
-        assert_eq!(lt.items.len(), 1);
-        assert_eq!(lt.items[0].text, "Pillars of Creation");
-        assert_eq!(
-            lt.items[0].url.as_deref(),
-            Some("https://apod.nasa.gov/apod/ap240115.html")
-        );
-
+        assert!(matches!(
+            text_body(&apod, Shape::Text),
+            Some(Body::Text(t)) if t.value == "Pillars of Creation"
+        ));
+        let lines = vec![apod.title.clone(), apod.explanation.clone()];
+        assert!(matches!(
+            text_body(&apod, Shape::TextBlock),
+            Some(Body::TextBlock(tb)) if tb.lines == lines
+        ));
+        assert!(matches!(
+            text_body(&apod, Shape::MarkdownTextBlock),
+            Some(Body::MarkdownTextBlock(md))
+                if md.value.starts_with("# Pillars of Creation\n\n")
+                    && md.value.ends_with(&apod.explanation)
+        ));
+        assert!(matches!(
+            text_body(&apod, Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(lt))
+                if lt.items.len() == 1
+                    && lt.items[0].text == "Pillars of Creation"
+                    && lt.items[0].url.as_deref()
+                        == Some("https://apod.nasa.gov/apod/ap240115.html")
+        ));
         assert!(matches!(
             text_body(&apod, Shape::Entries),
             Some(Body::Entries(_))
@@ -719,10 +743,10 @@ mod tests {
     fn text_body_linked_block_drops_url_for_malformed_date() {
         let mut apod = sample_apod("image");
         apod.date = "not-a-date".into();
-        let Some(Body::LinkedTextBlock(lt)) = text_body(&apod, Shape::LinkedTextBlock) else {
-            panic!("expected LinkedTextBlock");
-        };
-        assert!(lt.items[0].url.is_none());
+        assert!(matches!(
+            text_body(&apod, Shape::LinkedTextBlock),
+            Some(Body::LinkedTextBlock(lt)) if lt.items[0].url.is_none()
+        ));
     }
 
     #[test]

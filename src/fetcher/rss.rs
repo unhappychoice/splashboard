@@ -236,10 +236,10 @@ mod tests {
     }
 
     fn assert_failed_contains(err: FetchError, needle: &str) {
-        match err {
-            FetchError::Failed(message) => assert!(message.contains(needle), "msg: {message}"),
-            other => panic!("expected Failed, got {other:?}"),
-        }
+        assert!(
+            matches!(&err, FetchError::Failed(message) if message.contains(needle)),
+            "expected Failed containing {needle:?}, got {err:?}",
+        );
     }
 
     #[test]
@@ -267,10 +267,7 @@ mod tests {
     #[test]
     fn missing_url_is_error() {
         let err = validated_url(None).unwrap_err();
-        match err {
-            FetchError::Failed(m) => assert!(m.contains("required"), "msg: {m}"),
-            _ => panic!("expected Failed"),
-        }
+        assert_failed_contains(err, "required");
     }
 
     #[test]
@@ -282,13 +279,13 @@ mod tests {
     fn rejects_non_http_schemes() {
         for bad in ["file:///etc/passwd", "ftp://x", "data:,abc", "javascript:0"] {
             let err = validated_url(Some(bad)).unwrap_err();
-            match err {
-                FetchError::Failed(m) => assert!(
-                    m.contains("scheme") || m.contains("invalid url"),
-                    "expected scheme rejection for {bad}: {m}"
+            assert!(
+                matches!(
+                    &err,
+                    FetchError::Failed(m) if m.contains("scheme") || m.contains("invalid url"),
                 ),
-                _ => panic!("expected Failed for {bad}"),
-            }
+                "expected scheme rejection for {bad}: {err:?}",
+            );
         }
     }
 
@@ -344,39 +341,37 @@ mod tests {
     fn rss_parses_into_linked_text_block_with_dates_and_urls() {
         let feed_doc = parse_fixture(RSS_FIXTURE);
         let body = feed::render_body(&feed_doc, 5, Shape::LinkedTextBlock, None, None);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 2);
-        assert!(b.items[0].text.contains("First post"));
-        assert!(b.items[0].text.starts_with("Apr 26"));
-        assert_eq!(b.items[0].url.as_deref(), Some("https://example.com/1"));
+        assert!(matches!(
+            &body,
+            Body::LinkedTextBlock(b)
+                if b.items.len() == 2
+                    && b.items[0].text.contains("First post")
+                    && b.items[0].text.starts_with("Apr 26")
+                    && b.items[0].url.as_deref() == Some("https://example.com/1"),
+        ));
     }
 
     #[test]
     fn rss_parses_into_text_block_without_urls() {
         let feed_doc = parse_fixture(RSS_FIXTURE);
         let body = feed::render_body(&feed_doc, 5, Shape::TextBlock, None, None);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert_eq!(t.lines.len(), 2);
-        assert!(t.lines[0].contains("First post"));
+        assert!(matches!(
+            &body,
+            Body::TextBlock(t) if t.lines.len() == 2 && t.lines[0].contains("First post"),
+        ));
     }
 
     #[test]
     fn atom_parses_with_link_and_date() {
         let feed_doc = parse_fixture(ATOM_FIXTURE);
         let body = feed::render_body(&feed_doc, 5, Shape::LinkedTextBlock, None, None);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 1);
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://example.com/atom-1")
-        );
-        assert!(b.items[0].text.contains("Atom one"));
+        assert!(matches!(
+            &body,
+            Body::LinkedTextBlock(b)
+                if b.items.len() == 1
+                    && b.items[0].url.as_deref() == Some("https://example.com/atom-1")
+                    && b.items[0].text.contains("Atom one"),
+        ));
     }
 
     #[test]
@@ -399,10 +394,10 @@ mod tests {
     fn count_caps_entries() {
         let feed_doc = parse_fixture(RSS_FIXTURE);
         let body = feed::render_body(&feed_doc, 1, Shape::LinkedTextBlock, None, None);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(b.items.len(), 1);
+        assert!(matches!(
+            &body,
+            Body::LinkedTextBlock(b) if b.items.len() == 1,
+        ));
     }
 
     #[test]
@@ -428,10 +423,10 @@ mod tests {
             entries: vec![],
         };
         let body = feed::render_body(&empty, 5, Shape::LinkedTextBlock, None, None);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert!(b.items.is_empty());
+        assert!(matches!(
+            &body,
+            Body::LinkedTextBlock(b) if b.items.is_empty(),
+        ));
     }
 
     #[test]
@@ -439,10 +434,10 @@ mod tests {
         let mut feed_doc = parse_fixture(RSS_FIXTURE);
         feed_doc.entries[0].title = None;
         let body = feed::render_body(&feed_doc, 1, Shape::TextBlock, None, None);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert!(t.lines[0].contains("(no title)"));
+        assert!(matches!(
+            &body,
+            Body::TextBlock(t) if t.lines[0].contains("(no title)"),
+        ));
     }
 
     #[test]
@@ -696,10 +691,10 @@ mod tests {
         let mut feed_doc = parse_fixture(RSS_FIXTURE);
         feed_doc.entries[0].title.as_mut().unwrap().content = " \n\t ".into();
         let body = feed::render_body(&feed_doc, 1, Shape::TextBlock, None, None);
-        let Body::TextBlock(t) = body else {
-            panic!("expected text block");
-        };
-        assert!(t.lines[0].contains("(no title)"));
+        assert!(matches!(
+            &body,
+            Body::TextBlock(t) if t.lines[0].contains("(no title)"),
+        ));
     }
 
     #[test]
@@ -723,11 +718,12 @@ mod tests {
         let raw: toml::Value = toml::from_str(&format!("url = \"{url}\"")).unwrap();
         let payload = run_async(RssFetcher.fetch(&ctx(None, Some(raw)))).unwrap();
         server.join().unwrap();
-        let Body::LinkedTextBlock(body) = payload.body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(body.items.len(), 2);
-        assert_eq!(body.items[1].url.as_deref(), Some("https://example.com/2"));
+        assert!(matches!(
+            &payload.body,
+            Body::LinkedTextBlock(body)
+                if body.items.len() == 2
+                    && body.items[1].url.as_deref() == Some("https://example.com/2"),
+        ));
     }
 
     #[test]
@@ -777,13 +773,11 @@ mod tests {
     fn link_prefers_alternate_over_self_in_atom() {
         let feed_doc = parse_fixture(ATOM_MULTI_REL_FIXTURE);
         let body = feed::render_body(&feed_doc, 5, Shape::LinkedTextBlock, None, None);
-        let Body::LinkedTextBlock(b) = body else {
-            panic!("expected linked text block");
-        };
-        assert_eq!(
-            b.items[0].url.as_deref(),
-            Some("https://example.com/articles/1")
-        );
+        assert!(matches!(
+            &body,
+            Body::LinkedTextBlock(b)
+                if b.items[0].url.as_deref() == Some("https://example.com/articles/1"),
+        ));
     }
 
     #[test]

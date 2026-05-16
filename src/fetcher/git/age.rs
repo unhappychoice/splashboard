@@ -736,4 +736,150 @@ mod tests {
             assert!(sample_for(*shape).is_some(), "missing sample for {shape:?}");
         }
     }
+
+    #[test]
+    fn sample_for_returns_none_outside_supported_shapes() {
+        assert!(sample_for(Shape::Image).is_none());
+        assert!(sample_for(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn fetcher_metadata_methods_have_content() {
+        let f = GitAge;
+        assert_eq!(f.name(), "git_age");
+        assert_eq!(f.safety(), Safety::Safe);
+        assert_eq!(f.default_shape(), Shape::Text);
+        assert_eq!(f.shapes(), SHAPES);
+        assert_eq!(f.refresh_interval(), 60 * 60);
+        assert!(f.description().contains("Repository age"));
+        for &shape in SHAPES {
+            assert!(
+                f.sample_body(shape).is_some(),
+                "missing sample for {shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cache_key_varies_with_shape_and_format() {
+        let f = GitAge;
+        let mut ctx = FetchContext::default();
+        let base = f.cache_key(&ctx);
+        ctx.shape = Some(Shape::Badge);
+        let with_shape = f.cache_key(&ctx);
+        ctx.format = Some("since".into());
+        let with_format = f.cache_key(&ctx);
+        assert!(base.starts_with("git_age-"));
+        assert_ne!(base, with_shape);
+        assert_ne!(with_shape, with_format);
+    }
+
+    #[test]
+    fn build_with_commits_routes_each_structural_shape_through_its_helper() {
+        let (_tmp, repo) = make_repo();
+        commit(&repo, "initial");
+        let today = Utc::now().date_naive();
+        for shape in [
+            Shape::TextBlock,
+            Shape::MarkdownTextBlock,
+            Shape::LinkedTextBlock,
+            Shape::NumberSeries,
+            Shape::Bars,
+            Shape::Calendar,
+            Shape::Badge,
+            Shape::Timeline,
+        ] {
+            let body = build(&repo, today, shape, None).unwrap();
+            match (shape, &body) {
+                (Shape::TextBlock, Body::TextBlock(d)) => assert!(!d.lines.is_empty()),
+                (Shape::MarkdownTextBlock, Body::MarkdownTextBlock(d)) => {
+                    assert!(d.value.contains("since"))
+                }
+                (Shape::LinkedTextBlock, Body::LinkedTextBlock(d)) => {
+                    assert_eq!(d.items.len(), 2)
+                }
+                (Shape::NumberSeries, Body::NumberSeries(d)) => {
+                    assert_eq!(d.values.len(), 3)
+                }
+                (Shape::Bars, Body::Bars(d)) => assert_eq!(d.bars.len(), 3),
+                (Shape::Calendar, Body::Calendar(d)) => {
+                    assert!(d.day.is_some());
+                    assert!(d.month >= 1 && d.month <= 12)
+                }
+                (Shape::Badge, Body::Badge(d)) => {
+                    assert_eq!(d.status, Status::Ok);
+                    assert!(d.label.starts_with("fresh"));
+                }
+                (Shape::Timeline, Body::Timeline(d)) => {
+                    assert_eq!(d.events.len(), 1);
+                    assert_eq!(d.events[0].title, "First commit");
+                }
+                other => panic!("unexpected body for {shape:?}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn empty_repo_uses_typed_placeholders_for_markdown_and_calendar() {
+        let (_tmp, repo) = make_repo();
+        let today = ymd(2026, 4, 27);
+        match build(&repo, today, Shape::MarkdownTextBlock, None).unwrap() {
+            Body::MarkdownTextBlock(d) => assert!(d.value.is_empty()),
+            other => panic!("expected markdown, got {other:?}"),
+        }
+        match build(&repo, today, Shape::Calendar, None).unwrap() {
+            Body::Calendar(d) => {
+                assert_eq!(d.year, 1970);
+                assert_eq!(d.month, 1);
+                assert!(d.day.is_none());
+                assert!(d.events.is_empty());
+            }
+            other => panic!("expected calendar, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn age_between_january_borrows_thirty_one_days_from_previous_december() {
+        // first=Dec 31 2023, today=Jan 5 2024 → 5 days, going through the today.month()==1
+        // arm of days_in_previous_month (yielding 31 since December has 31 days).
+        let age = Age::between(ymd(2023, 12, 31), ymd(2024, 1, 5));
+        assert_eq!(
+            age,
+            Age {
+                years: 0,
+                months: 0,
+                days: 5
+            }
+        );
+    }
+
+    #[test]
+    fn format_long_duration_today_for_zero_age() {
+        assert_eq!(format_long_duration(&Age::zero()), "today");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn fetch_in_repo_yields_text_payload() {
+        // `gix::discover` reads from `current_dir`, so chdir into a fresh repo to make
+        // `open_repo()` reachable inside `fetch`. Serialise via `paths::TEST_ENV_LOCK` so
+        // we don't race with sibling tests that mutate the working directory or env vars
+        // — the lock has to span the awaited `fetch` because the cwd lookup happens inside.
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, repo) = make_repo();
+        commit(&repo, "first");
+        let previous_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        let result = GitAge.fetch(&FetchContext::default()).await;
+        if let Some(prev) = previous_cwd {
+            let _ = std::env::set_current_dir(prev);
+        }
+        let payload = result.expect("fetch should succeed inside a real repo");
+        match payload.body {
+            Body::Text(d) => assert!(!d.value.is_empty()),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
 }
