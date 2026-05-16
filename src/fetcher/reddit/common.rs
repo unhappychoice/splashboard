@@ -257,11 +257,11 @@ pub(super) fn sample_post_body(shape: Shape) -> Option<Body> {
     })
 }
 
-fn post_title(post: &Post) -> String {
+pub(super) fn post_title(post: &Post) -> String {
     post.title.as_deref().unwrap_or("(no title)").to_string()
 }
 
-fn post_meta(post: &Post) -> String {
+pub(super) fn post_meta(post: &Post) -> String {
     let subreddit = post
         .subreddit
         .as_deref()

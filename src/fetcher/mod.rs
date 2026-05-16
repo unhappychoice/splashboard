@@ -16,6 +16,7 @@ pub mod basic;
 pub mod calendar;
 pub mod clock;
 pub mod code;
+pub mod crypto_trending;
 pub mod crypto_watchlist;
 pub mod deal;
 pub mod deariary;
@@ -23,6 +24,7 @@ pub mod feed;
 pub mod git;
 pub mod github;
 pub mod hackernews;
+pub mod huggingface_trending;
 pub mod linear;
 pub mod lobsters;
 pub mod nasa_apod;
@@ -333,11 +335,13 @@ impl Registry {
         r.register(Arc::new(read_store::ReadStoreFetcher));
         r.register(Arc::new(rss::RssFetcher));
         r.register(Arc::new(crypto_watchlist::CryptoWatchlistFetcher));
+        r.register(Arc::new(crypto_trending::CryptoTrendingFetcher));
         r.register(Arc::new(stock_watchlist::StockWatchlistFetcher));
         r.register(Arc::new(random_cat::RandomCatFetcher));
         r.register(Arc::new(random_dog::RandomDogFetcher));
         r.register(Arc::new(nasa_apod::NasaApodFetcher));
         r.register(Arc::new(youtube::YoutubeChannelFetcher));
+        r.register(Arc::new(huggingface_trending::HuggingfaceTrendingFetcher));
         for f in calendar::fetchers() {
             r.register(f);
         }

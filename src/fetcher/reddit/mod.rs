@@ -5,6 +5,7 @@
 mod client;
 mod common;
 mod subreddit_posts;
+mod trending;
 mod user_comments;
 mod user_posts;
 
@@ -17,5 +18,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(subreddit_posts::RedditSubredditPostsFetcher),
         Arc::new(user_posts::RedditUserPostsFetcher),
         Arc::new(user_comments::RedditUserCommentsFetcher),
+        Arc::new(trending::RedditTrendingFetcher),
     ]
 }
