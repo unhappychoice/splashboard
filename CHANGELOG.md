@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-05-17
+
+### ✨ Features
+
+- feat(fetcher): add gitlab_pipeline_status ([ad1ae8d](https://github.com/unhappychoice/splashboard/commit/ad1ae8d))
+- feat(fetcher): add gitlab_repo_stars ([8eb8d2a](https://github.com/unhappychoice/splashboard/commit/8eb8d2a))
+- feat(fetcher): add gitlab_repo_issues ([26c51fb](https://github.com/unhappychoice/splashboard/commit/26c51fb))
+- feat(fetcher): add gitlab_repo_mrs ([d08dbd1](https://github.com/unhappychoice/splashboard/commit/d08dbd1))
+- feat(fetcher): add gitlab_review_requests ([d8fdc3e](https://github.com/unhappychoice/splashboard/commit/d8fdc3e))
+- feat(fetcher): add gitlab_my_mrs ([cec71a7](https://github.com/unhappychoice/splashboard/commit/cec71a7))
+- feat(fetcher): add gitlab/ family scaffolding (client + common + items) ([174360f](https://github.com/unhappychoice/splashboard/commit/174360f))
+- feat(fetcher): add forge_items shared row model + dispatcher ([2400717](https://github.com/unhappychoice/splashboard/commit/2400717))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher): escape markdown metacharacters in forge_items::render_markdown ([b0aa0ca](https://github.com/unhappychoice/splashboard/commit/b0aa0ca))
+- fix(fetcher): percent-encode branch in gitlab_pipeline_status URL ([49c1d43](https://github.com/unhappychoice/splashboard/commit/49c1d43))
+- fix(fetcher): preserve requested shape in gitlab_pipeline_status no-runs path ([97a493a](https://github.com/unhappychoice/splashboard/commit/97a493a))
+- fix(fetcher): preserve requested shape in github_action_status no-runs path ([e2bc30a](https://github.com/unhappychoice/splashboard/commit/e2bc30a))
+- fix(fetcher): pin github::items::render_items as sync-only ([9ede219](https://github.com/unhappychoice/splashboard/commit/9ede219))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.4.0 ([9affe3c](https://github.com/unhappychoice/splashboard/commit/9affe3c))
+- refactor(github): add Entries shape to action_status ([a15b6dd](https://github.com/unhappychoice/splashboard/commit/a15b6dd))
+- refactor(github): extend repo_stars to 6 shapes ([17c687f](https://github.com/unhappychoice/splashboard/commit/17c687f))
+- refactor(github): extend repo_issues to 9 shapes via forge_items dispatch ([7eed488](https://github.com/unhappychoice/splashboard/commit/7eed488))
+- refactor(github): extend repo_prs to 9 shapes via forge_items dispatch ([a7f6c17](https://github.com/unhappychoice/splashboard/commit/a7f6c17))
+- refactor(github): extend assigned_issues to 9 shapes via forge_items dispatch ([e6c4a47](https://github.com/unhappychoice/splashboard/commit/e6c4a47))
+- refactor(github): extend review_requests to 9 shapes via forge_items dispatch ([ca17be7](https://github.com/unhappychoice/splashboard/commit/ca17be7))
+- refactor(github): extend my_prs to 9 shapes via forge_items dispatch ([0543473](https://github.com/unhappychoice/splashboard/commit/0543473))
+- refactor(github): route items.rs through forge_items shared pipeline ([d87ecf1](https://github.com/unhappychoice/splashboard/commit/d87ecf1))
+- chore: update flake.nix hashes for v2.3.0 ([07f093b](https://github.com/unhappychoice/splashboard/commit/07f093b))
+
+
 ## [2.3.0] - 2026-05-16
 
 ### 💥 BREAKING CHANGES
@@ -31,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.3.0 ([c74d9e4](https://github.com/unhappychoice/splashboard/commit/c74d9e4))
+- chore: bump version to v2.3.0 ([9047781](https://github.com/unhappychoice/splashboard/commit/9047781))
 - test(fetcher/feed): cover `render_image_body` `Some(url) => …` `Ok(Some(path))` arm and `render_image_linked` `path.map(|p| …)` Some/None row shapes by pre-seeding `$SPLASHBOARD_HOME/cache/thumbnails/<sha256(url)>.png` so `thumbnails::download_to_cache` short-circuits to `existing_cached` without touching the network per [[project_thumbnail_cache_preseed_trick]], plus restore_splashboard_home `Some(value) => set_var` arm via pre-seeding SPLASHBOARD_HOME before capture so the save→mutate→restore flow observes `Some(...)` instead of the default-unset None arm per [[feedback_coverage_test_panic_arms]] ([65b3b04](https://github.com/unhappychoice/splashboard/commit/65b3b04))
 - test(fetcher/random_dog): cover fetch_image_url `send().await.map_err` arm via raw-space-in-authority URL that fails synchronously at `reqwest::Url::parse` without touching random.dog, mirroring the sibling `fetch_bytes_rejects_malformed_url` trick for the image-download leg so the "dog API request failed:" branch stops registering as an uncovered region per [[feedback_coverage_test_panic_arms]] ([1cba773](https://github.com/unhappychoice/splashboard/commit/1cba773))
 - test(fetcher/random_cat,random_dog): cover restore_home `Some(value) => set_var` arm by pre-seeding SPLASHBOARD_HOME before capturing the prior value so the save→mutate→restore flow observes `Some(...)` instead of the default-unset None arm, asserting the captured path is reapplied after a mutation ([5cce5f8](https://github.com/unhappychoice/splashboard/commit/5cce5f8))
