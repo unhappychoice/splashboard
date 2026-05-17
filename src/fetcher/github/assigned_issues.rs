@@ -4,22 +4,16 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 
+use crate::fetcher::forge_items::{self, LIST_SHAPES};
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 use crate::render::Shape;
-use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{cache_key, parse_options, payload};
-use super::items::{SearchResult, render_items};
+use super::items::{SearchResult, sample_rows, to_forge_rows};
 
-const SHAPES: &[Shape] = &[
-    Shape::LinkedTextBlock,
-    Shape::TextBlock,
-    Shape::Entries,
-    Shape::Timeline,
-];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
@@ -54,7 +48,7 @@ impl Fetcher for GithubAssignedIssues {
         60 * 10
     }
     fn shapes(&self) -> &[Shape] {
-        SHAPES
+        LIST_SHAPES
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -63,35 +57,23 @@ impl Fetcher for GithubAssignedIssues {
         cache_key(self.name(), ctx, "")
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
-        Some(match shape {
-            Shape::LinkedTextBlock => samples::linked_text_block(&[
-                (
-                    "unhappychoice/splashboard#41 meta: widget catalog & roadmap",
-                    Some("https://github.com/unhappychoice/splashboard/issues/41"),
-                ),
-                (
-                    "unhappychoice/splashboard#17 theme system",
-                    Some("https://github.com/unhappychoice/splashboard/issues/17"),
-                ),
-            ]),
-            Shape::TextBlock => samples::text_block(&[
-                "unhappychoice/splashboard#41 meta: widget catalog & roadmap",
-                "unhappychoice/splashboard#17 theme system",
-            ]),
-            Shape::Entries => samples::entries(&[
-                ("splashboard #41", "meta: widget catalog"),
-                ("splashboard #17", "theme system"),
-            ]),
-            Shape::Timeline => samples::timeline(&[
-                (
-                    1_774_000_000,
-                    "splashboard#41",
-                    Some("meta: widget catalog"),
-                ),
-                (1_773_500_000, "splashboard#17", Some("theme system")),
-            ]),
-            _ => return None,
-        })
+        let rows = sample_rows(&[
+            (
+                "unhappychoice/splashboard#41",
+                "meta: widget catalog & roadmap",
+                Some("https://github.com/unhappychoice/splashboard/issues/41"),
+                3,
+                1_774_000_000,
+            ),
+            (
+                "unhappychoice/splashboard#17",
+                "theme system",
+                Some("https://github.com/unhappychoice/splashboard/issues/17"),
+                1,
+                1_773_500_000,
+            ),
+        ]);
+        forge_items::dispatch_sample(&rows, shape, "open issue", "open issues")
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
@@ -100,11 +82,10 @@ impl Fetcher for GithubAssignedIssues {
             "/search/issues?q=is%3Aissue+is%3Aopen+assignee%3A%40me&per_page={limit}&sort=updated"
         );
         let res: SearchResult = rest_get(&path).await?;
-        Ok(payload(render_items(
-            &res.items,
-            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
-            true,
-        )))
+        let rows = to_forge_rows(&res.items, true);
+        let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
+        let body = forge_items::dispatch_rows_async(rows, shape, "open issue", "open issues").await;
+        Ok(payload(body))
     }
 }
 
@@ -201,11 +182,18 @@ mod tests {
                 .description()
                 .contains("assigned to the authenticated user")
         );
-        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.shapes(), LIST_SHAPES);
         assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
         assert_eq!(fetcher.option_schemas().len(), 1);
         assert_eq!(fetcher.option_schemas()[0].name, "limit");
         assert_eq!(fetcher.option_schemas()[0].default, Some("10"));
+
+        for shape in LIST_SHAPES {
+            assert!(
+                fetcher.sample_body(*shape).is_some(),
+                "missing sample for {shape:?}"
+            );
+        }
 
         let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
         else {
@@ -220,23 +208,10 @@ mod tests {
             Some("https://github.com/unhappychoice/splashboard/issues/17")
         );
 
-        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
-            panic!("expected text block sample");
-        };
-        assert_eq!(text.lines[1], "unhappychoice/splashboard#17 theme system");
-
         let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
             panic!("expected entries sample");
         };
-        assert_eq!(entries.items[0].key, "splashboard #41");
-        assert_eq!(entries.items[1].value.as_deref(), Some("theme system"));
-
-        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
-            panic!("expected timeline sample");
-        };
-        assert_eq!(timeline.events[0].title, "splashboard#41");
-        assert_eq!(timeline.events[1].detail.as_deref(), Some("theme system"));
-        assert!(fetcher.sample_body(Shape::Text).is_none());
+        assert_eq!(entries.items[0].key, "unhappychoice/splashboard#41");
     }
 
     #[test]
