@@ -24,6 +24,7 @@ pub mod feed;
 pub mod forge_items;
 pub mod git;
 pub mod github;
+pub mod gitlab;
 pub mod hackernews;
 pub mod huggingface_trending;
 pub mod linear;
@@ -397,6 +398,9 @@ impl Registry {
             r.register(f);
         }
         for f in github::fetchers() {
+            r.register(f);
+        }
+        for f in gitlab::fetchers() {
             r.register(f);
         }
         for f in code::fetchers() {
