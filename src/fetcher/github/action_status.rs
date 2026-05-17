@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{BadgeData, Body, Payload, Status, TextData};
+use crate::payload::{BadgeData, Body, EntriesData, Entry, Payload, Status, TextData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -13,7 +13,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Badge, Shape::Text];
+const SHAPES: &[Shape] = &[Shape::Badge, Shape::Text, Shape::Entries];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -74,6 +74,13 @@ impl Fetcher for GithubActionStatus {
         Some(match shape {
             Shape::Badge => samples::badge(Status::Ok, "ci passing"),
             Shape::Text => samples::text("main · passing"),
+            Shape::Entries => Body::Entries(EntriesData {
+                items: vec![
+                    entry("status", Some(Status::Ok), "passing"),
+                    entry("branch", None, "main"),
+                    entry("conclusion", None, "success"),
+                ],
+            }),
             _ => return None,
         })
     }
@@ -88,16 +95,30 @@ impl Fetcher for GithubActionStatus {
             path.push_str(&format!("&branch={branch}"));
         }
         let res: RunsResponse = rest_get(&path).await?;
+        let shape = ctx.shape.unwrap_or(Shape::Badge);
         let Some(run) = res.workflow_runs.into_iter().next() else {
-            return Ok(payload(Body::Badge(BadgeData {
-                status: Status::Warn,
-                label: "no runs".into(),
-            })));
+            return Ok(payload(no_runs_body(shape)));
         };
-        Ok(payload(render_body(
-            &run,
-            ctx.shape.unwrap_or(Shape::Badge),
-        )))
+        Ok(payload(render_body(&run, shape)))
+    }
+}
+
+fn no_runs_body(shape: Shape) -> Body {
+    match shape {
+        Shape::Text => Body::Text(TextData {
+            value: "no runs".into(),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: vec![
+                entry("status", Some(Status::Warn), "no runs"),
+                entry("branch", None, "?"),
+                entry("conclusion", None, "?"),
+            ],
+        }),
+        _ => Body::Badge(BadgeData {
+            status: Status::Warn,
+            label: "no runs".into(),
+        }),
     }
 }
 
@@ -119,20 +140,30 @@ struct WorkflowRun {
 
 fn render_body(run: &WorkflowRun, shape: Shape) -> Body {
     let (status, label_word) = classify(run);
+    let branch = run.head_branch.as_deref().unwrap_or("?");
     match shape {
         Shape::Text => Body::Text(TextData {
-            value: format!(
-                "{} · {label_word}",
-                run.head_branch.as_deref().unwrap_or("?")
-            ),
+            value: format!("{branch} · {label_word}"),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: vec![
+                entry("status", Some(status), label_word),
+                entry("branch", None, branch),
+                entry("conclusion", None, run.conclusion.as_deref().unwrap_or("?")),
+            ],
         }),
         _ => Body::Badge(BadgeData {
             status,
-            label: format!(
-                "{} · {label_word}",
-                run.head_branch.as_deref().unwrap_or("?")
-            ),
+            label: format!("{branch} · {label_word}"),
         }),
+    }
+}
+
+fn entry(key: &str, status: Option<Status>, value: &str) -> Entry {
+    Entry {
+        key: key.into(),
+        value: Some(value.into()),
+        status,
     }
 }
 
@@ -242,7 +273,13 @@ mod tests {
             panic!("expected text sample");
         };
         assert_eq!(text.value, "main · passing");
-        assert!(fetcher.sample_body(Shape::Entries).is_none());
+
+        let Some(Body::Entries(e)) = fetcher.sample_body(Shape::Entries) else {
+            panic!("expected entries sample");
+        };
+        let keys: Vec<&str> = e.items.iter().map(|i| i.key.as_str()).collect();
+        assert_eq!(keys, vec!["status", "branch", "conclusion"]);
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
@@ -310,6 +347,25 @@ mod tests {
         };
         assert_eq!(badge.status, Status::Warn);
         assert_eq!(badge.label, "main · cancelled");
+    }
+
+    #[test]
+    fn no_runs_body_respects_each_advertised_shape() {
+        // Empty workflow_runs used to always degrade to Badge regardless of `ctx.shape`,
+        // breaking shape consistency once Entries was advertised in #243.
+        let Body::Badge(b) = no_runs_body(Shape::Badge) else {
+            panic!("expected badge");
+        };
+        assert_eq!(b.label, "no runs");
+        let Body::Text(t) = no_runs_body(Shape::Text) else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, "no runs");
+        let Body::Entries(e) = no_runs_body(Shape::Entries) else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items[0].value.as_deref(), Some("no runs"));
+        assert_eq!(e.items[0].status, Some(Status::Warn));
     }
 
     #[test]

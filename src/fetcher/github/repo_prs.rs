@@ -4,22 +4,16 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 
+use crate::fetcher::forge_items::{self, LIST_SHAPES};
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 use crate::render::Shape;
-use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
-use super::items::{IssueItem, render_items};
+use super::items::{IssueItem, sample_rows, to_forge_rows};
 
-const SHAPES: &[Shape] = &[
-    Shape::LinkedTextBlock,
-    Shape::TextBlock,
-    Shape::Entries,
-    Shape::Timeline,
-];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -65,7 +59,7 @@ impl Fetcher for GithubRepoPrs {
         60 * 10
     }
     fn shapes(&self) -> &[Shape] {
-        SHAPES
+        LIST_SHAPES
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -75,35 +69,23 @@ impl Fetcher for GithubRepoPrs {
         cache_key(self.name(), ctx, &extra)
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
-        Some(match shape {
-            Shape::LinkedTextBlock => samples::linked_text_block(&[
-                (
-                    "#54 feat(docs): generate widget catalogue",
-                    Some("https://github.com/unhappychoice/splashboard/pull/54"),
-                ),
-                (
-                    "#51 feat(fetcher): split clock options",
-                    Some("https://github.com/unhappychoice/splashboard/pull/51"),
-                ),
-            ]),
-            Shape::TextBlock => samples::text_block(&[
-                "#54 feat(docs): generate widget catalogue",
-                "#51 feat(fetcher): split clock options",
-            ]),
-            Shape::Entries => samples::entries(&[
-                ("#54", "feat(docs): widget catalogue"),
-                ("#51", "feat(fetcher): split clock options"),
-            ]),
-            Shape::Timeline => samples::timeline(&[
-                (1_774_000_000, "#54", Some("feat(docs): widget catalogue")),
-                (
-                    1_773_800_000,
-                    "#51",
-                    Some("feat(fetcher): split clock options"),
-                ),
-            ]),
-            _ => return None,
-        })
+        let rows = sample_rows(&[
+            (
+                "#54",
+                "feat(docs): generate widget catalogue",
+                Some("https://github.com/unhappychoice/splashboard/pull/54"),
+                7,
+                1_774_000_000,
+            ),
+            (
+                "#51",
+                "feat(fetcher): split clock options",
+                Some("https://github.com/unhappychoice/splashboard/pull/51"),
+                2,
+                1_773_800_000,
+            ),
+        ]);
+        forge_items::dispatch_sample(&rows, shape, "open PR", "open PRs")
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
@@ -114,11 +96,10 @@ impl Fetcher for GithubRepoPrs {
             slug.owner, slug.name
         );
         let items: Vec<IssueItem> = rest_get(&path).await?;
-        Ok(payload(render_items(
-            &items,
-            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
-            false,
-        )))
+        let rows = to_forge_rows(&items, false);
+        let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
+        let body = forge_items::dispatch_rows_async(rows, shape, "open PR", "open PRs").await;
+        Ok(payload(body))
     }
 }
 
@@ -224,10 +205,17 @@ mod tests {
         assert_eq!(fetcher.name(), "github_repo_prs");
         assert_eq!(fetcher.safety(), Safety::Safe);
         assert!(fetcher.description().contains("target repo"));
-        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.shapes(), LIST_SHAPES);
         assert_eq!(fetcher.option_schemas().len(), 2);
         assert_eq!(fetcher.option_schemas()[0].name, "repo");
         assert_eq!(fetcher.option_schemas()[1].name, "limit");
+
+        for shape in LIST_SHAPES {
+            assert!(
+                fetcher.sample_body(*shape).is_some(),
+                "missing sample for {shape:?}"
+            );
+        }
 
         let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
         else {
@@ -242,29 +230,10 @@ mod tests {
             Some("https://github.com/unhappychoice/splashboard/pull/51")
         );
 
-        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
-            panic!("expected text block sample");
-        };
-        assert_eq!(text.lines[1], "#51 feat(fetcher): split clock options");
-
         let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
             panic!("expected entries sample");
         };
         assert_eq!(entries.items[0].key, "#54");
-        assert_eq!(
-            entries.items[1].value.as_deref(),
-            Some("feat(fetcher): split clock options")
-        );
-
-        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
-            panic!("expected timeline sample");
-        };
-        assert_eq!(timeline.events[0].title, "#54");
-        assert_eq!(
-            timeline.events[1].detail.as_deref(),
-            Some("feat(fetcher): split clock options")
-        );
-        assert!(fetcher.sample_body(Shape::Text).is_none());
     }
 
     #[test]

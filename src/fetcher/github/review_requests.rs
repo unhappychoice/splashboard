@@ -4,22 +4,16 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 
+use crate::fetcher::forge_items::{self, LIST_SHAPES};
 use crate::options::OptionSchema;
 use crate::payload::{Body, Payload};
 use crate::render::Shape;
-use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{cache_key, parse_options, payload};
-use super::items::{SearchResult, render_items};
+use super::items::{SearchResult, sample_rows, to_forge_rows};
 
-const SHAPES: &[Shape] = &[
-    Shape::LinkedTextBlock,
-    Shape::TextBlock,
-    Shape::Entries,
-    Shape::Timeline,
-];
 const DEFAULT_LIMIT: u32 = 10;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
@@ -54,7 +48,7 @@ impl Fetcher for GithubReviewRequests {
         60 * 5
     }
     fn shapes(&self) -> &[Shape] {
-        SHAPES
+        LIST_SHAPES
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -63,39 +57,23 @@ impl Fetcher for GithubReviewRequests {
         cache_key(self.name(), ctx, "")
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
-        Some(match shape {
-            Shape::LinkedTextBlock => samples::linked_text_block(&[
-                (
-                    "ratatui/ratatui#1234 feat: add pie chart",
-                    Some("https://github.com/ratatui/ratatui/pull/1234"),
-                ),
-                (
-                    "tokio-rs/tokio#5678 fix: race in spawn",
-                    Some("https://github.com/tokio-rs/tokio/pull/5678"),
-                ),
-            ]),
-            Shape::TextBlock => samples::text_block(&[
-                "ratatui/ratatui#1234 feat: add pie chart",
-                "tokio-rs/tokio#5678 fix: race in spawn",
-            ]),
-            Shape::Entries => samples::entries(&[
-                ("ratatui #1234", "feat: add pie chart"),
-                ("tokio #5678", "fix: race in spawn"),
-            ]),
-            Shape::Timeline => samples::timeline(&[
-                (
-                    1_774_000_000,
-                    "ratatui/ratatui#1234",
-                    Some("feat: add pie chart"),
-                ),
-                (
-                    1_773_800_000,
-                    "tokio-rs/tokio#5678",
-                    Some("fix: race in spawn"),
-                ),
-            ]),
-            _ => return None,
-        })
+        let rows = sample_rows(&[
+            (
+                "ratatui/ratatui#1234",
+                "feat: add pie chart",
+                Some("https://github.com/ratatui/ratatui/pull/1234"),
+                5,
+                1_774_000_000,
+            ),
+            (
+                "tokio-rs/tokio#5678",
+                "fix: race in spawn",
+                Some("https://github.com/tokio-rs/tokio/pull/5678"),
+                2,
+                1_773_800_000,
+            ),
+        ]);
+        forge_items::dispatch_sample(&rows, shape, "to review", "to review")
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
@@ -104,11 +82,10 @@ impl Fetcher for GithubReviewRequests {
             "/search/issues?q=is%3Apr+is%3Aopen+review-requested%3A%40me&per_page={limit}&sort=updated"
         );
         let res: SearchResult = rest_get(&path).await?;
-        Ok(payload(render_items(
-            &res.items,
-            ctx.shape.unwrap_or(Shape::LinkedTextBlock),
-            true,
-        )))
+        let rows = to_forge_rows(&res.items, true);
+        let shape = ctx.shape.unwrap_or(Shape::LinkedTextBlock);
+        let body = forge_items::dispatch_rows_async(rows, shape, "to review", "to review").await;
+        Ok(payload(body))
     }
 }
 
@@ -201,11 +178,18 @@ mod tests {
         assert_eq!(fetcher.name(), "github_review_requests");
         assert_eq!(fetcher.safety(), Safety::Safe);
         assert!(fetcher.description().contains("requested reviewer"));
-        assert_eq!(fetcher.shapes(), SHAPES);
+        assert_eq!(fetcher.shapes(), LIST_SHAPES);
         assert_eq!(fetcher.default_shape(), Shape::LinkedTextBlock);
         assert_eq!(fetcher.option_schemas().len(), 1);
         assert_eq!(fetcher.option_schemas()[0].name, "limit");
         assert_eq!(fetcher.option_schemas()[0].default, Some("10"));
+
+        for shape in LIST_SHAPES {
+            assert!(
+                fetcher.sample_body(*shape).is_some(),
+                "missing sample for {shape:?}"
+            );
+        }
 
         let Some(Body::LinkedTextBlock(linked)) = fetcher.sample_body(Shape::LinkedTextBlock)
         else {
@@ -220,29 +204,10 @@ mod tests {
             Some("https://github.com/tokio-rs/tokio/pull/5678")
         );
 
-        let Some(Body::TextBlock(text)) = fetcher.sample_body(Shape::TextBlock) else {
-            panic!("expected text block sample");
-        };
-        assert_eq!(text.lines[1], "tokio-rs/tokio#5678 fix: race in spawn");
-
         let Some(Body::Entries(entries)) = fetcher.sample_body(Shape::Entries) else {
             panic!("expected entries sample");
         };
-        assert_eq!(entries.items[0].key, "ratatui #1234");
-        assert_eq!(
-            entries.items[1].value.as_deref(),
-            Some("fix: race in spawn")
-        );
-
-        let Some(Body::Timeline(timeline)) = fetcher.sample_body(Shape::Timeline) else {
-            panic!("expected timeline sample");
-        };
-        assert_eq!(timeline.events[0].title, "ratatui/ratatui#1234");
-        assert_eq!(
-            timeline.events[1].detail.as_deref(),
-            Some("fix: race in spawn")
-        );
-        assert!(fetcher.sample_body(Shape::Text).is_none());
+        assert_eq!(entries.items[0].key, "ratatui/ratatui#1234");
     }
 
     #[test]

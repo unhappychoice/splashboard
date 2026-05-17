@@ -5,15 +5,24 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{Body, EntriesData, Entry, Payload, TextData};
+use crate::payload::{
+    BadgeData, Bar, BarsData, Body, EntriesData, Entry, MarkdownTextBlockData, Payload, Status,
+    TextBlockData, TextData,
+};
 use crate::render::Shape;
-use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Text, Shape::Entries];
+const SHAPES: &[Shape] = &[
+    Shape::Text,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Entries,
+    Shape::Bars,
+    Shape::Badge,
+];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[OptionSchema {
     name: "repo",
@@ -57,36 +66,83 @@ impl Fetcher for GithubRepoStars {
         cache_key(self.name(), ctx, &extra)
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
-        Some(match shape {
-            Shape::Text => samples::text("★ 142"),
-            Shape::Entries => samples::entries(&[
-                ("stars", "142"),
-                ("forks", "9"),
-                ("watchers", "12"),
-                ("open_issues", "7"),
-            ]),
-            _ => return None,
-        })
+        if !SHAPES.contains(&shape) {
+            return None;
+        }
+        let info = RepoInfo {
+            stargazers_count: 142,
+            forks_count: 9,
+            subscribers_count: 12,
+            open_issues_count: 7,
+        };
+        Some(render_body(&info, shape))
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
         let opts: Options = parse_options(ctx.options.as_ref()).map_err(FetchError::Failed)?;
         let slug = resolve_repo(opts.repo.as_deref())?;
         let path = format!("/repos/{}/{}", slug.owner, slug.name);
         let repo: RepoInfo = rest_get(&path).await?;
-        let body = match ctx.shape.unwrap_or(Shape::Text) {
-            Shape::Entries => Body::Entries(EntriesData {
-                items: vec![
-                    entry("stars", &repo.stargazers_count.to_string()),
-                    entry("forks", &repo.forks_count.to_string()),
-                    entry("watchers", &repo.subscribers_count.to_string()),
-                    entry("open_issues", &repo.open_issues_count.to_string()),
-                ],
-            }),
-            _ => Body::Text(TextData {
-                value: format!("★ {}", repo.stargazers_count),
-            }),
-        };
-        Ok(payload(body))
+        Ok(payload(render_body(
+            &repo,
+            ctx.shape.unwrap_or(Shape::Text),
+        )))
+    }
+}
+
+fn render_body(info: &RepoInfo, shape: Shape) -> Body {
+    match shape {
+        Shape::TextBlock => Body::TextBlock(TextBlockData {
+            lines: vec![
+                format!("★ {}", info.stargazers_count),
+                format!("🍴 {}", info.forks_count),
+                format!("👁 {}", info.subscribers_count),
+                format!("🔓 {}", info.open_issues_count),
+            ],
+        }),
+        Shape::MarkdownTextBlock => Body::MarkdownTextBlock(MarkdownTextBlockData {
+            value: format!(
+                "- **★ stars** {}\n- **🍴 forks** {}\n- **👁 watchers** {}\n- **🔓 open issues** {}",
+                info.stargazers_count,
+                info.forks_count,
+                info.subscribers_count,
+                info.open_issues_count
+            ),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: vec![
+                entry("stars", &info.stargazers_count.to_string()),
+                entry("forks", &info.forks_count.to_string()),
+                entry("watchers", &info.subscribers_count.to_string()),
+                entry("open_issues", &info.open_issues_count.to_string()),
+            ],
+        }),
+        Shape::Bars => Body::Bars(BarsData {
+            bars: vec![
+                Bar {
+                    label: "stars".into(),
+                    value: info.stargazers_count,
+                },
+                Bar {
+                    label: "forks".into(),
+                    value: info.forks_count,
+                },
+                Bar {
+                    label: "watchers".into(),
+                    value: info.subscribers_count,
+                },
+                Bar {
+                    label: "open_issues".into(),
+                    value: info.open_issues_count,
+                },
+            ],
+        }),
+        Shape::Badge => Body::Badge(BadgeData {
+            status: Status::Ok,
+            label: format!("★ {}", info.stargazers_count),
+        }),
+        _ => Body::Text(TextData {
+            value: format!("★ {}", info.stargazers_count),
+        }),
     }
 }
 
@@ -187,7 +243,17 @@ mod tests {
         assert_eq!(fetcher.name(), "github_repo_stars");
         assert_eq!(fetcher.safety(), Safety::Safe);
         assert!(fetcher.description().contains("watchers"));
-        assert_eq!(fetcher.shapes(), &[Shape::Text, Shape::Entries]);
+        assert_eq!(
+            fetcher.shapes(),
+            &[
+                Shape::Text,
+                Shape::TextBlock,
+                Shape::MarkdownTextBlock,
+                Shape::Entries,
+                Shape::Bars,
+                Shape::Badge,
+            ]
+        );
         assert_eq!(fetcher.default_shape(), Shape::Text);
         assert_eq!(fetcher.option_schemas().len(), 1);
         assert_eq!(fetcher.option_schemas()[0].name, "repo");
@@ -211,6 +277,28 @@ mod tests {
         assert_eq!(entries.items.len(), 4);
         assert_eq!(entries.items[0].key, "stars");
         assert_eq!(entries.items[3].key, "open_issues");
+
+        let Some(Body::TextBlock(t)) = fetcher.sample_body(Shape::TextBlock) else {
+            panic!("expected text block sample");
+        };
+        assert_eq!(t.lines[0], "★ 142");
+
+        let Some(Body::MarkdownTextBlock(m)) = fetcher.sample_body(Shape::MarkdownTextBlock) else {
+            panic!("expected markdown sample");
+        };
+        assert!(m.value.contains("- **★ stars** 142"));
+
+        let Some(Body::Bars(b)) = fetcher.sample_body(Shape::Bars) else {
+            panic!("expected bars sample");
+        };
+        assert_eq!(b.bars[0].value, 142);
+
+        let Some(Body::Badge(bd)) = fetcher.sample_body(Shape::Badge) else {
+            panic!("expected badge sample");
+        };
+        assert_eq!(bd.status, crate::payload::Status::Ok);
+        assert_eq!(bd.label, "★ 142");
+
         assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
