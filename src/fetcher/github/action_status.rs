@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::options::OptionSchema;
-use crate::payload::{BadgeData, Body, Payload, Status, TextData};
+use crate::payload::{BadgeData, Body, EntriesData, Entry, Payload, Status, TextData};
 use crate::render::Shape;
 use crate::samples;
 
@@ -13,7 +13,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::client::rest_get;
 use super::common::{RepoSlug, cache_key, parse_options, payload, resolve_repo};
 
-const SHAPES: &[Shape] = &[Shape::Badge, Shape::Text];
+const SHAPES: &[Shape] = &[Shape::Badge, Shape::Text, Shape::Entries];
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
     OptionSchema {
@@ -74,6 +74,13 @@ impl Fetcher for GithubActionStatus {
         Some(match shape {
             Shape::Badge => samples::badge(Status::Ok, "ci passing"),
             Shape::Text => samples::text("main · passing"),
+            Shape::Entries => Body::Entries(EntriesData {
+                items: vec![
+                    entry("status", Some(Status::Ok), "passing"),
+                    entry("branch", None, "main"),
+                    entry("conclusion", None, "success"),
+                ],
+            }),
             _ => return None,
         })
     }
@@ -119,20 +126,30 @@ struct WorkflowRun {
 
 fn render_body(run: &WorkflowRun, shape: Shape) -> Body {
     let (status, label_word) = classify(run);
+    let branch = run.head_branch.as_deref().unwrap_or("?");
     match shape {
         Shape::Text => Body::Text(TextData {
-            value: format!(
-                "{} · {label_word}",
-                run.head_branch.as_deref().unwrap_or("?")
-            ),
+            value: format!("{branch} · {label_word}"),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: vec![
+                entry("status", Some(status), label_word),
+                entry("branch", None, branch),
+                entry("conclusion", None, run.conclusion.as_deref().unwrap_or("?")),
+            ],
         }),
         _ => Body::Badge(BadgeData {
             status,
-            label: format!(
-                "{} · {label_word}",
-                run.head_branch.as_deref().unwrap_or("?")
-            ),
+            label: format!("{branch} · {label_word}"),
         }),
+    }
+}
+
+fn entry(key: &str, status: Option<Status>, value: &str) -> Entry {
+    Entry {
+        key: key.into(),
+        value: Some(value.into()),
+        status,
     }
 }
 
@@ -242,7 +259,13 @@ mod tests {
             panic!("expected text sample");
         };
         assert_eq!(text.value, "main · passing");
-        assert!(fetcher.sample_body(Shape::Entries).is_none());
+
+        let Some(Body::Entries(e)) = fetcher.sample_body(Shape::Entries) else {
+            panic!("expected entries sample");
+        };
+        let keys: Vec<&str> = e.items.iter().map(|i| i.key.as_str()).collect();
+        assert_eq!(keys, vec!["status", "branch", "conclusion"]);
+        assert!(fetcher.sample_body(Shape::Timeline).is_none());
     }
 
     #[test]
