@@ -12,9 +12,10 @@ use std::sync::Arc;
 pub(crate) mod client;
 pub(crate) mod common;
 pub(crate) mod items;
+mod my_mrs;
 
 use super::Fetcher;
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![]
+    vec![Arc::new(my_mrs::GitlabMyMrs)]
 }
