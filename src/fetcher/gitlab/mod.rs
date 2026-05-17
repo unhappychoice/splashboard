@@ -15,6 +15,7 @@ pub(crate) mod items;
 mod my_mrs;
 mod repo_issues;
 mod repo_mrs;
+mod repo_stars;
 mod review_requests;
 
 use super::Fetcher;
@@ -25,5 +26,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(review_requests::GitlabReviewRequests),
         Arc::new(repo_mrs::GitlabRepoMrs),
         Arc::new(repo_issues::GitlabRepoIssues),
+        Arc::new(repo_stars::GitlabRepoStars),
     ]
 }
