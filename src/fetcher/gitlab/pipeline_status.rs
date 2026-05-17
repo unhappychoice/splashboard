@@ -106,12 +106,29 @@ impl Fetcher for GitlabPipelineStatus {
         let pipelines: Vec<Pipeline> = rest_get(&host, &path).await?;
         let shape = ctx.shape.unwrap_or(Shape::Badge);
         let Some(latest) = pipelines.into_iter().next() else {
-            return Ok(payload(Body::Badge(BadgeData {
-                status: Status::Warn,
-                label: "no runs".into(),
-            })));
+            return Ok(payload(no_runs_body(shape)));
         };
         Ok(payload(render_body(&latest, shape)))
+    }
+}
+
+fn no_runs_body(shape: Shape) -> Body {
+    match shape {
+        Shape::Text => Body::Text(TextData {
+            value: "no runs".into(),
+        }),
+        Shape::Entries => Body::Entries(EntriesData {
+            items: vec![
+                entry("status", Some(Status::Warn), "no runs"),
+                entry("branch", None, "?"),
+                entry("sha", None, "?"),
+                entry("duration", None, "?"),
+            ],
+        }),
+        _ => Body::Badge(BadgeData {
+            status: Status::Warn,
+            label: "no runs".into(),
+        }),
     }
 }
 
@@ -313,6 +330,26 @@ mod tests {
         assert_eq!(format_duration(Some(192)), "3m 12s");
         assert_eq!(format_duration(Some(60)), "1m 00s");
         assert_eq!(format_duration(None), "?");
+    }
+
+    #[test]
+    fn no_runs_body_respects_each_advertised_shape() {
+        // Empty pipeline list used to always degrade to Badge regardless of `ctx.shape`,
+        // breaking shape consistency for Text / Entries consumers.
+        let Body::Badge(b) = no_runs_body(Shape::Badge) else {
+            panic!("expected badge");
+        };
+        assert_eq!(b.label, "no runs");
+        let Body::Text(t) = no_runs_body(Shape::Text) else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, "no runs");
+        let Body::Entries(e) = no_runs_body(Shape::Entries) else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 4);
+        assert_eq!(e.items[0].value.as_deref(), Some("no runs"));
+        assert_eq!(e.items[0].status, Some(Status::Warn));
     }
 
     #[test]
