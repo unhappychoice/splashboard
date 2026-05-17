@@ -1,18 +1,20 @@
 //! Shared response types for the issue / PR family. The REST search endpoints and the
 //! per-repo PR/issue endpoints return almost the same item shape; they share this struct so
 //! each fetcher can focus on its own URL composition and rendering.
+//!
+//! Rendering goes through [`crate::fetcher::forge_items::render_forge_rows`] so the github and
+//! gitlab families produce structurally identical output for every shape — adding a new shape
+//! variant lights up on both families simultaneously.
 
 use serde::Deserialize;
 
-use crate::payload::{
-    Body, EntriesData, Entry, LinkedLine, LinkedTextBlockData, TextBlockData, TimelineData,
-    TimelineEvent,
-};
+use crate::fetcher::forge_items::{self, ForgeRow};
+use crate::payload::Body;
 use crate::render::Shape;
 
 use super::common::{RepoSlug, parse_timestamp};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct IssueItem {
     pub title: String,
     pub number: u64,
@@ -25,6 +27,18 @@ pub struct IssueItem {
     pub html_url: String,
     #[serde(default)]
     pub state: String,
+    /// Comments count, fed into the `Bars` shape as a per-row activity weight.
+    #[serde(default)]
+    pub comments: u64,
+    /// Author block — only `avatar_url` is used today (for the `ImageLinkedList` shape).
+    #[serde(default)]
+    pub user: Option<GithubUserRef>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct GithubUserRef {
+    #[serde(default)]
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,78 +54,60 @@ pub fn repo_from_url(url: &str) -> Option<RepoSlug> {
     RepoSlug::parse(rest)
 }
 
-/// Renders issue / PR items to one of `TextBlock` / `LinkedTextBlock` / `Entries` / `Timeline`.
-/// When `include_repo` is true, each line/event is prefixed with `owner/name` — used by
-/// user-scope fetchers that return items across many repos. Per-repo fetchers pass `false` so
-/// the repo name isn't repeated on every row.
+/// Renders issue / PR items via the shared forge-row pipeline. When `include_repo` is true,
+/// each label is prefixed with `owner/name#42` — used by user-scope fetchers whose results span
+/// many repos. Per-repo fetchers pass `false` so the row stays at `#42`.
 pub fn render_items(items: &[IssueItem], shape: Shape, include_repo: bool) -> Body {
-    match shape {
-        Shape::Entries => Body::Entries(EntriesData {
-            items: items
-                .iter()
-                .map(|i| Entry {
-                    key: entries_key(i, include_repo),
-                    value: Some(i.title.clone()),
-                    status: None,
-                })
-                .collect(),
-        }),
-        Shape::LinkedTextBlock => Body::LinkedTextBlock(LinkedTextBlockData {
-            items: items
-                .iter()
-                .map(|i| LinkedLine {
-                    text: format!("{} {}", short_label(i, include_repo), i.title),
-                    url: link_for(i),
-                })
-                .collect(),
-        }),
-        Shape::Timeline => Body::Timeline(TimelineData {
-            events: items
-                .iter()
-                .map(|i| TimelineEvent {
-                    timestamp: parse_timestamp(&i.updated_at),
-                    title: short_label(i, include_repo),
-                    detail: Some(i.title.clone()),
-                    status: None,
-                })
-                .collect(),
-        }),
-        _ => Body::TextBlock(TextBlockData {
-            lines: items
-                .iter()
-                .map(|i| format!("{} {}", short_label(i, include_repo), i.title))
-                .collect(),
-        }),
-    }
+    let rows = to_forge_rows(items, include_repo);
+    forge_items::render_forge_rows(&rows, shape)
 }
 
-fn link_for(i: &IssueItem) -> Option<String> {
-    if i.html_url.is_empty() {
-        None
-    } else {
-        Some(i.html_url.clone())
-    }
+/// Lower-level converter so fetchers can pre-process rows (e.g. resolving thumbnails for
+/// `ImageLinkedList`) before handing them to the shared renderer.
+pub fn to_forge_rows(items: &[IssueItem], include_repo: bool) -> Vec<ForgeRow> {
+    items
+        .iter()
+        .map(|i| to_forge_row(i, include_repo))
+        .collect()
 }
 
-fn short_label(i: &IssueItem, include_repo: bool) -> String {
-    if include_repo {
+/// Build a tiny [`ForgeRow`] set with stable values for `sample_body`. Mirrors the gitlab
+/// helper so both families share the same row-formatting conventions in docs.
+pub fn sample_rows(rows: &[(&str, &str, Option<&str>, u64, i64)]) -> Vec<ForgeRow> {
+    rows.iter()
+        .map(|(label, title, url, activity, ts)| ForgeRow {
+            label: (*label).into(),
+            title: (*title).into(),
+            url: url.map(String::from),
+            avatar_url: None,
+            avatar_path: None,
+            updated_at_unix: *ts,
+            activity_count: *activity,
+        })
+        .collect()
+}
+
+fn to_forge_row(i: &IssueItem, include_repo: bool) -> ForgeRow {
+    let label = if include_repo {
         let repo = repo_from_url(&i.repository_url)
             .map(|s| s.as_path())
             .unwrap_or_else(|| "?".into());
         format!("{repo}#{}", i.number)
     } else {
         format!("#{}", i.number)
-    }
-}
-
-fn entries_key(i: &IssueItem, include_repo: bool) -> String {
-    if include_repo {
-        let name = repo_from_url(&i.repository_url)
-            .map(|s| s.name)
-            .unwrap_or_else(|| "?".into());
-        format!("{name} #{}", i.number)
-    } else {
-        format!("#{}", i.number)
+    };
+    ForgeRow {
+        label,
+        title: i.title.clone(),
+        url: if i.html_url.is_empty() {
+            None
+        } else {
+            Some(i.html_url.clone())
+        },
+        avatar_url: i.user.as_ref().and_then(|u| u.avatar_url.clone()),
+        avatar_path: None,
+        updated_at_unix: parse_timestamp(&i.updated_at),
+        activity_count: i.comments,
     }
 }
 
@@ -128,6 +124,10 @@ mod tests {
             updated_at: "2026-04-22T10:15:30Z".into(),
             html_url: "https://github.com/unhappychoice/splashboard/issues/42".into(),
             state: "open".into(),
+            comments: 3,
+            user: Some(GithubUserRef {
+                avatar_url: Some("https://avatars.example/u.png".into()),
+            }),
         }
     }
 
@@ -153,10 +153,47 @@ mod tests {
     }
 
     #[test]
+    fn to_forge_row_carries_comments_and_avatar_through() {
+        let row = to_forge_row(&issue_item(), true);
+        assert_eq!(row.label, "unhappychoice/splashboard#42");
+        assert_eq!(row.activity_count, 3);
+        assert_eq!(
+            row.avatar_url.as_deref(),
+            Some("https://avatars.example/u.png")
+        );
+        assert!(row.avatar_path.is_none());
+    }
+
+    #[test]
+    fn to_forge_row_without_repo_uses_number_only_label() {
+        let row = to_forge_row(&issue_item(), false);
+        assert_eq!(row.label, "#42");
+    }
+
+    #[test]
+    fn to_forge_row_falls_back_to_question_mark_for_bad_repo_url() {
+        let mut item = issue_item();
+        item.repository_url = "https://api.github.com/not-a-repo".into();
+        let row = to_forge_row(&item, true);
+        assert_eq!(row.label, "?#42");
+    }
+
+    #[test]
+    fn to_forge_row_empty_html_url_collapses_to_none() {
+        let mut item = issue_item();
+        item.html_url.clear();
+        let row = to_forge_row(&item, false);
+        assert!(row.url.is_none());
+    }
+
+    #[test]
     fn render_entries_include_repo_name_and_title() {
         let value = body_json(render_items(&[issue_item()], Shape::Entries, true));
         assert_eq!(value["shape"], "entries");
-        assert_eq!(value["data"]["items"][0]["key"], "splashboard #42");
+        assert_eq!(
+            value["data"]["items"][0]["key"],
+            "unhappychoice/splashboard#42"
+        );
         assert_eq!(
             value["data"]["items"][0]["value"],
             "Fix cached splash mismatch"
@@ -235,12 +272,54 @@ mod tests {
         item.repository_url = "https://api.github.com/not-a-repo".into();
         let value = body_json(render_items(&[item], Shape::Entries, true));
         assert_eq!(value["shape"], "entries");
-        assert_eq!(value["data"]["items"][0]["key"], "? #42");
+        assert_eq!(value["data"]["items"][0]["key"], "?#42");
+    }
+
+    #[test]
+    fn render_bars_uses_comments_count_as_value() {
+        let Body::Bars(data) = render_items(&[issue_item()], Shape::Bars, false) else {
+            panic!("expected bars");
+        };
+        assert_eq!(data.bars[0].value, 3);
+    }
+
+    #[test]
+    fn render_markdown_links_when_url_present() {
+        let Body::MarkdownTextBlock(data) =
+            render_items(&[issue_item()], Shape::MarkdownTextBlock, true)
+        else {
+            panic!("expected markdown");
+        };
+        assert!(data.value.contains("[Fix cached splash mismatch]"));
+    }
+
+    #[test]
+    fn render_image_linked_carries_empty_thumbnail_until_resolved() {
+        // The fetcher is responsible for resolving `avatar_url` -> `avatar_path` via the
+        // shared thumbnails downloader before reaching the renderer. Calling `render_items`
+        // directly leaves the column blank — verifies the unresolved path still produces a
+        // structurally valid body rather than crashing.
+        let Body::ImageLinkedList(data) =
+            render_items(&[issue_item()], Shape::ImageLinkedList, true)
+        else {
+            panic!("expected image linked list");
+        };
+        assert_eq!(data.items.len(), 1);
+        assert!(data.items[0].thumbnail_path.is_none());
     }
 
     #[test]
     fn search_result_defaults_missing_items_to_empty() {
         let result: SearchResult = serde_json::from_str("{}").unwrap();
         assert!(result.items.is_empty());
+    }
+
+    #[test]
+    fn issue_item_tolerates_partial_payloads_for_new_fields() {
+        // Older fixtures and tests construct IssueItem without `comments` / `user`. Both
+        // default cleanly so we don't break callers that pre-date the shape expansion.
+        let item: IssueItem = serde_json::from_str(r#"{"title":"x","number":1}"#).unwrap();
+        assert_eq!(item.comments, 0);
+        assert!(item.user.is_none());
     }
 }
