@@ -13,9 +13,13 @@ pub(crate) mod client;
 pub(crate) mod common;
 pub(crate) mod items;
 mod my_mrs;
+mod review_requests;
 
 use super::Fetcher;
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![Arc::new(my_mrs::GitlabMyMrs)]
+    vec![
+        Arc::new(my_mrs::GitlabMyMrs),
+        Arc::new(review_requests::GitlabReviewRequests),
+    ]
 }
