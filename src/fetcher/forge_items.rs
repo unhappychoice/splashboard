@@ -99,13 +99,38 @@ fn render_text_block(rows: &[ForgeRow]) -> Body {
 fn render_markdown(rows: &[ForgeRow]) -> Body {
     let value = rows
         .iter()
-        .map(|r| match &r.url {
-            Some(url) => format!("- **{}** [{}]({})", r.label, r.title, url),
-            None => format!("- **{}** {}", r.label, r.title),
+        .map(|r| {
+            let label = escape_markdown_inline(&r.label);
+            let title = escape_markdown_inline(&r.title);
+            match &r.url {
+                Some(url) => format!("- **{label}** [{title}]({})", escape_markdown_url(url)),
+                None => format!("- **{label}** {title}"),
+            }
         })
         .collect::<Vec<_>>()
         .join("\n");
     Body::MarkdownTextBlock(MarkdownTextBlockData { value })
+}
+
+/// Escape the small set of Markdown inline metacharacters likely to appear in forge titles
+/// and labels: `\`, `` ` ``, `*`, `_`, `[`, `]`. `<` and `&` are not handled because
+/// `text_markdown` consumes the value as Markdown source and CommonMark treats them as
+/// literal text unless followed by a valid HTML tag — which forge titles never are.
+fn escape_markdown_inline(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('`', "\\`")
+        .replace('*', "\\*")
+        .replace('_', "\\_")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
+}
+
+/// URL-side escape limited to the two characters that can break a Markdown link target:
+/// closing paren ends the `(...)`, backslash is the escape glyph itself. Everything else is
+/// already URL-encoded by the forge.
+fn escape_markdown_url(url: &str) -> String {
+    url.replace('\\', "%5C").replace(')', "%29")
 }
 
 fn render_linked(rows: &[ForgeRow]) -> Body {
@@ -294,6 +319,50 @@ mod tests {
         );
         // Row without url still renders, just without the link syntax.
         assert!(b.value.contains("- **splashboard#51** feat(fetcher)"));
+    }
+
+    #[test]
+    fn markdown_escapes_inline_metacharacters_in_label_and_title() {
+        // A title like `fix ](oops)` used to escape the link target prematurely; `*_wip_*`
+        // used to render as bold-italic text instead of literal underscores and asterisks.
+        // Both are user-supplied (forge issue / PR titles) and must round-trip as text, not
+        // markup.
+        let rows = vec![ForgeRow {
+            label: "splashboard#99".into(),
+            title: "fix ](oops) and *_wip_*".into(),
+            url: Some("https://example.com/path?x=1)y".into()),
+            avatar_url: None,
+            avatar_path: None,
+            updated_at_unix: 1_700_000_000,
+            activity_count: 0,
+        }];
+        let Body::MarkdownTextBlock(b) = render_forge_rows(&rows, Shape::MarkdownTextBlock) else {
+            panic!("expected markdown");
+        };
+        // `]` is escaped so it can't close the surrounding markdown link prematurely;
+        // `*` / `_` are escaped so the title stays literal rather than rendering bold /
+        // italic. Parens are intentionally not escaped because they only carry markup
+        // significance inside the link target itself, not in the visible link text.
+        assert!(
+            b.value.contains("fix \\](oops) and \\*\\_wip\\_\\*"),
+            "title not escaped: {}",
+            b.value
+        );
+        // URL keeps its closing paren escaped so it can't truncate the markdown link target.
+        assert!(
+            b.value.contains("1%29y"),
+            "url paren not escaped: {}",
+            b.value
+        );
+    }
+
+    #[test]
+    fn escape_markdown_inline_handles_each_documented_glyph() {
+        assert_eq!(
+            escape_markdown_inline("a\\b`c*d_e[f]g"),
+            "a\\\\b\\`c\\*d\\_e\\[f\\]g"
+        );
+        assert_eq!(escape_markdown_inline("plain text"), "plain text");
     }
 
     #[test]
