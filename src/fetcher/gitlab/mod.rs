@@ -13,6 +13,7 @@ pub(crate) mod client;
 pub(crate) mod common;
 pub(crate) mod items;
 mod my_mrs;
+mod pipeline_status;
 mod repo_issues;
 mod repo_mrs;
 mod repo_stars;
@@ -27,5 +28,6 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(repo_mrs::GitlabRepoMrs),
         Arc::new(repo_issues::GitlabRepoIssues),
         Arc::new(repo_stars::GitlabRepoStars),
+        Arc::new(pipeline_status::GitlabPipelineStatus),
     ]
 }
