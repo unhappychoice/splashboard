@@ -54,10 +54,21 @@ pub fn repo_from_url(url: &str) -> Option<RepoSlug> {
     RepoSlug::parse(rest)
 }
 
-/// Renders issue / PR items via the shared forge-row pipeline. When `include_repo` is true,
-/// each label is prefixed with `owner/name#42` — used by user-scope fetchers whose results span
-/// many repos. Per-repo fetchers pass `false` so the row stays at `#42`.
+/// Sync-only path for fetchers whose `shapes()` set doesn't include `Badge` /
+/// `ImageLinkedList` (currently `good_first_issues`). Both of those variants need
+/// preprocessing that this signature can't reach: `Badge` needs the row count + a noun pair
+/// for `forge_items::render_count_badge`, and `ImageLinkedList` needs avatar URLs resolved
+/// through `thumbnails::download_many` before render. Fetchers that accept those shapes go
+/// through `forge_items::dispatch_rows_async` instead.
+///
+/// When `include_repo` is true, each label is prefixed with `owner/name#42` (used by
+/// user-scope fetchers whose results span many repos). Per-repo fetchers pass `false` so the
+/// row stays at `#42`.
 pub fn render_items(items: &[IssueItem], shape: Shape, include_repo: bool) -> Body {
+    debug_assert!(
+        !matches!(shape, Shape::Badge | Shape::ImageLinkedList),
+        "render_items is sync-only; route {shape:?} through forge_items::dispatch_rows_async"
+    );
     let rows = to_forge_rows(items, include_repo);
     forge_items::render_forge_rows(&rows, shape)
 }
@@ -294,18 +305,21 @@ mod tests {
     }
 
     #[test]
-    fn render_image_linked_carries_empty_thumbnail_until_resolved() {
-        // The fetcher is responsible for resolving `avatar_url` -> `avatar_path` via the
-        // shared thumbnails downloader before reaching the renderer. Calling `render_items`
-        // directly leaves the column blank — verifies the unresolved path still produces a
-        // structurally valid body rather than crashing.
-        let Body::ImageLinkedList(data) =
-            render_items(&[issue_item()], Shape::ImageLinkedList, true)
-        else {
-            panic!("expected image linked list");
-        };
-        assert_eq!(data.items.len(), 1);
-        assert!(data.items[0].thumbnail_path.is_none());
+    #[should_panic(expected = "render_items is sync-only")]
+    fn render_items_rejects_image_linked_list_in_debug() {
+        // `ImageLinkedList` needs avatar resolution through the async thumbnails downloader,
+        // so the sync helper refuses it rather than silently emitting a row with a blank
+        // thumbnail column. Fetchers accepting that shape route through
+        // `forge_items::dispatch_rows_async` instead.
+        let _ = render_items(&[issue_item()], Shape::ImageLinkedList, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "render_items is sync-only")]
+    fn render_items_rejects_badge_in_debug() {
+        // Same reasoning for `Badge`: it needs the row count + a noun pair, neither of which
+        // are reachable through this signature.
+        let _ = render_items(&[issue_item()], Shape::Badge, false);
     }
 
     #[test]
