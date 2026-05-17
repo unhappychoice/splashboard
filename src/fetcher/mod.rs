@@ -21,6 +21,7 @@ pub mod crypto_watchlist;
 pub mod deal;
 pub mod deariary;
 pub mod feed;
+pub mod forge_items;
 pub mod git;
 pub mod github;
 pub mod hackernews;
