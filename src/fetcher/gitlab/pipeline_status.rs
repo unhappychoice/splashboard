@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use serde::Deserialize;
+use url::form_urlencoded::byte_serialize;
 
 use crate::options::OptionSchema;
 use crate::payload::{BadgeData, Body, EntriesData, Entry, Payload, Status, TextData};
@@ -101,7 +102,12 @@ impl Fetcher for GitlabPipelineStatus {
         let project = resolve_project(opts.project.as_deref(), &host)?;
         let mut path = format!("/projects/{}/pipelines?per_page=1", project.encoded());
         if let Some(branch) = opts.branch.as_deref() {
-            path.push_str(&format!("&ref={branch}"));
+            // Branch names can carry `&`, `=`, `#`, `+`, `?`, and slashes (release/v2,
+            // feature/foo&bar). Naive interpolation rewrote the URL semantics and silently
+            // returned the wrong pipeline; percent-encode so the value stays a single
+            // `ref=<branch>` pair.
+            let encoded: String = byte_serialize(branch.as_bytes()).collect();
+            path.push_str(&format!("&ref={encoded}"));
         }
         let pipelines: Vec<Pipeline> = rest_get(&host, &path).await?;
         let shape = ctx.shape.unwrap_or(Shape::Badge);
@@ -330,6 +336,23 @@ mod tests {
         assert_eq!(format_duration(Some(192)), "3m 12s");
         assert_eq!(format_duration(Some(60)), "1m 00s");
         assert_eq!(format_duration(None), "?");
+    }
+
+    #[test]
+    fn byte_serialize_handles_reserved_branch_characters() {
+        // Pin the encoding so a future url-crate version that loosens this set fails the
+        // test rather than silently shipping a request that the GitLab API misroutes.
+        let cases = [
+            ("main", "main"),
+            ("release/v2", "release%2Fv2"),
+            ("feature/foo&bar", "feature%2Ffoo%26bar"),
+            ("name=weird", "name%3Dweird"),
+            ("with spaces", "with+spaces"),
+        ];
+        for (raw, expected) in cases {
+            let actual: String = byte_serialize(raw.as_bytes()).collect();
+            assert_eq!(actual, expected, "raw={raw}");
+        }
     }
 
     #[test]
