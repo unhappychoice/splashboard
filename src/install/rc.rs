@@ -248,6 +248,27 @@ trailing\n"
         assert!(rc.exists());
     }
 
+    /// Nushell can't use the eval-on-startup indirection the POSIX shells use, so the
+    /// marker block embeds the full snippet inline. Re-running install must still
+    /// replace the block in place rather than appending a second copy.
+    #[test]
+    fn wire_shell_rc_embeds_nushell_snippet_inline_and_is_idempotent() {
+        let dir = tempdir().unwrap();
+        let rc = dir.path().join("config.nu");
+        std::fs::write(&rc, "# user config\n").unwrap();
+
+        let appended = wire_shell_rc(Shell::Nushell, Some(rc.clone())).unwrap();
+        assert_eq!(appended.action, RcAction::Appended);
+        let contents = std::fs::read_to_string(&rc).unwrap();
+        assert!(contents.starts_with("# user config\n"));
+        assert!(contents.contains("env_change.PWD"));
+        assert!(contents.contains("^splashboard"));
+        assert_eq!(contents.matches(MARKER_OPEN).count(), 1);
+
+        let up_to_date = wire_shell_rc(Shell::Nushell, Some(rc.clone())).unwrap();
+        assert_eq!(up_to_date.action, RcAction::UpToDate);
+    }
+
     #[test]
     fn wire_shell_rc_appends_replaces_and_skips_when_current() {
         let dir = tempdir().unwrap();
