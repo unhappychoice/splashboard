@@ -154,10 +154,14 @@ fn find_block(contents: &str) -> Option<(usize, usize)> {
 }
 
 fn format_block(shell: Shell) -> String {
+    // `trim_end_matches('\n')` keeps spacing consistent for shells whose source_line is
+    // a single inline command (no trailing newline) and the Nushell case where it's the
+    // full snippet from `include_str!` (always terminated with `\n`) — without trimming
+    // the latter would leave a blank line before the close marker.
     format!(
         "{open}\n# Added by `splashboard install`. Safe to remove.\n{line}\n{close}\n",
         open = MARKER_OPEN,
-        line = shell::source_line(shell),
+        line = shell::source_line(shell).trim_end_matches('\n'),
         close = MARKER_CLOSE,
     )
 }
@@ -264,6 +268,9 @@ trailing\n"
         assert!(contents.contains("env_change.PWD"));
         assert!(contents.contains("^splashboard"));
         assert_eq!(contents.matches(MARKER_OPEN).count(), 1);
+        // No blank line between the last snippet line and the close marker — the snippet
+        // is sourced from a file that always ends in `\n`, so format_block must trim it.
+        assert!(contents.contains(&format!("^splashboard\n{MARKER_CLOSE}")));
 
         let up_to_date = wire_shell_rc(Shell::Nushell, Some(rc.clone())).unwrap();
         assert_eq!(up_to_date.action, RcAction::UpToDate);
