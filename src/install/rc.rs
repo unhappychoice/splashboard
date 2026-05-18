@@ -154,14 +154,15 @@ fn find_block(contents: &str) -> Option<(usize, usize)> {
 }
 
 fn format_block(shell: Shell) -> String {
-    // `trim_end_matches('\n')` keeps spacing consistent for shells whose source_line is
-    // a single inline command (no trailing newline) and the Nushell case where it's the
-    // full snippet from `include_str!` (always terminated with `\n`) — without trimming
-    // the latter would leave a blank line before the close marker.
+    // Trim both `\n` and `\r` so the spacing stays consistent for shells whose source_line
+    // is a single inline command (no trailing newline) and the Nushell case where it's the
+    // full snippet from `include_str!` (always terminated with `\n`, plus a `\r` on Windows
+    // CI where git autocrlf converts the snippet file). Without this the close marker ends
+    // up on its own line below a blank one.
     format!(
         "{open}\n# Added by `splashboard install`. Safe to remove.\n{line}\n{close}\n",
         open = MARKER_OPEN,
-        line = shell::source_line(shell).trim_end_matches('\n'),
+        line = shell::source_line(shell).trim_end_matches(['\n', '\r']),
         close = MARKER_CLOSE,
     )
 }
@@ -268,9 +269,16 @@ trailing\n"
         assert!(contents.contains("env_change.PWD"));
         assert!(contents.contains("^splashboard"));
         assert_eq!(contents.matches(MARKER_OPEN).count(), 1);
-        // No blank line between the last snippet line and the close marker — the snippet
-        // is sourced from a file that always ends in `\n`, so format_block must trim it.
-        assert!(contents.contains(&format!("^splashboard\n{MARKER_CLOSE}")));
+        // No blank line between the last snippet line and the close marker. Uses
+        // `str::lines()` so the assertion works regardless of `\n` vs `\r\n` (Windows CI
+        // under git autocrlf converts the snippet file).
+        let lines: Vec<&str> = contents.lines().collect();
+        let close_idx = lines.iter().position(|l| l == &MARKER_CLOSE).unwrap();
+        assert_eq!(
+            lines[close_idx - 1],
+            "^splashboard",
+            "expected `^splashboard` immediately before close marker, lines: {lines:?}"
+        );
 
         let up_to_date = wire_shell_rc(Shell::Nushell, Some(rc.clone())).unwrap();
         assert_eq!(up_to_date.action, RcAction::UpToDate);
