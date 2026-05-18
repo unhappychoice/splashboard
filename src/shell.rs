@@ -193,6 +193,15 @@ mod tests {
     }
 
     #[test]
+    fn nushell_snippet_appends_pwd_env_change_hook() {
+        let s = init_snippet(Shell::Nushell);
+        assert!(s.contains("$env.config.hooks.env_change.PWD"));
+        // First-prompt firing (`$before == null`) must be skipped so we don't double-splash
+        // alongside the explicit startup `^splashboard` call below it.
+        assert!(s.contains("$before != null"));
+    }
+
+    #[test]
     fn all_snippets_guard_interactivity() {
         assert!(init_snippet(Shell::Bash).contains("$-"));
         assert!(init_snippet(Shell::Zsh).contains("interactive"));
@@ -201,7 +210,13 @@ mod tests {
 
     #[test]
     fn cd_hooks_call_on_cd_flag_not_bare_splash() {
-        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell] {
+        for shell in [
+            Shell::Bash,
+            Shell::Zsh,
+            Shell::Fish,
+            Shell::Powershell,
+            Shell::Nushell,
+        ] {
             let s = init_snippet(shell);
             assert!(
                 s.contains("splashboard --on-cd"),
@@ -224,6 +239,14 @@ mod tests {
         assert_eq!(
             detect_shell(env_with(&[("SHELL", "/opt/homebrew/bin/fish")])),
             Some(Shell::Fish)
+        );
+        assert_eq!(
+            detect_shell(env_with(&[("SHELL", "/usr/local/bin/nu")])),
+            Some(Shell::Nushell)
+        );
+        assert_eq!(
+            detect_shell(env_with(&[("SHELL", "/opt/homebrew/bin/nushell")])),
+            Some(Shell::Nushell)
         );
     }
 
@@ -268,6 +291,8 @@ mod tests {
         assert!(rc.ends_with(".bashrc"));
         let rc = default_rc_path(Shell::Fish).unwrap();
         assert!(rc.ends_with("config.fish"));
+        let rc = default_rc_path(Shell::Nushell).unwrap();
+        assert!(rc.ends_with("config.nu"));
     }
 
     #[test]
@@ -276,6 +301,7 @@ mod tests {
         assert_eq!(Shell::Zsh.as_str(), "zsh");
         assert_eq!(Shell::Fish.as_str(), "fish");
         assert_eq!(Shell::Powershell.as_str(), "powershell");
+        assert_eq!(Shell::Nushell.as_str(), "nushell");
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -302,9 +328,26 @@ mod tests {
 
     #[test]
     fn source_line_covers_all_shells() {
-        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell] {
+        for shell in [
+            Shell::Bash,
+            Shell::Zsh,
+            Shell::Fish,
+            Shell::Powershell,
+            Shell::Nushell,
+        ] {
             let line = source_line(shell);
             assert!(line.contains("splashboard"), "{:?}", shell);
         }
+    }
+
+    /// Nushell can't use the same eval-on-startup indirection, so `source_line` returns
+    /// the full snippet. The rc wiring layer then embeds it between the marker comments
+    /// directly; re-running `splashboard install` replaces the block in place.
+    #[test]
+    fn nushell_source_line_embeds_full_snippet() {
+        let line = source_line(Shell::Nushell);
+        assert_eq!(line, init_snippet(Shell::Nushell));
+        assert!(line.contains("env_change.PWD"));
+        assert!(line.contains("^splashboard"));
     }
 }
