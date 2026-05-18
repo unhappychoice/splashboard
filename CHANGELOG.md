@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-05-18
+
+### ✨ Features
+
+- feat(install): include nushell in shell-not-detected error ([3ebf18c](https://github.com/unhappychoice/splashboard/commit/3ebf18c))
+- feat(shell): add Nushell init snippet + variant ([305465e](https://github.com/unhappychoice/splashboard/commit/305465e))
+
+### 🐛 Bug Fixes
+
+- fix(install/rc): handle CRLF in source_line trim for Windows CI ([b9760a0](https://github.com/unhappychoice/splashboard/commit/b9760a0))
+- fix(install/rc): trim trailing newline when embedding source_line ([c7a8051](https://github.com/unhappychoice/splashboard/commit/c7a8051))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.5.0 ([98365f0](https://github.com/unhappychoice/splashboard/commit/98365f0))
+- docs: document Nushell in manual rc-edit examples ([280fa76](https://github.com/unhappychoice/splashboard/commit/280fa76))
+- test(install/rc): verify Nushell inline-snippet embedding ([9a91371](https://github.com/unhappychoice/splashboard/commit/9a91371))
+- test(shell): cover Nushell across the shell module test suite ([ec6987b](https://github.com/unhappychoice/splashboard/commit/ec6987b))
+- chore(deps)(deps): bump sysinfo from 0.39.0 to 0.39.2 ([4761da0](https://github.com/unhappychoice/splashboard/commit/4761da0))
+- chore(deps)(deps): bump ratatui-image from 11.0.1 to 11.0.2 ([678cb62](https://github.com/unhappychoice/splashboard/commit/678cb62))
+- chore: update flake.nix hashes for v2.4.0 ([a40cd99](https://github.com/unhappychoice/splashboard/commit/a40cd99))
+
+
 ## [2.4.0] - 2026-05-17
 
 ### ✨ Features
@@ -28,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.4.0 ([9affe3c](https://github.com/unhappychoice/splashboard/commit/9affe3c))
+- chore: bump version to v2.4.0 ([2a37900](https://github.com/unhappychoice/splashboard/commit/2a37900))
 - refactor(github): add Entries shape to action_status ([a15b6dd](https://github.com/unhappychoice/splashboard/commit/a15b6dd))
 - refactor(github): extend repo_stars to 6 shapes ([17c687f](https://github.com/unhappychoice/splashboard/commit/17c687f))
 - refactor(github): extend repo_issues to 9 shapes via forge_items dispatch ([7eed488](https://github.com/unhappychoice/splashboard/commit/7eed488))
