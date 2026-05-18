@@ -171,7 +171,7 @@ fn resolve_shell(override_shell: Option<Shell>) -> io::Result<Shell> {
     }
     Err(io::Error::new(
         io::ErrorKind::InvalidInput,
-        "could not detect your shell — pass --shell <bash|zsh|fish|powershell>",
+        "could not detect your shell — pass --shell <bash|zsh|fish|powershell|nushell>",
     ))
 }
 
