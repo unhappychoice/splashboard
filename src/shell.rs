@@ -6,6 +6,7 @@ const BASH: &str = include_str!("shells/bash.sh");
 const ZSH: &str = include_str!("shells/zsh.sh");
 const FISH: &str = include_str!("shells/fish.fish");
 const POWERSHELL: &str = include_str!("shells/powershell.ps1");
+const NUSHELL: &str = include_str!("shells/nushell.nu");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Shell {
@@ -13,6 +14,8 @@ pub enum Shell {
     Zsh,
     Fish,
     Powershell,
+    #[value(alias = "nu")]
+    Nushell,
 }
 
 impl Shell {
@@ -22,6 +25,7 @@ impl Shell {
             Shell::Zsh => "zsh",
             Shell::Fish => "fish",
             Shell::Powershell => "powershell",
+            Shell::Nushell => "nushell",
         }
     }
 }
@@ -32,6 +36,7 @@ pub fn init_snippet(shell: Shell) -> &'static str {
         Shell::Zsh => ZSH,
         Shell::Fish => FISH,
         Shell::Powershell => POWERSHELL,
+        Shell::Nushell => NUSHELL,
     }
 }
 
@@ -67,6 +72,7 @@ fn classify_shell_path(path: &str) -> Option<Shell> {
         "zsh" => Some(Shell::Zsh),
         "fish" => Some(Shell::Fish),
         "pwsh" | "powershell" => Some(Shell::Powershell),
+        "nu" | "nushell" => Some(Shell::Nushell),
         _ => None,
     }
 }
@@ -87,17 +93,27 @@ pub fn default_rc_path(shell: Shell) -> Option<PathBuf> {
             .join("Documents")
             .join("PowerShell")
             .join("Microsoft.PowerShell_profile.ps1"),
+        // Nushell's config can live elsewhere (`~/Library/Application Support/nushell/`
+        // on macOS, `%APPDATA%\nushell\` on Windows), but `~/.config/nushell/config.nu`
+        // is the documented default on Linux and works on macOS too. Users on other
+        // layouts pass `--rc-path` to `splashboard install`.
+        Shell::Nushell => home.join(".config").join("nushell").join("config.nu"),
     })
 }
 
 /// Source line appended inside the marker block; delegates to `splashboard init <shell>`
-/// so any snippet update lands automatically on next shell start.
+/// so any snippet update lands automatically on next shell start. Nushell is the odd
+/// one out: its `source` command requires a parse-time constant path, so we can't use
+/// the same eval-on-startup indirection. Instead `source_line` returns the snippet
+/// itself for Nushell, which `format_block` embeds verbatim between markers — re-running
+/// `splashboard install` rewrites the block in place when the snippet changes.
 pub fn source_line(shell: Shell) -> &'static str {
     match shell {
         Shell::Bash => "eval \"$(splashboard init bash)\"",
         Shell::Zsh => "eval \"$(splashboard init zsh)\"",
         Shell::Fish => "splashboard init fish | source",
         Shell::Powershell => "Invoke-Expression (& splashboard init powershell | Out-String)",
+        Shell::Nushell => NUSHELL,
     }
 }
 
