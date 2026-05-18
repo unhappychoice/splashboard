@@ -57,6 +57,7 @@ echo 'eval "$(splashboard init zsh)"'                              >> ~/.zshrc
 echo 'eval "$(splashboard init bash)"'                             >> ~/.bashrc
 echo 'splashboard init fish | source'                              >> ~/.config/fish/config.fish
 echo 'Invoke-Expression (& splashboard init powershell | Out-String)' >> $PROFILE
+splashboard init nushell | save --append ~/.config/nushell/config.nu
 ```
 
 ## Docs
