@@ -11,7 +11,7 @@ use crate::fetcher::github::common::{cache_key, parse_options, payload};
 use crate::fetcher::lastfm::client;
 use crate::fetcher::lastfm::common::{ImageEntry, best_image, parse_count};
 use crate::fetcher::lastfm::top::{
-    self, Period, TopRow, badge_body, bars_body, entries_body, headline, image_linked_body,
+    Period, TopRow, badge_body, bars_body, entries_body, headline, image_linked_body,
     linked_text_body, markdown_body, number_series_body, ratio_body, text_block_body, text_body,
 };
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
@@ -255,13 +255,6 @@ fn sample_rows() -> Vec<TopRow> {
             image_url: None,
         },
     ]
-}
-
-// Hook the rendering helpers under the `top::` reference so an accidental rename of one
-// helper trips the build at this site rather than only in tests.
-#[allow(dead_code)]
-fn _helpers_reference_check() {
-    let _ = top::headline;
 }
 
 #[derive(Deserialize)]
