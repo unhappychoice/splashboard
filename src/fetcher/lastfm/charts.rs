@@ -133,33 +133,40 @@ impl Fetcher for LastfmCharts {
 async fn fetch_rows(kind: Kind, limit: usize) -> Result<Vec<TopRow>, FetchError> {
     let limit_str = limit.to_string();
     let params = [("limit", limit_str.as_str())];
-    match kind {
+    let mut rows = match kind {
         Kind::Artists => {
             let raw: ChartArtistsResponse = client::get_json(kind.method(), &params).await?;
-            Ok(raw
-                .artists
+            raw.artists
                 .artist
                 .into_iter()
-                .enumerate()
-                .map(|(i, a)| artist_row(a, i))
-                .collect())
+                .map(artist_row)
+                .collect::<Vec<_>>()
         }
         Kind::Tracks => {
             let raw: ChartTracksResponse = client::get_json(kind.method(), &params).await?;
-            Ok(raw
-                .tracks
+            raw.tracks
                 .track
                 .into_iter()
-                .enumerate()
-                .map(|(i, t)| track_row(t, i))
-                .collect())
+                .map(track_row)
+                .collect::<Vec<_>>()
         }
-    }
+    };
+    // Last.fm's `chart.*` endpoints rank by global listener count, not playcount, so the
+    // response order doesn't always match the playcount values we surface in `Bars` /
+    // `count_label` ("N plays"). Sort by displayed metric and reassign ranks so the row
+    // order, the rank prefix, and the bar lengths all tell the same story.
+    rows.sort_by_key(|r| std::cmp::Reverse(r.playcount));
+    rows.iter_mut()
+        .enumerate()
+        .for_each(|(i, r)| r.rank = i + 1);
+    Ok(rows)
 }
 
-fn artist_row(raw: RawChartArtist, index: usize) -> TopRow {
+fn artist_row(raw: RawChartArtist) -> TopRow {
     TopRow {
-        rank: index + 1,
+        // `rank` is reassigned by `fetch_rows` after the playcount sort; the placeholder
+        // here just keeps the row structurally valid until then.
+        rank: 0,
         primary: raw.name,
         secondary: None,
         playcount: parse_count(&raw.playcount),
@@ -168,9 +175,9 @@ fn artist_row(raw: RawChartArtist, index: usize) -> TopRow {
     }
 }
 
-fn track_row(raw: RawChartTrack, index: usize) -> TopRow {
+fn track_row(raw: RawChartTrack) -> TopRow {
     TopRow {
-        rank: index + 1,
+        rank: 0,
         primary: raw.name,
         secondary: raw.artist.name.filter(|s| !s.is_empty()),
         playcount: parse_count(&raw.playcount),
@@ -359,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn artist_row_assigns_position_rank_and_no_secondary() {
+    fn artist_row_carries_primary_and_no_secondary() {
         let json = r##"{
             "artists": {
                 "artist": [
@@ -373,14 +380,9 @@ mod tests {
             }
         }"##;
         let raw: ChartArtistsResponse = serde_json::from_str(json).unwrap();
-        let rows: Vec<TopRow> = raw
-            .artists
-            .artist
-            .into_iter()
-            .enumerate()
-            .map(|(i, a)| artist_row(a, i))
-            .collect();
-        assert_eq!(rows[0].rank, 1);
+        let rows: Vec<TopRow> = raw.artists.artist.into_iter().map(artist_row).collect();
+        // Rank stays at the placeholder until `fetch_rows` runs sort_and_rerank.
+        assert_eq!(rows[0].rank, 0);
         assert_eq!(rows[0].primary, "Taylor Swift");
         assert!(rows[0].secondary.is_none());
         assert_eq!(rows[0].playcount, 12_400_000);
@@ -406,17 +408,46 @@ mod tests {
             }
         }"##;
         let raw: ChartTracksResponse = serde_json::from_str(json).unwrap();
-        let rows: Vec<TopRow> = raw
-            .tracks
-            .track
-            .into_iter()
-            .enumerate()
-            .map(|(i, t)| track_row(t, i))
-            .collect();
-        assert_eq!(rows[0].rank, 1);
+        let rows: Vec<TopRow> = raw.tracks.track.into_iter().map(track_row).collect();
+        assert_eq!(rows[0].rank, 0);
         assert_eq!(rows[0].primary, "Anti-Hero");
         assert_eq!(rows[0].secondary.as_deref(), Some("Taylor Swift"));
         assert_eq!(rows[0].playcount, 5_400_000);
+    }
+
+    #[tokio::test]
+    async fn fetch_rows_reorders_unsorted_api_responses_by_playcount() {
+        // Last.fm's `chart.*` endpoints rank by listener count, not playcount, so any
+        // playcount-based renderer (chart_bar, list_ranking) needs the rows sorted by the
+        // metric we surface. This locks the post-parse ordering contract.
+        //
+        // We exercise it by parsing a hand-crafted out-of-order JSON through the same
+        // `artist_row` + sort path `fetch_rows` uses, since touching the network from a
+        // unit test isn't an option.
+        let json = r##"{
+            "artists": {
+                "artist": [
+                    {"name": "Mid", "playcount": "300", "url": "https://x", "image": []},
+                    {"name": "Top", "playcount": "1000", "url": "https://x", "image": []},
+                    {"name": "Low", "playcount": "100", "url": "https://x", "image": []}
+                ]
+            }
+        }"##;
+        let raw: ChartArtistsResponse = serde_json::from_str(json).unwrap();
+        let mut rows: Vec<TopRow> = raw.artists.artist.into_iter().map(artist_row).collect();
+        rows.sort_by_key(|r| std::cmp::Reverse(r.playcount));
+        rows.iter_mut()
+            .enumerate()
+            .for_each(|(i, r)| r.rank = i + 1);
+
+        assert_eq!(rows[0].primary, "Top");
+        assert_eq!(rows[0].rank, 1);
+        assert_eq!(rows[1].primary, "Mid");
+        assert_eq!(rows[1].rank, 2);
+        assert_eq!(rows[2].primary, "Low");
+        assert_eq!(rows[2].rank, 3);
+        assert!(rows[0].playcount >= rows[1].playcount);
+        assert!(rows[1].playcount >= rows[2].playcount);
     }
 
     #[test]
