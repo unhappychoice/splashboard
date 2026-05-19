@@ -27,6 +27,7 @@ pub mod github;
 pub mod gitlab;
 pub mod hackernews;
 pub mod huggingface_trending;
+pub mod lastfm;
 pub mod linear;
 pub mod lobsters;
 pub mod nasa_apod;
@@ -354,6 +355,9 @@ impl Registry {
             r.register(f);
         }
         for f in hackernews::fetchers() {
+            r.register(f);
+        }
+        for f in lastfm::fetchers() {
             r.register(f);
         }
         for f in linear::fetchers() {
