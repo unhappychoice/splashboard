@@ -14,6 +14,7 @@ mod common;
 mod scrobbles_today;
 mod top;
 mod top_artists;
+mod top_tracks;
 
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![
         Arc::new(scrobbles_today::LastfmScrobblesToday),
         Arc::new(top_artists::LastfmTopArtists),
+        Arc::new(top_tracks::LastfmTopTracks),
     ]
 }
 
@@ -41,5 +43,6 @@ mod tests {
         }
         assert!(names.contains(&"lastfm_scrobbles_today".to_string()));
         assert!(names.contains(&"lastfm_top_artists".to_string()));
+        assert!(names.contains(&"lastfm_top_tracks".to_string()));
     }
 }
