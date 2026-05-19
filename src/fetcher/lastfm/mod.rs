@@ -12,6 +12,7 @@
 mod client;
 mod common;
 mod scrobbles_today;
+mod top;
 
 use std::sync::Arc;
 
