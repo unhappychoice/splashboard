@@ -9,6 +9,7 @@
 //! Auth: `LASTFM_API_KEY` — create one at https://www.last.fm/api/account/create and put it
 //! in `$HOME/.splashboard/secrets.toml`.
 
+mod charts;
 mod client;
 mod common;
 mod scrobbles_today;
@@ -27,6 +28,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(top_artists::LastfmTopArtists),
         Arc::new(top_tracks::LastfmTopTracks),
         Arc::new(top_albums::LastfmTopAlbums),
+        Arc::new(charts::LastfmCharts),
     ]
 }
 
@@ -47,5 +49,6 @@ mod tests {
         assert!(names.contains(&"lastfm_top_artists".to_string()));
         assert!(names.contains(&"lastfm_top_tracks".to_string()));
         assert!(names.contains(&"lastfm_top_albums".to_string()));
+        assert!(names.contains(&"lastfm_charts".to_string()));
     }
 }
