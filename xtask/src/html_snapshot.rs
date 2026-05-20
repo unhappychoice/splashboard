@@ -537,4 +537,24 @@ mod tests {
         assert_eq!(color_hex(Color::Indexed(9)), "currentColor");
         assert_eq!(color_hex(Color::Reset), "currentColor");
     }
+
+    #[test]
+    fn color_hex_maps_every_ansi16_named_color() {
+        assert_eq!(color_hex(Color::Black), "#000000");
+        assert_eq!(color_hex(Color::Red), "#aa0000");
+        assert_eq!(color_hex(Color::Green), "#00aa00");
+        assert_eq!(color_hex(Color::Yellow), "#aa5500");
+        assert_eq!(color_hex(Color::Blue), "#0000aa");
+        assert_eq!(color_hex(Color::Magenta), "#aa00aa");
+        assert_eq!(color_hex(Color::Cyan), "#00aaaa");
+        assert_eq!(color_hex(Color::Gray), "#aaaaaa");
+        assert_eq!(color_hex(Color::DarkGray), "#555555");
+        assert_eq!(color_hex(Color::LightRed), "#ff5555");
+        assert_eq!(color_hex(Color::LightGreen), "#55ff55");
+        assert_eq!(color_hex(Color::LightYellow), "#ffff55");
+        assert_eq!(color_hex(Color::LightBlue), "#5555ff");
+        assert_eq!(color_hex(Color::LightMagenta), "#ff55ff");
+        assert_eq!(color_hex(Color::LightCyan), "#55ffff");
+        assert_eq!(color_hex(Color::White), "#ffffff");
+    }
 }
