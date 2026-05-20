@@ -568,4 +568,89 @@ mod tests {
         let row0 = row_text(&buf, 0);
         assert_eq!(row0.find('a'), Some(6));
     }
+
+    #[test]
+    fn natural_height_returns_one_for_non_image_linked_body() {
+        // A renderer is only ever dispatched its accepted shape, but `natural_height` keeps a
+        // defensive fallback for a mismatched body — exercise that arm directly.
+        let registry = Registry::with_builtins();
+        let renderer = ListCardsRenderer;
+        let body = Body::Text(crate::payload::TextData {
+            value: "not a card list".into(),
+        });
+        assert_eq!(
+            renderer.natural_height(&body, &RenderOptions::default(), 40, &registry),
+            1,
+        );
+    }
+
+    #[test]
+    fn render_cards_ignores_zero_sized_area() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let data = ImageLinkedListData {
+            items: vec![item("dropped", None, None)],
+        };
+        let opts = RenderOptions::default();
+        let theme = Theme::default();
+        let mut terminal = Terminal::new(TestBackend::new(10, 3)).unwrap();
+        terminal
+            .draw(|f| {
+                // Zero width and zero height must both no-op before any cell write.
+                render_cards(
+                    f,
+                    Rect {
+                        x: 0,
+                        y: 0,
+                        width: 0,
+                        height: 3,
+                    },
+                    &data,
+                    &opts,
+                    &theme,
+                );
+                render_cards(
+                    f,
+                    Rect {
+                        x: 0,
+                        y: 0,
+                        width: 10,
+                        height: 0,
+                    },
+                    &data,
+                    &opts,
+                    &theme,
+                );
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        assert!((0..3).all(|y| row_text(buf, y).trim().is_empty()));
+    }
+
+    #[test]
+    fn card_with_thumbnail_path_runs_thumbnail_draw_path() {
+        let registry = Registry::with_builtins();
+        let spec = RenderSpec::Short("list_cards".into());
+        let card = ImageLinkedItem {
+            title: "with thumb".into(),
+            url: None,
+            thumbnail_path: Some("/nonexistent/splashboard-test-thumb.png".into()),
+            subtitle: None,
+        };
+        // A non-empty `thumbnail_path` drives `draw_card` into `draw_thumbnail`; the missing
+        // file makes the image load fail and the error is swallowed, so the render still
+        // completes and the title column stays populated.
+        let buf = render_to_buffer_with_spec(&payload(vec![card]), Some(&spec), &registry, 40, 3);
+        assert!(row_text(&buf, 0).contains("with thumb"));
+    }
+
+    #[test]
+    fn draw_text_skips_zero_dimensions() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 3));
+        let card = item("title", None, Some("subtitle"));
+        let theme = Theme::default();
+        draw_text(&mut buf, 0, 0, 0, 3, &card, &theme);
+        draw_text(&mut buf, 0, 0, 10, 0, &card, &theme);
+        assert!((0..3).all(|y| row_text(&buf, y).trim().is_empty()));
+    }
 }
