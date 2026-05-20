@@ -715,4 +715,56 @@ mod tests {
             .unwrap_err();
         assert!(format!("{err}").contains("invalid vs_currency"));
     }
+
+    #[test]
+    fn render_sync_text_block_lists_rank_prefixed_rows() {
+        let coins = vec![
+            coin("Bitcoin", "BTC", "bitcoin", 0, Some(5.2)),
+            coin("Ethereum", "ETH", "ethereum", 1, None),
+        ];
+        let Body::TextBlock(b) = render_sync(&coins, Shape::TextBlock) else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 2);
+        assert!(b.lines[0].starts_with("#1 BTC  Bitcoin"));
+        assert!(b.lines[0].contains("+5.2% 24h"));
+        assert!(b.lines[1].starts_with("#2 ETH  Ethereum"));
+        assert!(b.lines[1].contains("· trending"));
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_delegates_non_image_shape_to_render_sync() {
+        let coins = vec![coin("Bitcoin", "BTC", "bitcoin", 0, Some(5.2))];
+        let Body::Text(t) = render_for_shape(&coins, Shape::Text).await else {
+            panic!("expected text");
+        };
+        assert!(t.value.contains("#1"));
+        assert!(t.value.contains("BTC"));
+    }
+
+    /// `thumb_url = None` keeps `resolve_thumbnails` fully offline — `download_many`
+    /// short-circuits empty URLs to `None` without any network I/O.
+    #[tokio::test]
+    async fn render_for_shape_image_linked_resolves_thumbnails_offline() {
+        let mut btc = coin("Bitcoin", "BTC", "bitcoin", 0, Some(5.2));
+        btc.thumb_url = None;
+        let mut eth = coin("Ethereum", "ETH", "ethereum", 1, None);
+        eth.thumb_url = None;
+        let Body::ImageLinkedList(d) = render_for_shape(&[btc, eth], Shape::ImageLinkedList).await
+        else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(d.items.len(), 2);
+        assert_eq!(d.items[0].title, "BTC  Bitcoin");
+        assert!(d.items[0].thumbnail_path.is_none());
+        assert_eq!(
+            d.items[0].url.as_deref(),
+            Some("https://www.coingecko.com/en/coins/bitcoin")
+        );
+    }
+
+    #[test]
+    fn http_client_is_built_once_and_shared() {
+        assert!(std::ptr::eq(http(), http()));
+    }
 }
