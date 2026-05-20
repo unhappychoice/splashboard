@@ -1874,6 +1874,21 @@ mod tests {
     }
 
     #[test]
+    fn finalize_splash_shows_the_cursor_for_the_shell() {
+        // ratatui hides the cursor while drawing; `finalize_splash` must hand it back visible
+        // so the shell prompt printed after the splash gets one. `TestBackend` tracks cursor
+        // visibility in its `Debug` output, so an explicit hide followed by `finalize_splash`
+        // proves the show-cursor call is the thing that flips it back.
+        let backend = TestBackend::new(20, 3);
+        let mut terminal = make_terminal(backend, 3).unwrap();
+        terminal.hide_cursor().unwrap();
+        assert!(format!("{:?}", terminal.backend()).contains("cursor: false"));
+
+        finalize_splash(&mut terminal);
+        assert!(format!("{:?}", terminal.backend()).contains("cursor: true"));
+    }
+
+    #[test]
     fn copy_rows_copies_vertical_slice() {
         let mut src = Buffer::empty(Rect::new(0, 0, 4, 4));
         src.set_string(0, 0, "AAAA", Style::default());
