@@ -518,4 +518,45 @@ mod tests {
             8
         );
     }
+
+    #[test]
+    fn figlet_wrapped_returns_raw_input_when_font_cannot_render_it() {
+        // figlet_rs `convert` yields `None` for an empty string and for input whose every
+        // character is absent from the font (e.g. C0 control codes). `figlet_wrapped` then
+        // falls back to the raw input rather than emitting a silently-empty cell.
+        assert_eq!(figlet_wrapped("", None, 200, 200), "");
+        assert_eq!(figlet_wrapped("\u{1}\u{2}", None, 200, 200), "\u{1}\u{2}");
+    }
+
+    #[test]
+    fn blocks_width_and_pixel_name_fall_back_for_unrecognised_pixel_size() {
+        // `blocks_width` only special-cases the three sizes `parse_pixel_size` can produce;
+        // any other `tui-big-text` variant takes the conservative 4-cols-per-glyph fallback.
+        assert_eq!(blocks_width("hi", PixelSize::HalfHeight), 8);
+        assert_eq!(pixel_name(PixelSize::HalfHeight), "other");
+    }
+
+    #[test]
+    fn render_draws_nothing_for_a_non_text_body() {
+        // The renderer accepts `Text` only; `render_payload` already gates shape mismatches,
+        // but the `if let Body::Text` guard inside `render` is the defence-in-depth that must
+        // neither panic nor draw if it is ever handed another body directly.
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        let body = Body::TextBlock(TextBlockData {
+            lines: vec!["ignored".into()],
+        });
+        let registry = Registry::with_builtins();
+        let theme = Theme::default();
+        let opts = RenderOptions::default();
+        terminal
+            .draw(|f| TextAsciiRenderer.render(f, f.area(), &body, &opts, &theme, &registry))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(
+            (0..buf.area.width).all(|x| buf.cell((x, 0)).unwrap().symbol() == " "),
+            "a non-text body must leave the cell blank",
+        );
+    }
 }
