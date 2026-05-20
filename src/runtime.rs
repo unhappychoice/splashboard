@@ -2929,6 +2929,54 @@ mod tests {
     }
 
     #[test]
+    fn cache_keys_for_returns_empty_when_no_cached_widgets() {
+        let registry = Registry::with_builtins();
+        // `clock` is a realtime fetcher and `mystery_fetcher` is unregistered, so neither
+        // resolves through `get_cached` — `cache_keys_for` filters both out.
+        let widgets = vec![
+            widget("realtime", "clock"),
+            widget("unknown", "mystery_fetcher"),
+        ];
+        let keys = cache_keys_for(&widgets, &registry, &General::default(), &HashMap::new());
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn cache_keys_for_derives_one_distinct_key_per_cached_widget() {
+        let registry = Registry::with_builtins();
+        // Two cached `basic_static` widgets with different params, plus a realtime widget
+        // that must not contribute a key.
+        let widgets = vec![
+            static_widget("first", "one"),
+            static_widget("second", "two"),
+            widget("clock", "clock"),
+        ];
+        let keys = cache_keys_for(&widgets, &registry, &General::default(), &HashMap::new());
+        assert_eq!(keys.len(), 2, "realtime widget must be excluded");
+        assert_ne!(
+            keys[0], keys[1],
+            "differing params must yield distinct cache keys"
+        );
+    }
+
+    #[test]
+    fn cache_keys_for_matches_the_key_load_entries_reads() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("greeting", "Hello!")];
+        let keys = cache_keys_for(&widgets, &registry, &General::default(), &HashMap::new());
+        let expected = registry
+            .get_cached("basic_static")
+            .unwrap()
+            .cache_key(&fetch_context(
+                &widgets[0],
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
+        assert_eq!(keys, vec![expected]);
+    }
+
+    #[test]
     fn render_specs_collect_only_widgets_with_explicit_renderers() {
         let widgets = vec![
             widget_with_render("plain", "clock", None),
