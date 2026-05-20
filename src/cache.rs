@@ -570,6 +570,50 @@ mod tests {
     }
 
     #[test]
+    fn warm_from_without_disk_returns_an_empty_cache() {
+        // `watch` calls `warm_from(disk_cache.as_ref(), ...)`, and `Cache::open_default()` can
+        // hand back `None`. The `None` disk arm skips the `extend` entirely — every requested
+        // key simply starts cold and the fetch loop fills it in.
+        let mem = MemCache::warm_from(None, ["present", "absent"]);
+        assert!(<MemCache as CacheBackend>::load(&mem, "present").is_none());
+        assert_eq!(mem.generation(), 0);
+    }
+
+    #[test]
+    fn is_lock_stale_returns_false_when_file_is_missing() {
+        // A vanished lock file (another process already cleared it) must not read as stale —
+        // `metadata` fails and the `Ok(meta) else` arm bails to `false`.
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("never-created.lock");
+        assert!(!is_lock_stale(&missing, Duration::from_millis(1)));
+    }
+
+    #[test]
+    fn ensure_parent_is_ok_for_a_path_without_a_parent() {
+        // The filesystem root has no parent component, so `ensure_parent` takes the `None`
+        // arm and short-circuits to `Ok` instead of attempting a `create_dir_all`.
+        assert!(ensure_parent(Path::new("/")).is_ok());
+    }
+
+    #[test]
+    fn io_err_wraps_a_display_value_into_an_other_kind_error() {
+        let err = io_err("disk on fire");
+        assert_eq!(err.kind(), std::io::ErrorKind::Other);
+        assert!(err.to_string().contains("disk on fire"));
+    }
+
+    #[test]
+    fn try_acquire_with_returns_none_when_lock_dir_cannot_be_created() {
+        // Nest the lock dir under a regular file: `create_dir_all` fails with a
+        // non-`AlreadyExists` error, exercising the `Err(_) => None` arm of `try_acquire_with`.
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("not-a-dir");
+        std::fs::write(&file, "x").unwrap();
+        let unwritable = file.join("nested");
+        assert!(Lock::try_acquire_with(&unwritable, "k", Duration::from_secs(60)).is_none());
+    }
+
+    #[test]
     fn concurrent_stores_leave_valid_final_file() {
         use std::sync::Arc;
         use std::thread;
