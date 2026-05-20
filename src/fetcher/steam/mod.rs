@@ -12,6 +12,7 @@
 mod client;
 mod common;
 mod games;
+mod owned_games;
 mod player_summary;
 mod recently_played;
 
@@ -23,6 +24,7 @@ pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![
         Arc::new(player_summary::SteamPlayerSummary),
         Arc::new(recently_played::SteamRecentlyPlayed),
+        Arc::new(owned_games::SteamOwnedGames),
     ]
 }
 
@@ -41,5 +43,6 @@ mod tests {
         }
         assert!(names.contains(&"steam_player_summary".to_string()));
         assert!(names.contains(&"steam_recently_played".to_string()));
+        assert!(names.contains(&"steam_owned_games".to_string()));
     }
 }
