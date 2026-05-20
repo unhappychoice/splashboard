@@ -300,6 +300,7 @@ fn precipitation_bars(hourly: &[HourPoint]) -> Body {
                 // Bars are integer-valued; multiply by 10 to keep one decimal of precision
                 // (i.e. units = "tenths of mm" / "tenths of an inch").
                 value: (h.precipitation.max(0.0) * 10.0).round() as u64,
+                value_label: None,
             })
             .collect(),
     })

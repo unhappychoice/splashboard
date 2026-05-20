@@ -251,6 +251,7 @@ fn render_body(rows: &[(String, u64)], shape: Shape) -> Body {
                 .map(|(n, c)| Bar {
                     label: n.clone(),
                     value: *c,
+                    value_label: None,
                 })
                 .collect(),
         }),

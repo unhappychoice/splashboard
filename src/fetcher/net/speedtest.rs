@@ -232,10 +232,12 @@ fn body_for_shape(s: &Speedtest, shape: Shape) -> Option<Body> {
                 Bar {
                     label: "↓ download".into(),
                     value: s.download_mbps.round() as u64,
+                    value_label: None,
                 },
                 Bar {
                     label: "↑ upload".into(),
                     value: s.upload_mbps.round() as u64,
+                    value_label: None,
                 },
             ],
         }),

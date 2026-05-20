@@ -143,6 +143,7 @@ pub(super) fn bars_body(rows: &[DealRow]) -> Body {
             .map(|r| Bar {
                 label: truncate(&r.title, LABEL_MAX_CHARS),
                 value: r.discount_pct.unwrap_or(0) as u64,
+                value_label: None,
             })
             .collect(),
     })

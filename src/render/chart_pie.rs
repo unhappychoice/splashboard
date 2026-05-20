@@ -126,6 +126,7 @@ mod tests {
         Bar {
             label: label.into(),
             value,
+            value_label: None,
         }
     }
 

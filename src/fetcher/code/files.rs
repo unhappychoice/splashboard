@@ -170,7 +170,11 @@ fn bars_body(scan: Scan) -> Body {
             .top_level
             .into_iter()
             .take(TOP_LEVEL_LIMIT)
-            .map(|(label, value)| Bar { label, value })
+            .map(|(label, value)| Bar {
+                label,
+                value,
+                value_label: None,
+            })
             .collect(),
     })
 }

@@ -136,14 +136,17 @@ fn render_body(info: &ProjectInfo, shape: Shape) -> Body {
                 Bar {
                     label: "stars".into(),
                     value: info.star_count,
+                    value_label: None,
                 },
                 Bar {
                     label: "forks".into(),
                     value: info.forks_count,
+                    value_label: None,
                 },
                 Bar {
                     label: "open_issues".into(),
                     value: info.open_issues_count,
+                    value_label: None,
                 },
             ],
         }),

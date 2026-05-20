@@ -351,6 +351,7 @@ fn rank_bar(coin: &Coin) -> Bar {
     Bar {
         label: coin.display_label(),
         value: (MAX_COUNT as usize - coin.position).max(1) as u64,
+        value_label: None,
     }
 }
 

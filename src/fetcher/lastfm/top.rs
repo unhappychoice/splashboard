@@ -244,6 +244,9 @@ pub fn bars_body(rows: &[TopRow]) -> Body {
             .map(|r| Bar {
                 label: r.display_title(),
                 value: r.playcount,
+                // Carry the row's pluralised play-count ("1.5k plays") so the value column
+                // reads with units in `list_ranking` instead of the bare `u64`.
+                value_label: Some(r.count_label()),
             })
             .collect(),
     })

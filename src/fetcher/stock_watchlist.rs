@@ -492,6 +492,7 @@ fn bars_body(snapshot: &Snapshot) -> Body {
             .map(|s| Bar {
                 label: format!("{} {}", s.arrow(), s.symbol),
                 value: (s.change_pct.abs() * PCT_TO_BP).round() as u64,
+                value_label: None,
             })
             .collect(),
     })

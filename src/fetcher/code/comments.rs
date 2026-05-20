@@ -263,6 +263,7 @@ fn render_body(totals: Totals, shape: Shape, limit: usize, unit: Unit) -> Body {
                 .map(|(name, stat)| Bar {
                     label: name.clone(),
                     value: bar_value(stat, unit),
+                    value_label: None,
                 })
                 .collect(),
         }),

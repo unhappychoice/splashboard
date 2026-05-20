@@ -190,6 +190,7 @@ fn render_body(ranked: Vec<(String, u64)>, shape: Shape) -> Body {
                 .map(|(path, count)| Bar {
                     label: path,
                     value: count,
+                    value_label: None,
                 })
                 .collect(),
         }),

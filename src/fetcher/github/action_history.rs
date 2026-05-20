@@ -132,10 +132,12 @@ impl Fetcher for GithubActionHistory {
                     Bar {
                         label: "passed".into(),
                         value: 25,
+                        value_label: None,
                     },
                     Bar {
                         label: "failed".into(),
                         value: 5,
+                        value_label: None,
                     },
                 ],
             }),
@@ -221,10 +223,12 @@ fn render_body(runs: &[WorkflowRun], shape: Shape) -> Body {
                     Bar {
                         label: "passed".into(),
                         value: passed,
+                        value_label: None,
                     },
                     Bar {
                         label: "failed".into(),
                         value: failed,
+                        value_label: None,
                     },
                 ],
             })

@@ -506,6 +506,7 @@ value = "main""#,
                     bars: vec![Bar {
                         label: "todo".into(),
                         value: 3,
+                        value_label: None,
                     }],
                 }),
             ),

@@ -130,7 +130,11 @@ fn build_body(raw: BTreeMap<String, u64>, shape: Shape, limit: usize) -> Body {
         _ => Body::Bars(BarsData {
             bars: sorted
                 .into_iter()
-                .map(|(label, value)| Bar { label, value })
+                .map(|(label, value)| Bar {
+                    label,
+                    value,
+                    value_label: None,
+                })
                 .collect(),
         }),
     }

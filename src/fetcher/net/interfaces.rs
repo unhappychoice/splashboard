@@ -75,6 +75,7 @@ fn body_for_shape(ifaces: &[NetIface], shape: Shape) -> Option<Body> {
                 .map(|i| Bar {
                     label: i.name.clone(),
                     value: i.rx_bytes.saturating_add(i.tx_bytes),
+                    value_label: None,
                 })
                 .collect(),
         }),

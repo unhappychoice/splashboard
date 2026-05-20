@@ -268,6 +268,7 @@ fn render_body(totals: Totals, shape: Shape, limit: usize, unit: Unit) -> Body {
                 .map(|(lang, n)| Bar {
                     label: lang,
                     value: n,
+                    value_label: None,
                 })
                 .collect(),
         }),
