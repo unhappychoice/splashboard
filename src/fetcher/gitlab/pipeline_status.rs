@@ -242,6 +242,8 @@ fn cache_extra(ctx: &FetchContext) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     fn pipeline(status: &str) -> Pipeline {
@@ -382,5 +384,135 @@ mod tests {
         };
         let keys: Vec<&str> = e.items.iter().map(|i| i.key.as_str()).collect();
         assert_eq!(keys, vec!["status", "branch", "sha", "duration"]);
+    }
+
+    #[test]
+    fn sample_badge_and_text_carry_the_passing_headline() {
+        let Some(Body::Badge(b)) = GitlabPipelineStatus.sample_body(Shape::Badge) else {
+            panic!("expected badge");
+        };
+        assert_eq!(b.status, Status::Ok);
+        assert_eq!(b.label, "main · passing");
+        let Some(Body::Text(t)) = GitlabPipelineStatus.sample_body(Shape::Text) else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, "main · passing");
+    }
+
+    #[test]
+    fn sample_body_returns_none_for_unsupported_shape() {
+        assert!(GitlabPipelineStatus.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let fetcher = GitlabPipelineStatus;
+        assert_eq!(fetcher.name(), "gitlab_pipeline_status");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("GitLab"));
+        assert_eq!(fetcher.refresh_interval(), 60 * 5);
+    }
+
+    #[test]
+    fn option_schemas_lists_host_project_and_branch() {
+        let names: Vec<&str> = GitlabPipelineStatus
+            .option_schemas()
+            .iter()
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names, vec!["host", "project", "branch"]);
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_varies_with_project_option() {
+        let fetcher = GitlabPipelineStatus;
+        let a = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("project = \"a/b\"").unwrap()),
+            ..Default::default()
+        });
+        let b = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("project = \"a/c\"").unwrap()),
+            ..Default::default()
+        });
+        assert!(a.starts_with("gitlab_pipeline_status-"));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_key_varies_with_host_and_branch_options() {
+        let fetcher = GitlabPipelineStatus;
+        let base = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("host = \"git.one.org\"\nproject = \"a/b\"").unwrap()),
+            ..Default::default()
+        });
+        let other_host = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("host = \"git.two.org\"\nproject = \"a/b\"").unwrap()),
+            ..Default::default()
+        });
+        let with_branch = fetcher.cache_key(&FetchContext {
+            options: Some(
+                toml::from_str("host = \"git.one.org\"\nproject = \"a/b\"\nbranch = \"dev\"")
+                    .unwrap(),
+            ),
+            ..Default::default()
+        });
+        assert_ne!(base, other_host);
+        assert_ne!(base, with_branch);
+    }
+
+    #[test]
+    fn cache_key_with_no_options_falls_back_to_remote_resolution() {
+        // No `project` option: `cache_extra` walks the cwd git remote, which here is a GitHub
+        // repo, so the gitlab.com lookup yields nothing and the key still resolves cleanly.
+        let key = GitlabPipelineStatus.cache_key(&FetchContext::default());
+        assert!(key.starts_with("gitlab_pipeline_status-"));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_option_keys_before_network_request() {
+        let err = GitlabPipelineStatus
+            .fetch(&FetchContext {
+                options: Some(toml::from_str("bogus = 1").unwrap()),
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(m) if m.contains("invalid options")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_host_before_network_request() {
+        let err = GitlabPipelineStatus
+            .fetch(&FetchContext {
+                options: Some(toml::from_str("host = \"https://evil.example\"").unwrap()),
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(m) if m.contains("invalid gitlab host")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_project_before_network_request() {
+        let err = GitlabPipelineStatus
+            .fetch(&FetchContext {
+                options: Some(toml::from_str("project = \"not a path\"").unwrap()),
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(m) if m.contains("invalid project option")
+        ));
     }
 }
