@@ -1589,6 +1589,64 @@ PATH = "/tmp/ignored"
     }
 
     #[test]
+    fn run_cache_path_subcommand_resolves_dir_under_splashboard_home() {
+        let home = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        super::run_cache(super::CacheSubcommand::Path).unwrap();
+    }
+
+    #[test]
+    fn run_cache_list_subcommand_treats_missing_cache_dir_as_empty() {
+        let home = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        // `<SPLASHBOARD_HOME>/cache` does not exist yet — both modes must still succeed.
+        super::run_cache(super::CacheSubcommand::List { json: false }).unwrap();
+        super::run_cache(super::CacheSubcommand::List { json: true }).unwrap();
+    }
+
+    #[test]
+    fn run_cache_clear_subcommand_removes_seeded_entry_and_lock_files() {
+        let home = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        let cache_dir = home.path().join("cache");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("w.json"), r#"{}"#).unwrap();
+        std::fs::write(cache_dir.join("w.lock"), "").unwrap();
+
+        super::run_cache(super::CacheSubcommand::Clear {
+            widget_id: None,
+            yes: true,
+            json: true,
+        })
+        .unwrap();
+
+        assert!(!cache_dir.join("w.json").exists());
+        assert!(!cache_dir.join("w.lock").exists());
+    }
+
+    #[test]
+    fn run_cache_clear_with_widget_id_dispatches_to_clear_one() {
+        let home = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        write_project_dashboard(home.path(), "basic_static");
+        // No cache files seeded — `clear_one` still succeeds with the "no entry" diagnostic.
+        super::run_cache_clear(cache.path(), Some("x".into()), false, false).unwrap();
+    }
+
+    #[test]
     fn run_list_trusted_and_revoke_round_trip_store_entries() {
         let dir = tempfile::tempdir().unwrap();
         let _env = EnvGuard::set(vec![(
