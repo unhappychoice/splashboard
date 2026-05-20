@@ -752,4 +752,68 @@ mod tests {
         let without: SteamLevelResponse = serde_json::from_str(r#"{"response":{}}"#).unwrap();
         assert!(without.response.player_level.is_none());
     }
+
+    /// One-shot local HTTP server that answers a single request with a tiny PNG, so the avatar
+    /// download path can be exercised without reaching the real network.
+    fn serve_png_once() -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            let body: &[u8] = b"\x89PNG\r\n\x1a\navatar-bytes";
+            let header = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: image/png\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(body).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}/avatar.png"), handle)
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn image_bodies_resolve_avatar_through_thumbnail_cache() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+
+        let (url, server) = serve_png_once();
+        let snap = Snapshot {
+            avatar_url: Some(url),
+            ..sample(PersonaState::Online, None)
+        };
+
+        // `image_linked_body` performs the one network download; `image_body` then resolves the
+        // same avatar URL from the on-disk cache without a second request.
+        let Body::ImageLinkedList(list) = render_body(&snap, Shape::ImageLinkedList).await else {
+            panic!("expected image_linked_list");
+        };
+        server.join().unwrap();
+        let Body::Image(img) = render_body(&snap, Shape::Image).await else {
+            panic!("expected image");
+        };
+
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SPLASHBOARD_HOME", v) },
+            None => unsafe { std::env::remove_var("SPLASHBOARD_HOME") },
+        }
+
+        let thumb = list.items[0]
+            .thumbnail_path
+            .as_deref()
+            .expect("avatar should resolve to a cached path");
+        assert!(thumb.ends_with(".png"));
+        assert_eq!(list.items[0].title, "Robin");
+        assert_eq!(img.path, thumb);
+    }
 }
