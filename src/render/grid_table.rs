@@ -183,8 +183,10 @@ fn to_row<'a>(item: &'a Entry, aligns: [Alignment; 2], theme: &Theme) -> Row<'a>
 
 #[cfg(test)]
 mod tests {
+    use ratatui::{Terminal, backend::TestBackend};
+
     use super::*;
-    use crate::payload::{EntriesData, Entry, Payload, Status};
+    use crate::payload::{EntriesData, Entry, Payload, Status, TextData};
     use crate::render::test_utils::{line_text, render_to_buffer, render_to_buffer_with_spec};
     use crate::render::{Registry, RenderSpec};
 
@@ -236,5 +238,52 @@ mod tests {
         assert!(row.contains("stars: 1.2k"), "row: {row:?}");
         assert!(row.contains("license: MIT"), "row: {row:?}");
         assert!(row.contains('·'), "separator missing: {row:?}");
+    }
+
+    #[test]
+    fn inline_layout_honours_right_alignment() {
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W = toml::from_str(
+            r#"render = { type = "grid_table", layout = "inline", align = "right" }"#,
+        )
+        .unwrap();
+        let p = payload(vec![Entry {
+            key: "stars".into(),
+            value: Some("1.2k".into()),
+            status: None,
+        }]);
+        let buf = render_to_buffer_with_spec(&p, Some(&w.render), &registry, 60, 1);
+        let row = line_text(&buf, 0);
+        // Right-aligned: content sits flush against the right edge, leaving leading padding.
+        assert!(row.starts_with(' '), "expected leading padding: {row:?}");
+        assert!(row.ends_with("stars: 1.2k"), "row: {row:?}");
+    }
+
+    #[test]
+    fn render_ignores_a_non_entries_body() {
+        // The runtime guards shape mismatches upstream, but the renderer must also no-op
+        // gracefully (not panic) if a non-`Entries` body reaches it directly.
+        let mut terminal = Terminal::new(TestBackend::new(20, 3)).unwrap();
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        let opts = RenderOptions::default();
+        let body = Body::Text(TextData {
+            value: "ignored".into(),
+        });
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                GridTableRenderer.render(f, area, &body, &opts, &theme, &registry);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(
+            line_text(&buf, 0).trim().is_empty(),
+            "non-entries body should draw nothing",
+        );
     }
 }
