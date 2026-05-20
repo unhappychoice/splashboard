@@ -598,4 +598,66 @@ mod tests {
         assert!(row.store.is_none());
         assert_eq!(row.title, "just a title");
     }
+
+    const ALL_PLATFORMS: [Platform; 9] = [
+        Platform::All,
+        Platform::Epic,
+        Platform::Steam,
+        Platform::Amazon,
+        Platform::Gog,
+        Platform::Humble,
+        Platform::Itch,
+        Platform::Apple,
+        Platform::Google,
+    ];
+
+    #[test]
+    fn config_value_is_a_distinct_lowercase_token_for_every_platform() {
+        let tokens: Vec<&str> = ALL_PLATFORMS.iter().map(|p| p.config_value()).collect();
+        assert_eq!(
+            tokens,
+            [
+                "all", "epic", "steam", "amazon", "gog", "humble", "itch", "apple", "google"
+            ]
+        );
+    }
+
+    #[test]
+    fn url_slug_blanks_the_aggregate_feed_and_codes_every_storefront() {
+        assert_eq!(Platform::All.url_slug(), "");
+        let coded: Vec<&str> = ALL_PLATFORMS.iter().skip(1).map(|p| p.url_slug()).collect();
+        assert_eq!(
+            coded,
+            [
+                "epic", "steam", "amazon", "gog", "humble", "itch", "apple", "google"
+            ]
+        );
+    }
+
+    #[test]
+    fn feed_url_for_every_non_aggregate_platform_embeds_its_slug() {
+        for platform in ALL_PLATFORMS.iter().skip(1).copied() {
+            let url = platform.feed_url(Kind::Game);
+            assert_eq!(
+                url,
+                format!("{FEED_BASE}/lootscraper_{}_game.xml", platform.url_slug())
+            );
+        }
+    }
+
+    #[test]
+    fn parse_platform_accepts_every_known_storefront() {
+        for platform in ALL_PLATFORMS {
+            let parsed = parse_platform(Some(platform.config_value())).unwrap();
+            assert_eq!(parsed, platform);
+        }
+        // The matcher lowercases first, so a mixed-case storefront still resolves.
+        assert_eq!(parse_platform(Some("GoG")).unwrap(), Platform::Gog);
+    }
+
+    #[test]
+    fn parse_kind_accepts_the_explicit_game_keyword() {
+        assert_eq!(parse_kind(Some("game")).unwrap(), Kind::Game);
+        assert_eq!(parse_kind(Some(" GAME ")).unwrap(), Kind::Game);
+    }
 }
