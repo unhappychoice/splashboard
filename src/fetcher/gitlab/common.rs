@@ -313,6 +313,42 @@ mod tests {
     }
 
     #[test]
+    fn payload_wraps_body_and_leaves_all_metadata_unset() {
+        let p = payload(Body::Text(crate::payload::TextData {
+            value: "hello".into(),
+        }));
+        assert!(p.icon.is_none());
+        assert!(p.status.is_none());
+        assert!(p.format.is_none());
+        assert!(matches!(p.body, Body::Text(t) if t.value == "hello"));
+    }
+
+    #[test]
+    fn project_from_url_rejects_userinfo_that_contains_a_slash() {
+        // A userinfo chunk with a slash can't be a real `user(:token)?` credential pair; the
+        // https-userinfo arm bails out instead of mistaking the embedded slash for the start
+        // of the project path.
+        assert!(project_from_url("https://a/b@gitlab.com/group/proj", "gitlab.com").is_none());
+    }
+
+    #[test]
+    fn resolve_project_falls_back_to_the_cwd_git_remote() {
+        // With no explicit `project`, resolution walks the cwd's git remote. The suite runs
+        // inside splashboard's own repo, whose `origin` lives on github.com — passing that
+        // host lets the generic prefix parser recover `unhappychoice/splashboard` from the
+        // remote URL, exercising the `Some(path) => Ok(path)` arm.
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let resolved = resolve_project(None, "github.com");
+        std::env::set_current_dir(previous).unwrap();
+        let path = resolved.expect("cwd repo remote should resolve a project");
+        assert_eq!(path.as_str(), "unhappychoice/splashboard");
+    }
+
+    #[test]
     fn parse_options_surfaces_serde_failures() {
         #[derive(Debug, Default, serde::Deserialize)]
         #[serde(deny_unknown_fields)]
