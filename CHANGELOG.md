@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-05-20
+
+### ✨ Features
+
+- feat(fetcher): add steam_charts ([81f14d7](https://github.com/unhappychoice/splashboard/commit/81f14d7))
+- feat(fetcher): add steam_owned_games ([503f2c0](https://github.com/unhappychoice/splashboard/commit/503f2c0))
+- feat(fetcher): add steam_recently_played ([710fc19](https://github.com/unhappychoice/splashboard/commit/710fc19))
+- feat(fetcher): add steam_player_summary ([a53592b](https://github.com/unhappychoice/splashboard/commit/a53592b))
+- feat(render): add Bar.value_label for fetcher-formatted value columns ([d743d4c](https://github.com/unhappychoice/splashboard/commit/d743d4c))
+- feat(fetcher): add lastfm_charts ([fe189e4](https://github.com/unhappychoice/splashboard/commit/fe189e4))
+- feat(fetcher): add lastfm_top_albums ([ecb519b](https://github.com/unhappychoice/splashboard/commit/ecb519b))
+- feat(fetcher): add lastfm_top_tracks ([407e13b](https://github.com/unhappychoice/splashboard/commit/407e13b))
+- feat(fetcher): add lastfm_top_artists ([9d8dd2b](https://github.com/unhappychoice/splashboard/commit/9d8dd2b))
+- feat(fetcher): scaffold lastfm/top shared rendering for the top_* siblings ([db5bacc](https://github.com/unhappychoice/splashboard/commit/db5bacc))
+- feat(fetcher): add lastfm_scrobbles_today + lastfm family scaffold ([07cfad2](https://github.com/unhappychoice/splashboard/commit/07cfad2))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher/lastfm): sort lastfm_charts rows by playcount desc ([5f9f350](https://github.com/unhappychoice/splashboard/commit/5f9f350))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.6.0 ([92d4722](https://github.com/unhappychoice/splashboard/commit/92d4722))
+- chore(fetcher): drop dead helpers reference check in lastfm_top_artists ([0e1611e](https://github.com/unhappychoice/splashboard/commit/0e1611e))
+- chore: update flake.nix hashes for v2.5.0 ([04d8ce5](https://github.com/unhappychoice/splashboard/commit/04d8ce5))
+
+
 ## [2.5.0] - 2026-05-18
 
 ### ✨ Features
@@ -19,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.5.0 ([98365f0](https://github.com/unhappychoice/splashboard/commit/98365f0))
+- chore: bump version to v2.5.0 ([29abd3a](https://github.com/unhappychoice/splashboard/commit/29abd3a))
 - docs: document Nushell in manual rc-edit examples ([280fa76](https://github.com/unhappychoice/splashboard/commit/280fa76))
 - test(install/rc): verify Nushell inline-snippet embedding ([9a91371](https://github.com/unhappychoice/splashboard/commit/9a91371))
 - test(shell): cover Nushell across the shell module test suite ([ec6987b](https://github.com/unhappychoice/splashboard/commit/ec6987b))
@@ -728,34 +755,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(fetcher): add project_todo_in_code ([59b8fe7](https://github.com/unhappychoice/splashboard/commit/59b8fe7))
 - feat(render): add tone option to gauge_battery ([1c85741](https://github.com/unhappychoice/splashboard/commit/1c85741))
 - feat(render): add gauge_battery renderer for Ratio shape ([26ff39c](https://github.com/unhappychoice/splashboard/commit/26ff39c))
-
-### 🐛 Bug Fixes
-
-- fix(render): blit grid_calendar through origin-anchored buffer ([dd0cbbb](https://github.com/unhappychoice/splashboard/commit/dd0cbbb))
-- fix(fetcher): mix widget options into project_todo_in_code cache key ([7805165](https://github.com/unhappychoice/splashboard/commit/7805165))
-
-### 📝 Other Changes
-
-- chore: bump version to v0.3.0 ([baed209](https://github.com/unhappychoice/splashboard/commit/baed209))
-- chore(skill): require Phase 0 candidate selection in add-fetcher-renderer ([7c6751c](https://github.com/unhappychoice/splashboard/commit/7c6751c))
-- refactor(fetcher): rename project_todo_in_code to code_todos and exclude vendored dirs ([bdcf1d1](https://github.com/unhappychoice/splashboard/commit/bdcf1d1))
-- refactor(project_todo_in_code): require trailing colon on markers ([352ba04](https://github.com/unhappychoice/splashboard/commit/352ba04))
-- chore(skill): add Claude Code skill for fetcher / renderer implementation ([8f43457](https://github.com/unhappychoice/splashboard/commit/8f43457))
-- docs(readme): center hero image + badges, drop redundant title text ([c11c1d3](https://github.com/unhappychoice/splashboard/commit/c11c1d3))
-- Update README.md ([b9717db](https://github.com/unhappychoice/splashboard/commit/b9717db))
-- Reorganize installation instructions in README ([cb0e880](https://github.com/unhappychoice/splashboard/commit/cb0e880))
-- Update README with installation command ([b8f4a51](https://github.com/unhappychoice/splashboard/commit/b8f4a51))
-- docs: mirror README install restructure on docs-site ([f02d902](https://github.com/unhappychoice/splashboard/commit/f02d902))
-- docs(readme): promote install.sh as primary, fold the rest into details ([2a0b94f](https://github.com/unhappychoice/splashboard/commit/2a0b94f))
-- ops: add install.sh for curl-pipe-bash install ([9f4fac5](https://github.com/unhappychoice/splashboard/commit/9f4fac5))
-- docs(site): move docs to splashboard.unhappychoice.com ([852d12e](https://github.com/unhappychoice/splashboard/commit/852d12e))
-- chore: update flake.nix hashes for v0.2.0 ([7041339](https://github.com/unhappychoice/splashboard/commit/7041339))
-
-
-## [0.2.0] - 2026-04-24
-
-### ✨ Features
-
 - feat(config): layout spacers via optional widget + row gap sugar ([2e601b4](https://github.com/unhappychoice/splashboard/commit/2e601b4))
 - feat(templates): add recent commits to project_minimal ([aa4e80d](https://github.com/unhappychoice/splashboard/commit/aa4e80d))
 - feat(templates): ship home_minimal / project_splash / project_minimal ([fa1c880](https://github.com/unhappychoice/splashboard/commit/fa1c880))
@@ -841,6 +840,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(render): blit grid_calendar through origin-anchored buffer ([dd0cbbb](https://github.com/unhappychoice/splashboard/commit/dd0cbbb))
+- fix(fetcher): mix widget options into project_todo_in_code cache key ([7805165](https://github.com/unhappychoice/splashboard/commit/7805165))
 - fix(runtime): exit wait loop once loading spinners clear ([5c1222f](https://github.com/unhappychoice/splashboard/commit/5c1222f))
 - fix(templates): project_minimal renders 3 commits as 3 rows ([0e1fa89](https://github.com/unhappychoice/splashboard/commit/0e1fa89))
 - fix(github): auto-detect login from token + size home_github avatar row ([8da2fbc](https://github.com/unhappychoice/splashboard/commit/8da2fbc))
@@ -882,6 +883,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v0.3.0 ([baed209](https://github.com/unhappychoice/splashboard/commit/baed209))
+- chore(skill): require Phase 0 candidate selection in add-fetcher-renderer ([7c6751c](https://github.com/unhappychoice/splashboard/commit/7c6751c))
+- refactor(fetcher): rename project_todo_in_code to code_todos and exclude vendored dirs ([bdcf1d1](https://github.com/unhappychoice/splashboard/commit/bdcf1d1))
+- refactor(project_todo_in_code): require trailing colon on markers ([352ba04](https://github.com/unhappychoice/splashboard/commit/352ba04))
+- chore(skill): add Claude Code skill for fetcher / renderer implementation ([8f43457](https://github.com/unhappychoice/splashboard/commit/8f43457))
+- docs(readme): center hero image + badges, drop redundant title text ([c11c1d3](https://github.com/unhappychoice/splashboard/commit/c11c1d3))
+- Update README.md ([b9717db](https://github.com/unhappychoice/splashboard/commit/b9717db))
+- Reorganize installation instructions in README ([cb0e880](https://github.com/unhappychoice/splashboard/commit/cb0e880))
+- Update README with installation command ([b8f4a51](https://github.com/unhappychoice/splashboard/commit/b8f4a51))
+- docs: mirror README install restructure on docs-site ([f02d902](https://github.com/unhappychoice/splashboard/commit/f02d902))
+- docs(readme): promote install.sh as primary, fold the rest into details ([2a0b94f](https://github.com/unhappychoice/splashboard/commit/2a0b94f))
+- ops: add install.sh for curl-pipe-bash install ([9f4fac5](https://github.com/unhappychoice/splashboard/commit/9f4fac5))
+- docs(site): move docs to splashboard.unhappychoice.com ([852d12e](https://github.com/unhappychoice/splashboard/commit/852d12e))
+- chore: update flake.nix hashes for v0.2.0 ([7041339](https://github.com/unhappychoice/splashboard/commit/7041339))
 - chore: bump version to v0.2.0 ([fb6a15e](https://github.com/unhappychoice/splashboard/commit/fb6a15e))
 - ci(release): build Linux binaries with cargo-zigbuild against glibc 2.17 ([52eb2a9](https://github.com/unhappychoice/splashboard/commit/52eb2a9))
 - ops: add release automation (cargo-release / GH Releases / crates.io / brew tap / Nix) ([8989900](https://github.com/unhappychoice/splashboard/commit/8989900))
