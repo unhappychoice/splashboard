@@ -290,6 +290,7 @@ fn bars_body(scan: Scan, limit: usize) -> Body {
             .map(|(path, n)| Bar {
                 label: path,
                 value: n,
+                value_label: None,
             })
             .collect(),
     })
@@ -516,14 +517,17 @@ mod tests {
                     Bar {
                         label: "src/render/mod.rs".into(),
                         value: 1234,
+                        value_label: None
                     },
                     Bar {
                         label: "src/fetcher/git/mod.rs".into(),
                         value: 812,
+                        value_label: None
                     },
                     Bar {
                         label: "src/payload.rs".into(),
                         value: 640,
+                        value_label: None
                     },
                 ],
             })

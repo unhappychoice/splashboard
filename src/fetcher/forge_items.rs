@@ -179,6 +179,7 @@ fn render_bars(rows: &[ForgeRow]) -> Body {
             .map(|r| Bar {
                 label: r.label.clone(),
                 value: r.activity_count,
+                value_label: None,
             })
             .collect(),
     })

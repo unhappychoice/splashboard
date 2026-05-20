@@ -171,6 +171,7 @@ fn render_body(ranked: Vec<(String, u64)>, shape: Shape) -> Body {
                 .map(|(name, count)| Bar {
                     label: name,
                     value: count,
+                    value_label: None,
                 })
                 .collect(),
         }),
@@ -281,10 +282,12 @@ mod tests {
                     Bar {
                         label: "alice".into(),
                         value: 3,
+                        value_label: None
                     },
                     Bar {
                         label: "bob".into(),
                         value: 1,
+                        value_label: None
                     },
                 ],
             })

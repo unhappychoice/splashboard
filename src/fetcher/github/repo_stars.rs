@@ -121,18 +121,22 @@ fn render_body(info: &RepoInfo, shape: Shape) -> Body {
                 Bar {
                     label: "stars".into(),
                     value: info.stargazers_count,
+                    value_label: None,
                 },
                 Bar {
                     label: "forks".into(),
                     value: info.forks_count,
+                    value_label: None,
                 },
                 Bar {
                     label: "watchers".into(),
                     value: info.subscribers_count,
+                    value_label: None,
                 },
                 Bar {
                     label: "open_issues".into(),
                     value: info.open_issues_count,
+                    value_label: None,
                 },
             ],
         }),

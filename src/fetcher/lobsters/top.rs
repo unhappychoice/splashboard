@@ -159,14 +159,17 @@ impl Fetcher for LobstersTopFetcher {
                     Bar {
                         label: "Show: terminal dashboard …".into(),
                         value: 75,
+                        value_label: None,
                     },
                     Bar {
                         label: "Fake Notepad++ for Mac".into(),
                         value: 41,
+                        value_label: None,
                     },
                     Bar {
                         label: "This Wasm interpreter fits …".into(),
                         value: 29,
+                        value_label: None,
                     },
                 ],
             }),
@@ -292,6 +295,7 @@ fn render_body(items: &[Item], shape: Shape) -> Body {
                 .map(|it| Bar {
                     label: title_or_placeholder(it),
                     value: it.score.unwrap_or(0).max(0) as u64,
+                    value_label: None,
                 })
                 .collect(),
         }),
@@ -554,6 +558,7 @@ mod tests {
                 bars: vec![Bar {
                     label: "flagged".into(),
                     value: 0,
+                    value_label: None
                 }],
             })
         );

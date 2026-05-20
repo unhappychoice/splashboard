@@ -446,6 +446,7 @@ fn bars(forecast: &Forecast) -> Body {
             .map(|d| Bar {
                 label: weekday_short(d.date.weekday()).into(),
                 value: u64::from(d.precip_probability),
+                value_label: None,
             })
             .collect(),
     })

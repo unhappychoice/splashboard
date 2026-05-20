@@ -295,6 +295,7 @@ fn render_sync(articles: &[Article], shape: Shape) -> Body {
                 .map(|a| Bar {
                     label: a.title_display.clone(),
                     value: a.views,
+                    value_label: None,
                 })
                 .collect(),
         }),

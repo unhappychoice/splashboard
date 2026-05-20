@@ -409,6 +409,7 @@ fn disk_bars(disks: &Disks) -> Vec<Bar> {
         .map(|d| Bar {
             label: d.mount_point().to_string_lossy().into_owned(),
             value: d.total_space().saturating_sub(d.available_space()),
+            value_label: None,
         })
         .collect()
 }

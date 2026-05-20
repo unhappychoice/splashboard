@@ -382,6 +382,7 @@ fn likes_bar(entry: &Entrt) -> Bar {
     Bar {
         label: entry.id.clone(),
         value: entry.likes,
+        value_label: None,
     }
 }
 

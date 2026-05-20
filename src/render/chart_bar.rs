@@ -171,14 +171,17 @@ mod tests {
             Bar {
                 label: "a".into(),
                 value: 3,
+                value_label: None,
             },
             Bar {
                 label: "b".into(),
                 value: 7,
+                value_label: None,
             },
             Bar {
                 label: "c".into(),
                 value: 5,
+                value_label: None,
             },
         ];
         let _ = render_to_buffer(&payload(bars), 30, 10);
@@ -195,18 +198,22 @@ mod tests {
             Bar {
                 label: "a".into(),
                 value: 3,
+                value_label: None,
             },
             Bar {
                 label: "b".into(),
                 value: 9,
+                value_label: None,
             },
             Bar {
                 label: "c".into(),
                 value: 1,
+                value_label: None,
             },
             Bar {
                 label: "d".into(),
                 value: 5,
+                value_label: None,
             },
         ];
         let out = capped_bars(&BarsData { bars }, Some(2));
@@ -221,10 +228,12 @@ mod tests {
             Bar {
                 label: "a".into(),
                 value: 1,
+                value_label: None,
             },
             Bar {
                 label: "b".into(),
                 value: 9,
+                value_label: None,
             },
         ];
         let out = capped_bars(&BarsData { bars }, None);

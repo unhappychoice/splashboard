@@ -41,10 +41,10 @@ const OPTION_SCHEMAS: &[OptionSchema] = &[
 const MEDALS: [&str; 3] = ["🥇", "🥈", "🥉"];
 const COLUMN_GAP: &str = "  ";
 
-/// Top-N ranking for the `Bars` shape. Sorts descending, prints `<rank> <label>  <value>` rows
-/// with the rank-prefix and value columns aligned across rows. Sibling to `chart_bar` — same
-/// shape, text-first treatment instead of a glyph chart. Use `style = "medal"` to highlight
-/// the podium with 🥇/🥈/🥉.
+/// Rank-prefixed list view for the `Bars` shape. Preserves the fetcher's bar order — sort is
+/// the fetcher's responsibility, not the renderer's, so that fetchers emitting recency-sorted
+/// (`steam_owned_games sort = "recent"`), alphabetical, or any non-value-desc order display as
+/// intended. Use `style = "medal"` to highlight the top three with 🥇/🥈/🥉.
 pub struct ListRankingRenderer;
 
 impl Renderer for ListRankingRenderer {
@@ -52,7 +52,7 @@ impl Renderer for ListRankingRenderer {
         "list_ranking"
     }
     fn description(&self) -> &'static str {
-        "Top-N table sorted high-to-low: rank prefix (`1.` / `2.` numbers, 🥇/🥈/🥉 medals, or none), label, and right-aligned value column. The text-first sibling of `chart_bar` — pick this when the values matter more than their relative bar lengths."
+        "Rank-prefixed table preserving the fetcher's bar order: rank prefix (`1.` / `2.` numbers, 🥇/🥈/🥉 medals, or none), label, and right-aligned value column. The text-first sibling of `chart_bar` — pick this when the values matter more than their relative bar lengths. Sort is the fetcher's responsibility; `max_items` truncates from the head."
     }
     fn accepts(&self) -> &[Shape] {
         &[Shape::Bars]
@@ -88,7 +88,7 @@ fn render_ranking(
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let rows = sorted_rows(data, opts.max_items);
+    let rows = capped_rows(data, opts.max_items);
     let style = opts.style.as_deref().unwrap_or("number");
     let prefixes: Vec<String> = (0..rows.len()).map(|i| rank_prefix(i, style)).collect();
     let widths = column_widths(&prefixes, &rows);
@@ -111,7 +111,7 @@ fn render_ranking(
     let lines: Vec<Line> = rows
         .iter()
         .zip(prefixes.iter())
-        .map(|((label, value), prefix)| compose_line(prefix, label, *value, effective, theme))
+        .map(|(row, prefix)| compose_line(prefix, &row.label, &row.display, effective, theme))
         .collect();
     frame.render_widget(
         Paragraph::new(lines).style(Style::default().fg(theme.text)),
@@ -119,13 +119,25 @@ fn render_ranking(
     );
 }
 
-fn sorted_rows(data: &BarsData, cap: Option<usize>) -> Vec<(String, u64)> {
-    let mut rows: Vec<(String, u64)> = data
+/// Row view. `display` is what the right column actually prints — `Bar.value_label` when
+/// present, otherwise the numeric value stringified.
+struct Row {
+    label: String,
+    display: String,
+}
+
+/// Build rows in the fetcher's bar order. `max_items` truncates from the head — sort is the
+/// fetcher's job (lastfm's `chart.getTop*` is server-ranked, steam's `_owned_games` sorts by
+/// playtime or recency per its `sort` option, basic_bars carries the user-authored order).
+fn capped_rows(data: &BarsData, cap: Option<usize>) -> Vec<Row> {
+    let mut rows: Vec<Row> = data
         .bars
         .iter()
-        .map(|b| (b.label.clone(), b.value))
+        .map(|b| Row {
+            label: b.label.clone(),
+            display: b.value_label.clone().unwrap_or_else(|| b.value.to_string()),
+        })
         .collect();
-    rows.sort_by_key(|r| std::cmp::Reverse(r.1));
     if let Some(n) = cap {
         rows.truncate(n);
     }
@@ -157,17 +169,17 @@ impl Widths {
     }
 }
 
-fn column_widths(prefixes: &[String], rows: &[(String, u64)]) -> Widths {
+fn column_widths(prefixes: &[String], rows: &[Row]) -> Widths {
     Widths {
         prefix: prefixes.iter().map(|p| display_width(p)).max().unwrap_or(0),
         label: rows
             .iter()
-            .map(|(l, _)| l.chars().count())
+            .map(|r| r.label.chars().count())
             .max()
             .unwrap_or(0),
         value: rows
             .iter()
-            .map(|(_, v)| v.to_string().chars().count())
+            .map(|r| r.display.chars().count())
             .max()
             .unwrap_or(0),
     }
@@ -176,7 +188,7 @@ fn column_widths(prefixes: &[String], rows: &[(String, u64)]) -> Widths {
 fn compose_line<'a>(
     prefix: &str,
     label: &str,
-    value: u64,
+    value: &str,
     widths: Widths,
     theme: &Theme,
 ) -> Line<'a> {
@@ -190,7 +202,7 @@ fn compose_line<'a>(
     }
     spans.push(Span::raw(fit_label(label, widths.label)));
     spans.push(Span::raw(COLUMN_GAP));
-    spans.push(Span::raw(pad_left(&value.to_string(), widths.value)));
+    spans.push(Span::raw(pad_left(value, widths.value)));
     Line::from(spans)
 }
 
@@ -277,6 +289,7 @@ mod tests {
                     .map(|(l, v)| Bar {
                         label: (*l).into(),
                         value: *v,
+                        value_label: None,
                     })
                     .collect(),
             }),
@@ -289,7 +302,10 @@ mod tests {
     }
 
     #[test]
-    fn renders_descending_with_default_numeric_prefix() {
+    fn preserves_fetcher_bar_order_with_numeric_prefix() {
+        // The fetcher owns sort order — renderer just rank-prefixes the bars as they arrive.
+        // A recency-sorted owned_games list, a server-ranked lastfm chart, and a user-authored
+        // basic_bars list all show in their respective intended order.
         let p = payload(&[("alice", 3), ("bob", 7), ("carol", 5)]);
         let spec = RenderSpec::Short("list_ranking".into());
         let buf = render_with(&spec, &p, 30, 3);
@@ -297,32 +313,35 @@ mod tests {
         let row1 = line_text(&buf, 1);
         let row2 = line_text(&buf, 2);
         assert!(
-            row0.contains("1.") && row0.contains("bob"),
+            row0.contains("1.") && row0.contains("alice"),
             "row0: {row0:?}"
         );
         assert!(
-            row1.contains("2.") && row1.contains("carol"),
+            row1.contains("2.") && row1.contains("bob"),
             "row1: {row1:?}"
         );
         assert!(
-            row2.contains("3.") && row2.contains("alice"),
+            row2.contains("3.") && row2.contains("carol"),
             "row2: {row2:?}"
         );
     }
 
     #[test]
-    fn max_items_caps_top_n() {
+    fn max_items_truncates_from_the_head_preserving_order() {
         #[derive(serde::Deserialize)]
         struct W {
             render: RenderSpec,
         }
         let w: W = toml::from_str(r#"render = { type = "list_ranking", max_items = 2 }"#).unwrap();
+        // With auto-sort gone, max_items keeps the first 2 in the fetcher's order — not the
+        // numerically top 2. A fetcher that wants "top N by value" sorts itself.
         let p = payload(&[("a", 1), ("b", 9), ("c", 5), ("d", 7)]);
         let buf = render_with(&w.render, &p, 30, 4);
         let joined: String = (0..4).map(|y| line_text(&buf, y)).collect();
-        assert!(joined.contains("b"), "missing top: {joined:?}");
-        assert!(joined.contains("d"), "missing second: {joined:?}");
+        assert!(joined.contains("a"), "missing first: {joined:?}");
+        assert!(joined.contains("b"), "missing second: {joined:?}");
         assert!(!joined.contains("c"), "third should be capped: {joined:?}");
+        assert!(!joined.contains("d"), "fourth should be capped: {joined:?}");
     }
 
     #[test]
@@ -345,6 +364,61 @@ mod tests {
     }
 
     #[test]
+    fn value_label_overrides_numeric_value_when_present() {
+        // Fetchers pre-format a unit ("80h", "2024-07-03") in `Bar.value_label`. The right
+        // column prints that text instead of stringifying `value`, so a recent-launches widget
+        // shows dates rather than unix timestamps and a steam top-games widget shows hours
+        // rather than raw minutes.
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Bars(BarsData {
+                bars: vec![
+                    Bar {
+                        label: "Game A".into(),
+                        value: 4830,
+                        value_label: Some("80h".into()),
+                    },
+                    Bar {
+                        label: "Game B".into(),
+                        value: 12_000,
+                        value_label: Some("200h".into()),
+                    },
+                ],
+            }),
+        };
+        let spec = RenderSpec::Short("list_ranking".into());
+        let buf = render_with(&spec, &payload, 30, 2);
+        let row0 = line_text(&buf, 0);
+        let row1 = line_text(&buf, 1);
+        assert!(row0.contains("Game A") && row0.contains("80h"), "{row0:?}");
+        assert!(row1.contains("Game B") && row1.contains("200h"), "{row1:?}");
+        assert!(!row0.contains("4830"), "raw value leaked: {row0:?}");
+        assert!(!row1.contains("12000"), "raw value leaked: {row1:?}");
+    }
+
+    #[test]
+    fn missing_value_label_falls_back_to_numeric_value() {
+        let payload = Payload {
+            icon: None,
+            status: None,
+            format: None,
+            body: Body::Bars(BarsData {
+                bars: vec![Bar {
+                    label: "alpha".into(),
+                    value: 42,
+                    value_label: None,
+                }],
+            }),
+        };
+        let spec = RenderSpec::Short("list_ranking".into());
+        let buf = render_with(&spec, &payload, 30, 1);
+        let row0 = line_text(&buf, 0);
+        assert!(row0.contains("42"), "{row0:?}");
+    }
+
+    #[test]
     fn style_none_omits_prefix() {
         #[derive(serde::Deserialize)]
         struct W {
@@ -355,7 +429,8 @@ mod tests {
         let buf = render_with(&w.render, &p, 30, 2);
         let r0 = line_text(&buf, 0);
         assert!(!r0.contains("1."), "row0: {r0:?}");
-        assert!(r0.trim_start().starts_with("beta"), "row0: {r0:?}");
+        // First in the fetcher's order (alpha) leads the rendered list now that auto-sort is gone.
+        assert!(r0.trim_start().starts_with("alpha"), "row0: {r0:?}");
     }
 
     #[test]

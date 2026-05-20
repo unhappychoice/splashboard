@@ -140,6 +140,7 @@ fn score_bar(post: &Post) -> Bar {
     Bar {
         label: post_title(post),
         value: post.score.unwrap_or(0).max(0) as u64,
+        value_label: None,
     }
 }
 

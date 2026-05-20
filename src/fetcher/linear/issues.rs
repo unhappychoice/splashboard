@@ -603,7 +603,11 @@ fn tally(views: &[IssueView], extract: &dyn Fn(&IssueView) -> String) -> Vec<Bar
     }
     let mut bars: Vec<Bar> = counts
         .into_iter()
-        .map(|(label, value)| Bar { label, value })
+        .map(|(label, value)| Bar {
+            label,
+            value,
+            value_label: None,
+        })
         .collect();
     bars.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.label.cmp(&b.label)));
     bars

@@ -217,6 +217,13 @@ pub struct BarsData {
 pub struct Bar {
     pub label: String,
     pub value: u64,
+    /// Optional pre-formatted right-column text shown by text-first renderers (`list_ranking`).
+    /// Visual renderers (`chart_bar`, `chart_pie`) ignore this — they only consume `value`. Let
+    /// fetchers carry a unit (`"80h"`, `"1.5M peak"`, `"2024-07-03"`) so the value column reads
+    /// as the fetcher intended rather than a raw `u64`. Omitted = renderers fall back to the
+    /// numeric `value` printed as-is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -507,10 +514,12 @@ mod tests {
                 Bar {
                     label: "a".into(),
                     value: 3,
+                    value_label: None,
                 },
                 Bar {
                     label: "b".into(),
                     value: 5,
+                    value_label: None,
                 },
             ],
         }));

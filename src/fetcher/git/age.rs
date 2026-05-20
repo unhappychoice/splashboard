@@ -341,14 +341,17 @@ fn bars_body(age: &Age) -> Body {
             Bar {
                 label: "years".into(),
                 value: age.years as u64,
+                value_label: None,
             },
             Bar {
                 label: "months".into(),
                 value: age.months as u64,
+                value_label: None,
             },
             Bar {
                 label: "days".into(),
                 value: age.days as u64,
+                value_label: None,
             },
         ],
     })

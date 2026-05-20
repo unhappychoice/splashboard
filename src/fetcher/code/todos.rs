@@ -318,7 +318,11 @@ fn render_body(scan: ScanResult, shape: Shape, limit: usize) -> Body {
                 .file_counts
                 .into_iter()
                 .take(limit)
-                .map(|(p, c)| Bar { label: p, value: c })
+                .map(|(p, c)| Bar {
+                    label: p,
+                    value: c,
+                    value_label: None,
+                })
                 .collect(),
         }),
         _ => text_summary(scan.total, scan.files_with_hits),
@@ -715,10 +719,12 @@ mod tests {
                     Bar {
                         label: "b.rs".into(),
                         value: 2,
+                        value_label: None
                     },
                     Bar {
                         label: "a.rs".into(),
                         value: 1,
+                        value_label: None
                     },
                 ]
             ),

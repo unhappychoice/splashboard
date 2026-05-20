@@ -145,6 +145,7 @@ pub fn bars(bs: &[(&str, u64)]) -> Body {
             .map(|(l, v)| Bar {
                 label: (*l).into(),
                 value: *v,
+                value_label: None,
             })
             .collect(),
     })

@@ -59,10 +59,12 @@ impl RealtimeFetcher for BasicBars {
                     Bar {
                         label: "alice".into(),
                         value: 12,
+                        value_label: None,
                     },
                     Bar {
                         label: "bob".into(),
                         value: 7,
+                        value_label: None,
                     },
                 ],
             })
@@ -80,6 +82,7 @@ impl RealtimeFetcher for BasicBars {
                 .map(|b| Bar {
                     label: b.label,
                     value: b.value,
+                    value_label: None,
                 })
                 .collect(),
         }))
