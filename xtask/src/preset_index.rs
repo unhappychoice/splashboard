@@ -55,17 +55,21 @@ pub fn run(out_dir: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn run_writes_an_entry_for_every_template() {
+    fn unique_temp_dir(tag: &str) -> std::path::PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "splashboard-preset-index-{unique}-{}",
+        std::env::temp_dir().join(format!(
+            "splashboard-preset-index-{tag}-{unique}-{}",
             std::process::id()
-        ));
+        ))
+    }
+
+    #[test]
+    fn run_writes_an_entry_for_every_template() {
+        let dir = unique_temp_dir("write");
 
         run(&dir).unwrap();
         let body = fs::read_to_string(dir.join("_presets.json")).unwrap();
@@ -76,6 +80,36 @@ mod tests {
             assert_eq!(entry["slug"], template.name);
             assert_eq!(entry["description"], template.description);
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_surfaces_create_dir_failure() {
+        // A regular file where a directory component is expected — `create_dir_all` on a
+        // child path fails, and `run` should surface it with the `create` context.
+        let blocker = unique_temp_dir("create-fail");
+        fs::write(&blocker, "not a directory").unwrap();
+
+        let err = run(&blocker.join("child")).unwrap_err();
+        assert!(
+            err.to_string().contains("create"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_file(&blocker);
+    }
+
+    #[test]
+    fn run_surfaces_write_failure() {
+        // Pre-create the index path as a directory so `fs::write` cannot replace it — `run`
+        // should surface the failure with the `write` context.
+        let dir = unique_temp_dir("write-fail");
+        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir(dir.join("_presets.json")).unwrap();
+
+        let err = run(&dir).unwrap_err();
+        assert!(err.to_string().contains("write"), "unexpected error: {err}");
+
         let _ = fs::remove_dir_all(&dir);
     }
 }
