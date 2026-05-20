@@ -236,6 +236,23 @@ mod tests {
         }
     }
 
+    fn custom_row(
+        sale_price: Option<&str>,
+        original_price: Option<&str>,
+        discount_pct: Option<u32>,
+    ) -> DealRow {
+        DealRow {
+            title: "Game".into(),
+            image_url: None,
+            sale_price: sale_price.map(str::to_string),
+            original_price: original_price.map(str::to_string),
+            discount_pct,
+            store: None,
+            link: "https://example.com/deal".into(),
+            published: None,
+        }
+    }
+
     #[test]
     fn label_omits_missing_fields() {
         let bare = row("Bare", None, None);
@@ -347,5 +364,134 @@ mod tests {
         assert!(body_for_shape(&[], Shape::Heatmap).is_none());
         assert!(body_for_shape(&[], Shape::Calendar).is_none());
         assert!(body_for_shape(&[], Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn label_drops_original_price_when_absent() {
+        let r = custom_row(Some("$4.99"), None, Some(50));
+        assert_eq!(r.label(), "Game  $4.99 (50% off)");
+    }
+
+    #[test]
+    fn label_shows_bare_price_when_no_discount_known() {
+        let r = custom_row(Some("$4.99"), None, None);
+        assert_eq!(r.label(), "Game  $4.99");
+    }
+
+    #[test]
+    fn label_shows_discount_only_when_no_price_known() {
+        let r = custom_row(None, None, Some(30));
+        assert_eq!(r.label(), "Game  30% off");
+    }
+
+    #[test]
+    fn body_for_shape_dispatches_each_supported_variant() {
+        let rows = vec![row("A", Some(60), Some("Steam"))];
+        for (shape, ok) in [
+            (
+                Shape::LinkedTextBlock,
+                matches!(
+                    body_for_shape(&rows, Shape::LinkedTextBlock),
+                    Some(Body::LinkedTextBlock(_))
+                ),
+            ),
+            (
+                Shape::TextBlock,
+                matches!(
+                    body_for_shape(&rows, Shape::TextBlock),
+                    Some(Body::TextBlock(_))
+                ),
+            ),
+            (
+                Shape::MarkdownTextBlock,
+                matches!(
+                    body_for_shape(&rows, Shape::MarkdownTextBlock),
+                    Some(Body::MarkdownTextBlock(_))
+                ),
+            ),
+            (
+                Shape::Text,
+                matches!(body_for_shape(&rows, Shape::Text), Some(Body::Text(_))),
+            ),
+            (
+                Shape::Entries,
+                matches!(
+                    body_for_shape(&rows, Shape::Entries),
+                    Some(Body::Entries(_))
+                ),
+            ),
+            (
+                Shape::Bars,
+                matches!(body_for_shape(&rows, Shape::Bars), Some(Body::Bars(_))),
+            ),
+            (
+                Shape::Badge,
+                matches!(body_for_shape(&rows, Shape::Badge), Some(Body::Badge(_))),
+            ),
+            (
+                Shape::Timeline,
+                matches!(
+                    body_for_shape(&rows, Shape::Timeline),
+                    Some(Body::Timeline(_))
+                ),
+            ),
+        ] {
+            assert!(ok, "body_for_shape mismatch for {shape:?}");
+        }
+    }
+
+    #[test]
+    fn linked_text_block_carries_link_per_row() {
+        let rows = vec![row("A", Some(20), Some("Steam"))];
+        let Body::LinkedTextBlock(data) = linked_text_block_body(&rows) else {
+            panic!("expected linked text block");
+        };
+        assert_eq!(
+            data.items[0].url.as_deref(),
+            Some("https://example.com/deal")
+        );
+        assert!(data.items[0].text.starts_with("[Steam]"));
+    }
+
+    #[test]
+    fn text_block_body_lists_one_line_per_row() {
+        let rows = vec![row("A", Some(20), None), row("B", None, None)];
+        let Body::TextBlock(data) = text_block_body(&rows) else {
+            panic!("expected text block");
+        };
+        assert_eq!(data.lines.len(), 2);
+        assert_eq!(data.lines[1], "B");
+    }
+
+    #[test]
+    fn entries_value_covers_all_price_discount_combinations() {
+        let rows = vec![
+            custom_row(Some("$4.99"), None, Some(50)),
+            custom_row(Some("$4.99"), None, None),
+            custom_row(None, None, Some(50)),
+            custom_row(None, None, None),
+        ];
+        let Body::Entries(data) = entries_body(&rows) else {
+            panic!("expected entries");
+        };
+        assert_eq!(data.items[0].value.as_deref(), Some("$4.99 (50% off)"));
+        assert_eq!(data.items[1].value.as_deref(), Some("$4.99"));
+        assert_eq!(data.items[2].value.as_deref(), Some("50% off"));
+        assert_eq!(data.items[3].value.as_deref(), Some("—"));
+    }
+
+    #[tokio::test]
+    async fn image_linked_body_keeps_rows_without_thumbnails() {
+        let rows = vec![row("A", Some(60), Some("Steam")), row("B", Some(10), None)];
+        let Body::ImageLinkedList(data) = image_linked_body(&rows).await else {
+            panic!("expected image linked list");
+        };
+        assert_eq!(data.items.len(), 2);
+        assert!(data.items[0].thumbnail_path.is_none());
+        assert_eq!(
+            data.items[0].url.as_deref(),
+            Some("https://example.com/deal")
+        );
+        assert!(data.items[0].subtitle.as_ref().unwrap().contains("Steam"));
     }
 }
