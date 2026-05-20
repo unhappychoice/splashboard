@@ -1697,6 +1697,68 @@ mod tests {
     }
 
     #[test]
+    fn next_refresh_secs_is_none_for_a_realtime_only_dashboard() {
+        assert_eq!(next_refresh_secs(&HashMap::new()), None);
+    }
+
+    #[test]
+    fn next_refresh_secs_saturates_to_zero_for_a_long_stale_entry() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "a".into(),
+            CacheEntry {
+                refreshed_at: 0,
+                ttl_seconds: 60,
+                kind: CacheEntryKind::Ok,
+                payload: text_payload("x"),
+            },
+        );
+        assert_eq!(next_refresh_secs(&entries), Some(0));
+    }
+
+    #[test]
+    fn next_refresh_secs_reports_remaining_ttl_for_a_fresh_entry() {
+        let mut entries = HashMap::new();
+        entries.insert("a".into(), CacheEntry::new(text_payload("x"), 600));
+        let remaining = next_refresh_secs(&entries).expect("fresh entry has a countdown");
+        assert!(
+            (595..=600).contains(&remaining),
+            "expected ~600s remaining, got {remaining}"
+        );
+    }
+
+    #[test]
+    fn next_refresh_secs_takes_the_soonest_across_entries() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "stale".into(),
+            CacheEntry {
+                refreshed_at: 0,
+                ttl_seconds: 60,
+                kind: CacheEntryKind::Ok,
+                payload: text_payload("x"),
+            },
+        );
+        entries.insert("fresh".into(), CacheEntry::new(text_payload("y"), 600));
+        assert_eq!(
+            next_refresh_secs(&entries),
+            Some(0),
+            "min wins: the stale entry is due before the fresh one"
+        );
+    }
+
+    #[test]
+    fn fmt_duration_compact_picks_a_unit_per_magnitude() {
+        assert_eq!(fmt_duration_compact(0), "0s");
+        assert_eq!(fmt_duration_compact(45), "45s");
+        assert_eq!(fmt_duration_compact(59), "59s");
+        assert_eq!(fmt_duration_compact(60), "1m");
+        assert_eq!(fmt_duration_compact(3599), "59m");
+        assert_eq!(fmt_duration_compact(3600), "1h");
+        assert_eq!(fmt_duration_compact(7200), "2h");
+    }
+
+    #[test]
     fn draw_frame_hint_lands_on_bottom_row_when_clipping() {
         let root = single_widget_tree("x");
         let mut payloads = HashMap::new();
