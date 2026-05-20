@@ -10,14 +10,20 @@
 //! `$HOME/.splashboard/secrets.toml`.
 
 mod client;
+mod common;
+mod games;
 mod player_summary;
+mod recently_played;
 
 use std::sync::Arc;
 
 use crate::fetcher::Fetcher;
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![Arc::new(player_summary::SteamPlayerSummary)]
+    vec![
+        Arc::new(player_summary::SteamPlayerSummary),
+        Arc::new(recently_played::SteamRecentlyPlayed),
+    ]
 }
 
 #[cfg(test)]
@@ -34,5 +40,6 @@ mod tests {
             );
         }
         assert!(names.contains(&"steam_player_summary".to_string()));
+        assert!(names.contains(&"steam_recently_played".to_string()));
     }
 }
