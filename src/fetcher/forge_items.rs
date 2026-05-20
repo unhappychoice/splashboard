@@ -505,6 +505,95 @@ mod tests {
         assert_eq!(e.items.len(), 2);
     }
 
+    #[tokio::test]
+    async fn dispatch_rows_async_image_linked_list_resolves_thumbnails_offline() {
+        // ImageLinkedList runs each row's avatar_url through the thumbnail cache. A None
+        // avatar_url and an unsupported-scheme URL both resolve to None without any network,
+        // so the branch is exercised offline and the thumbnail cells stay empty.
+        let rows = vec![
+            ForgeRow {
+                label: "splashboard#1".into(),
+                title: "no avatar".into(),
+                url: Some("https://example.com/1".into()),
+                avatar_url: None,
+                avatar_path: None,
+                updated_at_unix: 0,
+                activity_count: 0,
+            },
+            ForgeRow {
+                label: "splashboard#2".into(),
+                title: "unsupported avatar scheme".into(),
+                url: None,
+                avatar_url: Some("ftp://example.com/avatar.png".into()),
+                avatar_path: None,
+                updated_at_unix: 0,
+                activity_count: 0,
+            },
+        ];
+        let Body::ImageLinkedList(b) =
+            dispatch_rows_async(rows, Shape::ImageLinkedList, "open PR", "open PRs").await
+        else {
+            panic!("expected image linked list");
+        };
+        assert_eq!(b.items.len(), 2);
+        assert!(b.items.iter().all(|i| i.thumbnail_path.is_none()));
+        assert!(b.items[0].title.starts_with("splashboard#1"));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn dispatch_rows_async_image_linked_list_fills_avatar_path_from_cache_hit() {
+        use sha2::{Digest, Sha256};
+        // A pre-seeded thumbnail cache lets the ImageLinkedList branch resolve avatar_url to a
+        // local path with no network: download_to_cache short-circuits on the existing file
+        // and dispatch_rows_async copies the resolved path onto the row.
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+
+        let avatar = "https://avatars.example/seeded.png";
+        let hash: String = Sha256::digest(avatar.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let dir = tmp.path().join("cache").join("thumbnails");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{hash}.png")), b"seeded-png").unwrap();
+
+        let rows = vec![ForgeRow {
+            label: "splashboard#9".into(),
+            title: "has a cached avatar".into(),
+            url: Some("https://example.com/9".into()),
+            avatar_url: Some(avatar.into()),
+            avatar_path: None,
+            updated_at_unix: 0,
+            activity_count: 0,
+        }];
+        let body = dispatch_rows_async(rows, Shape::ImageLinkedList, "open PR", "open PRs").await;
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+
+        let Body::ImageLinkedList(b) = body else {
+            panic!("expected image linked list");
+        };
+        let resolved = b.items[0]
+            .thumbnail_path
+            .as_deref()
+            .expect("cache hit should resolve a local thumbnail path");
+        assert!(
+            resolved.ends_with(&format!("{hash}.png")),
+            "resolved path should point at the seeded cache file: {resolved}"
+        );
+    }
+
     #[test]
     fn empty_rows_collapse_to_empty_bodies() {
         let Body::Text(t) = render_forge_rows(&[], Shape::Text) else {
