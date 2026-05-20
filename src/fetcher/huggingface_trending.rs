@@ -584,6 +584,21 @@ mod tests {
     }
 
     #[test]
+    fn render_sync_text_block_lists_one_rank_prefixed_line_per_entry() {
+        let entries = vec![
+            entry("meta-llama/Llama-3.1", 0, 3200, Some(2_100_000)),
+            entry("author/repo", 1, 100, None),
+        ];
+        let body = render_sync(&entries, Kind::Models, Shape::TextBlock);
+        let Body::TextBlock(b) = body else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 2);
+        assert_eq!(b.lines[0], "#1 meta-llama/Llama-3.1  ♥ 3.2k  ↓ 2.1M");
+        assert_eq!(b.lines[1], "#2 author/repo  ♥ 100");
+    }
+
+    #[test]
     fn render_sync_linked_text_block_uses_kind_aware_url() {
         let body = render_sync(
             &[entry("author/repo", 0, 100, None)],
