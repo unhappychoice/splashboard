@@ -1257,6 +1257,127 @@ PATH = "/tmp/ignored"
         assert_eq!(cache_path, expected);
     }
 
+    fn project_dashboard(fetcher: &str) -> String {
+        format!(
+            "[[widget]]\nid = \"x\"\nfetcher = \"{fetcher}\"\nrender = \"text_plain\"\n\n\
+             [[row]]\nheight = {{ length = 3 }}\n[[row.child]]\nwidget = \"x\"\n"
+        )
+    }
+
+    /// `clear_one` resolves the dashboard via `resolve_dashboard_source()`; from the crate root
+    /// (a git repo root with no per-dir dashboard) that yields `Project`, so the command reads
+    /// `project.dashboard.toml` under `SPLASHBOARD_HOME`.
+    fn write_project_dashboard(home: &Path, fetcher: &str) {
+        write_file(
+            &home.join("project.dashboard.toml"),
+            &project_dashboard(fetcher),
+        );
+    }
+
+    fn clear_one_cache_paths(cache_dir: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let registry = super::Registry::with_builtins();
+        let fetcher = registry.get_cached("basic_static").unwrap();
+        let key = fetcher.cache_key(&super::FetchContext {
+            widget_id: "x".into(),
+            format: None,
+            timeout: std::time::Duration::from_secs(0),
+            file_format: None,
+            shape: Some(fetcher.default_shape()),
+            options: None,
+            timezone: None,
+            locale: None,
+        });
+        let sanitized = splashboard::cache::sanitize(&key);
+        (
+            cache_dir.join(format!("{sanitized}.json")),
+            cache_dir.join(format!("{sanitized}.lock")),
+        )
+    }
+
+    #[test]
+    fn clear_one_errors_when_widget_id_absent_from_config() {
+        let home = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        write_project_dashboard(home.path(), "basic_static");
+        let err = super::clear_one(cache.path(), "ghost", false).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert!(
+            err.to_string().contains("no widget 'ghost'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn clear_one_errors_when_widget_uses_realtime_fetcher() {
+        let home = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        // `clock` is a realtime fetcher, so it is absent from the cached-fetcher registry —
+        // `clear_one` cannot derive a disk cache key for it.
+        write_project_dashboard(home.path(), "clock");
+        let err = super::clear_one(cache.path(), "x", false).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert!(
+            err.to_string().contains("realtime"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn clear_one_reports_no_entry_when_cache_is_empty() {
+        let home = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        write_project_dashboard(home.path(), "basic_static");
+        // No cache files written: both the entry and lock paths miss with `NotFound`, so the
+        // command still succeeds and prints the "had no cache entry" diagnostic.
+        super::clear_one(cache.path(), "x", false).unwrap();
+    }
+
+    #[test]
+    fn clear_one_removes_existing_entry_and_lock_files() {
+        let home = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        write_project_dashboard(home.path(), "basic_static");
+        let (entry, lock) = clear_one_cache_paths(cache.path());
+        write_file(&entry, "{}");
+        write_file(&lock, "");
+        super::clear_one(cache.path(), "x", false).unwrap();
+        assert!(!entry.exists(), "entry file should be removed");
+        assert!(!lock.exists(), "lock file should be removed");
+    }
+
+    #[test]
+    fn clear_one_json_mode_removes_files_and_succeeds() {
+        let home = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let _env = EnvGuard::set(vec![(
+            "SPLASHBOARD_HOME",
+            Some(home.path().display().to_string()),
+        )]);
+        write_project_dashboard(home.path(), "basic_static");
+        let (entry, lock) = clear_one_cache_paths(cache.path());
+        write_file(&entry, "{}");
+        write_file(&lock, "");
+        super::clear_one(cache.path(), "x", true).unwrap();
+        assert!(!entry.exists(), "entry file should be removed in json mode");
+        assert!(!lock.exists(), "lock file should be removed in json mode");
+    }
+
     #[test]
     fn collect_cache_rows_returns_empty_for_missing_dir() {
         // `cache list` against a never-used cache should print "(empty)", not error.
