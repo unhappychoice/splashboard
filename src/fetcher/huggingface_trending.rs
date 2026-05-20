@@ -461,6 +461,9 @@ struct HfProfile {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
     use std::time::Duration as StdDuration;
 
     use super::*;
@@ -694,5 +697,110 @@ mod tests {
             .await
             .unwrap_err();
         assert!(format!("{err}").contains("unknown field"));
+    }
+
+    fn serve_once(status: &str, body: &str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn get_json_deserializes_success_body() {
+        let (url, server) = serve_once("200 OK", r#"[{"id":"meta/llama","likes":3}]"#);
+        let entries: Vec<ApiEntry> = get_json(&url).await.unwrap();
+        server.join().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "meta/llama");
+        assert_eq!(entries[0].likes, Some(3));
+    }
+
+    #[tokio::test]
+    async fn get_json_surfaces_non_success_status() {
+        let (url, server) = serve_once("503 Service Unavailable", "");
+        let err = get_json::<Vec<ApiEntry>>(&url).await.unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "huggingface 503 Service Unavailable"
+        ));
+    }
+
+    #[tokio::test]
+    async fn get_json_surfaces_json_parse_errors() {
+        let (url, server) = serve_once("200 OK", "not-json");
+        let err = get_json::<Vec<ApiEntry>>(&url).await.unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.starts_with("huggingface json parse:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn get_json_rejects_oversized_body() {
+        let body = "x".repeat(MAX_BYTES + 1);
+        let (url, server) = serve_once("200 OK", &body);
+        let err = get_json::<Vec<ApiEntry>>(&url).await.unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("huggingface response too large")
+        ));
+    }
+
+    #[tokio::test]
+    async fn get_json_surfaces_request_failures() {
+        let err = get_json::<Vec<ApiEntry>>("not-a-url").await.unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("huggingface request failed")
+        ));
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_delegates_non_image_shapes_to_render_sync() {
+        let body = render_for_shape(
+            &[entry("author/repo", 0, 100, None)],
+            Kind::Models,
+            Shape::Text,
+        )
+        .await;
+        assert!(matches!(body, Body::Text(_)));
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_builds_image_list_without_avatar_for_idless_entries() {
+        let body = render_for_shape(
+            &[entry("no_slash", 0, 5, None)],
+            Kind::Models,
+            Shape::ImageLinkedList,
+        )
+        .await;
+        let Body::ImageLinkedList(d) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(d.items.len(), 1);
+        assert!(d.items[0].thumbnail_path.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_thumbnails_returns_none_for_authorless_and_empty_inputs() {
+        assert!(resolve_thumbnails(&[]).await.is_empty());
+        let resolved = resolve_thumbnails(&[entry("no_slash", 0, 0, None)]).await;
+        assert_eq!(resolved, vec![None]);
     }
 }
