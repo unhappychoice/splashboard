@@ -41,6 +41,7 @@ pub mod read_store;
 pub mod reddit;
 pub mod rss;
 pub mod static_text;
+pub mod steam;
 pub mod stock_watchlist;
 pub mod system;
 pub mod thumbnails;
@@ -373,6 +374,9 @@ impl Registry {
             r.register(f);
         }
         for f in reddit::fetchers() {
+            r.register(f);
+        }
+        for f in steam::fetchers() {
             r.register(f);
         }
         for f in weather::fetchers() {
