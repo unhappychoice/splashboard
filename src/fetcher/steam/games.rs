@@ -353,4 +353,133 @@ mod tests {
         };
         assert_eq!(m.value, "_quiet_");
     }
+
+    #[test]
+    fn text_block_body_emits_single_empty_label_line_on_empty_input() {
+        let Body::TextBlock(b) = text_block_body(&[], "no games yet") else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines, vec!["no games yet".to_string()]);
+    }
+
+    #[test]
+    fn text_block_body_lists_one_line_per_row() {
+        let rows = vec![
+            row(1, 730, "CS2", 60, "60h"),
+            row(2, 570, "Dota 2", 30, "30h"),
+        ];
+        let Body::TextBlock(b) = text_block_body(&rows, "empty") else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 2);
+        assert_eq!(b.lines[0], "#1 CS2  60h");
+    }
+
+    #[test]
+    fn entries_body_emits_dash_placeholder_row_on_empty_input() {
+        let Body::Entries(e) = entries_body(&[], "no games yet") else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].key, "—");
+        assert_eq!(e.items[0].value.as_deref(), Some("no games yet"));
+    }
+
+    /// Hash a URL the same way `thumbnails` content-addresses its cache, so a pre-seeded file
+    /// at `<hash>.png` makes `download_to_cache` resolve via `existing_cached` — exercising the
+    /// non-empty `image_*_body` arms without any network I/O.
+    fn thumbnail_hash(url: &str) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(url.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    fn restore_home(previous: Option<String>) {
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                None => std::env::remove_var("SPLASHBOARD_HOME"),
+            }
+        }
+    }
+
+    /// Drive an async body builder to completion on a fresh current-thread runtime. Sync so the
+    /// `TEST_ENV_LOCK` guard is never held across an `.await` (clippy `await_holding_lock`).
+    fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn image_linked_body_resolves_cached_thumbnails_without_network() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        let dir = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", dir.path()) };
+
+        let rows = vec![
+            row(1, 730, "CS2", 60, "60h"),
+            row(2, 570, "Dota 2", 30, "30h"),
+        ];
+        let thumbs = dir.path().join("cache").join("thumbnails");
+        std::fs::create_dir_all(&thumbs).unwrap();
+        for r in &rows {
+            let file = thumbs.join(format!("{}.png", thumbnail_hash(&r.header_image())));
+            std::fs::write(&file, b"\x89PNG\r\n\x1a\n").unwrap();
+        }
+
+        let body = block_on(image_linked_body(&rows));
+        restore_home(previous);
+
+        let Body::ImageLinkedList(d) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(d.items.len(), 2);
+        assert_eq!(d.items[0].title, "#1 CS2");
+        assert_eq!(
+            d.items[0].url.as_deref(),
+            Some(rows[0].store_url().as_str())
+        );
+        assert_eq!(d.items[0].subtitle.as_deref(), Some("60h"));
+        assert!(
+            d.items[0]
+                .thumbnail_path
+                .as_deref()
+                .is_some_and(|p| p.ends_with(".png"))
+        );
+    }
+
+    #[test]
+    fn image_body_resolves_top_cached_thumbnail_without_network() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("SPLASHBOARD_HOME").ok();
+        let dir = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("SPLASHBOARD_HOME", dir.path()) };
+
+        let rows = vec![
+            row(1, 730, "CS2", 60, "60h"),
+            row(2, 570, "Dota 2", 30, "30h"),
+        ];
+        let thumbs = dir.path().join("cache").join("thumbnails");
+        std::fs::create_dir_all(&thumbs).unwrap();
+        let file = thumbs.join(format!("{}.png", thumbnail_hash(&rows[0].header_image())));
+        std::fs::write(&file, b"\x89PNG\r\n\x1a\n").unwrap();
+
+        let body = block_on(image_body(&rows));
+        restore_home(previous);
+
+        let Body::Image(img) = body else {
+            panic!("expected image");
+        };
+        assert!(img.path.ends_with(".png"));
+    }
 }
