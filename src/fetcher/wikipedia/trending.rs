@@ -667,4 +667,45 @@ mod tests {
             .unwrap_err();
         assert!(format!("{err}").contains("unknown field"));
     }
+
+    #[test]
+    fn render_sync_text_block_lists_one_article_line_each() {
+        let body = render_sync(
+            &[article("Quokka", 412_000), article("Apollo_11", 287_000)],
+            Shape::TextBlock,
+        );
+        let Body::TextBlock(t) = body else {
+            panic!("expected text_block");
+        };
+        assert_eq!(t.lines[0], "412.0k views  Quokka");
+        assert_eq!(t.lines[1], "287.0k views  Apollo 11");
+    }
+
+    #[test]
+    fn build_summary_url_appends_title_to_rest_base() {
+        let base = rest_api_base("en");
+        let url = build_summary_url(&base, "Apollo_11");
+        assert_eq!(
+            url,
+            "https://en.wikipedia.org/api/rest_v1/page/summary/Apollo_11"
+        );
+    }
+
+    #[test]
+    fn build_summary_url_percent_encodes_reserved_chars() {
+        let base = rest_api_base("ja");
+        let url = build_summary_url(&base, "Hello#world");
+        assert!(url.ends_with("/page/summary/Hello%23world"), "url: {url}");
+        assert!(url.starts_with("https://ja.wikipedia.org/"), "url: {url}");
+    }
+
+    #[tokio::test]
+    async fn render_for_shape_non_image_shape_renders_synchronously() {
+        let body = render_for_shape(&[article("Quokka", 412_000)], Shape::Text, "en").await;
+        let Body::Text(t) = body else {
+            panic!("expected text");
+        };
+        assert!(t.value.contains("Quokka"));
+        assert!(t.value.contains("412.0k"));
+    }
 }
