@@ -440,6 +440,40 @@ mod tests {
         }
     }
 
+    /// Minimal one-shot HTTP server so the `/page/summary` thumbnail lookup can be exercised
+    /// without reaching the real `*.wikipedia.org` host. Returns the base URL (no trailing
+    /// slash, suitable as a `rest_base`) and the server thread handle.
+    fn serve_once(status: &str, body: &str) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut [0_u8; 1024]);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    /// A local address with nothing listening — every request fails fast with connection
+    /// refused, exercising the error arm without a real network round-trip.
+    fn dead_base() -> String {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        format!("http://{addr}")
+    }
+
     #[test]
     fn access_as_path_covers_all_variants() {
         assert_eq!(Access::All.as_path(), "all-access");
@@ -707,5 +741,48 @@ mod tests {
         };
         assert!(t.value.contains("Quokka"));
         assert!(t.value.contains("412.0k"));
+    }
+
+    /// The `ImageLinkedList` arm drives the whole thumbnail-resolution chain
+    /// (`resolve_thumbnails` → `collect_thumbnail_urls` → `download_many`). An empty article
+    /// slice exercises every entry point of that chain without a single HTTP call — the
+    /// per-article `fetch_thumbnail_url` loop body is simply never entered.
+    #[tokio::test]
+    async fn render_for_shape_image_linked_list_handles_empty_articles_without_network() {
+        let body = render_for_shape(&[], Shape::ImageLinkedList, "en").await;
+        let Body::ImageLinkedList(data) = body else {
+            panic!("expected image_linked_list");
+        };
+        assert!(data.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_thumbnail_url_extracts_source_from_summary_response() {
+        let (base, server) = serve_once(
+            "200 OK",
+            r#"{"title":"Quokka","thumbnail":{"source":"https://upload.wikimedia.org/quokka.jpg"}}"#,
+        );
+        let resolved = fetch_thumbnail_url(&base, "Quokka").await;
+        server.join().unwrap();
+        assert_eq!(
+            resolved.as_deref(),
+            Some("https://upload.wikimedia.org/quokka.jpg")
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_thumbnail_url_is_none_when_summary_omits_thumbnail() {
+        let (base, server) = serve_once("200 OK", r#"{"title":"Quokka"}"#);
+        let resolved = fetch_thumbnail_url(&base, "Quokka").await;
+        server.join().unwrap();
+        assert!(resolved.is_none());
+    }
+
+    /// A failed `/page/summary` lookup must not sink the row — `fetch_thumbnail_url` swallows
+    /// the error via `.ok()?` and silently yields `None`.
+    #[tokio::test]
+    async fn fetch_thumbnail_url_is_none_when_request_fails() {
+        let resolved = fetch_thumbnail_url(&dead_base(), "Quokka").await;
+        assert!(resolved.is_none());
     }
 }
