@@ -138,7 +138,19 @@ async fn parse_json<T: DeserializeOwned>(res: reqwest::Response) -> Result<T, Fe
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use serde::Deserialize;
+
     use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct TestPayload {
+        ok: bool,
+    }
 
     #[test]
     fn resolve_api_key_fails_with_clear_message_when_unset() {
@@ -217,5 +229,101 @@ mod tests {
     #[test]
     fn http_reuses_the_same_client() {
         assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[test]
+    fn request_json_deserializes_success_body() {
+        let (url, server) = serve_once("200 OK", r#"{"ok":true}"#);
+        let payload: TestPayload = run_async(request_json(&url)).unwrap();
+        server.join().unwrap();
+        assert!(payload.ok);
+    }
+
+    #[test]
+    fn request_json_surfaces_non_success_status() {
+        let (url, server) = serve_once("503 Service Unavailable", "");
+        let err = run_async(request_json::<TestPayload>(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "steam 503 Service Unavailable"
+        ));
+    }
+
+    #[test]
+    fn request_json_surfaces_json_parse_errors() {
+        let (url, server) = serve_once("200 OK", "not-json");
+        let err = run_async(request_json::<TestPayload>(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.starts_with("steam json parse:")
+        ));
+    }
+
+    #[test]
+    fn request_json_rejects_oversized_body() {
+        let body = "x".repeat(MAX_BYTES + 1);
+        let (url, server) = serve_once("200 OK", &body);
+        let err = run_async(request_json::<TestPayload>(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("steam response too large")
+        ));
+    }
+
+    #[test]
+    fn request_json_surfaces_request_failures() {
+        let err = run_async(request_json::<TestPayload>("not-a-url")).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("steam request failed")
+        ));
+    }
+
+    #[test]
+    fn get_json_fails_fast_when_api_key_missing() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("STEAM_API_KEY").ok();
+        unsafe { std::env::remove_var("STEAM_API_KEY") };
+        let err = run_async(get_json::<TestPayload>(
+            "ISteamUser/GetPlayerSummaries/v2/",
+            &[],
+        ))
+        .unwrap_err();
+        if let Some(v) = prev {
+            unsafe { std::env::set_var("STEAM_API_KEY", v) };
+        }
+        assert!(matches!(err, FetchError::Failed(msg) if msg == "STEAM_API_KEY not set"));
+    }
+
+    fn serve_once(status: &str, body: &str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 }
