@@ -108,7 +108,19 @@ fn parse_api_error(bytes: &[u8]) -> Option<FetchError> {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use serde::Deserialize;
+
     use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct TestPayload {
+        ok: bool,
+    }
 
     #[test]
     fn build_url_includes_method_api_key_and_format() {
@@ -189,5 +201,106 @@ mod tests {
     #[test]
     fn http_reuses_the_same_client() {
         assert!(std::ptr::eq(http(), http()));
+    }
+
+    #[test]
+    fn parse_json_deserializes_success_body() {
+        let payload: TestPayload = parse_local("200 OK", r#"{"ok":true}"#).unwrap();
+        assert!(payload.ok);
+    }
+
+    #[test]
+    fn parse_json_surfaces_non_success_status() {
+        let err = parse_local::<TestPayload>("503 Service Unavailable", "").unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg == "lastfm 503 Service Unavailable"
+        ));
+    }
+
+    #[test]
+    fn parse_json_surfaces_json_parse_errors() {
+        let err = parse_local::<TestPayload>("200 OK", "not-json").unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.starts_with("lastfm json parse:")
+        ));
+    }
+
+    #[test]
+    fn parse_json_rejects_oversized_body() {
+        let body = "x".repeat(MAX_BYTES + 1);
+        let err = parse_local::<TestPayload>("200 OK", &body).unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("lastfm response too large")
+        ));
+    }
+
+    #[test]
+    fn parse_json_surfaces_lastfm_error_envelope_on_a_200() {
+        // Last.fm tunnels errors through HTTP 200 + `{"error":N,...}`; `parse_json` must catch
+        // that envelope before the caller's deserializer ever sees the bytes.
+        let err = parse_local::<TestPayload>("200 OK", r#"{"error":6,"message":"User not found"}"#)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg)
+                if msg.contains("lastfm error 6") && msg.contains("User not found")
+        ));
+    }
+
+    #[test]
+    fn get_json_fails_fast_when_api_key_missing() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("LASTFM_API_KEY").ok();
+        unsafe { std::env::remove_var("LASTFM_API_KEY") };
+        let err = run_async(get_json::<TestPayload>("user.getInfo", &[])).unwrap_err();
+        if let Some(v) = prev {
+            unsafe { std::env::set_var("LASTFM_API_KEY", v) };
+        }
+        assert!(matches!(err, FetchError::Failed(msg) if msg == "LASTFM_API_KEY not set"));
+    }
+
+    /// Serves `body` from a one-shot local server, drives a real `reqwest` request through the
+    /// shared `http()` client, and hands the resulting `Response` to `parse_json` — exercising
+    /// the body-size, status, error-envelope, and deserialization branches without network.
+    fn parse_local<T: DeserializeOwned>(status: &str, body: &str) -> Result<T, FetchError> {
+        let (url, server) = serve_once(status, body);
+        let result = run_async(async {
+            let res = http().get(&url).send().await.unwrap();
+            parse_json::<T>(res).await
+        });
+        server.join().unwrap();
+        result
+    }
+
+    fn serve_once(status: &str, body: &str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 }
