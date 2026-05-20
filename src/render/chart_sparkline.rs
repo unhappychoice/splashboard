@@ -331,4 +331,63 @@ mod tests {
         assert_eq!(buf.cell((1, 2)).unwrap().symbol(), ZERO_BASELINE);
         assert_eq!(buf.cell((2, 2)).unwrap().symbol(), ZERO_BASELINE);
     }
+
+    #[test]
+    fn render_ignores_a_non_number_series_body() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut terminal = Terminal::new(TestBackend::new(10, 3)).unwrap();
+        let body = Body::Text(crate::payload::TextData { value: "x".into() });
+        let opts = RenderOptions::default();
+        let theme = Theme::default();
+        let registry = Registry::with_builtins();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                ChartSparklineRenderer.render(frame, area, &body, &opts, &theme, &registry);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(
+            (0..buf.area.height).all(|y| line_text(&buf, y).trim().is_empty()),
+            "a non-NumberSeries body must leave the slot untouched"
+        );
+    }
+
+    #[test]
+    fn line_style_handles_empty_values() {
+        let registry = Registry::with_builtins();
+        #[derive(serde::Deserialize)]
+        struct W {
+            render: RenderSpec,
+        }
+        let w: W =
+            toml::from_str(r#"render = { type = "chart_sparkline", style = "line" }"#).unwrap();
+        let buf = render_to_buffer_with_spec(&payload(vec![]), Some(&w.render), &registry, 10, 3);
+        assert!((0..buf.area.height).all(|y| line_text(&buf, y).trim().is_empty()));
+    }
+
+    /// `render_sparkline` always truncates the value window to the chart width before calling
+    /// these helpers, so their out-of-range guards (zero-sized area, an over-long slice, a
+    /// mid/bottom row past the buffer) are defence-in-depth — exercise them directly.
+    #[test]
+    fn line_and_baseline_helpers_guard_out_of_range_inputs() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut terminal = Terminal::new(TestBackend::new(4, 3)).unwrap();
+        let theme = Theme::default();
+        terminal
+            .draw(|frame| {
+                // Each clause of the degenerate-area short-circuit.
+                draw_line_series(frame, Rect::new(0, 0, 0, 3), &[1, 2], &theme);
+                draw_line_series(frame, Rect::new(0, 0, 4, 0), &[1, 2], &theme);
+                draw_line_series(frame, Rect::new(0, 0, 4, 3), &[], &theme);
+                draw_zero_baseline(frame, Rect::new(0, 0, 4, 0), &[0, 0], &theme);
+                // A slice longer than the area width hits the in-loop break.
+                draw_line_series(frame, Rect::new(0, 0, 2, 3), &[1, 2, 3, 4], &theme);
+                draw_zero_baseline(frame, Rect::new(0, 0, 2, 3), &[0, 0, 0, 0], &theme);
+                // A mid/bottom row past the buffer makes `cell_mut` return `None`.
+                draw_line_series(frame, Rect::new(0, 0, 4, 20), &[0, 7], &theme);
+                draw_zero_baseline(frame, Rect::new(0, 0, 4, 20), &[0, 0], &theme);
+            })
+            .unwrap();
+    }
 }
