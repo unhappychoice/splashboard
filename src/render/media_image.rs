@@ -368,6 +368,52 @@ mod tests {
     }
 
     #[test]
+    fn draw_thumbnail_skips_zero_sized_area() {
+        // Defence-in-depth guard: a zero-width or zero-height cell returns `Ok` before any
+        // image load, so a degenerate layout slot can't surface a spurious `[image: …]` error.
+        // Only reachable by calling `draw_thumbnail` directly — the public render path never
+        // hands a renderer a zero-sized area.
+        let backend = TestBackend::new(8, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                let zero_width = Rect {
+                    x: 0,
+                    y: 0,
+                    width: 0,
+                    height: 4,
+                };
+                let zero_height = Rect {
+                    x: 0,
+                    y: 0,
+                    width: 8,
+                    height: 0,
+                };
+                assert!(
+                    draw_thumbnail(
+                        frame,
+                        zero_width,
+                        "/does/not/exist.png",
+                        None,
+                        &Theme::default(),
+                    )
+                    .is_ok()
+                );
+                assert!(
+                    draw_thumbnail(
+                        frame,
+                        zero_height,
+                        "/does/not/exist.png",
+                        Some("cover"),
+                        &Theme::default(),
+                    )
+                    .is_ok()
+                );
+            })
+            .unwrap();
+    }
+
+    #[test]
     fn padding_shrinks_area_uniformly() {
         let area = Rect {
             x: 0,
