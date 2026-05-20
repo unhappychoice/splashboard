@@ -368,6 +368,40 @@ mod tests {
         .unwrap();
     }
 
+    /// Index entries that aren't regular files (symlinks) and paths whose bytes aren't valid
+    /// UTF-8 take the early-`continue` branches in both walkers: the symlink fails
+    /// `is_regular_file` (its index mode is `SYMLINK`, not `FILE`), and a non-UTF-8 path fails
+    /// the `str::from_utf8` decode before any classification or read. The non-UTF-8 half is
+    /// Linux-only — APFS / NTFS reject such filenames at the filesystem layer.
+    #[test]
+    #[cfg(unix)]
+    fn tracked_walkers_skip_symlinks_and_non_utf8_paths() {
+        use std::os::unix::fs::symlink;
+
+        let (_tmp, repo) = make_repo();
+        let dir = repo.workdir().unwrap();
+        write_file(dir, "keep.rs", "fn keep() {}\n");
+        symlink("keep.rs", dir.join("link.rs")).unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let bad = dir.join(std::ffi::OsStr::from_bytes(b"bad\xffname.txt"));
+            std::fs::write(&bad, "bytes\n").unwrap();
+        }
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "fixture"]);
+
+        // Only `keep.rs` survives: `link.rs` is skipped as a non-regular file and the
+        // non-UTF-8 entry is skipped as an undecodable path — neither is ever visited.
+        let mut path_hits = Vec::new();
+        for_each_tracked_path(&repo, |path| path_hits.push(path.to_string())).unwrap();
+        assert_eq!(path_hits, vec!["keep.rs".to_string()]);
+
+        let mut file_hits = Vec::new();
+        for_each_tracked_file(&repo, |path, _| file_hits.push(path.to_string())).unwrap();
+        assert_eq!(file_hits, vec!["keep.rs".to_string()]);
+    }
+
     #[test]
     fn tokei_stat_walker_reports_classified_files_only() {
         let (_tmp, repo) = make_repo();
