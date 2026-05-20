@@ -292,6 +292,34 @@ mod tests {
     }
 
     #[test]
+    fn render_histogram_draws_nothing_for_an_empty_series() {
+        // `render_payload` short-circuits empty bodies upstream, so the renderer's own
+        // `data.values.is_empty()` guard is only reachable by calling `render_histogram`
+        // directly — exercise it and confirm the buffer is left blank.
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let backend = TestBackend::new(20, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                render_histogram(
+                    frame,
+                    frame.area(),
+                    &NumberSeriesData { values: vec![] },
+                    &RenderOptions::default(),
+                    &Theme::default(),
+                );
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let content: String = (0..6).map(|y| line_text(&buf, y)).collect();
+        assert!(
+            content.trim().is_empty(),
+            "an empty series should leave the buffer blank: {content:?}"
+        );
+    }
+
+    #[test]
     fn single_value_collapses_to_first_bucket() {
         let counts = bucket_counts(&[42, 42, 42, 42], 5);
         assert_eq!(counts, vec![4, 0, 0, 0, 0]);
@@ -479,6 +507,12 @@ mod tests {
     #[test]
     fn boost_to_visible_no_op_when_height_zero() {
         assert_eq!(boost_to_visible(vec![1, 5, 1], 0), vec![1, 5, 1]);
+    }
+
+    #[test]
+    fn boost_to_visible_no_op_when_every_count_is_zero() {
+        // All-zero counts → peak is zero → nothing to lift, the slice passes straight through.
+        assert_eq!(boost_to_visible(vec![0, 0, 0], 4), vec![0, 0, 0]);
     }
 
     #[test]
