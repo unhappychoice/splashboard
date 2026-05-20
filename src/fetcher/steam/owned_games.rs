@@ -390,4 +390,109 @@ mod tests {
         let opts: Options = parse_options(Some(&raw)).unwrap();
         assert_eq!(opts.sort, Some(Sort::Recent));
     }
+
+    #[tokio::test]
+    async fn render_body_dispatches_each_shape_to_its_body_variant() {
+        let games = sample_games();
+        let rows = rows_from_games(&games, Sort::Playtime, 10);
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Bars, Sort::Playtime).await,
+            Body::Bars(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Entries, Sort::Playtime).await,
+            Body::Entries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::TextBlock, Sort::Playtime).await,
+            Body::TextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::MarkdownTextBlock, Sort::Playtime).await,
+            Body::MarkdownTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::LinkedTextBlock, Sort::Playtime).await,
+            Body::LinkedTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::NumberSeries, Sort::Playtime).await,
+            Body::NumberSeries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Ratio, Sort::Playtime).await,
+            Body::Ratio(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Badge, Sort::Recent).await,
+            Body::Badge(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn render_body_text_arm_is_the_catch_all_library_summary() {
+        // `Shape::Text` has no explicit match arm — it exercises the `_ =>` branch.
+        let games = sample_games();
+        let rows = rows_from_games(&games, Sort::Playtime, 10);
+        let body = render_body(&rows, &games, Shape::Text, Sort::Playtime).await;
+        assert!(matches!(&body, Body::Text(t) if t.value.contains("owned games")));
+    }
+
+    #[tokio::test]
+    async fn render_body_image_shapes_resolve_without_network_on_empty_rows() {
+        assert!(matches!(
+            render_body(&[], &[], Shape::ImageLinkedList, Sort::Playtime).await,
+            Body::ImageLinkedList(_)
+        ));
+        assert!(matches!(
+            render_body(&[], &[], Shape::Image, Sort::Playtime).await,
+            Body::Image(_)
+        ));
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_varies_with_options() {
+        let f = SteamOwnedGames;
+        let base = f.cache_key(&FetchContext::default());
+        assert!(base.starts_with("steam_owned_games-"));
+        let with_opts = f.cache_key(&FetchContext {
+            options: Some(toml::from_str("count = 5").unwrap()),
+            ..Default::default()
+        });
+        assert_ne!(base, with_opts);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options_before_any_network() {
+        let f = SteamOwnedGames;
+        let ctx = FetchContext {
+            options: Some(toml::from_str("bogus = 1").unwrap()),
+            ..Default::default()
+        };
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(m) if m.contains("invalid options")));
+    }
+
+    #[test]
+    fn sort_label_describes_the_ranking_axis() {
+        assert_eq!(Sort::Playtime.label(), "all-time");
+        assert_eq!(Sort::Recent.label(), "recent");
+    }
+
+    #[test]
+    fn text_summary_falls_back_to_empty_label_when_no_rows() {
+        let Body::Text(t) = text_body_with_summary(&[], &[]) else {
+            panic!("expected text body");
+        };
+        assert_eq!(t.value, EMPTY_LABEL);
+    }
+
+    #[test]
+    fn relative_label_emits_raw_ts_for_out_of_chrono_range_timestamps() {
+        // A timestamp millions of years in the past is older than 30 days (→ the `_` arm)
+        // and outside chrono's representable range (→ `timestamp_opt` yields None).
+        let now = 1_750_000_000_i64;
+        let label = relative_label(now, -9_000_000_000_000_000);
+        assert_eq!(label, "ts:-9000000000000000");
+    }
 }
