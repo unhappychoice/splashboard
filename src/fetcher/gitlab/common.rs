@@ -335,8 +335,9 @@ mod tests {
     fn resolve_project_falls_back_to_the_cwd_git_remote() {
         // With no explicit `project`, resolution walks the cwd's git remote. The suite runs
         // inside splashboard's own repo, whose `origin` lives on github.com — passing that
-        // host lets the generic prefix parser recover `unhappychoice/splashboard` from the
-        // remote URL, exercising the `Some(path) => Ok(path)` arm.
+        // host lets the generic prefix parser recover the `group/project` path from the
+        // remote URL, exercising the `Some(path) => Ok(path)` arm. Assert the structural
+        // shape rather than a literal slug so forks and mirrors don't fail the test.
         let _lock = crate::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -345,7 +346,12 @@ mod tests {
         let resolved = resolve_project(None, "github.com");
         std::env::set_current_dir(previous).unwrap();
         let path = resolved.expect("cwd repo remote should resolve a project");
-        assert_eq!(path.as_str(), "unhappychoice/splashboard");
+        let segments: Vec<&str> = path.as_str().split('/').collect();
+        assert!(
+            segments.len() >= 2 && segments.iter().all(|s| !s.is_empty()),
+            "expected a `group/project` path, got {:?}",
+            path.as_str()
+        );
     }
 
     #[test]
