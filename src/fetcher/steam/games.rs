@@ -396,11 +396,25 @@ mod tests {
             .collect()
     }
 
-    fn restore_home(previous: Option<String>) {
-        unsafe {
-            match previous {
-                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
-                None => std::env::remove_var("SPLASHBOARD_HOME"),
+    /// RAII guard: points `SPLASHBOARD_HOME` at a temp dir and restores it on drop, so a
+    /// panic mid-test can't leak the override into later tests sharing the process env.
+    struct SplashHomeGuard(Option<String>);
+
+    impl SplashHomeGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var("SPLASHBOARD_HOME").ok();
+            unsafe { std::env::set_var("SPLASHBOARD_HOME", path) };
+            Self(previous)
+        }
+    }
+
+    impl Drop for SplashHomeGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                    None => std::env::remove_var("SPLASHBOARD_HOME"),
+                }
             }
         }
     }
@@ -420,9 +434,8 @@ mod tests {
         let _lock = crate::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var("SPLASHBOARD_HOME").ok();
         let dir = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("SPLASHBOARD_HOME", dir.path()) };
+        let _home = SplashHomeGuard::set(dir.path());
 
         let rows = vec![
             row(1, 730, "CS2", 60, "60h"),
@@ -436,7 +449,6 @@ mod tests {
         }
 
         let body = block_on(image_linked_body(&rows));
-        restore_home(previous);
 
         let Body::ImageLinkedList(d) = body else {
             panic!("expected image_linked_list");
@@ -461,9 +473,8 @@ mod tests {
         let _lock = crate::paths::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var("SPLASHBOARD_HOME").ok();
         let dir = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("SPLASHBOARD_HOME", dir.path()) };
+        let _home = SplashHomeGuard::set(dir.path());
 
         let rows = vec![
             row(1, 730, "CS2", 60, "60h"),
@@ -475,7 +486,6 @@ mod tests {
         std::fs::write(&file, b"\x89PNG\r\n\x1a\n").unwrap();
 
         let body = block_on(image_body(&rows));
-        restore_home(previous);
 
         let Body::Image(img) = body else {
             panic!("expected image");

@@ -540,6 +540,29 @@ mod tests {
         assert!(b.items[0].title.starts_with("splashboard#1"));
     }
 
+    /// RAII guard: points `SPLASHBOARD_HOME` at a temp dir and restores it on drop, so a
+    /// panic mid-test can't leak the override into later tests sharing the process env.
+    struct SplashHomeGuard(Option<String>);
+
+    impl SplashHomeGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var("SPLASHBOARD_HOME").ok();
+            unsafe { std::env::set_var("SPLASHBOARD_HOME", path) };
+            Self(previous)
+        }
+    }
+
+    impl Drop for SplashHomeGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
+                    None => std::env::remove_var("SPLASHBOARD_HOME"),
+                }
+            }
+        }
+    }
+
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn dispatch_rows_async_image_linked_list_fills_avatar_path_from_cache_hit() {
@@ -551,8 +574,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        let previous = std::env::var("SPLASHBOARD_HOME").ok();
-        unsafe { std::env::set_var("SPLASHBOARD_HOME", tmp.path()) };
+        let _home = SplashHomeGuard::set(tmp.path());
 
         let avatar = "https://avatars.example/seeded.png";
         let hash: String = Sha256::digest(avatar.as_bytes())
@@ -573,13 +595,6 @@ mod tests {
             activity_count: 0,
         }];
         let body = dispatch_rows_async(rows, Shape::ImageLinkedList, "open PR", "open PRs").await;
-
-        unsafe {
-            match previous {
-                Some(value) => std::env::set_var("SPLASHBOARD_HOME", value),
-                None => std::env::remove_var("SPLASHBOARD_HOME"),
-            }
-        }
 
         let Body::ImageLinkedList(b) = body else {
             panic!("expected image linked list");
