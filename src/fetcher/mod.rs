@@ -14,6 +14,7 @@ use crate::samples;
 
 pub mod basic;
 pub mod calendar;
+pub mod claude;
 pub mod clock;
 pub mod code;
 pub mod crypto_trending;
@@ -347,6 +348,9 @@ impl Registry {
         r.register(Arc::new(youtube::YoutubeChannelFetcher));
         r.register(Arc::new(huggingface_trending::HuggingfaceTrendingFetcher));
         for f in calendar::fetchers() {
+            r.register(f);
+        }
+        for f in claude::fetchers() {
             r.register(f);
         }
         for f in deal::fetchers() {
