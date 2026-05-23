@@ -87,9 +87,12 @@ pub fn price_for<'a>(prices: &'a PriceMap, model: &str) -> Option<&'a Price> {
     if let Some(p) = prices.get(&lower) {
         return Some(p);
     }
+    // Prefix match against lowercased keys too — `data/llm_pricing.json` keys happen to be
+    // lowercase today but the lookup shouldn't quietly miss if a future LiteLLM sync ships a
+    // mixed-case identifier.
     prices
         .iter()
-        .filter(|(k, _)| lower.starts_with(k.as_str()) && !k.is_empty())
+        .filter(|(k, _)| !k.is_empty() && lower.starts_with(&k.to_lowercase()))
         .max_by_key(|(k, _)| k.len())
         .map(|(_, p)| p)
 }

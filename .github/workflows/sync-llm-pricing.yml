@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # `peter-evans/create-pull-request` supplies its own token below, so
+          # checkout doesn't need to persist credentials in the workspace.
+          persist-credentials: false
 
       - name: Fetch upstream LiteLLM table
         run: |

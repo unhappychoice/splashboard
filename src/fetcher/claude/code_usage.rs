@@ -950,6 +950,10 @@ mod tests {
     }
 
     #[tokio::test]
+    // TEST_ENV_LOCK serialises tests that mutate process env (`CLAUDE_CONFIG_DIR` here). The
+    // lock is held across `.fetch().await` deliberately so a sibling test can't swap the env
+    // out mid-flight; the fetcher only reads env at the synchronous entry to the call, so
+    // there's no path where the awaiting future re-takes the same lock and deadlocks.
     #[allow(clippy::await_holding_lock)]
     async fn fetch_reads_jsonl_from_env_override_root() {
         let _lock = crate::paths::TEST_ENV_LOCK

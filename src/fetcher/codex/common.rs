@@ -77,7 +77,16 @@ fn read_jsonl_files(dir: &PathBuf) -> Vec<PathBuf> {
         .into_iter()
         .flat_map(|it| it.flatten())
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        // Only `rollout-*.jsonl` — Codex writes session rollups with this prefix; other
+        // *.jsonl files that may appear under `~/.codex/sessions/` (history backups, future
+        // file kinds) are unrelated and would confuse the lex-sorted "newest session" lookup
+        // codex_subscription does.
+        .filter(|p| {
+            p.extension().is_some_and(|x| x == "jsonl")
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("rollout-"))
+        })
         .collect()
 }
 
