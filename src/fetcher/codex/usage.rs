@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -266,10 +266,41 @@ fn build_snapshot(since: &Since, group_by: GroupBy, limit: usize, prices: &Price
 }
 
 fn collect_events(files: &[PathBuf], since: &Since) -> Vec<UsageEvent> {
+    // Codex session filenames are `rollout-YYYY-MM-DDTHH-MM-SS-uuid.jsonl`; skip the whole
+    // file when its date prefix is older than the `since` cutoff. Saves opening hundreds of
+    // MB of JSONL on cold cache when the user just wants Today / 7d.
+    let cutoff = cutoff_date(since);
     files
         .iter()
+        .filter(|p| filename_within_cutoff(p, cutoff))
         .flat_map(|f| read_session_file(f, since))
         .collect()
+}
+
+fn cutoff_date(since: &Since) -> Option<NaiveDate> {
+    let today = Utc::now().date_naive();
+    match since {
+        Since::All => None,
+        // One-day buffer covers sessions that started before midnight and spilled past it.
+        Since::Today => Some(today - Duration::days(1)),
+        Since::Days(n) => Some(today - Duration::days(*n)),
+    }
+}
+
+fn filename_within_cutoff(path: &Path, cutoff: Option<NaiveDate>) -> bool {
+    let Some(cutoff) = cutoff else {
+        return true;
+    };
+    parse_filename_date(path).is_none_or(|date| date >= cutoff)
+}
+
+fn parse_filename_date(path: &Path) -> Option<NaiveDate> {
+    let name = path.file_name()?.to_str()?;
+    let rest = name.strip_prefix("rollout-")?;
+    if rest.len() < 10 {
+        return None;
+    }
+    NaiveDate::parse_from_str(&rest[..10], "%Y-%m-%d").ok()
 }
 
 fn read_session_file(path: &PathBuf, since: &Since) -> Vec<UsageEvent> {
@@ -850,6 +881,60 @@ mod tests {
         };
         assert!(t.value.contains("Today"));
         assert!(t.value.contains("3k"), "value was {:?}", t.value);
+    }
+
+    #[test]
+    fn parse_filename_date_extracts_iso_prefix_from_rollout_name() {
+        let p = PathBuf::from("rollout-2026-05-23T03-37-58-uuid.jsonl");
+        let date = parse_filename_date(&p).expect("must parse");
+        assert_eq!(date.to_string(), "2026-05-23");
+    }
+
+    #[test]
+    fn parse_filename_date_returns_none_for_unexpected_names() {
+        assert!(parse_filename_date(&PathBuf::from("session.jsonl")).is_none());
+        assert!(parse_filename_date(&PathBuf::from("rollout-notadate.jsonl")).is_none());
+    }
+
+    #[test]
+    fn filename_within_cutoff_keeps_files_inside_window_and_drops_older() {
+        let today = Utc::now().date_naive();
+        let cutoff = Some(today - Duration::days(6));
+        let recent = PathBuf::from(format!("rollout-{today}T00-00-00-x.jsonl"));
+        let edge = PathBuf::from(format!(
+            "rollout-{}T23-59-59-x.jsonl",
+            today - Duration::days(6)
+        ));
+        let ancient = PathBuf::from(format!(
+            "rollout-{}T12-00-00-x.jsonl",
+            today - Duration::days(60)
+        ));
+        assert!(filename_within_cutoff(&recent, cutoff));
+        assert!(filename_within_cutoff(&edge, cutoff));
+        assert!(!filename_within_cutoff(&ancient, cutoff));
+    }
+
+    #[test]
+    fn filename_within_cutoff_keeps_unparseable_names_conservatively() {
+        // If we can't parse the date, we must not skip the file — falling through to the
+        // per-line `since.includes(ts)` filter is the safe path.
+        let cutoff = Some(Utc::now().date_naive());
+        assert!(filename_within_cutoff(
+            &PathBuf::from("session.jsonl"),
+            cutoff
+        ));
+    }
+
+    #[test]
+    fn cutoff_date_is_none_for_all_and_one_day_buffer_for_today() {
+        assert!(cutoff_date(&Since::All).is_none());
+        let today = Utc::now().date_naive();
+        // Today's cutoff buffers one day so sessions that started before midnight are kept.
+        assert_eq!(cutoff_date(&Since::Today), Some(today - Duration::days(1)));
+        assert_eq!(
+            cutoff_date(&Since::Days(7)),
+            Some(today - Duration::days(7))
+        );
     }
 
     fn snap_with_rows() -> Snapshot {
