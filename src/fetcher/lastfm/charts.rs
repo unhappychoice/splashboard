@@ -497,6 +497,45 @@ mod tests {
         assert_ne!(artists, bars);
     }
 
+    /// `render_body` is the shape dispatcher between `fetch` and the shared `top` body builders.
+    /// Drive every declared shape plus a shape outside `SHAPES` so the `_ => text_body` fallback
+    /// arm is exercised. `sample_rows()` carries no `image_url`, so `ImageLinkedList` resolves its
+    /// thumbnails to `None` without any network I/O.
+    #[tokio::test]
+    async fn render_body_dispatches_every_shape() {
+        let rows = sample_rows();
+        let k = Kind::Artists;
+        assert!(matches!(
+            render_body(&rows, k, Shape::LinkedTextBlock).await,
+            Body::LinkedTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, k, Shape::ImageLinkedList).await,
+            Body::ImageLinkedList(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, k, Shape::TextBlock).await,
+            Body::TextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, k, Shape::MarkdownTextBlock).await,
+            Body::MarkdownTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, k, Shape::Entries).await,
+            Body::Entries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, k, Shape::Bars).await,
+            Body::Bars(_)
+        ));
+        // `Shape::Text` is not an explicit arm — it lands in the `_ => text_body` fallback.
+        assert!(matches!(
+            render_body(&rows, k, Shape::Text).await,
+            Body::Text(_)
+        ));
+    }
+
     #[tokio::test]
     async fn fetch_rejects_unknown_options_before_network() {
         let err = LastfmCharts

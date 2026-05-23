@@ -601,6 +601,11 @@ mod tests {
         // to fall through to `resolve_repo(None)`, which discovers the cwd's git remote. Running
         // under `cargo test` from this workspace means resolution succeeds and the resulting key
         // must therefore differ from the no-context baseline (empty extra string).
+        //
+        // `resolve_repo(None)` reads the process-global cwd, which sibling tests mutate under
+        // `TEST_ENV_LOCK` (e.g. the `code/*` fetchers). Hold the same lock so a concurrent
+        // `set_current_dir` cannot change the discovered remote between calls.
+        let _guard = EnvGuard::set(&[]);
         let fetcher = GithubActionHistory;
         let resolved = fetcher.cache_key(&ctx(
             Some("limit = 5"),
@@ -620,6 +625,7 @@ mod tests {
             Some("compact"),
         ));
         assert_eq!(resolved, again);
+        drop(_guard);
     }
 
     #[test]

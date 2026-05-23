@@ -193,6 +193,8 @@ fn cache_extra(ctx: &FetchContext) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -281,5 +283,122 @@ mod tests {
             panic!("expected text fallback");
         };
         assert_eq!(t.value, "★ 5");
+    }
+
+    #[test]
+    fn sample_text_block_lists_emoji_prefixed_counter_lines() {
+        let Some(Body::TextBlock(b)) = GitlabRepoStars.sample_body(Shape::TextBlock) else {
+            panic!("expected text block");
+        };
+        assert_eq!(b.lines, vec!["★ 142", "🍴 9", "🔓 7"]);
+    }
+
+    #[test]
+    fn sample_body_returns_none_for_unsupported_shape() {
+        assert!(GitlabRepoStars.sample_body(Shape::Ratio).is_none());
+    }
+
+    #[test]
+    fn metadata_methods_have_content() {
+        let fetcher = GitlabRepoStars;
+        assert_eq!(fetcher.name(), "gitlab_repo_stars");
+        assert_eq!(fetcher.safety(), Safety::Safe);
+        assert!(fetcher.description().contains("GitLab"));
+        assert_eq!(fetcher.refresh_interval(), 60 * 60);
+    }
+
+    #[test]
+    fn option_schemas_lists_host_and_project() {
+        let names: Vec<&str> = GitlabRepoStars
+            .option_schemas()
+            .iter()
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names, vec!["host", "project"]);
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_varies_with_project_option() {
+        let fetcher = GitlabRepoStars;
+        let a = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("project = \"a/b\"").unwrap()),
+            ..Default::default()
+        });
+        let b = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("project = \"a/c\"").unwrap()),
+            ..Default::default()
+        });
+        assert!(a.starts_with("gitlab_repo_stars-"));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_key_varies_with_host_option() {
+        let fetcher = GitlabRepoStars;
+        let a = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("host = \"git.one.org\"\nproject = \"a/b\"").unwrap()),
+            ..Default::default()
+        });
+        let b = fetcher.cache_key(&FetchContext {
+            options: Some(toml::from_str("host = \"git.two.org\"\nproject = \"a/b\"").unwrap()),
+            ..Default::default()
+        });
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn cache_key_with_no_options_falls_back_to_remote_resolution() {
+        // No `project` option: `cache_extra` walks the cwd git remote, which here is a GitHub
+        // repo, so the gitlab.com lookup yields nothing and the key still resolves cleanly.
+        let key = GitlabRepoStars.cache_key(&FetchContext::default());
+        assert!(key.starts_with("gitlab_repo_stars-"));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_option_keys_before_network_request() {
+        let err = GitlabRepoStars
+            .fetch(&FetchContext {
+                options: Some(toml::from_str("bogus = 1").unwrap()),
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(m) if m.contains("invalid options")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_host_before_network_request() {
+        let err = GitlabRepoStars
+            .fetch(&FetchContext {
+                options: Some(toml::from_str("host = \"https://evil.example\"").unwrap()),
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(m) if m.contains("invalid gitlab host")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_invalid_project_before_network_request() {
+        let err = GitlabRepoStars
+            .fetch(&FetchContext {
+                options: Some(toml::from_str("project = \"not a path\"").unwrap()),
+                timeout: Duration::from_secs(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            FetchError::Failed(m) if m.contains("invalid project option")
+        ));
     }
 }

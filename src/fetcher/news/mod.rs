@@ -219,6 +219,9 @@ fn resolve_feed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
     use std::time::Duration;
 
     fn ctx(shape: Option<Shape>, options: Option<toml::Value>) -> FetchContext {
@@ -538,6 +541,197 @@ mod tests {
             err,
             FetchError::Failed(ref msg)
                 if msg.contains("unknown feed key") && msg.contains("definitely-not-a-feed")
+        ));
+    }
+
+    const RSS_FIXTURE: &str = r#"<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Local Test</title>
+    <link>https://example.com</link>
+    <description>x</description>
+    <item>
+      <title>First story</title>
+      <link>https://example.com/1</link>
+      <pubDate>Sun, 26 Apr 2026 09:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Second story</title>
+      <link>https://example.com/2</link>
+      <pubDate>Fri, 24 Apr 2026 11:30:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Third story</title>
+      <link>https://example.com/3</link>
+      <pubDate>Wed, 22 Apr 2026 08:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>"#;
+
+    /// Serves exactly one HTTP response on a random loopback port, then closes. Lets `fetch`
+    /// exercise the real `feed::fetch_bytes` / `feed::parse_feed` path without a live network.
+    fn serve_once(
+        status: &str,
+        content_type: &str,
+        body: &[u8],
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let content_type = content_type.to_owned();
+        let body = body.to_vec();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let header = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    /// Builds a `&'static NewsSource` whose single feed URL points at a caller-provided address.
+    /// The `news_*` family hardcodes `&'static str` feed URLs, so a feed served from a random
+    /// `serve_once` port has to be leaked to satisfy the lifetime. Leaking in a unit test is
+    /// bounded — the process exits when the run ends.
+    fn leak_local_source(url: &str) -> &'static NewsSource {
+        let feed_url: &'static str = String::leak(url.to_owned());
+        let feeds: &'static [NewsFeed] = Vec::leak(vec![NewsFeed {
+            key: "main",
+            url: feed_url,
+            label: "Main",
+        }]);
+        Box::leak(Box::new(NewsSource {
+            name: "news_test_local",
+            display: "Local Test",
+            category: NewsCategory::General,
+            description: "test-only source served from a local HTTP listener",
+            feeds,
+        }))
+    }
+
+    /// Happy path: no shape set → `fetch` defaults to `LinkedTextBlock`, parses the served RSS,
+    /// and emits one linked row per item. Covers the `Url::parse` success arm, the count clamp,
+    /// `feed::fetch_bytes`, `feed::parse_feed`, and the `other =>` shape branch of `fetch`.
+    #[tokio::test]
+    async fn fetch_parses_local_feed_into_default_linked_block() {
+        let (url, server) = serve_once("200 OK", "application/rss+xml", RSS_FIXTURE.as_bytes());
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let payload = f.fetch(&ctx(None, None)).await.unwrap();
+        server.join().unwrap();
+        assert!(matches!(
+            &payload.body,
+            Body::LinkedTextBlock(b)
+                if b.items.len() == 3
+                    && b.items[0].text.contains("First story")
+                    && b.items[0].url.as_deref() == Some("https://example.com/1")
+        ));
+    }
+
+    /// A non-default `Shape` still flows through the `other =>` arm — `render_body` picks the
+    /// `TextBlock` projection.
+    #[tokio::test]
+    async fn fetch_renders_text_block_shape() {
+        let (url, server) = serve_once("200 OK", "application/rss+xml", RSS_FIXTURE.as_bytes());
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let payload = f.fetch(&ctx(Some(Shape::TextBlock), None)).await.unwrap();
+        server.join().unwrap();
+        assert!(matches!(&payload.body, Body::TextBlock(t) if t.lines.len() == 3));
+    }
+
+    /// The `count` option flows into the clamp + `take(count)`, capping the rendered rows.
+    #[tokio::test]
+    async fn fetch_count_option_caps_rendered_rows() {
+        let (url, server) = serve_once("200 OK", "application/rss+xml", RSS_FIXTURE.as_bytes());
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let payload = f
+            .fetch(&ctx(
+                Some(Shape::LinkedTextBlock),
+                Some(parse_opts("count = 1")),
+            ))
+            .await
+            .unwrap();
+        server.join().unwrap();
+        assert!(matches!(&payload.body, Body::LinkedTextBlock(b) if b.items.len() == 1));
+    }
+
+    /// `Shape::ImageLinkedList` routes to `feed::render_image_linked`; the fixture carries no
+    /// thumbnails, so every row resolves with `thumbnail_path == None` and no image is fetched.
+    #[tokio::test]
+    async fn fetch_renders_image_linked_shape_without_thumbnails() {
+        let (url, server) = serve_once("200 OK", "application/rss+xml", RSS_FIXTURE.as_bytes());
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let payload = f
+            .fetch(&ctx(Some(Shape::ImageLinkedList), None))
+            .await
+            .unwrap();
+        server.join().unwrap();
+        assert!(matches!(
+            &payload.body,
+            Body::ImageLinkedList(d)
+                if d.items.len() == 3 && d.items[0].thumbnail_path.is_none()
+        ));
+    }
+
+    /// `Shape::Image` routes to `feed::render_image_body`; with no resolvable thumbnail the body
+    /// is an empty-path `Image` placeholder.
+    #[tokio::test]
+    async fn fetch_renders_image_shape_with_empty_path() {
+        let (url, server) = serve_once("200 OK", "application/rss+xml", RSS_FIXTURE.as_bytes());
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let payload = f.fetch(&ctx(Some(Shape::Image), None)).await.unwrap();
+        server.join().unwrap();
+        assert!(matches!(&payload.body, Body::Image(img) if img.path.is_empty()));
+    }
+
+    /// A non-feed response body surfaces `feed::parse_feed`'s labelled error through `fetch`.
+    #[tokio::test]
+    async fn fetch_surfaces_parse_error_from_non_feed_body() {
+        let (url, server) = serve_once("200 OK", "text/plain", b"not a feed");
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let err = f
+            .fetch(&ctx(Some(Shape::LinkedTextBlock), None))
+            .await
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("news_test_local parse")
+        ));
+    }
+
+    /// A non-success HTTP status surfaces `feed::fetch_bytes`'s `{label} {status}` error.
+    #[tokio::test]
+    async fn fetch_surfaces_http_status_error() {
+        let (url, server) = serve_once("500 Internal Server Error", "text/plain", b"oops");
+        let f = NewsFeedFetcher {
+            source: leak_local_source(&url),
+        };
+        let err = f
+            .fetch(&ctx(Some(Shape::LinkedTextBlock), None))
+            .await
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(
+            err,
+            FetchError::Failed(msg) if msg.contains("news_test_local 500")
         ));
     }
 

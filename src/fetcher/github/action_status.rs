@@ -369,6 +369,37 @@ mod tests {
     }
 
     #[test]
+    fn render_entries_lists_classified_status_branch_and_conclusion() {
+        assert!(matches!(
+            render_body(&run("completed", Some("failure")), Shape::Entries),
+            Body::Entries(e)
+                if e.items.len() == 3
+                    && e.items[0].key == "status"
+                    && e.items[0].status == Some(Status::Error)
+                    && e.items[0].value.as_deref() == Some("failing")
+                    && e.items[1].key == "branch"
+                    && e.items[1].status.is_none()
+                    && e.items[1].value.as_deref() == Some("main")
+                    && e.items[2].key == "conclusion"
+                    && e.items[2].value.as_deref() == Some("failure"),
+        ));
+    }
+
+    #[test]
+    fn render_entries_conclusion_falls_back_to_question_mark_when_absent() {
+        // A still-running workflow has no `conclusion`; the Entries row must degrade to `?`
+        // rather than carry an empty string.
+        assert!(matches!(
+            render_body(&run("in_progress", None), Shape::Entries),
+            Body::Entries(e)
+                if e.items[0].value.as_deref() == Some("running")
+                    && e.items[0].status == Some(Status::Warn)
+                    && e.items[2].key == "conclusion"
+                    && e.items[2].value.as_deref() == Some("?"),
+        ));
+    }
+
+    #[test]
     fn render_text_falls_back_to_question_mark_for_missing_branch() {
         let body = render_body(
             &run_with_branch("completed", Some("success"), None),

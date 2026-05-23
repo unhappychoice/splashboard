@@ -363,4 +363,60 @@ mod tests {
         let registry = Registry::with_builtins();
         let _ = render_to_buffer_with_spec(&payload, Some(&spec), &registry, 40, 10);
     }
+
+    #[test]
+    fn apply_flap_skips_a_zero_sized_area() {
+        let backend = TestBackend::new(4, 2);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                let zero = Rect {
+                    x: 0,
+                    y: 0,
+                    width: 0,
+                    height: 0,
+                };
+                apply_flap(frame, zero, 0, 1_000, &Theme::default());
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!((0..2).all(|y| line_text(&buf, y).trim().is_empty()));
+    }
+
+    #[test]
+    fn apply_flap_leaves_settled_cells_untouched_past_the_window() {
+        let backend = TestBackend::new(3, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                frame.render_widget(Paragraph::new("AB "), area);
+                // elapsed == total: every cell has already settled, so each one takes the
+                // `elapsed_ms >= settle_at` continue and keeps its original glyph.
+                apply_flap(frame, area, 1_000, 1_000, &Theme::default());
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "A");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "B");
+    }
+
+    #[test]
+    fn apply_flap_ignores_cells_outside_the_buffer() {
+        let backend = TestBackend::new(3, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                // Area deliberately larger than the 3x1 buffer: the out-of-range cells
+                // resolve to no cell and take the `else { continue }` arm without panicking.
+                let oversized = Rect {
+                    x: 0,
+                    y: 0,
+                    width: 12,
+                    height: 4,
+                };
+                apply_flap(frame, oversized, 0, 1_000, &Theme::default());
+            })
+            .unwrap();
+    }
 }

@@ -862,4 +862,97 @@ mod tests {
             .unwrap_err();
         assert!(format!("{err}").contains("`user ="));
     }
+
+    fn rich_snapshot() -> Snapshot {
+        snapshot(
+            Some(track("Live", "Now Artist", None)),
+            vec![
+                track("First", "Artist A", Some(1_682_158_530)),
+                track("Second", "Artist B", None),
+            ],
+        )
+    }
+
+    #[tokio::test]
+    async fn render_body_dispatches_each_shape_to_its_builder() {
+        let snap = rich_snapshot();
+        for &shape in SHAPES {
+            let body = render_body(&snap, shape).await;
+            assert_eq!(crate::render::shape_of(&body), shape, "shape {shape:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn render_body_falls_back_to_text_for_unsupported_shape() {
+        let body = render_body(&rich_snapshot(), Shape::Ratio).await;
+        let Body::Text(t) = body else {
+            panic!("expected text fallback");
+        };
+        assert!(t.value.starts_with("♪ Live"));
+    }
+
+    #[test]
+    fn text_body_wraps_the_headline() {
+        let snap = snapshot(None, vec![track("Only", "A", Some(0))]);
+        let Body::Text(t) = text_body(&snap) else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, "1 scrobble today");
+    }
+
+    #[test]
+    fn text_block_body_lists_now_playing_then_history() {
+        let Body::TextBlock(b) = text_block_body(&rich_snapshot()) else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 3);
+        assert!(b.lines[0].starts_with("♪ Live"));
+        assert!(b.lines[1].starts_with("10:15"));
+        assert!(b.lines[1].contains("First"));
+        assert!(b.lines[2].starts_with("--:--"));
+    }
+
+    #[test]
+    fn markdown_body_prepends_now_playing_bullet() {
+        let Body::MarkdownTextBlock(m) = markdown_body(&rich_snapshot()) else {
+            panic!("expected markdown");
+        };
+        assert!(m.value.starts_with("- ▶ **Live**"));
+        assert!(m.value.contains("- **First** — Artist A"));
+    }
+
+    #[test]
+    fn entries_body_lists_history_tracks_without_status() {
+        let snap = snapshot(None, vec![track("Hist", "Artist", Some(0))]);
+        let Body::Entries(e) = entries_body(&snap) else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].key, "Hist");
+        assert_eq!(e.items[0].value.as_deref(), Some("Artist"));
+        assert!(e.items[0].status.is_none());
+    }
+
+    #[test]
+    fn collect_rows_for_image_orders_now_playing_first_and_timestamps_history() {
+        let snap = rich_snapshot();
+        let rows = collect_rows_for_image(&snap);
+        assert_eq!(rows.len(), 3);
+        assert!(rows[0].1.starts_with("♪ Live"));
+        assert_eq!(rows[0].2.as_deref(), Some("now playing"));
+        assert_eq!(rows[1].1, "First");
+        assert_eq!(rows[1].2.as_deref(), Some("10:15 · Artist A"));
+        assert_eq!(rows[2].2.as_deref(), Some("Artist B"));
+    }
+
+    #[tokio::test]
+    async fn image_linked_body_builds_rows_with_empty_thumbnails_offline() {
+        let Body::ImageLinkedList(d) = image_linked_body(&rich_snapshot()).await else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(d.items.len(), 3);
+        assert!(d.items[0].title.starts_with("♪ Live"));
+        assert_eq!(d.items[0].subtitle.as_deref(), Some("now playing"));
+        assert!(d.items.iter().all(|i| i.thumbnail_path.is_none()));
+    }
 }

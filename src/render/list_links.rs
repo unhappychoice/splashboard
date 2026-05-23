@@ -407,4 +407,77 @@ mod tests {
         });
         assert!(!osc8_suppressed());
     }
+
+    #[test]
+    fn render_links_short_circuits_on_zero_dimension_area() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let data = LinkedTextBlockData {
+            items: vec![line("alpha", Some("https://example.com"))],
+        };
+        let opts = RenderOptions::default();
+        let theme = Theme::default();
+        let mut terminal = Terminal::new(TestBackend::new(10, 2)).unwrap();
+        terminal
+            .draw(|f| {
+                // A zero-width and a zero-height area both hit the early return —
+                // neither writes a cell.
+                render_links(&mut *f, Rect::new(0, 0, 0, 2), &data, &opts, &theme);
+                render_links(&mut *f, Rect::new(0, 0, 10, 0), &data, &opts, &theme);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        assert!(cells_concat(&buf, 0).trim().is_empty());
+    }
+
+    #[test]
+    fn write_row_is_a_no_op_when_nothing_is_drawn() {
+        // `max_width = 0` makes `set_stringn` draw zero cells, so `drawn == 0`.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
+        write_row(
+            &mut buf,
+            0,
+            0,
+            0,
+            &line("hello", Some("https://example.com")),
+            Style::default(),
+        );
+        assert!(cells_concat(&buf, 0).trim().is_empty());
+    }
+
+    #[test]
+    fn write_row_skips_osc8_wrap_under_suppression() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
+        without_osc8(|| {
+            write_row(
+                &mut buf,
+                0,
+                0,
+                20,
+                &line("hello", Some("https://example.com")),
+                Style::default(),
+            );
+        });
+        let row = cells_concat(&buf, 0);
+        assert!(row.contains("hello"), "plain text still renders: {row:?}");
+        assert!(
+            !row.contains("\x1b]8;;"),
+            "OSC 8 wrap must be suppressed: {row:?}",
+        );
+    }
+
+    #[test]
+    fn wrap_osc8_is_a_no_op_under_suppression() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
+        buf.set_string(0, 0, "hello", Style::default());
+        without_osc8(|| {
+            wrap_osc8(&mut buf, 0, 0, 5, "https://example.com", Style::default());
+        });
+        let row = cells_concat(&buf, 0);
+        assert!(
+            !row.contains("\x1b]8;;"),
+            "wrap_osc8 must skip wrapping under suppression: {row:?}",
+        );
+        assert!(row.contains("hello"));
+    }
 }

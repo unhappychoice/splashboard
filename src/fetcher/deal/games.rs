@@ -306,6 +306,11 @@ fn sample_body_for(shape: Shape) -> Option<Body> {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
     use super::*;
 
     #[test]
@@ -432,5 +437,103 @@ mod tests {
         a.options = Some(toml::from_str("min_discount = 50").unwrap());
         b.options = Some(toml::from_str("min_discount = 80").unwrap());
         assert_ne!(f.cache_key(&a), f.cache_key(&b));
+    }
+
+    #[test]
+    fn store_name_maps_every_known_id() {
+        let cases = [
+            ("2", "GamersGate"),
+            ("3", "GreenManGaming"),
+            ("4", "Amazon"),
+            ("5", "GameStop"),
+            ("7", "GOG"),
+            ("8", "Origin"),
+            ("11", "Humble Store"),
+            ("13", "Ubisoft Store"),
+            ("15", "Fanatical"),
+            ("21", "WinGameStore"),
+            ("23", "GameBillet"),
+            ("24", "Voidu"),
+            ("27", "Gamesplanet"),
+            ("29", "2Game"),
+            ("30", "IndieGala"),
+            ("31", "Blizzard Shop"),
+            ("33", "DLGamer"),
+        ];
+        for (id, name) in cases {
+            assert_eq!(store_name(id), name, "store id {id}");
+        }
+    }
+
+    #[test]
+    fn fetch_deals_parses_success_body() {
+        let body = r#"[{"title":"Disco Elysium","dealID":"d1","storeID":"1","salePrice":"9.99","normalPrice":"39.99","savings":"75.0","thumb":"https://example.com/t.jpg"}]"#;
+        let (url, server) = serve_once("200 OK", body);
+        let deals = run_async(fetch_deals(&url)).unwrap();
+        server.join().unwrap();
+        assert_eq!(deals.len(), 1);
+        assert_eq!(deals[0].title, "Disco Elysium");
+        assert_eq!(deals[0].deal_id, "d1");
+        assert_eq!(deals[0].store_id, "1");
+    }
+
+    #[test]
+    fn fetch_deals_surfaces_non_success_status() {
+        let (url, server) = serve_once("503 Service Unavailable", "");
+        let err = run_async(fetch_deals(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("deal_games 503")));
+    }
+
+    #[test]
+    fn fetch_deals_surfaces_json_parse_errors() {
+        let (url, server) = serve_once("200 OK", "not-json");
+        let err = run_async(fetch_deals(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("deal_games json parse")));
+    }
+
+    #[test]
+    fn fetch_deals_surfaces_request_failures() {
+        let err = run_async(fetch_deals("not-a-url")).unwrap_err();
+        assert!(
+            matches!(err, FetchError::Failed(msg) if msg.contains("deal_games request failed"))
+        );
+    }
+
+    #[test]
+    fn fetch_deals_rejects_oversized_body() {
+        let body = format!("[{}", " ".repeat(MAX_BYTES + 1));
+        let (url, server) = serve_once("200 OK", &body);
+        let err = run_async(fetch_deals(&url)).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(err, FetchError::Failed(msg) if msg.contains("response too large")));
+    }
+
+    fn serve_once(status: &str, body: &str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_owned();
+        let body = body.to_owned();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 }

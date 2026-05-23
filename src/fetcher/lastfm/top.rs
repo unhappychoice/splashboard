@@ -468,4 +468,89 @@ mod tests {
         assert!(s.contains("Artist"));
         assert!(s.contains("42 plays"));
     }
+
+    #[test]
+    fn period_deserialises_every_renamed_param_string() {
+        #[derive(Deserialize)]
+        struct Wrap {
+            period: Period,
+        }
+        for (param, expected) in [
+            ("1month", Period::OneMonth),
+            ("3month", Period::ThreeMonth),
+            ("6month", Period::SixMonth),
+            ("12month", Period::TwelveMonth),
+            ("overall", Period::Overall),
+        ] {
+            let raw: toml::Value = toml::from_str(&format!("period = \"{param}\"")).unwrap();
+            let parsed: Wrap = raw.try_into().unwrap();
+            assert_eq!(parsed.period, expected);
+        }
+    }
+
+    #[test]
+    fn text_body_wraps_headline_in_text_shape() {
+        let rows = vec![row(1, "Artist", None, 100)];
+        let Body::Text(t) = text_body(&rows, "empty") else {
+            panic!("expected text");
+        };
+        assert_eq!(t.value, "#1 Artist  (100 plays)");
+
+        let Body::Text(empty) = text_body(&[], "quiet window") else {
+            panic!("expected text");
+        };
+        assert_eq!(empty.value, "quiet window");
+    }
+
+    #[test]
+    fn text_block_body_emits_one_line_per_row() {
+        let rows = vec![row(1, "A", None, 100), row(2, "B", None, 50)];
+        let Body::TextBlock(b) = text_block_body(&rows, "empty") else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 2);
+        assert!(b.lines[0].starts_with("#1 A"));
+        assert!(b.lines[1].contains("50 plays"));
+    }
+
+    #[test]
+    fn text_block_body_falls_back_to_single_empty_line() {
+        let Body::TextBlock(b) = text_block_body(&[], "quiet") else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines, vec!["quiet".to_string()]);
+    }
+
+    #[test]
+    fn markdown_body_renders_a_bullet_per_row() {
+        let rows = vec![row(1, "Track", Some("Artist"), 42)];
+        let Body::MarkdownTextBlock(m) = markdown_body(&rows, "quiet") else {
+            panic!("expected markdown");
+        };
+        assert_eq!(m.value, "- **#1 Track — Artist** — 42 plays");
+    }
+
+    #[test]
+    fn entries_body_emits_placeholder_row_when_empty() {
+        let Body::Entries(e) = entries_body(&[]) else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].key, "—");
+        assert_eq!(e.items[0].value.as_deref(), Some("no scrobbles yet"));
+    }
+
+    #[tokio::test]
+    async fn image_linked_body_maps_rows_to_items_without_thumbnails() {
+        let rows = vec![row(1, "Track", Some("Artist"), 42), row(2, "Solo", None, 7)];
+        let Body::ImageLinkedList(d) = image_linked_body(&rows).await else {
+            panic!("expected image_linked_list");
+        };
+        assert_eq!(d.items.len(), 2);
+        assert_eq!(d.items[0].title, "#1 Track");
+        assert!(d.items[0].thumbnail_path.is_none());
+        assert_eq!(d.items[0].subtitle.as_deref(), Some("Artist  ·  42 plays"));
+        assert_eq!(d.items[1].subtitle.as_deref(), Some("7 plays"));
+        assert!(d.items[1].url.is_some());
+    }
 }

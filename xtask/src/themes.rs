@@ -150,6 +150,14 @@ mod tests {
     }
 
     #[test]
+    fn pretty_name_keeps_empty_underscore_segments_as_blank_words() {
+        // A leading / trailing `_` yields an empty `split('_')` segment whose `chars().next()`
+        // is `None`, exercising the `None => String::new()` arm rather than the capitalize path.
+        assert_eq!(pretty_name("foo_"), "Foo ");
+        assert_eq!(pretty_name("_bar"), " Bar");
+    }
+
+    #[test]
     fn ordered_slugs_lists_default_first_then_remaining_known_themes() {
         let order = ordered_slugs();
         assert_eq!(order[0], "default");
@@ -172,5 +180,95 @@ mod tests {
         for slug in presets::KNOWN {
             let _ = theme_for(slug);
         }
+    }
+
+    #[test]
+    fn theme_for_falls_back_to_default_for_unknown_slug() {
+        // `presets::by_name` misses → `unwrap_or_default()` materialises the default theme
+        // rather than panicking, so a stale slug in the gallery still renders something.
+        let _ = theme_for("not-a-real-theme");
+    }
+
+    fn unique_temp_dir(tag: &str) -> std::path::PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "splashboard-themes-{tag}-{unique}-{}",
+            std::process::id()
+        ))
+    }
+
+    /// A minimal one-widget dashboard written to a temp file — enough for
+    /// `render_config_html_with_theme` to parse, lay out, and snapshot without network or disk
+    /// fetchers. Returns the path so the caller can pass it to `render_one` as the demo config.
+    fn write_demo_dashboard(tag: &str) -> std::path::PathBuf {
+        let path = unique_temp_dir(tag).with_extension("toml");
+        fs::write(
+            &path,
+            r#"
+[[widget]]
+id = "hello"
+fetcher = "basic_static"
+format = "Hi"
+render = "list_plain"
+
+[[row]]
+height = { length = 1 }
+  [[row.child]]
+  widget = "hello"
+"#,
+        )
+        .unwrap();
+        path
+    }
+
+    #[test]
+    fn render_one_writes_theme_html_and_returns_entry() {
+        let demo = write_demo_dashboard("render-ok");
+        let out_dir = unique_temp_dir("render-ok-out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let entry = render_one("nord", &demo, &out_dir, 20, 6).unwrap();
+        assert_eq!(entry.slug, "nord");
+        assert_eq!(entry.name, "Nord");
+        assert!(matches!(entry.kind, ThemeKind::Dark));
+
+        let html = fs::read_to_string(out_dir.join("nord.html")).unwrap();
+        assert!(html.starts_with("<pre"), "unexpected html: {html}");
+
+        let _ = fs::remove_file(&demo);
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn render_one_surfaces_render_failure_from_missing_demo_config() {
+        // A demo path that doesn't exist makes `render_config_html_with_theme`'s `read_to_string`
+        // fail; `render_one` should propagate that error rather than writing a stray html file.
+        let missing = unique_temp_dir("render-missing").with_extension("toml");
+        let out_dir = unique_temp_dir("render-missing-out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let err = render_one("nord", &missing, &out_dir, 20, 6).unwrap_err();
+        assert!(err.to_string().contains("read"), "unexpected error: {err}");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn render_one_surfaces_write_failure_when_output_path_is_a_directory() {
+        // Pre-create `nord.html` as a directory so `fs::write` cannot replace it — `render_one`
+        // should surface the failure with its `write` context after a successful render.
+        let demo = write_demo_dashboard("render-write-fail");
+        let out_dir = unique_temp_dir("render-write-fail-out");
+        fs::create_dir_all(out_dir.join("nord.html")).unwrap();
+
+        let err = render_one("nord", &demo, &out_dir, 20, 6).unwrap_err();
+        assert!(err.to_string().contains("write"), "unexpected error: {err}");
+
+        let _ = fs::remove_file(&demo);
+        let _ = fs::remove_dir_all(&out_dir);
     }
 }

@@ -296,4 +296,149 @@ mod tests {
         let err = parse_options::<Options>(Some(&raw)).unwrap_err();
         assert!(err.contains("invalid options"));
     }
+
+    fn sample_rows() -> Vec<GameRow> {
+        vec![
+            GameRow {
+                rank: 1,
+                appid: 730,
+                name: "Counter-Strike 2".into(),
+                value: 1_500_000,
+                value_label: "1.5M peak".into(),
+            },
+            GameRow {
+                rank: 2,
+                appid: 570,
+                name: "Dota 2".into(),
+                value: 600_000,
+                value_label: "600k peak".into(),
+            },
+        ]
+    }
+
+    #[tokio::test]
+    async fn render_body_dispatches_each_shape_to_its_body_variant() {
+        let rows = sample_rows();
+        assert!(matches!(
+            render_body(&rows, Shape::Bars).await,
+            Body::Bars(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, Shape::Entries).await,
+            Body::Entries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, Shape::TextBlock).await,
+            Body::TextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, Shape::MarkdownTextBlock).await,
+            Body::MarkdownTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, Shape::LinkedTextBlock).await,
+            Body::LinkedTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, Shape::NumberSeries).await,
+            Body::NumberSeries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, Shape::Badge).await,
+            Body::Badge(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn render_body_text_arm_is_the_catch_all_fallback() {
+        // `Shape::Text` is not an explicit match arm — it exercises the `_ =>` branch.
+        let rows = sample_rows();
+        let Body::Text(t) = render_body(&rows, Shape::Text).await else {
+            panic!("expected text body");
+        };
+        assert!(t.value.contains("Counter-Strike 2"));
+    }
+
+    #[tokio::test]
+    async fn render_body_image_shapes_resolve_without_network_on_empty_rows() {
+        assert!(matches!(
+            render_body(&[], Shape::ImageLinkedList).await,
+            Body::ImageLinkedList(_)
+        ));
+        assert!(matches!(
+            render_body(&[], Shape::Image).await,
+            Body::Image(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_names_is_empty_when_no_ranks_supplied() {
+        assert!(resolve_names(&[]).await.is_empty());
+    }
+
+    #[test]
+    fn appdetail_semaphore_returns_one_shared_instance() {
+        let a = appdetail_semaphore();
+        let b = appdetail_semaphore();
+        assert!(std::sync::Arc::ptr_eq(&a, &b));
+        assert!(a.available_permits() <= APPDETAIL_CONCURRENCY);
+    }
+
+    fn ctx(options: Option<toml::Value>) -> FetchContext {
+        FetchContext {
+            widget_id: "w".into(),
+            timeout: std::time::Duration::from_secs(1),
+            options,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_varies_with_options() {
+        let f = SteamCharts;
+        let base = f.cache_key(&ctx(None));
+        assert!(base.starts_with("steam_charts-"));
+
+        let opts = toml::Value::try_from(serde_json::json!({"count": 5})).unwrap();
+        assert_ne!(f.cache_key(&ctx(Some(opts))), base);
+    }
+
+    #[test]
+    fn charts_response_parses_ranks_with_peak_count() {
+        let raw = r#"{"response":{"ranks":[{"rank":1,"appid":730,"peak_in_game":1500000}]}}"#;
+        let parsed: ChartsResponse = serde_json::from_str(raw).unwrap();
+        let ranks = parsed.response.ranks.unwrap();
+        assert_eq!(ranks.len(), 1);
+        assert_eq!(ranks[0].appid, 730);
+        assert_eq!(ranks[0].peak_in_game, 1_500_000);
+    }
+
+    #[test]
+    fn charts_body_defaults_ranks_to_none_when_field_absent() {
+        let parsed: ChartsResponse = serde_json::from_str(r#"{"response":{}}"#).unwrap();
+        assert!(parsed.response.ranks.is_none());
+    }
+
+    #[test]
+    fn raw_rank_defaults_peak_in_game_to_zero_when_omitted() {
+        let parsed: RawRank = serde_json::from_str(r#"{"rank":3,"appid":440}"#).unwrap();
+        assert_eq!(parsed.peak_in_game, 0);
+    }
+
+    #[test]
+    fn app_details_response_keeps_data_on_success_and_drops_it_on_failure() {
+        let raw = r#"{"730":{"success":true,"data":{"name":"Counter-Strike 2"}},"9999":{"success":false}}"#;
+        let parsed: AppDetailsResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            parsed.0["730"].data.as_ref().unwrap().name,
+            "Counter-Strike 2"
+        );
+        assert!(parsed.0["9999"].data.is_none());
+    }
+
+    #[test]
+    fn app_details_data_defaults_name_to_empty_string() {
+        let parsed: AppDetailsData = serde_json::from_str("{}").unwrap();
+        assert!(parsed.name.is_empty());
+    }
 }

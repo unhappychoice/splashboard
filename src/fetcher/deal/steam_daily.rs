@@ -203,6 +203,27 @@ fn sample_body_for(shape: Shape) -> Option<Body> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{TimeZone, Utc};
+    use feed_rs::model::{Link, Text};
+
+    fn text(content: &str) -> Text {
+        Text {
+            content_type: "text/plain".parse().unwrap(),
+            src: None,
+            content: content.into(),
+        }
+    }
+
+    fn link(href: &str) -> Link {
+        Link {
+            href: href.into(),
+            rel: None,
+            media_type: None,
+            href_lang: None,
+            title: None,
+            length: None,
+        }
+    }
 
     #[test]
     fn parse_title_extracts_daily_deal_discount() {
@@ -279,5 +300,69 @@ mod tests {
         }
         assert!(f.sample_body(Shape::ImageLinkedList).is_none());
         assert!(f.sample_body(Shape::Heatmap).is_none());
+    }
+
+    #[test]
+    fn entry_to_row_parses_steam_title_link_and_store() {
+        let entry = Entry {
+            title: Some(text("Daily Deal - Portal 2, 75% Off")),
+            links: vec![link("https://store.steampowered.com/app/620/Portal_2/")],
+            published: Some(Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
+            ..Default::default()
+        };
+        let row = entry_to_row(&entry);
+        assert_eq!(row.title, "Portal 2");
+        assert_eq!(row.discount_pct, Some(75));
+        assert_eq!(row.store.as_deref(), Some(STORE));
+        assert_eq!(row.link, "https://store.steampowered.com/app/620/Portal_2/");
+        assert_eq!(row.published, entry.published);
+        assert!(row.image_url.is_none());
+        assert!(row.sale_price.is_none());
+        assert!(row.original_price.is_none());
+    }
+
+    #[test]
+    fn entry_to_row_names_titleless_entries_unnamed_deal() {
+        let row = entry_to_row(&Entry::default());
+        assert_eq!(row.title, "(unnamed deal)");
+        assert!(row.discount_pct.is_none());
+    }
+
+    #[test]
+    fn entry_to_row_falls_back_to_steam_store_url_when_link_missing() {
+        let entry = Entry {
+            title: Some(text("Weekend Deal - Hades, 50% Off")),
+            ..Default::default()
+        };
+        let row = entry_to_row(&entry);
+        assert_eq!(row.link, "https://store.steampowered.com");
+        assert_eq!(row.title, "Hades");
+        assert_eq!(row.discount_pct, Some(50));
+    }
+
+    #[test]
+    fn entry_to_row_uses_updated_timestamp_when_published_absent() {
+        let updated = Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap();
+        let entry = Entry {
+            title: Some(text("Midweek Madness - Celeste, 60% Off")),
+            updated: Some(updated),
+            ..Default::default()
+        };
+        let row = entry_to_row(&entry);
+        assert_eq!(row.published, Some(updated));
+        assert_eq!(row.title, "Celeste");
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_varies_with_options() {
+        let f = SteamDailyFetcher;
+        let bare = f.cache_key(&FetchContext::default());
+        assert!(bare.starts_with(NAME), "got: {bare}");
+        let with_opts = f.cache_key(&FetchContext {
+            options: Some(toml::from_str("count = 5").unwrap()),
+            ..Default::default()
+        });
+        assert!(with_opts.starts_with(NAME), "got: {with_opts}");
+        assert_ne!(bare, with_opts);
     }
 }

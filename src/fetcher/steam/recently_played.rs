@@ -281,4 +281,86 @@ mod tests {
         assert_eq!(opts.steam_id.as_deref(), Some("76561197960287930"));
         assert_eq!(opts.count, Some(10));
     }
+
+    #[tokio::test]
+    async fn render_body_dispatches_each_shape_to_its_body_variant() {
+        let games = sample_games();
+        let rows = rows_from_games(&games);
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Bars).await,
+            Body::Bars(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Entries).await,
+            Body::Entries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::TextBlock).await,
+            Body::TextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::MarkdownTextBlock).await,
+            Body::MarkdownTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::LinkedTextBlock).await,
+            Body::LinkedTextBlock(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::NumberSeries).await,
+            Body::NumberSeries(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Ratio).await,
+            Body::Ratio(_)
+        ));
+        assert!(matches!(
+            render_body(&rows, &games, Shape::Badge).await,
+            Body::Badge(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn render_body_text_arm_is_the_catch_all_weekly_summary() {
+        // `Shape::Text` has no explicit match arm — it exercises the `_ =>` branch.
+        let games = sample_games();
+        let rows = rows_from_games(&games);
+        let body = render_body(&rows, &games, Shape::Text).await;
+        assert!(matches!(&body, Body::Text(t) if t.value.contains("2 games this week")));
+    }
+
+    #[tokio::test]
+    async fn render_body_image_shapes_resolve_without_network_on_empty_rows() {
+        assert!(matches!(
+            render_body(&[], &[], Shape::ImageLinkedList).await,
+            Body::ImageLinkedList(_)
+        ));
+        assert!(matches!(
+            render_body(&[], &[], Shape::Image).await,
+            Body::Image(_)
+        ));
+    }
+
+    #[test]
+    fn cache_key_is_name_prefixed_and_varies_with_options() {
+        let f = SteamRecentlyPlayed;
+        let base = f.cache_key(&FetchContext::default());
+        assert!(base.starts_with("steam_recently_played-"));
+        let with_opts = f.cache_key(&FetchContext {
+            options: Some(toml::from_str("count = 10").unwrap()),
+            ..Default::default()
+        });
+        assert_ne!(base, with_opts);
+    }
+
+    #[tokio::test]
+    async fn fetch_rejects_unknown_options_before_any_network() {
+        let f = SteamRecentlyPlayed;
+        let ctx = FetchContext {
+            options: Some(toml::from_str("bogus = 1").unwrap()),
+            ..Default::default()
+        };
+        let err = f.fetch(&ctx).await.unwrap_err();
+        assert!(matches!(err, FetchError::Failed(m) if m.contains("invalid options")));
+    }
 }

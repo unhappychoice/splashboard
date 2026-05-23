@@ -309,7 +309,7 @@ mod tests {
         [
             (Shape::Text, "clock"),
             (Shape::TextBlock, "git_recent_commits"),
-            (Shape::MarkdownTextBlock, "basic_static"),
+            (Shape::MarkdownTextBlock, "basic_links"),
             (Shape::LinkedTextBlock, "rss"),
             (Shape::Entries, "system_monitor_host"),
             (Shape::Ratio, "clock_ratio"),

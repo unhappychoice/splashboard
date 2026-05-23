@@ -497,4 +497,39 @@ mod tests {
         assert_eq!(display_width("🥇"), 2);
         assert_eq!(display_width("10."), 3);
     }
+
+    #[test]
+    fn fit_label_covers_pad_truncate_and_zero_width_branches() {
+        // Zero width collapses to empty regardless of the label.
+        assert_eq!(fit_label("anything", 0), "");
+        // A label that fits is right-padded with spaces to the column width.
+        assert_eq!(fit_label("ab", 5), "ab   ");
+        // Width 1 has no room for content beside the ellipsis, so it is the ellipsis alone.
+        assert_eq!(fit_label("hello", 1), "…");
+        // A longer label keeps `width - 1` chars and appends a single ellipsis.
+        assert_eq!(fit_label("hello", 3), "he…");
+    }
+
+    #[test]
+    fn pad_left_prepends_spaces_only_when_shorter_than_width() {
+        assert_eq!(pad_left("9", 4), "   9");
+        // Already at or past the width is returned unchanged.
+        assert_eq!(pad_left("142", 3), "142");
+        assert_eq!(pad_left("longer", 2), "longer");
+    }
+
+    #[test]
+    fn align_rect_offsets_for_center_and_right_and_passes_through_otherwise() {
+        let area = Rect::new(2, 1, 20, 3);
+        // Center places the block in the middle of the spare width.
+        assert_eq!(align_rect(area, 10, Some("center")).x, 2 + 5);
+        // Right pushes it flush against the trailing edge.
+        let right = align_rect(area, 10, Some("right"));
+        assert_eq!(right.x, 2 + 10);
+        assert_eq!(right.width, 10);
+        // No align hint, zero content, or content wider than the area all return the area as-is.
+        assert_eq!(align_rect(area, 10, None), area);
+        assert_eq!(align_rect(area, 0, Some("center")), area);
+        assert_eq!(align_rect(area, 99, Some("right")), area);
+    }
 }

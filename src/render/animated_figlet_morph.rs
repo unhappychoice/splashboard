@@ -404,7 +404,16 @@ mod tests {
         let body = text_body();
         let registry = Registry::with_builtins();
         let theme = Theme::default();
-        let elapsed = elapsed_since_start_ms().max(1);
+        // The fade-OUT branch only runs once process uptime clears the 260ms fade window;
+        // before that `render_morph` takes the fade-IN branch instead. Park until uptime is
+        // past it so this test deterministically exercises the crossfade-out path that a fast
+        // suite would otherwise skip. Process uptime is monotonic, so once past 320ms a render
+        // with `phase_len = uptime + 200` is guaranteed to land inside phase 0's fade-out zone.
+        process_start();
+        while elapsed_since_start_ms() < 320 {
+            thread::sleep(Duration::from_millis(20));
+        }
+        let elapsed = elapsed_since_start_ms();
         let phase_len = elapsed.saturating_add(200);
         let duration_ms = phase_len as u64 * DEFAULT_SEQUENCE.len() as u64;
         let opts = RenderOptions {

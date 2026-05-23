@@ -1697,6 +1697,68 @@ mod tests {
     }
 
     #[test]
+    fn next_refresh_secs_is_none_for_a_realtime_only_dashboard() {
+        assert_eq!(next_refresh_secs(&HashMap::new()), None);
+    }
+
+    #[test]
+    fn next_refresh_secs_saturates_to_zero_for_a_long_stale_entry() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "a".into(),
+            CacheEntry {
+                refreshed_at: 0,
+                ttl_seconds: 60,
+                kind: CacheEntryKind::Ok,
+                payload: text_payload("x"),
+            },
+        );
+        assert_eq!(next_refresh_secs(&entries), Some(0));
+    }
+
+    #[test]
+    fn next_refresh_secs_reports_remaining_ttl_for_a_fresh_entry() {
+        let mut entries = HashMap::new();
+        entries.insert("a".into(), CacheEntry::new(text_payload("x"), 600));
+        let remaining = next_refresh_secs(&entries).expect("fresh entry has a countdown");
+        assert!(
+            (595..=600).contains(&remaining),
+            "expected ~600s remaining, got {remaining}"
+        );
+    }
+
+    #[test]
+    fn next_refresh_secs_takes_the_soonest_across_entries() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "stale".into(),
+            CacheEntry {
+                refreshed_at: 0,
+                ttl_seconds: 60,
+                kind: CacheEntryKind::Ok,
+                payload: text_payload("x"),
+            },
+        );
+        entries.insert("fresh".into(), CacheEntry::new(text_payload("y"), 600));
+        assert_eq!(
+            next_refresh_secs(&entries),
+            Some(0),
+            "min wins: the stale entry is due before the fresh one"
+        );
+    }
+
+    #[test]
+    fn fmt_duration_compact_picks_a_unit_per_magnitude() {
+        assert_eq!(fmt_duration_compact(0), "0s");
+        assert_eq!(fmt_duration_compact(45), "45s");
+        assert_eq!(fmt_duration_compact(59), "59s");
+        assert_eq!(fmt_duration_compact(60), "1m");
+        assert_eq!(fmt_duration_compact(3599), "59m");
+        assert_eq!(fmt_duration_compact(3600), "1h");
+        assert_eq!(fmt_duration_compact(7200), "2h");
+    }
+
+    #[test]
     fn draw_frame_hint_lands_on_bottom_row_when_clipping() {
         let root = single_widget_tree("x");
         let mut payloads = HashMap::new();
@@ -1809,6 +1871,21 @@ mod tests {
         let buf = terminal.backend().buffer().clone();
         let joined: String = (0..buf.area.height).map(|y| row_text(&buf, y)).collect();
         assert!(joined.contains("via draw"));
+    }
+
+    #[test]
+    fn finalize_splash_shows_the_cursor_for_the_shell() {
+        // ratatui hides the cursor while drawing; `finalize_splash` must hand it back visible
+        // so the shell prompt printed after the splash gets one. `TestBackend` tracks cursor
+        // visibility in its `Debug` output, so an explicit hide followed by `finalize_splash`
+        // proves the show-cursor call is the thing that flips it back.
+        let backend = TestBackend::new(20, 3);
+        let mut terminal = make_terminal(backend, 3).unwrap();
+        terminal.hide_cursor().unwrap();
+        assert!(format!("{:?}", terminal.backend()).contains("cursor: false"));
+
+        finalize_splash(&mut terminal);
+        assert!(format!("{:?}", terminal.backend()).contains("cursor: true"));
     }
 
     #[test]
@@ -2864,6 +2941,54 @@ mod tests {
             &HashMap::new(),
         );
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn cache_keys_for_returns_empty_when_no_cached_widgets() {
+        let registry = Registry::with_builtins();
+        // `clock` is a realtime fetcher and `mystery_fetcher` is unregistered, so neither
+        // resolves through `get_cached` — `cache_keys_for` filters both out.
+        let widgets = vec![
+            widget("realtime", "clock"),
+            widget("unknown", "mystery_fetcher"),
+        ];
+        let keys = cache_keys_for(&widgets, &registry, &General::default(), &HashMap::new());
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn cache_keys_for_derives_one_distinct_key_per_cached_widget() {
+        let registry = Registry::with_builtins();
+        // Two cached `basic_static` widgets with different params, plus a realtime widget
+        // that must not contribute a key.
+        let widgets = vec![
+            static_widget("first", "one"),
+            static_widget("second", "two"),
+            widget("clock", "clock"),
+        ];
+        let keys = cache_keys_for(&widgets, &registry, &General::default(), &HashMap::new());
+        assert_eq!(keys.len(), 2, "realtime widget must be excluded");
+        assert_ne!(
+            keys[0], keys[1],
+            "differing params must yield distinct cache keys"
+        );
+    }
+
+    #[test]
+    fn cache_keys_for_matches_the_key_load_entries_reads() {
+        let registry = Registry::with_builtins();
+        let widgets = vec![static_widget("greeting", "Hello!")];
+        let keys = cache_keys_for(&widgets, &registry, &General::default(), &HashMap::new());
+        let expected = registry
+            .get_cached("basic_static")
+            .unwrap()
+            .cache_key(&fetch_context(
+                &widgets[0],
+                &General::default(),
+                None,
+                Duration::from_secs(0),
+            ));
+        assert_eq!(keys, vec![expected]);
     }
 
     #[test]

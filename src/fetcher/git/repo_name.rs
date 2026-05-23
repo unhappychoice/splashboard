@@ -213,6 +213,25 @@ mod tests {
         assert_eq!(detected, Some("isolated".into()));
     }
 
+    /// At the filesystem root there is no directory basename and no git repo above it, so both
+    /// arms of `detect_name` come up empty and `fetch` lands on the literal `"project"` fallback.
+    #[cfg(unix)]
+    #[test]
+    fn fetch_falls_back_to_project_when_cwd_has_no_basename() {
+        let _lock = crate::paths::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir("/").unwrap();
+        let payload = run_async(GitRepoName.fetch(&ctx()));
+        std::env::set_current_dir(prev).unwrap();
+
+        let Body::Text(text) = payload.unwrap().body else {
+            panic!("expected text payload");
+        };
+        assert_eq!(text.value, "project");
+    }
+
     #[test]
     fn fetch_returns_repo_name_from_cwd_repo() {
         let _lock = crate::paths::TEST_ENV_LOCK

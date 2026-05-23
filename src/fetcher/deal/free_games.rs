@@ -350,9 +350,22 @@ fn sample_body_for(shape: Shape) -> Option<Body> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{TimeZone, Utc};
+    use feed_rs::model::{Link, Text};
 
     fn opts(raw: &str) -> toml::Value {
         toml::from_str(raw).expect("test toml must parse")
+    }
+
+    fn titled_entry(title: &str) -> Entry {
+        Entry {
+            title: Some(Text {
+                content_type: "text/plain".parse().unwrap(),
+                src: None,
+                content: title.into(),
+            }),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -486,5 +499,165 @@ mod tests {
         a.options = Some(opts("platform = \"epic\""));
         b.options = Some(opts("platform = \"steam\""));
         assert_ne!(f.cache_key(&a), f.cache_key(&b));
+    }
+
+    fn fetch_err(toml: &str) -> String {
+        let f = FreeGamesFetcher;
+        let ctx = FetchContext {
+            options: Some(opts(toml)),
+            ..Default::default()
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        match rt.block_on(f.fetch(&ctx)) {
+            Err(FetchError::Failed(msg)) => msg,
+            other => panic!("expected FetchError::Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_option_key() {
+        // `deny_unknown_fields` on Options surfaces through `parse_options` before any network.
+        assert!(fetch_err("bogus = 1").to_lowercase().contains("bogus"));
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_platform_before_network() {
+        let msg = fetch_err("platform = \"origin\"");
+        assert!(msg.contains("origin"), "msg: {msg}");
+        assert!(msg.contains("unknown platform"), "msg: {msg}");
+    }
+
+    #[test]
+    fn fetch_rejects_unknown_kind_before_network() {
+        let msg = fetch_err("kind = \"bundle\"");
+        assert!(msg.contains("bundle"), "msg: {msg}");
+        assert!(msg.contains("unknown kind"), "msg: {msg}");
+    }
+
+    #[test]
+    fn fetch_rejects_loot_on_non_loot_platform() {
+        // Epic exposes no loot feed — the incompatibility is caught before constructing a URL.
+        let msg = fetch_err("platform = \"epic\"\nkind = \"loot\"");
+        assert!(msg.contains("loot"), "msg: {msg}");
+        assert!(
+            msg.contains("amazon") && msg.contains("steam"),
+            "msg: {msg}"
+        );
+        assert!(msg.contains("epic"), "msg: {msg}");
+    }
+
+    #[test]
+    fn entry_to_row_splits_store_and_marks_offer_free() {
+        let entry = Entry {
+            title: Some(Text {
+                content_type: "text/plain".parse().unwrap(),
+                src: None,
+                content: "Epic Games (Game) - Subnautica".into(),
+            }),
+            published: Some(Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
+            links: vec![Link {
+                href: "https://store.epicgames.com/p/subnautica".into(),
+                rel: None,
+                media_type: None,
+                href_lang: None,
+                title: None,
+                length: None,
+            }],
+            ..Default::default()
+        };
+        let row = entry_to_row(&entry);
+        assert_eq!(row.store.as_deref(), Some("Epic Games"));
+        assert_eq!(row.title, "Subnautica");
+        assert_eq!(row.link, "https://store.epicgames.com/p/subnautica");
+        assert_eq!(row.sale_price.as_deref(), Some("Free"));
+        assert_eq!(row.discount_pct, Some(100));
+        assert_eq!(
+            row.published,
+            Some(Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn entry_to_row_falls_back_for_titleless_linkless_entry() {
+        let row = entry_to_row(&Entry::default());
+        assert_eq!(row.title, "(unnamed offer)");
+        assert_eq!(row.link, "https://example.com/");
+        assert!(row.store.is_none());
+    }
+
+    #[test]
+    fn entry_to_row_uses_updated_timestamp_when_published_absent() {
+        let mut entry = titled_entry("just a title");
+        entry.published = None;
+        entry.updated = Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap());
+        let row = entry_to_row(&entry);
+        assert_eq!(row.published, entry.updated);
+        // Title without the `<Store> (<Kind>) -` prefix keeps the raw text and no store.
+        assert!(row.store.is_none());
+        assert_eq!(row.title, "just a title");
+    }
+
+    const ALL_PLATFORMS: [Platform; 9] = [
+        Platform::All,
+        Platform::Epic,
+        Platform::Steam,
+        Platform::Amazon,
+        Platform::Gog,
+        Platform::Humble,
+        Platform::Itch,
+        Platform::Apple,
+        Platform::Google,
+    ];
+
+    #[test]
+    fn config_value_is_a_distinct_lowercase_token_for_every_platform() {
+        let tokens: Vec<&str> = ALL_PLATFORMS.iter().map(|p| p.config_value()).collect();
+        assert_eq!(
+            tokens,
+            [
+                "all", "epic", "steam", "amazon", "gog", "humble", "itch", "apple", "google"
+            ]
+        );
+    }
+
+    #[test]
+    fn url_slug_blanks_the_aggregate_feed_and_codes_every_storefront() {
+        assert_eq!(Platform::All.url_slug(), "");
+        let coded: Vec<&str> = ALL_PLATFORMS.iter().skip(1).map(|p| p.url_slug()).collect();
+        assert_eq!(
+            coded,
+            [
+                "epic", "steam", "amazon", "gog", "humble", "itch", "apple", "google"
+            ]
+        );
+    }
+
+    #[test]
+    fn feed_url_for_every_non_aggregate_platform_embeds_its_slug() {
+        for platform in ALL_PLATFORMS.iter().skip(1).copied() {
+            let url = platform.feed_url(Kind::Game);
+            assert_eq!(
+                url,
+                format!("{FEED_BASE}/lootscraper_{}_game.xml", platform.url_slug())
+            );
+        }
+    }
+
+    #[test]
+    fn parse_platform_accepts_every_known_storefront() {
+        for platform in ALL_PLATFORMS {
+            let parsed = parse_platform(Some(platform.config_value())).unwrap();
+            assert_eq!(parsed, platform);
+        }
+        // The matcher lowercases first, so a mixed-case storefront still resolves.
+        assert_eq!(parse_platform(Some("GoG")).unwrap(), Platform::Gog);
+    }
+
+    #[test]
+    fn parse_kind_accepts_the_explicit_game_keyword() {
+        assert_eq!(parse_kind(Some("game")).unwrap(), Kind::Game);
+        assert_eq!(parse_kind(Some(" GAME ")).unwrap(), Kind::Game);
     }
 }
