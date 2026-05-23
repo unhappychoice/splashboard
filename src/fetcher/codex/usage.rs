@@ -851,4 +851,116 @@ mod tests {
         assert!(t.value.contains("Today"));
         assert!(t.value.contains("3k"), "value was {:?}", t.value);
     }
+
+    fn snap_with_rows() -> Snapshot {
+        Snapshot {
+            rows: vec![
+                UsageRow {
+                    label: "splashboard".into(),
+                    tokens: 2_100_000,
+                    cost: 7.2,
+                },
+                UsageRow {
+                    label: "playground".into(),
+                    tokens: 1_300_000,
+                    cost: 5.14,
+                },
+            ],
+            total_cost: 12.34,
+            total_tokens: 3_400_000,
+            daily_tokens: vec![0, 100_000, 250_000, 3_400_000],
+            since_label: "Today",
+        }
+    }
+
+    #[test]
+    fn text_body_renders_headline_with_total_tokens_and_cost() {
+        let Body::Text(t) = text_body(&snap_with_rows()) else {
+            panic!("expected text");
+        };
+        assert!(t.value.starts_with("Today"));
+        assert!(t.value.contains("3.4M"));
+        assert!(t.value.contains("$12.34"));
+    }
+
+    #[test]
+    fn text_block_body_lists_headline_then_one_line_per_row() {
+        let Body::TextBlock(b) = text_block_body(&snap_with_rows()) else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 3);
+        assert!(b.lines[0].contains("$12.34"));
+        assert!(b.lines[1].starts_with("splashboard"));
+        assert!(b.lines[2].starts_with("playground"));
+    }
+
+    #[test]
+    fn text_block_body_falls_back_to_quiet_line_when_no_activity() {
+        // No rows AND no tokens at all → the fetcher must surface a placeholder line, otherwise
+        // a quiet user just sees a bare "Today: no sessions" headline with nothing under it.
+        let snap = Snapshot {
+            since_label: "Today",
+            ..Default::default()
+        };
+        let Body::TextBlock(b) = text_block_body(&snap) else {
+            panic!("expected text_block");
+        };
+        assert!(b.lines.iter().any(|l| l.contains("no recent")));
+    }
+
+    #[test]
+    fn markdown_body_emphasises_headline_and_each_row() {
+        let Body::MarkdownTextBlock(m) = markdown_body(&snap_with_rows()) else {
+            panic!("expected markdown");
+        };
+        assert!(m.value.starts_with("**Today"));
+        assert!(m.value.contains("- **splashboard**"));
+    }
+
+    #[test]
+    fn entries_body_falls_back_to_headline_when_no_rows() {
+        // Mirrors claude_code_usage: entries shape must always emit at least one row so
+        // grid_table doesn't render a blank box.
+        let snap = Snapshot {
+            since_label: "7d",
+            ..Default::default()
+        };
+        let Body::Entries(e) = entries_body(&snap) else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].key, "7d");
+    }
+
+    #[test]
+    fn entries_body_carries_one_item_per_row_with_token_and_cost_value() {
+        let Body::Entries(e) = entries_body(&snap_with_rows()) else {
+            panic!("expected entries");
+        };
+        assert_eq!(e.items.len(), 2);
+        assert_eq!(e.items[0].key, "splashboard");
+        let value = e.items[0].value.as_deref().unwrap_or_default();
+        assert!(value.contains("2.1M"));
+        assert!(value.contains("$"));
+    }
+
+    #[test]
+    fn bars_body_uses_token_count_as_value_and_cost_string_as_label() {
+        // chart_bar ranks by the integer value field; list_ranking surfaces the value_label
+        // verbatim. We want bars to rank by token count and *display* cost.
+        let Body::Bars(b) = bars_body(&snap_with_rows()) else {
+            panic!("expected bars");
+        };
+        assert_eq!(b.bars.len(), 2);
+        assert_eq!(b.bars[0].value, 2_100_000);
+        assert!(b.bars[0].value_label.as_deref().unwrap_or("").contains("$"));
+    }
+
+    #[test]
+    fn number_series_body_carries_daily_tokens_in_order() {
+        let Body::NumberSeries(n) = number_series_body(&snap_with_rows()) else {
+            panic!("expected number_series");
+        };
+        assert_eq!(n.values, vec![0, 100_000, 250_000, 3_400_000]);
+    }
 }

@@ -716,6 +716,44 @@ mod tests {
     }
 
     #[test]
+    fn text_block_body_includes_plan_line_and_one_per_window() {
+        let Body::TextBlock(b) = text_block_body(&snap_full()) else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 3);
+        assert!(b.lines[0].contains("pro"));
+        assert!(b.lines[1].starts_with("5h"));
+        assert!(b.lines[2].starts_with("7d"));
+    }
+
+    #[test]
+    fn text_block_body_falls_back_when_no_data() {
+        let Body::TextBlock(b) = text_block_body(&Snapshot::default()) else {
+            panic!("expected text_block");
+        };
+        assert_eq!(b.lines.len(), 1);
+        assert!(b.lines[0].contains("n/a"));
+    }
+
+    #[test]
+    fn markdown_body_emphasises_plan_and_each_window() {
+        let Body::MarkdownTextBlock(m) = markdown_body(&snap_full()) else {
+            panic!("expected markdown");
+        };
+        assert!(m.value.contains("**plan**: `pro`"));
+        assert!(m.value.contains("- **5h**"));
+        assert!(m.value.contains("- **7d**"));
+    }
+
+    #[test]
+    fn markdown_body_falls_back_when_empty() {
+        let Body::MarkdownTextBlock(m) = markdown_body(&Snapshot::default()) else {
+            panic!("expected markdown");
+        };
+        assert!(m.value.contains("unavailable"));
+    }
+
+    #[test]
     fn status_for_bucketed_thresholds() {
         assert_eq!(status_for(0.0), Status::Ok);
         assert_eq!(status_for(0.5), Status::Ok);
