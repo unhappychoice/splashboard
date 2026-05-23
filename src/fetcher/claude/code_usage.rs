@@ -143,7 +143,15 @@ impl Since {
         match self {
             Since::All => true,
             Since::Today => ts.date_naive() == Utc::now().date_naive(),
-            Since::Days(n) => Utc::now() - Duration::days(*n) <= ts,
+            // Calendar-day comparison so this matches `daily_series`'s bucket window exactly
+            // (today .. today-(n-1)). A rolling `now - n days` cutoff would leak partial-day
+            // events into the totals that never show up in the per-day series.
+            Since::Days(n) => {
+                let today = Utc::now().date_naive();
+                let start = today - Duration::days((*n - 1).max(0));
+                let day = ts.date_naive();
+                day >= start && day <= today
+            }
         }
     }
 }
@@ -273,10 +281,12 @@ fn read_session_file(path: &PathBuf, since: &Since) -> Vec<UsageEvent> {
     let Ok(file) = fs::File::open(path) else {
         return Vec::new();
     };
+    // Let `parse_event` do the type-filter — its internal `kind != "assistant"` check is the
+    // authoritative one. A substring pre-filter here would silently drop valid records if Claude
+    // Code's JSONL formatter ever switches to `"type": "assistant"` with whitespace.
     BufReader::new(file)
         .lines()
         .map_while(Result::ok)
-        .filter(|line| line.contains("\"type\":\"assistant\""))
         .filter_map(|line| parse_event(&line))
         .filter(|e| since.includes(e.timestamp))
         .collect()
@@ -359,7 +369,15 @@ fn parse_event(line: &str) -> Option<UsageEvent> {
 
 fn dedup(events: Vec<UsageEvent>) -> Vec<UsageEvent> {
     let mut by_key: HashMap<(String, String), UsageEvent> = HashMap::new();
+    let mut passthrough: Vec<UsageEvent> = Vec::new();
     for e in events {
+        // serde `#[default]` fills missing IDs with `""`. Collapsing every empty-ID record into
+        // one dedup bucket would silently drop unrelated assistant turns — fall through to the
+        // passthrough list instead so usage stays accurate even if a future schema omits an ID.
+        if e.message_id.is_empty() || e.request_id.is_empty() {
+            passthrough.push(e);
+            continue;
+        }
         let key = (e.message_id.clone(), e.request_id.clone());
         // ccusage gotcha: a `(message.id, requestId)` can repeat across files when a session
         // resumes. Keep the row with the higher total — that's the canonical final usage.
@@ -372,7 +390,9 @@ fn dedup(events: Vec<UsageEvent>) -> Vec<UsageEvent> {
             })
             .or_insert(e);
     }
-    by_key.into_values().collect()
+    let mut out: Vec<UsageEvent> = by_key.into_values().collect();
+    out.extend(passthrough);
+    out
 }
 
 fn group_rows(events: &[UsageEvent], group_by: GroupBy, limit: usize) -> Vec<UsageRow> {
@@ -753,6 +773,47 @@ mod tests {
         assert!(Since::Days(7).includes(recent));
         assert!(!Since::Days(7).includes(old));
         assert!(Since::All.includes(old));
+    }
+
+    #[test]
+    fn since_days_window_uses_calendar_day_boundary_not_rolling_timestamp() {
+        // For Days(7) the inclusive window is `today .. today-6` (matching daily_series's 7
+        // bucket span). The boundary day (today-6) at midnight must be included, and the day
+        // before (today-7) at 23:59 must be excluded — even though the rolling
+        // `now - 7 days` cutoff would put both on the same side.
+        use chrono::TimeZone;
+        let today = Utc::now().date_naive();
+        let boundary_in =
+            Utc.from_utc_datetime(&(today - Duration::days(6)).and_hms_opt(0, 0, 0).unwrap());
+        let just_out =
+            Utc.from_utc_datetime(&(today - Duration::days(7)).and_hms_opt(23, 59, 0).unwrap());
+        assert!(Since::Days(7).includes(boundary_in));
+        assert!(!Since::Days(7).includes(just_out));
+    }
+
+    #[test]
+    fn dedup_passes_through_events_with_empty_ids_instead_of_collapsing_them() {
+        // serde fills missing IDs with `""`; two unrelated assistant turns with empty IDs must
+        // not collide into a single dedup bucket — that would silently lose usage.
+        let make = |suffix: u64| UsageEvent {
+            timestamp: Utc::now(),
+            model: "claude-sonnet-4-6".into(),
+            project: "x".into(),
+            message_id: String::new(),
+            request_id: String::new(),
+            input_tokens: suffix,
+            output_tokens: 0,
+            cache_write_5m: 0,
+            cache_write_1h: 0,
+            cache_read: 0,
+        };
+        let kept = dedup(vec![make(1), make(2)]);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(
+            kept.iter().map(|e| e.input_tokens).sum::<u64>(),
+            3,
+            "both events must survive when ids are empty"
+        );
     }
 
     #[test]
