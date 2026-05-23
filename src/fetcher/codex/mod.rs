@@ -2,11 +2,15 @@
 //!
 //! - [`usage::CodexUsage`] aggregates the local `rollout-*.jsonl` files Codex CLI writes for
 //!   every session, with zero configuration and no network.
+//! - [`subscription::CodexSubscription`] extracts rate-limit utilisation (5h / 7d windows +
+//!   plan type) from the most recent session's last `token_count` event.
 //!
-//! `Safety::Safe` — every read is rooted at `~/.codex/sessions/` (or the `CODEX_HOME`
-//! override) and no network connection is opened.
+//! Both are `Safety::Safe` — all reads are rooted at `~/.codex/sessions/`. No network, no
+//! token leaves the host (the rate-limit data is already cached in the JSONL by Codex CLI;
+//! re-fetching it would mean making an inference call, which costs money).
 
 mod common;
+mod subscription;
 mod usage;
 
 use std::sync::Arc;
@@ -14,7 +18,10 @@ use std::sync::Arc;
 use crate::fetcher::Fetcher;
 
 pub fn fetchers() -> Vec<Arc<dyn Fetcher>> {
-    vec![Arc::new(usage::CodexUsage)]
+    vec![
+        Arc::new(usage::CodexUsage),
+        Arc::new(subscription::CodexSubscription),
+    ]
 }
 
 #[cfg(test)]
@@ -31,5 +38,6 @@ mod tests {
             );
         }
         assert!(names.contains(&"codex_usage".to_string()));
+        assert!(names.contains(&"codex_subscription".to_string()));
     }
 }
