@@ -31,6 +31,7 @@ pub mod hackernews;
 pub mod huggingface_trending;
 pub mod lastfm;
 pub mod linear;
+pub mod llm_pricing;
 pub mod lobsters;
 pub mod nasa_apod;
 pub mod net;
