@@ -1,91 +1,10 @@
-//! Shared helpers for the `claude_*` family — model pricing, cost math, and the JSONL discovery
+//! Shared helpers for the `claude_*` family — formatting helpers and the JSONL discovery
 //! roots used by `claude_code_usage`.
 //!
-//! Pricing lives in source rather than a vendored JSON file because the set of Claude models is
-//! small and changes rarely; bumping a constant is less error-prone than parsing an external table
-//! on every fetch. When a new family ships, add a [`PRICE_TABLE`] row matching the model-id prefix.
+//! Pricing has moved to the shared [`crate::fetcher::llm_pricing`] module so claude and codex
+//! consume the same snapshot. See its module doc for the fetch / fallback story.
 
 use std::path::PathBuf;
-
-/// USD per million tokens for a single Claude model family. Cache write tiers map to Anthropic's
-/// `ephemeral_5m` / `ephemeral_1h` breakouts in the usage payload; `cache_read` covers the
-/// flat-rate cache-read line.
-#[derive(Debug, Clone, Copy)]
-pub struct Price {
-    pub input: f64,
-    pub output: f64,
-    pub cache_write_5m: f64,
-    pub cache_write_1h: f64,
-    pub cache_read: f64,
-}
-
-const OPUS: Price = Price {
-    input: 15.0,
-    output: 75.0,
-    cache_write_5m: 18.75,
-    cache_write_1h: 30.0,
-    cache_read: 1.50,
-};
-
-const SONNET: Price = Price {
-    input: 3.0,
-    output: 15.0,
-    cache_write_5m: 3.75,
-    cache_write_1h: 6.0,
-    cache_read: 0.30,
-};
-
-const HAIKU: Price = Price {
-    input: 1.0,
-    output: 5.0,
-    cache_write_5m: 1.25,
-    cache_write_1h: 2.0,
-    cache_read: 0.10,
-};
-
-/// Prefix table — first match wins, longest-prefix entries appear first so `opus` doesn't shadow
-/// a hypothetical `opus-mini`. Match is on the full lowercased model id.
-const PRICE_TABLE: &[(&str, Price)] = &[
-    ("claude-opus", OPUS),
-    ("claude-sonnet", SONNET),
-    ("claude-haiku", HAIKU),
-    // Legacy date-stamped names still seen in older JSONL sessions.
-    ("claude-3-5-sonnet", SONNET),
-    ("claude-3-5-haiku", HAIKU),
-    ("claude-3-opus", OPUS),
-    ("claude-3-sonnet", SONNET),
-    ("claude-3-haiku", HAIKU),
-];
-
-pub fn price_for(model: &str) -> Option<Price> {
-    let lower = model.to_lowercase();
-    PRICE_TABLE
-        .iter()
-        .find(|(prefix, _)| lower.starts_with(prefix))
-        .map(|(_, p)| *p)
-}
-
-/// USD cost of a usage row given a model. Unknown models contribute 0 — surfacing them as
-/// "free" is friendlier than hiding the underlying token activity behind an error.
-#[allow(clippy::too_many_arguments)]
-pub fn cost_usd(
-    model: &str,
-    input_tokens: u64,
-    output_tokens: u64,
-    cache_write_5m: u64,
-    cache_write_1h: u64,
-    cache_read: u64,
-) -> f64 {
-    let Some(p) = price_for(model) else {
-        return 0.0;
-    };
-    let per_token = |rate_per_mt: f64, count: u64| (count as f64) * rate_per_mt / 1_000_000.0;
-    per_token(p.input, input_tokens)
-        + per_token(p.output, output_tokens)
-        + per_token(p.cache_write_5m, cache_write_5m)
-        + per_token(p.cache_write_1h, cache_write_1h)
-        + per_token(p.cache_read, cache_read)
-}
 
 /// "$12.34" / "$0.05" / "$1.2k" — compact enough to fit a Badge or a Text headline.
 pub fn format_cost(usd: f64) -> String {
@@ -147,44 +66,6 @@ pub fn project_name_from_cwd(cwd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn price_for_matches_opus_sonnet_haiku_by_prefix() {
-        assert!(price_for("claude-opus-4-7").is_some());
-        assert!(price_for("claude-sonnet-4-6").is_some());
-        assert!(price_for("claude-haiku-4-5-20251001").is_some());
-        assert!(price_for("claude-3-5-sonnet-20241022").is_some());
-    }
-
-    #[test]
-    fn price_for_unknown_model_returns_none() {
-        assert!(price_for("gpt-4-turbo").is_none());
-        assert!(price_for("").is_none());
-    }
-
-    #[test]
-    fn price_for_is_case_insensitive() {
-        assert!(price_for("CLAUDE-OPUS-4-7").is_some());
-    }
-
-    #[test]
-    fn cost_usd_zero_for_unknown_model_even_with_tokens() {
-        assert_eq!(cost_usd("gpt-4", 1_000_000, 1_000_000, 0, 0, 0), 0.0);
-    }
-
-    #[test]
-    fn cost_usd_sums_per_tier_rates_against_million_tokens() {
-        // Opus: 1M input @ $15 + 1M output @ $75 = $90 exactly.
-        let c = cost_usd("claude-opus-4-7", 1_000_000, 1_000_000, 0, 0, 0);
-        assert!((c - 90.0).abs() < 1e-6, "expected ~$90, got {c}");
-    }
-
-    #[test]
-    fn cost_usd_charges_cache_tiers() {
-        // Sonnet cache_write_1h: 1M @ $6 = $6.
-        let c = cost_usd("claude-sonnet-4-6", 0, 0, 0, 1_000_000, 0);
-        assert!((c - 6.0).abs() < 1e-6);
-    }
 
     #[test]
     fn format_cost_picks_unit_by_magnitude() {

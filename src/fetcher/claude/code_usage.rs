@@ -5,23 +5,26 @@
 //! since the configured window, deduplicates by `(message.id, request_id)` keeping the row with
 //! the higher token total, then groups by project / model / day depending on `group_by`.
 //!
-//! `Safety::Safe` — every read is rooted at a `$HOME`-relative directory the user owns. No
-//! network, no token, no exec. Pricing is hardcoded in [`super::common`] so a stale price feed
-//! can't disrupt the fetch.
+//! `Safety::Safe` — every session read is rooted at a `$HOME`-relative directory the user
+//! owns. The fetcher *does* make a single HTTP GET for the LLM pricing snapshot (see
+//! [`crate::fetcher::llm_pricing`]) — the URL is hardcoded to splashboard's own GitHub repo,
+//! which keeps it under the host-fixed-URL Safe rule. On HTTP failure we fall back to the
+//! embedded floor so cost columns stay populated for the headline models.
 
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::claude::common::{
-    cost_usd, discover_jsonl_dirs, format_cost, format_tokens, project_name_from_cwd,
+    discover_jsonl_dirs, format_cost, format_tokens, project_name_from_cwd,
 };
 use crate::fetcher::github::common::{cache_key, parse_options, payload};
+use crate::fetcher::llm_pricing::{self, PriceMap};
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
 use crate::payload::{
@@ -117,9 +120,20 @@ impl Fetcher for ClaudeCodeUsage {
         let group_by = parse_group_by(opts.group_by.as_deref())?;
         let shape = ctx.shape.unwrap_or(Shape::Text);
 
-        let snapshot = build_snapshot(&since, group_by, limit);
+        let prices = llm_pricing::fetch_pricing(http()).await;
+        let snapshot = build_snapshot(&since, group_by, limit, &prices);
         Ok(payload(render_body(&snapshot, shape)))
     }
+}
+
+fn http() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(concat!("splashboard/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("reqwest client should build with default config")
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -224,23 +238,24 @@ impl UsageEvent {
             + self.cache_write_1h
             + self.cache_read
     }
-    fn cost(&self) -> f64 {
-        cost_usd(
+    fn cost(&self, prices: &PriceMap) -> f64 {
+        llm_pricing::cost_usd(
+            prices,
             &self.model,
             self.input_tokens,
             self.output_tokens,
+            self.cache_read,
             self.cache_write_5m,
             self.cache_write_1h,
-            self.cache_read,
         )
     }
 }
 
-fn build_snapshot(since: &Since, group_by: GroupBy, limit: usize) -> Snapshot {
+fn build_snapshot(since: &Since, group_by: GroupBy, limit: usize, prices: &PriceMap) -> Snapshot {
     let events = dedup(collect_events(&discover_jsonl_dirs(), since));
     let total_tokens = events.iter().map(UsageEvent::token_total).sum();
-    let total_cost = events.iter().map(UsageEvent::cost).sum();
-    let rows = group_rows(&events, group_by, limit);
+    let total_cost: f64 = events.iter().map(|e| e.cost(prices)).sum();
+    let rows = group_rows(&events, group_by, limit, prices);
     let daily_tokens = daily_series(&events, since);
     Snapshot {
         rows,
@@ -270,11 +285,41 @@ fn read_sessions(dir: &PathBuf, since: &Since) -> Vec<UsageEvent> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
+    // Claude session files are `<uuid>.jsonl` — no date in the filename. mtime is the only
+    // cheap signal we have for "was this session touched in the window?", so stat each file
+    // (one syscall, ~10µs) and skip the open+line-parse path when the file is stale.
+    let cutoff = mtime_cutoff(since);
     entries
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
+        .filter(|e| mtime_within_cutoff(&e.path(), cutoff))
         .flat_map(|e| read_session_file(&e.path(), since))
         .collect()
+}
+
+fn mtime_cutoff(since: &Since) -> Option<NaiveDate> {
+    let today = Utc::now().date_naive();
+    match since {
+        Since::All => None,
+        // One-day buffer covers sessions Claude touched late yesterday whose mtime races our
+        // midnight comparison.
+        Since::Today => Some(today - Duration::days(1)),
+        Since::Days(n) => Some(today - Duration::days(*n)),
+    }
+}
+
+fn mtime_within_cutoff(path: &Path, cutoff: Option<NaiveDate>) -> bool {
+    let Some(cutoff) = cutoff else {
+        return true;
+    };
+    let Ok(meta) = fs::metadata(path) else {
+        return true;
+    };
+    let Ok(mtime) = meta.modified() else {
+        return true;
+    };
+    let mtime_date = DateTime::<Utc>::from(mtime).date_naive();
+    mtime_date >= cutoff
 }
 
 fn read_session_file(path: &PathBuf, since: &Since) -> Vec<UsageEvent> {
@@ -395,7 +440,12 @@ fn dedup(events: Vec<UsageEvent>) -> Vec<UsageEvent> {
     out
 }
 
-fn group_rows(events: &[UsageEvent], group_by: GroupBy, limit: usize) -> Vec<UsageRow> {
+fn group_rows(
+    events: &[UsageEvent],
+    group_by: GroupBy,
+    limit: usize,
+    prices: &PriceMap,
+) -> Vec<UsageRow> {
     let mut by_key: HashMap<String, (u64, f64)> = HashMap::new();
     for e in events {
         let key = match group_by {
@@ -405,7 +455,7 @@ fn group_rows(events: &[UsageEvent], group_by: GroupBy, limit: usize) -> Vec<Usa
         };
         let entry = by_key.entry(key).or_insert((0, 0.0));
         entry.0 += e.token_total();
-        entry.1 += e.cost();
+        entry.1 += e.cost(prices);
     }
     let mut rows: Vec<UsageRow> = by_key
         .into_iter()
@@ -746,7 +796,7 @@ mod tests {
             cache_read: 0,
         };
         let events = vec![make("a", 1_000), make("b", 5_000), make("c", 100)];
-        let rows = group_rows(&events, GroupBy::Project, 2);
+        let rows = group_rows(&events, GroupBy::Project, 2, &llm_pricing::embedded_floor());
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].label, "b");
         assert_eq!(rows[1].label, "a");
@@ -900,6 +950,10 @@ mod tests {
     }
 
     #[tokio::test]
+    // TEST_ENV_LOCK serialises tests that mutate process env (`CLAUDE_CONFIG_DIR` here). The
+    // lock is held across `.fetch().await` deliberately so a sibling test can't swap the env
+    // out mid-flight; the fetcher only reads env at the synchronous entry to the call, so
+    // there's no path where the awaiting future re-takes the same lock and deadlocks.
     #[allow(clippy::await_holding_lock)]
     async fn fetch_reads_jsonl_from_env_override_root() {
         let _lock = crate::paths::TEST_ENV_LOCK
@@ -937,6 +991,48 @@ mod tests {
     }
 
     #[test]
+    fn mtime_cutoff_is_none_for_all_and_one_day_buffer_for_today() {
+        assert!(mtime_cutoff(&Since::All).is_none());
+        let today = Utc::now().date_naive();
+        assert_eq!(mtime_cutoff(&Since::Today), Some(today - Duration::days(1)));
+        assert_eq!(
+            mtime_cutoff(&Since::Days(7)),
+            Some(today - Duration::days(7))
+        );
+    }
+
+    #[test]
+    fn mtime_within_cutoff_keeps_freshly_written_files() {
+        // A file written now has mtime = now → should always be within any non-empty cutoff.
+        let tmp = tempdir().unwrap();
+        let fresh = tmp.path().join("recent.jsonl");
+        fs::write(&fresh, "").unwrap();
+        let cutoff = mtime_cutoff(&Since::Today);
+        assert!(mtime_within_cutoff(&fresh, cutoff));
+    }
+
+    #[test]
+    fn mtime_within_cutoff_keeps_unreadable_files_conservatively() {
+        // If we can't stat the path, the safe thing is to let `read_session_file` try and
+        // fail silently — the per-line `since.includes(ts)` filter is the source of truth.
+        let cutoff = Some(Utc::now().date_naive());
+        assert!(mtime_within_cutoff(
+            Path::new("/nonexistent/path/does/not/exist.jsonl"),
+            cutoff
+        ));
+    }
+
+    #[test]
+    fn mtime_within_cutoff_lets_anything_through_when_cutoff_is_none() {
+        // Since::All path: cutoff is None, every file (even nonexistent) passes.
+        let tmp = tempdir().unwrap();
+        let f = tmp.path().join("any.jsonl");
+        fs::write(&f, "").unwrap();
+        assert!(mtime_within_cutoff(&f, None));
+        assert!(mtime_within_cutoff(Path::new("/nonexistent.jsonl"), None));
+    }
+
+    #[test]
     fn day_grouping_buckets_by_calendar_date() {
         let day1 = Utc.with_ymd_and_hms(2026, 5, 5, 10, 0, 0).unwrap();
         let day2 = Utc.with_ymd_and_hms(2026, 5, 6, 10, 0, 0).unwrap();
@@ -957,7 +1053,7 @@ mod tests {
             mk(day1, "b", 2_000),
             mk(day2, "c", 500),
         ];
-        let rows = group_rows(&events, GroupBy::Day, 10);
+        let rows = group_rows(&events, GroupBy::Day, 10, &llm_pricing::embedded_floor());
         assert_eq!(rows.len(), 2);
         // Day 1 contributed 3_000 tokens vs day 2's 500, so it ranks first.
         assert!(rows[0].label.ends_with("05-05"));

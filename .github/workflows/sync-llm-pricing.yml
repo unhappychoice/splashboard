@@ -1,0 +1,95 @@
+name: Sync LLM pricing
+
+# Daily refresh of `data/llm_pricing.json` from LiteLLM's price table. Filtered down to
+# OpenAI / Anthropic chat models and converted from per-token to per-million-tokens so the
+# splashboard runtime can consume it without rescaling. Opens a PR on diff; never commits
+# straight to main — agent PRs always wait for a human merge per repo policy.
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # daily 00:00 UTC
+  workflow_dispatch:       # manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Refresh pricing snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # `peter-evans/create-pull-request` supplies its own token below, so
+          # checkout doesn't need to persist credentials in the workspace.
+          persist-credentials: false
+
+      - name: Fetch upstream LiteLLM table
+        run: |
+          curl -sSf -o /tmp/litellm.json \
+            "https://raw.githubusercontent.com/BerriAI/litellm/main/litellm/model_prices_and_context_window_backup.json"
+
+      - name: Extract OpenAI + Anthropic chat models
+        run: |
+          python3 <<'PY'
+          import json
+          src = json.load(open('/tmp/litellm.json'))
+          out = {}
+          for model, v in src.items():
+              if not isinstance(v, dict):
+                  continue
+              if v.get('litellm_provider') not in ('openai', 'anthropic'):
+                  continue
+              if v.get('mode') != 'chat':
+                  continue
+              if v.get('input_cost_per_token') is None and v.get('output_cost_per_token') is None:
+                  continue
+              row = {
+                  'input': v.get('input_cost_per_token', 0.0) * 1_000_000,
+                  'output': v.get('output_cost_per_token', 0.0) * 1_000_000,
+                  'cache_read': v.get('cache_read_input_token_cost', 0.0) * 1_000_000,
+              }
+              cw5 = v.get('cache_creation_input_token_cost', 0.0) * 1_000_000
+              cw1 = v.get('cache_creation_input_token_cost_above_1hr', 0.0) * 1_000_000
+              if cw5:
+                  row['cache_write_5m'] = cw5
+              if cw1:
+                  row['cache_write_1h'] = cw1
+              out[model] = row
+
+          out_sorted = {k: out[k] for k in sorted(out)}
+          final = {
+              "_meta": {
+                  "source": "https://raw.githubusercontent.com/BerriAI/litellm/main/litellm/model_prices_and_context_window_backup.json",
+                  "filter": "litellm_provider in {openai, anthropic} AND mode == chat",
+                  "fields": "USD per 1M tokens",
+              },
+              "models": out_sorted,
+          }
+          json.dump(final, open('data/llm_pricing.json', 'w'), indent=2, sort_keys=False)
+          print(f"rows: {len(out_sorted)}")
+          PY
+
+      - name: Open PR if diff
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/sync-llm-pricing
+          title: 'chore: sync llm pricing from LiteLLM'
+          commit-message: |
+            chore: sync llm pricing from LiteLLM
+
+            Automated daily refresh of `data/llm_pricing.json`. Diff reviews
+            catch upstream schema or value changes before they reach users.
+          body: |
+            Automated daily refresh of `data/llm_pricing.json` from LiteLLM's price table.
+
+            **Review checklist:**
+            - [ ] Diff is plausible (no order-of-magnitude jumps that aren't matched by a public Anthropic / OpenAI announcement)
+            - [ ] No models silently disappeared (would zero-cost their token counts)
+            - [ ] `cargo test fetcher::llm_pricing::tests::snapshot_parses_repo_seed` passes — guards schema drift
+          labels: |
+            automation
+            pricing
+          delete-branch: true

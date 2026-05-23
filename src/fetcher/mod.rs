@@ -17,6 +17,7 @@ pub mod calendar;
 pub mod claude;
 pub mod clock;
 pub mod code;
+pub mod codex;
 pub mod crypto_trending;
 pub mod crypto_watchlist;
 pub mod deal;
@@ -30,6 +31,7 @@ pub mod hackernews;
 pub mod huggingface_trending;
 pub mod lastfm;
 pub mod linear;
+pub mod llm_pricing;
 pub mod lobsters;
 pub mod nasa_apod;
 pub mod net;
@@ -351,6 +353,9 @@ impl Registry {
             r.register(f);
         }
         for f in claude::fetchers() {
+            r.register(f);
+        }
+        for f in codex::fetchers() {
             r.register(f);
         }
         for f in deal::fetchers() {
