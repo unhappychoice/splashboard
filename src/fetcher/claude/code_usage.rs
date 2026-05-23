@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -285,11 +285,41 @@ fn read_sessions(dir: &PathBuf, since: &Since) -> Vec<UsageEvent> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
+    // Claude session files are `<uuid>.jsonl` — no date in the filename. mtime is the only
+    // cheap signal we have for "was this session touched in the window?", so stat each file
+    // (one syscall, ~10µs) and skip the open+line-parse path when the file is stale.
+    let cutoff = mtime_cutoff(since);
     entries
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
+        .filter(|e| mtime_within_cutoff(&e.path(), cutoff))
         .flat_map(|e| read_session_file(&e.path(), since))
         .collect()
+}
+
+fn mtime_cutoff(since: &Since) -> Option<NaiveDate> {
+    let today = Utc::now().date_naive();
+    match since {
+        Since::All => None,
+        // One-day buffer covers sessions Claude touched late yesterday whose mtime races our
+        // midnight comparison.
+        Since::Today => Some(today - Duration::days(1)),
+        Since::Days(n) => Some(today - Duration::days(*n)),
+    }
+}
+
+fn mtime_within_cutoff(path: &Path, cutoff: Option<NaiveDate>) -> bool {
+    let Some(cutoff) = cutoff else {
+        return true;
+    };
+    let Ok(meta) = fs::metadata(path) else {
+        return true;
+    };
+    let Ok(mtime) = meta.modified() else {
+        return true;
+    };
+    let mtime_date = DateTime::<Utc>::from(mtime).date_naive();
+    mtime_date >= cutoff
 }
 
 fn read_session_file(path: &PathBuf, since: &Since) -> Vec<UsageEvent> {
@@ -954,6 +984,48 @@ mod tests {
         };
         assert!(t.value.contains("Today"));
         assert!(t.value.contains("3k"), "value was {:?}", t.value);
+    }
+
+    #[test]
+    fn mtime_cutoff_is_none_for_all_and_one_day_buffer_for_today() {
+        assert!(mtime_cutoff(&Since::All).is_none());
+        let today = Utc::now().date_naive();
+        assert_eq!(mtime_cutoff(&Since::Today), Some(today - Duration::days(1)));
+        assert_eq!(
+            mtime_cutoff(&Since::Days(7)),
+            Some(today - Duration::days(7))
+        );
+    }
+
+    #[test]
+    fn mtime_within_cutoff_keeps_freshly_written_files() {
+        // A file written now has mtime = now → should always be within any non-empty cutoff.
+        let tmp = tempdir().unwrap();
+        let fresh = tmp.path().join("recent.jsonl");
+        fs::write(&fresh, "").unwrap();
+        let cutoff = mtime_cutoff(&Since::Today);
+        assert!(mtime_within_cutoff(&fresh, cutoff));
+    }
+
+    #[test]
+    fn mtime_within_cutoff_keeps_unreadable_files_conservatively() {
+        // If we can't stat the path, the safe thing is to let `read_session_file` try and
+        // fail silently — the per-line `since.includes(ts)` filter is the source of truth.
+        let cutoff = Some(Utc::now().date_naive());
+        assert!(mtime_within_cutoff(
+            Path::new("/nonexistent/path/does/not/exist.jsonl"),
+            cutoff
+        ));
+    }
+
+    #[test]
+    fn mtime_within_cutoff_lets_anything_through_when_cutoff_is_none() {
+        // Since::All path: cutoff is None, every file (even nonexistent) passes.
+        let tmp = tempdir().unwrap();
+        let f = tmp.path().join("any.jsonl");
+        fs::write(&f, "").unwrap();
+        assert!(mtime_within_cutoff(&f, None));
+        assert!(mtime_within_cutoff(Path::new("/nonexistent.jsonl"), None));
     }
 
     #[test]
