@@ -1,106 +1,11 @@
-//! Shared helpers for the `codex_*` family — model pricing, cost math, and the date-tree
-//! discovery used by `codex_usage` and `codex_subscription`.
+//! Shared helpers for the `codex_*` family — formatting helpers, JSONL session discovery,
+//! and the small label-normalising bits used by `codex_usage` and `codex_subscription`.
 //!
-//! Pricing lives in source rather than a vendored file because the OpenAI model surface is
-//! small enough to track by hand; bumping a constant is less error-prone than parsing an
-//! external table on every fetch. When a new family ships, add a [`PRICE_TABLE`] row matching
-//! the model-id prefix.
+//! Pricing has moved to the shared [`crate::fetcher::llm_pricing`] module so codex and
+//! claude consume the same snapshot. See its module doc for the fetch / fallback story.
 
 use std::fs;
 use std::path::PathBuf;
-
-/// USD per million tokens for a single OpenAI model family. `cached_input` covers the prompt
-/// cache discount (Codex CLI's `cached_input_tokens` lands here, billed at the discounted rate
-/// instead of the full `input` rate). Reasoning output is billed at the same rate as regular
-/// output today, so it folds into [`Price::output`].
-#[derive(Debug, Clone, Copy)]
-pub struct Price {
-    pub input: f64,
-    pub cached_input: f64,
-    pub output: f64,
-}
-
-const GPT_5: Price = Price {
-    input: 1.25,
-    cached_input: 0.125,
-    output: 10.0,
-};
-
-const GPT_5_MINI: Price = Price {
-    input: 0.25,
-    cached_input: 0.025,
-    output: 2.0,
-};
-
-const GPT_5_NANO: Price = Price {
-    input: 0.05,
-    cached_input: 0.005,
-    output: 0.40,
-};
-
-const GPT_4_1: Price = Price {
-    input: 2.0,
-    cached_input: 0.50,
-    output: 8.0,
-};
-
-const GPT_4_1_MINI: Price = Price {
-    input: 0.40,
-    cached_input: 0.10,
-    output: 1.60,
-};
-
-const O3: Price = Price {
-    input: 2.0,
-    cached_input: 0.50,
-    output: 8.0,
-};
-
-const O4_MINI: Price = Price {
-    input: 1.10,
-    cached_input: 0.275,
-    output: 4.40,
-};
-
-/// Prefix table — longest-prefix entries come first so `gpt-5-mini` doesn't get swallowed by
-/// `gpt-5`. Match is on the full lowercased model id.
-const PRICE_TABLE: &[(&str, Price)] = &[
-    ("gpt-5-nano", GPT_5_NANO),
-    ("gpt-5-mini", GPT_5_MINI),
-    ("gpt-5", GPT_5),
-    ("gpt-4.1-mini", GPT_4_1_MINI),
-    ("gpt-4.1", GPT_4_1),
-    ("o4-mini", O4_MINI),
-    ("o3", O3),
-];
-
-pub fn price_for(model: &str) -> Option<Price> {
-    let lower = model.to_lowercase();
-    PRICE_TABLE
-        .iter()
-        .find(|(prefix, _)| lower.starts_with(prefix))
-        .map(|(_, p)| *p)
-}
-
-/// USD cost of a single turn given a model. Unknown models contribute 0 — surfacing them as
-/// "free" is friendlier than hiding the underlying token activity behind an error.
-pub fn cost_usd(
-    model: &str,
-    input_tokens: u64,
-    cached_input_tokens: u64,
-    output_tokens: u64,
-) -> f64 {
-    let Some(p) = price_for(model) else {
-        return 0.0;
-    };
-    let per_token = |rate_per_mt: f64, count: u64| (count as f64) * rate_per_mt / 1_000_000.0;
-    // OpenAI reports `cached_input_tokens` as a subset of `input_tokens`; bill the cached chunk
-    // at the discounted rate and the rest at the full input rate.
-    let billable_input = input_tokens.saturating_sub(cached_input_tokens);
-    per_token(p.input, billable_input)
-        + per_token(p.cached_input, cached_input_tokens)
-        + per_token(p.output, output_tokens)
-}
 
 /// "$12.34" / "$0.05" / "$1.2k" — compact enough to fit a Badge or a Text headline.
 pub fn format_cost(usd: f64) -> String {
@@ -214,54 +119,6 @@ fn strip_trailing_iso_date(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn price_for_matches_gpt_5_family_by_prefix() {
-        assert!(price_for("gpt-5").is_some());
-        assert!(price_for("gpt-5.5").is_some());
-        assert!(price_for("gpt-5-mini").is_some());
-        assert!(price_for("gpt-5-nano").is_some());
-        assert!(price_for("o4-mini").is_some());
-    }
-
-    #[test]
-    fn price_for_unknown_model_returns_none() {
-        assert!(price_for("claude-opus-4-7").is_none());
-        assert!(price_for("").is_none());
-    }
-
-    #[test]
-    fn price_for_longer_prefix_wins_over_shorter() {
-        // gpt-5-mini must resolve to GPT_5_MINI, not GPT_5 (it's listed before in PRICE_TABLE).
-        let mini = price_for("gpt-5-mini").unwrap();
-        assert!(
-            (mini.input - 0.25).abs() < 1e-9,
-            "expected gpt-5-mini rate, got {}",
-            mini.input
-        );
-    }
-
-    #[test]
-    fn cost_usd_zero_for_unknown_model_even_with_tokens() {
-        assert_eq!(cost_usd("claude-opus-4-7", 1_000_000, 0, 1_000_000), 0.0);
-    }
-
-    #[test]
-    fn cost_usd_charges_cached_input_at_discounted_rate() {
-        // gpt-5: 1M billable input @ $1.25 + 0M cached + 0M output = $1.25
-        let full = cost_usd("gpt-5", 1_000_000, 0, 0);
-        assert!((full - 1.25).abs() < 1e-9, "got {full}");
-        // Same input but all cached → 1M @ $0.125 = $0.125
-        let cached = cost_usd("gpt-5", 1_000_000, 1_000_000, 0);
-        assert!((cached - 0.125).abs() < 1e-9, "got {cached}");
-    }
-
-    #[test]
-    fn cost_usd_splits_partial_cache_against_full_and_cached_rates() {
-        // 1M input where 0.5M is cached → 0.5M @ $1.25 + 0.5M @ $0.125 = $0.625 + $0.0625 = $0.6875
-        let c = cost_usd("gpt-5", 1_000_000, 500_000, 0);
-        assert!((c - 0.6875).abs() < 1e-9, "got {c}");
-    }
 
     #[test]
     fn format_cost_picks_unit_by_magnitude() {

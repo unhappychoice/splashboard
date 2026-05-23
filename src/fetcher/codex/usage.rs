@@ -6,9 +6,11 @@
 //! that precedes each turn carries the model id and `cwd`; we thread that state forward as
 //! we parse so token_count events get attributed to the right turn.
 //!
-//! `Safety::Safe` — every read is rooted at a `$HOME`-relative directory the user owns. No
-//! network, no token, no exec. Pricing is hardcoded in [`super::common`] so a stale price feed
-//! can't disrupt the fetch.
+//! `Safety::Safe` — every session read is rooted at a `$HOME`-relative directory the user
+//! owns. The fetcher *does* make a single HTTP GET for the LLM pricing snapshot (see
+//! [`crate::fetcher::llm_pricing`]) — the URL is hardcoded to splashboard's own GitHub repo,
+//! which keeps it under the host-fixed-URL Safe rule. On HTTP failure we fall back to the
+//! embedded floor so cost columns stay populated for the headline models.
 
 use std::collections::HashMap;
 use std::fs;
@@ -20,10 +22,11 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::Deserialize;
 
 use crate::fetcher::codex::common::{
-    cost_usd, discover_session_dirs, format_cost, format_tokens, list_session_files,
-    project_name_from_cwd, short_model_name,
+    discover_session_dirs, format_cost, format_tokens, list_session_files, project_name_from_cwd,
+    short_model_name,
 };
 use crate::fetcher::github::common::{cache_key, parse_options, payload};
+use crate::fetcher::llm_pricing::{self, PriceMap};
 use crate::fetcher::{FetchContext, FetchError, Fetcher, Safety};
 use crate::options::OptionSchema;
 use crate::payload::{
@@ -119,9 +122,20 @@ impl Fetcher for CodexUsage {
         let group_by = parse_group_by(opts.group_by.as_deref())?;
         let shape = ctx.shape.unwrap_or(Shape::Text);
 
-        let snapshot = build_snapshot(&since, group_by, limit);
+        let prices = llm_pricing::fetch_pricing(http()).await;
+        let snapshot = build_snapshot(&since, group_by, limit, &prices);
         Ok(payload(render_body(&snapshot, shape)))
     }
+}
+
+fn http() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(concat!("splashboard/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("reqwest client should build with default config")
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -220,21 +234,27 @@ impl UsageEvent {
         // count it. Reasoning tokens already roll into `output_tokens`.
         self.input_tokens + self.output_tokens
     }
-    fn cost(&self) -> f64 {
-        cost_usd(
+    fn cost(&self, prices: &PriceMap) -> f64 {
+        // OpenAI reports `cached_input_tokens` as a subset of `input_tokens`; pass the
+        // non-cached chunk at the full input rate and the cached chunk at `cache_read`.
+        let billable_input = self.input_tokens.saturating_sub(self.cached_input_tokens);
+        llm_pricing::cost_usd(
+            prices,
             &self.model,
-            self.input_tokens,
-            self.cached_input_tokens,
+            billable_input,
             self.output_tokens,
+            self.cached_input_tokens,
+            0,
+            0,
         )
     }
 }
 
-fn build_snapshot(since: &Since, group_by: GroupBy, limit: usize) -> Snapshot {
+fn build_snapshot(since: &Since, group_by: GroupBy, limit: usize, prices: &PriceMap) -> Snapshot {
     let events = collect_events(&list_session_files(&discover_session_dirs()), since);
     let total_tokens = events.iter().map(UsageEvent::token_total).sum();
-    let total_cost = events.iter().map(UsageEvent::cost).sum();
-    let rows = group_rows(&events, group_by, limit);
+    let total_cost: f64 = events.iter().map(|e| e.cost(prices)).sum();
+    let rows = group_rows(&events, group_by, limit, prices);
     let daily_tokens = daily_series(&events, since);
     Snapshot {
         rows,
@@ -376,7 +396,12 @@ fn token_usage_from_event(payload: &RawPayload) -> Option<RawTokenUsage> {
     })
 }
 
-fn group_rows(events: &[UsageEvent], group_by: GroupBy, limit: usize) -> Vec<UsageRow> {
+fn group_rows(
+    events: &[UsageEvent],
+    group_by: GroupBy,
+    limit: usize,
+    prices: &PriceMap,
+) -> Vec<UsageRow> {
     let mut by_key: HashMap<String, (u64, f64)> = HashMap::new();
     for e in events {
         let key = match group_by {
@@ -386,7 +411,7 @@ fn group_rows(events: &[UsageEvent], group_by: GroupBy, limit: usize) -> Vec<Usa
         };
         let entry = by_key.entry(key).or_insert((0, 0.0));
         entry.0 += e.token_total();
-        entry.1 += e.cost();
+        entry.1 += e.cost(prices);
     }
     let mut rows: Vec<UsageRow> = by_key
         .into_iter()
@@ -709,7 +734,7 @@ mod tests {
             output_tokens: output,
         };
         let events = vec![make("a", 1_000), make("b", 5_000), make("c", 100)];
-        let rows = group_rows(&events, GroupBy::Project, 2);
+        let rows = group_rows(&events, GroupBy::Project, 2, &llm_pricing::embedded_floor());
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].label, "b");
         assert_eq!(rows[1].label, "a");
