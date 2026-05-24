@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-05-24
+
+### ✨ Features
+
+- feat(fetcher): add shared llm_pricing helper ([cf40ec1](https://github.com/unhappychoice/splashboard/commit/cf40ec1))
+- feat(fetcher): add codex_subscription — rate-limit utilisation from local JSONL ([1b5d7b2](https://github.com/unhappychoice/splashboard/commit/1b5d7b2))
+- feat(fetcher): add codex_usage — local Codex CLI session rollup ([ebb7760](https://github.com/unhappychoice/splashboard/commit/ebb7760))
+- feat(fetcher/codex): scaffold module + shared session helpers ([b8c1be2](https://github.com/unhappychoice/splashboard/commit/b8c1be2))
+- feat(fetcher): add claude_subscription — Max-plan utilisation via oauth/usage ([59e3fdc](https://github.com/unhappychoice/splashboard/commit/59e3fdc))
+- feat(fetcher): add claude_code_usage — local Claude Code session rollup ([9a0111d](https://github.com/unhappychoice/splashboard/commit/9a0111d))
+
+### 🐛 Bug Fixes
+
+- fix(fetcher/codex): address coderabbit review findings ([aad0c6e](https://github.com/unhappychoice/splashboard/commit/aad0c6e))
+- fix(fetcher/claude_code_usage): address coderabbit review findings ([73f6808](https://github.com/unhappychoice/splashboard/commit/73f6808))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.7.0 ([a0c1afb](https://github.com/unhappychoice/splashboard/commit/a0c1afb))
+- perf(fetcher/claude_code_usage): skip stale JSONL files by mtime ([6d09272](https://github.com/unhappychoice/splashboard/commit/6d09272))
+- perf(fetcher/codex_usage): skip JSONL files outside the since window by filename ([bfc728f](https://github.com/unhappychoice/splashboard/commit/bfc728f))
+- test(fetcher/codex): cover render_body branches for each shape ([a01d64f](https://github.com/unhappychoice/splashboard/commit/a01d64f))
+- refactor(fetcher/claude_code_usage): use shared llm_pricing helper ([07939bb](https://github.com/unhappychoice/splashboard/commit/07939bb))
+- refactor(fetcher/codex_usage): use shared llm_pricing helper ([c55aa0c](https://github.com/unhappychoice/splashboard/commit/c55aa0c))
+- chore: sync llm pricing daily via Actions ([ad0978a](https://github.com/unhappychoice/splashboard/commit/ad0978a))
+- test(fetcher): restore SPLASHBOARD_HOME via RAII guard for panic safety ([8bfd057](https://github.com/unhappychoice/splashboard/commit/8bfd057))
+- test(fetcher/gitlab/common): assert structural project path instead of hard-coded slug ([2d18654](https://github.com/unhappychoice/splashboard/commit/2d18654))
+- test(render/media_image): cover draw_thumbnail's zero-sized area guard returning `Ok` before any image load, so a degenerate zero-width or zero-height layout slot can't surface a spurious `[image: …]` error — only reachable by calling `draw_thumbnail` directly, since the public render path never hands a renderer a zero-sized area ([7f16c4c](https://github.com/unhappychoice/splashboard/commit/7f16c4c))
+- test(fetcher/git/repo_name): cover fetch's `"project"` literal fallback when the cwd is the filesystem root, where there is no directory basename and no git repo above it so both arms of `detect_name` come up empty ([b46b452](https://github.com/unhappychoice/splashboard/commit/b46b452))
+- test(xtask/themes): cover pretty_name's `None` arm for empty underscore segments rendering as blank words, theme_for's `unwrap_or_default` fallback materialising the default theme for an unknown slug, and render_one's happy path plus both failure contexts: a missing demo config failing `render_config_html_with_theme`'s `read_to_string`, and an output path pre-created as a directory surfacing the `write` context after a successful render ([582a811](https://github.com/unhappychoice/splashboard/commit/582a811))
+- test(render/animated_splitflap): cover apply_flap's guard and continue arms — bailing out on a zero-sized area, taking the `elapsed_ms >= settle_at` continue so a fully settled cell keeps its original glyph past the animation window, and the `else { continue }` arm resolving out-of-range cells to no cell instead of panicking when the area overflows the buffer ([545d511](https://github.com/unhappychoice/splashboard/commit/545d511))
+- test(render/chart_histogram): cover render_histogram's own empty-series guard (only reachable by calling it directly, since render_payload short-circuits empty bodies upstream) leaving the buffer blank, and boost_to_visible passing an all-zero count slice straight through when the zero peak leaves nothing to lift ([dc72516](https://github.com/unhappychoice/splashboard/commit/dc72516))
+- test(render/grid_table): cover the inline layout honouring right alignment so content sits flush against the right edge with leading padding, and render's defence-in-depth guard drawing nothing instead of panicking when handed a non-Entries body directly ([fbbb28a](https://github.com/unhappychoice/splashboard/commit/fbbb28a))
+- test(xtask/preset_index): cover run's create and write failure paths — surfacing the `create` context when a directory component is a regular file and the `write` context when the index path is pre-created as a directory, with a shared unique_temp_dir helper tagging each case ([ebfe8ee](https://github.com/unhappychoice/splashboard/commit/ebfe8ee))
+- test(render/chart_sparkline): cover render leaving the slot untouched when handed a non-NumberSeries body, the line style emitting a blank chart for an empty value window, and draw_line_series/draw_zero_baseline's defence-in-depth guards for a zero-sized area, an over-long value slice, and mid/bottom rows past the buffer ([037092b](https://github.com/unhappychoice/splashboard/commit/037092b))
+- test(render/list_ranking): cover fit_label's zero-width, pad, and truncate-with-ellipsis branches, pad_left prepending spaces only when shorter than the target width, and align_rect offsetting for center/right while passing the area through unchanged for no hint, zero content width, or content wider than the area ([8a0b507](https://github.com/unhappychoice/splashboard/commit/8a0b507))
+- test(render/text_ascii): cover figlet_wrapped's raw-input fallback when the font renders nothing (empty string and all-control-code input), blocks_width and pixel_name taking the conservative defaults on an unrecognised PixelSize, and render's defence-in-depth Body::Text guard drawing a blank cell instead of panicking when handed a non-Text body ([0d78814](https://github.com/unhappychoice/splashboard/commit/0d78814))
+- test(fetcher/code/scan): cover the tracked walkers' early-continue branches — `for_each_tracked_path` and `for_each_tracked_file` skipping a symlink that fails `is_regular_file` and (Linux-only) a non-UTF-8 path that fails the `str::from_utf8` decode, asserting only the regular `keep.rs` entry is ever visited ([531bcca](https://github.com/unhappychoice/splashboard/commit/531bcca))
+- test(cli/cache): cover run_cache subcommand dispatch — Path resolving the cache dir under SPLASHBOARD_HOME, List treating a missing cache dir as empty in both plain and json modes, Clear removing seeded .json/.lock entry files, and Clear with a widget_id dispatching through run_cache_clear to clear_one's no-entry diagnostic ([5dd4af4](https://github.com/unhappychoice/splashboard/commit/5dd4af4))
+- test(xtask/html_snapshot): cover color_hex mapping every ANSI-16 named color to its exact hex value, exercising all sixteen Color enum arms from Black through White including the dim and Light* bright variants ([28f00b2](https://github.com/unhappychoice/splashboard/commit/28f00b2))
+- test(fetcher/deal/free_games): cover Platform's config_value tokens and url_slug codes for all nine storefronts, feed_url slug embedding for every non-aggregate platform, and parse_platform/parse_kind case-insensitive matching of every known storefront and the explicit game keyword ([ccf0365](https://github.com/unhappychoice/splashboard/commit/ccf0365))
+- test(runtime): cover finalize_splash restoring cursor visibility so the post-splash shell prompt gets a visible cursor, asserting an explicit hide is flipped back to shown via TestBackend's cursor-visibility debug output ([9b98aa6](https://github.com/unhappychoice/splashboard/commit/9b98aa6))
+- test(render/list_links): cover render_links's zero-dimension area early return, write_row's no-op arm when set_stringn draws zero cells, and the OSC 8 suppression paths skipping the hyperlink wrap in both write_row and wrap_osc8 ([90f5abc](https://github.com/unhappychoice/splashboard/commit/90f5abc))
+- test(fetcher/gitlab/common): cover payload's metadata-unset wrapping, project_from_url's https-userinfo bail when the credential chunk embeds a slash, and resolve_project's cwd-git-remote fallback recovering the project path from the origin URL ([eb4eba3](https://github.com/unhappychoice/splashboard/commit/eb4eba3))
+- test(fetcher/huggingface_trending): cover render_sync TextBlock shape emitting one rank-prefixed line per entry, with the heart count and the optional download count formatted and the latter omitted when absent ([1e9c943](https://github.com/unhappychoice/splashboard/commit/1e9c943))
+- test(fetcher/github/action_status): cover render_body Entries shape for the classified status/branch/conclusion rows and the conclusion `?` fallback when a still-running workflow has no conclusion ([804d95b](https://github.com/unhappychoice/splashboard/commit/804d95b))
+- test(render/list_cards): cover natural_height's non-ImageLinkedList fallback arm, render_cards and draw_text zero-dimension no-op guards, and the draw_thumbnail path via a missing-file card whose image-load error is swallowed ([128d0d6](https://github.com/unhappychoice/splashboard/commit/128d0d6))
+- test(render/animated_figlet_morph): park until process uptime clears the 260ms fade window so render_morph deterministically takes the crossfade-out branch instead of the fade-in path a fast suite would otherwise hit ([dfe38fd](https://github.com/unhappychoice/splashboard/commit/dfe38fd))
+- test(fetcher/steam/games): cover text_block_body and entries_body empty-input placeholder arms, plus image_linked_body and image_body cached-thumbnail resolution via pre-seeded cache files without network I/O ([d588376](https://github.com/unhappychoice/splashboard/commit/d588376))
+- test(fetcher/steam/player_summary): cover avatar download and thumbnail-cache resolution for ImageLinkedList and Image bodies over a local HTTP server, asserting the cached .png path is reused without a second request ([5f9a47d](https://github.com/unhappychoice/splashboard/commit/5f9a47d))
+- test(fetcher/wikipedia/trending): cover ImageLinkedList thumbnail resolution over a local HTTP server for fetch_thumbnail_url source extraction, missing-thumbnail and request-failure None arms, plus the empty-article chain entry ([71e32d1](https://github.com/unhappychoice/splashboard/commit/71e32d1))
+- test(fetcher/news): cover fetch shape dispatch over a local HTTP server for default/text-block/image/image-linked bodies, the count clamp, and parse/status error surfacing ([3bc0b7b](https://github.com/unhappychoice/splashboard/commit/3bc0b7b))
+- test(cache): cover warm_from None-disk arm, is_lock_stale missing-file bail, ensure_parent parentless path, io_err Other-kind wrapping, and try_acquire_with lock-dir creation failure ([ab3c2a8](https://github.com/unhappychoice/splashboard/commit/ab3c2a8))
+- test(cache/clear): cover clear_one missing-widget and realtime-fetcher errors, empty-cache diagnostic, and entry/lock removal in plain and json modes ([1bba315](https://github.com/unhappychoice/splashboard/commit/1bba315))
+- test(fetcher/lastfm): cover render_body shape dispatch for charts and every top_* fetcher, including the text_body fallback arm ([871d30b](https://github.com/unhappychoice/splashboard/commit/871d30b))
+- test(runtime): cover cache_keys_for realtime/unknown filtering, distinct per-widget keys, and load_entries key parity ([9f17ddd](https://github.com/unhappychoice/splashboard/commit/9f17ddd))
+- test(fetcher/forge_items): cover dispatch_rows_async ImageLinkedList thumbnail resolution for missing, unsupported-scheme, and cache-hit avatars ([3a527a8](https://github.com/unhappychoice/splashboard/commit/3a527a8))
+- test(fetcher/deal/free_games): cover fetch validation rejections and entry_to_row store split, free-offer marking, and timestamp fallbacks ([f12c144](https://github.com/unhappychoice/splashboard/commit/f12c144))
+- test(fetcher/lastfm/scrobbles_today): cover render_body shape dispatch, text fallback, and every body builder ([c507212](https://github.com/unhappychoice/splashboard/commit/c507212))
+- test(fetcher/deal/games): cover store_name id mapping and fetch_deals success, status, parse, request, and oversized-body paths ([04c099f](https://github.com/unhappychoice/splashboard/commit/04c099f))
+- test(fetcher/gitlab/pipeline_status): cover sample_body shapes, metadata, cache_key variation, and fetch validation paths ([9b02747](https://github.com/unhappychoice/splashboard/commit/9b02747))
+- test(fetcher/crypto_trending): cover render_sync text_block, render_for_shape image/non-image paths, and shared http client ([2c4319f](https://github.com/unhappychoice/splashboard/commit/2c4319f))
+- test(fetcher/wikipedia/trending): cover render_sync text_block, build_summary_url encoding, and render_for_shape non-image path ([eced2fb](https://github.com/unhappychoice/splashboard/commit/eced2fb))
+- test(fetcher/lastfm/top): cover Period deserialisation and body builders for every shape ([ad60121](https://github.com/unhappychoice/splashboard/commit/ad60121))
+- test(fetcher/deal/steam_daily): cover entry_to_row parsing, fallbacks, and cache_key ([f870941](https://github.com/unhappychoice/splashboard/commit/f870941))
+- test(fetcher/huggingface_trending): cover get_json status/parse/size/request paths and render_for_shape image branches ([2bb8dc7](https://github.com/unhappychoice/splashboard/commit/2bb8dc7))
+- test(fetcher/gitlab): cover repo_stars sample_body, metadata, cache_key, and fetch validation paths ([aa16985](https://github.com/unhappychoice/splashboard/commit/aa16985))
+- test(fetcher/steam): cover owned_games render_body shapes, cache_key, and fetch validation ([7373b81](https://github.com/unhappychoice/splashboard/commit/7373b81))
+- test(fetcher/steam): cover recently_played render_body shapes, cache_key, and fetch validation ([f17d963](https://github.com/unhappychoice/splashboard/commit/f17d963))
+- test(fetcher/deal): cover common label, body_for_shape, and image_linked paths ([4612d0a](https://github.com/unhappychoice/splashboard/commit/4612d0a))
+- test(fetcher/lastfm): cover parse_json status, envelope, and size paths ([c592945](https://github.com/unhappychoice/splashboard/commit/c592945))
+- test(fetcher/gitlab): cover repo_issues metadata, cache_key, and fetch validation paths ([85bc788](https://github.com/unhappychoice/splashboard/commit/85bc788))
+- test(runtime): cover next_refresh_secs countdown logic and fmt_duration_compact ([618d441](https://github.com/unhappychoice/splashboard/commit/618d441))
+- test(fetcher/steam): cover client request_json and get_json error paths ([ffa48c5](https://github.com/unhappychoice/splashboard/commit/ffa48c5))
+- test(fetcher/steam): cover player_summary render_body shapes, parsing, and fallbacks ([b86e921](https://github.com/unhappychoice/splashboard/commit/b86e921))
+- test(fetcher/steam): cover charts render_body shapes and response parsing ([32fdeeb](https://github.com/unhappychoice/splashboard/commit/32fdeeb))
+- chore: update flake.nix hashes for v2.6.0 ([c53f6da](https://github.com/unhappychoice/splashboard/commit/c53f6da))
+
+
 ## [2.6.0] - 2026-05-20
 
 ### ✨ Features
@@ -27,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.6.0 ([92d4722](https://github.com/unhappychoice/splashboard/commit/92d4722))
+- chore: bump version to v2.6.0 ([0f3a262](https://github.com/unhappychoice/splashboard/commit/0f3a262))
 - chore(fetcher): drop dead helpers reference check in lastfm_top_artists ([0e1611e](https://github.com/unhappychoice/splashboard/commit/0e1611e))
 - chore: update flake.nix hashes for v2.5.0 ([04d8ce5](https://github.com/unhappychoice/splashboard/commit/04d8ce5))
 
@@ -694,61 +773,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(render): chart_histogram axis labels ([3f121aa](https://github.com/unhappychoice/splashboard/commit/3f121aa))
 - feat(fetcher): add system_battery realtime fetcher ([c57408a](https://github.com/unhappychoice/splashboard/commit/c57408a))
 - feat(render): add `chart_histogram` ([db3f15c](https://github.com/unhappychoice/splashboard/commit/db3f15c))
-
-### 🐛 Bug Fixes
-
-- fix(render): honour TextBlock line count in text_plain natural_height ([0016d0e](https://github.com/unhappychoice/splashboard/commit/0016d0e))
-- fix(fetcher): dedupe quote_of_day and fortune entries; assert no duplicates ([f94c937](https://github.com/unhappychoice/splashboard/commit/f94c937))
-- fix(fetcher): normalise CRLF in fortune / quote_of_day data parsers ([9b2c3dd](https://github.com/unhappychoice/splashboard/commit/9b2c3dd))
-- fix(fetcher): prefer Atom rel="alternate" over self for article URL ([cf33ee8](https://github.com/unhappychoice/splashboard/commit/cf33ee8))
-- fix(runtime): make trust/error placeholders shape-aware ([85f33cd](https://github.com/unhappychoice/splashboard/commit/85f33cd))
-- fix(render): rename FIGfont to FIGlet for figlet-rs 1.0 ([5c76566](https://github.com/unhappychoice/splashboard/commit/5c76566))
-- fix(render): use sort_by_key + Reverse to satisfy clippy ([8fda1cd](https://github.com/unhappychoice/splashboard/commit/8fda1cd))
-- fix(runtime): surface unknown fetcher names as in-band placeholders ([7a6fdd8](https://github.com/unhappychoice/splashboard/commit/7a6fdd8))
-
-### 📝 Other Changes
-
-- chore: bump version to v0.4.0 ([a14c913](https://github.com/unhappychoice/splashboard/commit/a14c913))
-- refactor(reference): render fetcher/renderer meta as a table ([a71920c](https://github.com/unhappychoice/splashboard/commit/a71920c))
-- refactor(templates): use height = "auto" for home_feed fortune footer ([0ac7f5a](https://github.com/unhappychoice/splashboard/commit/0ac7f5a))
-- refactor(fetcher): rename fortune / quote_of_day to random_* family ([30d93fa](https://github.com/unhappychoice/splashboard/commit/30d93fa))
-- test(fetcher): expand reddit unit coverage ([4357206](https://github.com/unhappychoice/splashboard/commit/4357206))
-- refactor(fetcher): split reddit family into per-fetcher modules ([7e61e65](https://github.com/unhappychoice/splashboard/commit/7e61e65))
-- refactor(fetcher): simplify reddit fetcher names ([ea5de76](https://github.com/unhappychoice/splashboard/commit/ea5de76))
-- style(fetcher): apply rustfmt to reddit tests ([abababb](https://github.com/unhappychoice/splashboard/commit/abababb))
-- test(fetcher): expand reddit unit coverage ([85e42d7](https://github.com/unhappychoice/splashboard/commit/85e42d7))
-- style(fetcher): format reddit fetcher ([29cb209](https://github.com/unhappychoice/splashboard/commit/29cb209))
-- style: cargo fmt ([7bcd0db](https://github.com/unhappychoice/splashboard/commit/7bcd0db))
-- style(fetcher): format todoist tests ([4992aa7](https://github.com/unhappychoice/splashboard/commit/4992aa7))
-- test: beef up coverage for LinkedTextBlock + hackernews fetchers ([15ec674](https://github.com/unhappychoice/splashboard/commit/15ec674))
-- refactor(fetcher): move hackernews into family directory with shared client ([7941bce](https://github.com/unhappychoice/splashboard/commit/7941bce))
-- refactor(fetcher): rename hn_top to hackernews_top ([2311316](https://github.com/unhappychoice/splashboard/commit/2311316))
-- refactor(render): split RenderOptions into common + per-renderer specific structs ([3f84f4c](https://github.com/unhappychoice/splashboard/commit/3f84f4c))
-- chore(deps): bump ratatui ecosystem to 0.30 ([0dbbeb6](https://github.com/unhappychoice/splashboard/commit/0dbbeb6))
-- chore(deps)(deps): bump figlet-rs from 0.1.5 to 1.0.0 ([18ac8b2](https://github.com/unhappychoice/splashboard/commit/18ac8b2))
-- chore(deps)(deps): bump toml from 0.8.23 to 1.1.2+spec-1.1.0 ([e3d6521](https://github.com/unhappychoice/splashboard/commit/e3d6521))
-- chore(deps)(deps): bump dirs from 5.0.1 to 6.0.0 ([8ca48ad](https://github.com/unhappychoice/splashboard/commit/8ca48ad))
-- chore(deps)(deps): bump sha2 from 0.10.9 to 0.11.0 ([5e45ec0](https://github.com/unhappychoice/splashboard/commit/5e45ec0))
-- chore(ci)(deps): bump actions/configure-pages from 5 to 6 ([4971372](https://github.com/unhappychoice/splashboard/commit/4971372))
-- chore(ci)(deps): bump actions/checkout from 4 to 6 ([438c56d](https://github.com/unhappychoice/splashboard/commit/438c56d))
-- chore(ci)(deps): bump codecov/codecov-action from 4 to 6 ([9499f83](https://github.com/unhappychoice/splashboard/commit/9499f83))
-- chore(ci)(deps): bump actions/upload-pages-artifact from 3 to 5 ([965e2c2](https://github.com/unhappychoice/splashboard/commit/965e2c2))
-- chore(ci)(deps): bump softprops/action-gh-release from 2 to 3 ([156a21e](https://github.com/unhappychoice/splashboard/commit/156a21e))
-- chore(ci)(deps): bump actions/deploy-pages from 4 to 5 ([4088389](https://github.com/unhappychoice/splashboard/commit/4088389))
-- chore(ci)(deps): bump cachix/install-nix-action from 27 to 31 ([b53dff4](https://github.com/unhappychoice/splashboard/commit/b53dff4))
-- chore(ci)(deps): bump actions/setup-node from 4 to 6 ([9e4fb6f](https://github.com/unhappychoice/splashboard/commit/9e4fb6f))
-- chore(ci)(deps): bump mlugg/setup-zig from 1 to 2 ([8cf4ff3](https://github.com/unhappychoice/splashboard/commit/8cf4ff3))
-- chore(ci): raise dependabot open-pr limits ([342acd9](https://github.com/unhappychoice/splashboard/commit/342acd9))
-- chore(ci): add dependabot config and CODEOWNERS ([6819040](https://github.com/unhappychoice/splashboard/commit/6819040))
-- chore(skill): tighten add-fetcher-renderer Phase 0 ranking criteria ([7332af3](https://github.com/unhappychoice/splashboard/commit/7332af3))
-- chore(skill): document post-merge issue checkbox update ([0e5f8de](https://github.com/unhappychoice/splashboard/commit/0e5f8de))
-- chore: update flake.nix hashes for v0.3.0 ([7e6d795](https://github.com/unhappychoice/splashboard/commit/7e6d795))
-
-
-## [0.3.0] - 2026-04-25
-
-### ✨ Features
-
 - feat(cli): add `license` subcommand to print embedded license text ([ba0a6f1](https://github.com/unhappychoice/splashboard/commit/ba0a6f1))
 - feat(theme): expand built-in presets from 6 to 26 ([853d707](https://github.com/unhappychoice/splashboard/commit/853d707))
 - feat(render): add gauge_segment renderer for Ratio shape ([48ea61a](https://github.com/unhappychoice/splashboard/commit/48ea61a))
@@ -840,6 +864,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(render): honour TextBlock line count in text_plain natural_height ([0016d0e](https://github.com/unhappychoice/splashboard/commit/0016d0e))
+- fix(fetcher): dedupe quote_of_day and fortune entries; assert no duplicates ([f94c937](https://github.com/unhappychoice/splashboard/commit/f94c937))
+- fix(fetcher): normalise CRLF in fortune / quote_of_day data parsers ([9b2c3dd](https://github.com/unhappychoice/splashboard/commit/9b2c3dd))
+- fix(fetcher): prefer Atom rel="alternate" over self for article URL ([cf33ee8](https://github.com/unhappychoice/splashboard/commit/cf33ee8))
+- fix(runtime): make trust/error placeholders shape-aware ([85f33cd](https://github.com/unhappychoice/splashboard/commit/85f33cd))
+- fix(render): rename FIGfont to FIGlet for figlet-rs 1.0 ([5c76566](https://github.com/unhappychoice/splashboard/commit/5c76566))
+- fix(render): use sort_by_key + Reverse to satisfy clippy ([8fda1cd](https://github.com/unhappychoice/splashboard/commit/8fda1cd))
+- fix(runtime): surface unknown fetcher names as in-band placeholders ([7a6fdd8](https://github.com/unhappychoice/splashboard/commit/7a6fdd8))
 - fix(render): blit grid_calendar through origin-anchored buffer ([dd0cbbb](https://github.com/unhappychoice/splashboard/commit/dd0cbbb))
 - fix(fetcher): mix widget options into project_todo_in_code cache key ([7805165](https://github.com/unhappychoice/splashboard/commit/7805165))
 - fix(runtime): exit wait loop once loading spinners clear ([5c1222f](https://github.com/unhappychoice/splashboard/commit/5c1222f))
@@ -883,6 +915,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v0.4.0 ([a14c913](https://github.com/unhappychoice/splashboard/commit/a14c913))
+- refactor(reference): render fetcher/renderer meta as a table ([a71920c](https://github.com/unhappychoice/splashboard/commit/a71920c))
+- refactor(templates): use height = "auto" for home_feed fortune footer ([0ac7f5a](https://github.com/unhappychoice/splashboard/commit/0ac7f5a))
+- refactor(fetcher): rename fortune / quote_of_day to random_* family ([30d93fa](https://github.com/unhappychoice/splashboard/commit/30d93fa))
+- test(fetcher): expand reddit unit coverage ([4357206](https://github.com/unhappychoice/splashboard/commit/4357206))
+- refactor(fetcher): split reddit family into per-fetcher modules ([7e61e65](https://github.com/unhappychoice/splashboard/commit/7e61e65))
+- refactor(fetcher): simplify reddit fetcher names ([ea5de76](https://github.com/unhappychoice/splashboard/commit/ea5de76))
+- style(fetcher): apply rustfmt to reddit tests ([abababb](https://github.com/unhappychoice/splashboard/commit/abababb))
+- test(fetcher): expand reddit unit coverage ([85e42d7](https://github.com/unhappychoice/splashboard/commit/85e42d7))
+- style(fetcher): format reddit fetcher ([29cb209](https://github.com/unhappychoice/splashboard/commit/29cb209))
+- style: cargo fmt ([7bcd0db](https://github.com/unhappychoice/splashboard/commit/7bcd0db))
+- style(fetcher): format todoist tests ([4992aa7](https://github.com/unhappychoice/splashboard/commit/4992aa7))
+- test: beef up coverage for LinkedTextBlock + hackernews fetchers ([15ec674](https://github.com/unhappychoice/splashboard/commit/15ec674))
+- refactor(fetcher): move hackernews into family directory with shared client ([7941bce](https://github.com/unhappychoice/splashboard/commit/7941bce))
+- refactor(fetcher): rename hn_top to hackernews_top ([2311316](https://github.com/unhappychoice/splashboard/commit/2311316))
+- refactor(render): split RenderOptions into common + per-renderer specific structs ([3f84f4c](https://github.com/unhappychoice/splashboard/commit/3f84f4c))
+- chore(deps): bump ratatui ecosystem to 0.30 ([0dbbeb6](https://github.com/unhappychoice/splashboard/commit/0dbbeb6))
+- chore(deps)(deps): bump figlet-rs from 0.1.5 to 1.0.0 ([18ac8b2](https://github.com/unhappychoice/splashboard/commit/18ac8b2))
+- chore(deps)(deps): bump toml from 0.8.23 to 1.1.2+spec-1.1.0 ([e3d6521](https://github.com/unhappychoice/splashboard/commit/e3d6521))
+- chore(deps)(deps): bump dirs from 5.0.1 to 6.0.0 ([8ca48ad](https://github.com/unhappychoice/splashboard/commit/8ca48ad))
+- chore(deps)(deps): bump sha2 from 0.10.9 to 0.11.0 ([5e45ec0](https://github.com/unhappychoice/splashboard/commit/5e45ec0))
+- chore(ci)(deps): bump actions/configure-pages from 5 to 6 ([4971372](https://github.com/unhappychoice/splashboard/commit/4971372))
+- chore(ci)(deps): bump actions/checkout from 4 to 6 ([438c56d](https://github.com/unhappychoice/splashboard/commit/438c56d))
+- chore(ci)(deps): bump codecov/codecov-action from 4 to 6 ([9499f83](https://github.com/unhappychoice/splashboard/commit/9499f83))
+- chore(ci)(deps): bump actions/upload-pages-artifact from 3 to 5 ([965e2c2](https://github.com/unhappychoice/splashboard/commit/965e2c2))
+- chore(ci)(deps): bump softprops/action-gh-release from 2 to 3 ([156a21e](https://github.com/unhappychoice/splashboard/commit/156a21e))
+- chore(ci)(deps): bump actions/deploy-pages from 4 to 5 ([4088389](https://github.com/unhappychoice/splashboard/commit/4088389))
+- chore(ci)(deps): bump cachix/install-nix-action from 27 to 31 ([b53dff4](https://github.com/unhappychoice/splashboard/commit/b53dff4))
+- chore(ci)(deps): bump actions/setup-node from 4 to 6 ([9e4fb6f](https://github.com/unhappychoice/splashboard/commit/9e4fb6f))
+- chore(ci)(deps): bump mlugg/setup-zig from 1 to 2 ([8cf4ff3](https://github.com/unhappychoice/splashboard/commit/8cf4ff3))
+- chore(ci): raise dependabot open-pr limits ([342acd9](https://github.com/unhappychoice/splashboard/commit/342acd9))
+- chore(ci): add dependabot config and CODEOWNERS ([6819040](https://github.com/unhappychoice/splashboard/commit/6819040))
+- chore(skill): tighten add-fetcher-renderer Phase 0 ranking criteria ([7332af3](https://github.com/unhappychoice/splashboard/commit/7332af3))
+- chore(skill): document post-merge issue checkbox update ([0e5f8de](https://github.com/unhappychoice/splashboard/commit/0e5f8de))
+- chore: update flake.nix hashes for v0.3.0 ([7e6d795](https://github.com/unhappychoice/splashboard/commit/7e6d795))
 - chore: bump version to v0.3.0 ([baed209](https://github.com/unhappychoice/splashboard/commit/baed209))
 - chore(skill): require Phase 0 candidate selection in add-fetcher-renderer ([7c6751c](https://github.com/unhappychoice/splashboard/commit/7c6751c))
 - refactor(fetcher): rename project_todo_in_code to code_todos and exclude vendored dirs ([bdcf1d1](https://github.com/unhappychoice/splashboard/commit/bdcf1d1))
