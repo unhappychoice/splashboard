@@ -654,6 +654,7 @@ mod tests {
     use std::io::Write;
     use std::time::Duration as StdDuration;
 
+    use chrono::Datelike;
     use tempfile::tempdir;
 
     use super::*;
@@ -838,14 +839,18 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let tmp = tempdir().unwrap();
+        // Path components and filename must reflect today: the file-list filter in
+        // `list_session_files` drops anything whose filename date precedes the `since`
+        // cutoff, so a hardcoded date bitrots after that day passes.
+        let today = Utc::now().date_naive();
         let day = tmp
             .path()
             .join("sessions")
-            .join("2026")
-            .join("05")
-            .join("23");
+            .join(format!("{:04}", today.year()))
+            .join(format!("{:02}", today.month()))
+            .join(format!("{:02}", today.day()));
         fs::create_dir_all(&day).unwrap();
-        let path = day.join("rollout-2026-05-23T00-00-00-x.jsonl");
+        let path = day.join(format!("rollout-{today}T00-00-00-x.jsonl"));
         let now = Utc::now().to_rfc3339();
         let mut file = fs::File::create(&path).unwrap();
         writeln!(
