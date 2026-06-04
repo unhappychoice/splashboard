@@ -740,6 +740,7 @@ mod tests {
             "chart_histogram",
             "chart_pie",
             "media_image",
+            "media_pixel",
         ] {
             assert!(r.get(name).is_some(), "missing builtin renderer: {name}");
         }
@@ -759,6 +760,7 @@ mod tests {
             Shape::PointSeries,
             Shape::Bars,
             Shape::Image,
+            Shape::PixelArt,
             Shape::Calendar,
             Shape::Heatmap,
             Shape::Badge,
