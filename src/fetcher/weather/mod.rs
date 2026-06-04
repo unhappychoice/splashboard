@@ -7,6 +7,7 @@ use std::sync::Arc;
 pub(crate) mod common;
 mod forecast;
 mod now;
+mod sprites;
 
 use super::Fetcher;
 
