@@ -246,23 +246,25 @@ const SPRITE_OVERCAST: &[&str] = &[
     "................",
 ];
 
+// Bands are two pixel rows thick so each one packs into a single half-block cell as solid
+// fog rather than a fg/bg pinstripe. Horizontal indent varies per band for a drifting feel.
 const SPRITE_FOG: &[&str] = &[
     "................",
     "................",
-    "..ffffffffffff..",
+    "..fffffffffff...",
+    "..fffffffffff...",
+    "................",
     "................",
     ".fffffffffffff..",
-    "................",
-    "..ffffffffffff..",
-    "................",
     ".fffffffffffff..",
     "................",
-    "..ffffffffffff..",
+    "................",
+    "...fffffffffff..",
+    "...fffffffffff..",
+    "................",
     "................",
     ".fffffffffffff..",
-    "................",
-    "..ffffffffffff..",
-    "................",
+    ".fffffffffffff..",
 ];
 
 const SPRITE_RAIN: &[&str] = &[
