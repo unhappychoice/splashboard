@@ -146,6 +146,7 @@ fn representative_fetcher(shape: Shape, fetchers: &FetcherRegistry) -> String {
         Shape::PointSeries => "weather",
         Shape::Bars => "github_languages",
         Shape::Image => "github_avatar",
+        Shape::PixelArt => "weather",
         Shape::Calendar => "clock",
         Shape::Heatmap => "git_blame_heatmap",
         Shape::Badge => "github_action_status",
