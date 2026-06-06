@@ -656,7 +656,7 @@ mod tests {
         assert_realtime_contract(
             &SystemMonitorCpu::default(),
             "system_monitor_cpu",
-            &[Shape::Ratio, Shape::Text],
+            &[Shape::Ratio, Shape::Text, Shape::PixelArt],
             Shape::Ratio,
             Shape::Entries,
             0,
