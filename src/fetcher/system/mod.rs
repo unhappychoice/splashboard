@@ -696,7 +696,13 @@ mod tests {
         assert_realtime_contract(
             &SystemMonitorBattery::default(),
             "system_monitor_battery",
-            &[Shape::Ratio, Shape::Text, Shape::Entries, Shape::Badge],
+            &[
+                Shape::Ratio,
+                Shape::Text,
+                Shape::Entries,
+                Shape::Badge,
+                Shape::PixelArt,
+            ],
             Shape::Ratio,
             Shape::Bars,
             2,

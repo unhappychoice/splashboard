@@ -15,6 +15,7 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, RealtimeFetcher, Safety};
+use super::sprites;
 use super::{entry, format_uptime, options_placeholder, parse_options, payload};
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -111,7 +112,13 @@ impl RealtimeFetcher for SystemMonitorBattery {
         "Charge level and state of the primary (or `index`-selected) battery. `Ratio` drives gauges, `Text` formats a summary line whose field is picked by `kind`, and `Entries` rolls up charge / state / time-left / cycles / health. Hosts without a battery render a steady `\"AC\"` placeholder."
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Ratio, Shape::Text, Shape::Entries, Shape::Badge]
+        &[
+            Shape::Ratio,
+            Shape::Text,
+            Shape::Entries,
+            Shape::Badge,
+            Shape::PixelArt,
+        ]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
         OPTION_SCHEMAS
@@ -128,6 +135,7 @@ impl RealtimeFetcher for SystemMonitorBattery {
                 ("health", "97%"),
             ]),
             Shape::Badge => samples::badge(Status::Ok, "87% · Charging"),
+            Shape::PixelArt => Body::PixelArt(sprites::battery_sprite(0.87, "87% · Charging")),
             _ => return None,
         })
     }
@@ -146,6 +154,10 @@ impl RealtimeFetcher for SystemMonitorBattery {
                 items: battery_entries(&snap),
             })),
             (Some(snap), Shape::Badge) => payload(Body::Badge(battery_badge(&snap))),
+            (Some(snap), Shape::PixelArt) => payload(Body::PixelArt(sprites::battery_sprite(
+                snap.charge,
+                &format!("{} · {}", format_percent(snap.charge), snap.state.label()),
+            ))),
             (Some(snap), _) => payload(Body::Ratio(RatioData {
                 value: snap.charge,
                 label: Some(format!(
@@ -275,6 +287,9 @@ pub(crate) fn no_battery_payload(shape: Shape, kind: BatteryTextKind) -> Payload
             status: Status::Ok,
             label: "AC".into(),
         })),
+        // Render the AC-power case as a "full" sprite — a host without a battery is, from a
+        // glance perspective, always topped up.
+        Shape::PixelArt => payload(Body::PixelArt(sprites::battery_sprite(1.0, "AC"))),
         _ => payload(Body::Ratio(RatioData {
             value: 1.0,
             label: Some("AC".into()),
@@ -327,6 +342,22 @@ mod tests {
             Some(Body::Badge(badge))
                 if badge.status == Status::Ok && badge.label == "87% · Charging"
         ));
+        let pixel = fetcher.sample_body(Shape::PixelArt).unwrap();
+        let Body::PixelArt(d) = pixel else {
+            panic!("expected PixelArt sample body");
+        };
+        assert_eq!(d.pixels.len(), 16);
+        assert_eq!(d.label.as_deref(), Some("87% · Charging"));
+    }
+
+    #[test]
+    fn no_battery_payload_pixel_art_returns_full_sprite() {
+        let payload = no_battery_payload(Shape::PixelArt, BatteryTextKind::Summary);
+        let Body::PixelArt(d) = payload.body else {
+            panic!("expected PixelArt body for AC host");
+        };
+        assert_eq!(d.label.as_deref(), Some("AC"));
+        assert_eq!(d.pixels.len(), 16);
     }
 
     #[test]
