@@ -36,6 +36,7 @@ mod monitor_load;
 mod monitor_memory;
 mod monitor_processes;
 mod monitor_uptime;
+pub(crate) mod sprites;
 
 pub use info_bios::SystemInfoBios;
 pub use info_board::SystemInfoBoard;
