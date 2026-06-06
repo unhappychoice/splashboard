@@ -57,6 +57,11 @@ pub enum Body {
     Bars(BarsData),
     /// Path to an image on disk.
     Image(ImageData),
+    /// Small fixed-grid pixel-art sprite drawn cell-by-cell with truecolor half-blocks. Distinct
+    /// from `Image`: `Image` is a path the user (or fetcher) supplies, rendered through whatever
+    /// terminal-graphics protocol is available; `PixelArt` is inline RGBA data that always
+    /// renders with `▀` half-blocks and works in any terminal that supports truecolor.
+    PixelArt(PixelArtData),
     /// A month view anchored at a specific date, optionally with highlighted events. Calendar
     /// widget (and anything future that shows month-scale state) consumes this.
     Calendar(CalendarData),
@@ -229,6 +234,53 @@ pub struct Bar {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageData {
     pub path: String,
+}
+
+/// One pixel in a [`PixelArtData`] grid. `a = 0` means transparent — the renderer fills the
+/// terminal background through. Partial alpha is currently treated as opaque; the contract is
+/// "opaque or transparent" so the artist palette stays simple.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PixelColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    #[serde(default = "PixelColor::opaque_alpha")]
+    pub a: u8,
+}
+
+impl PixelColor {
+    pub const TRANSPARENT: Self = Self {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
+
+    pub const fn opaque(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b, a: 255 }
+    }
+
+    pub fn is_transparent(self) -> bool {
+        self.a == 0
+    }
+
+    fn opaque_alpha() -> u8 {
+        255
+    }
+}
+
+/// A small fixed-grid pixel-art sprite, rendered cell-by-cell with truecolor half-blocks. Right
+/// for sprite-scale ambient widgets (weather icon, system mood face) that need full colour but
+/// don't want a terminal-graphics-protocol dependency. Distinct from [`ImageData`], which is a
+/// path to a real raster image rendered via ratatui-image. Rows must be the same length; the
+/// renderer treats jagged rows as an error payload.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PixelArtData {
+    /// Row-major grid; `pixels[0]` is the top row.
+    pub pixels: Vec<Vec<PixelColor>>,
+    /// Optional caption rendered under the sprite.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// 2D grid of intensities, row-major (`cells[row][col]`). The renderer picks a bucket per cell

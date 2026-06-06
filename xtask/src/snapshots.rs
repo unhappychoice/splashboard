@@ -81,6 +81,9 @@ fn renderer_dimensions(renderer: &str) -> (u16, u16) {
         "chart_histogram" => (40, 6),
         "chart_pie" => (40, 10),
         "media_image" => (40, 5),
+        // Canonical PixelArt sample is a 4x4 smiley (2 cells wide × 2 cells tall) with a
+        // one-line caption; (20, 5) gives breathing room without dwarfing the sprite.
+        "media_pixel" => (20, 5),
         "grid_calendar" => (28, 10),
         "grid_heatmap" => (40, 6),
         "list_timeline" => (50, 8),
@@ -146,6 +149,7 @@ fn representative_fetcher(shape: Shape, fetchers: &FetcherRegistry) -> String {
         Shape::PointSeries => "weather",
         Shape::Bars => "github_languages",
         Shape::Image => "github_avatar",
+        Shape::PixelArt => "weather",
         Shape::Calendar => "clock",
         Shape::Heatmap => "git_blame_heatmap",
         Shape::Badge => "github_action_status",
@@ -227,6 +231,7 @@ mod tests {
             ("chart_histogram", (40, 6)),
             ("chart_pie", (40, 10)),
             ("media_image", (40, 5)),
+            ("media_pixel", (20, 5)),
             ("grid_calendar", (28, 10)),
             ("grid_heatmap", (40, 6)),
             ("list_timeline", (50, 8)),

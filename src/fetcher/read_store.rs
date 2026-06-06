@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::payload::{
     Bar, BarsData, Body, CalendarData, EntriesData, HeatmapData, ImageData, ImageLinkedListData,
-    NumberSeriesData, Payload, PointSeriesData, RatioData, TextBlockData, TextData,
+    NumberSeriesData, Payload, PixelArtData, PointSeriesData, RatioData, TextBlockData, TextData,
 };
 use crate::render::Shape;
 
@@ -22,6 +22,7 @@ const READ_STORE_SHAPES: &[Shape] = &[
     Shape::PointSeries,
     Shape::Bars,
     Shape::Image,
+    Shape::PixelArt,
     Shape::ImageLinkedList,
     Shape::Calendar,
     Shape::Heatmap,
@@ -178,6 +179,7 @@ fn from_json(text: &str, shape: Shape) -> Result<Body, FetchError> {
         Shape::PointSeries => parse_as!(PointSeriesData, PointSeries),
         Shape::Bars => parse_as!(BarsData, Bars),
         Shape::Image => parse_as!(ImageData, Image),
+        Shape::PixelArt => parse_as!(PixelArtData, PixelArt),
         Shape::ImageLinkedList => parse_as!(ImageLinkedListData, ImageLinkedList),
         Shape::Calendar => parse_as!(CalendarData, Calendar),
         Shape::Heatmap => parse_as!(HeatmapData, Heatmap),
@@ -205,6 +207,7 @@ fn from_toml(text: &str, shape: Shape) -> Result<Body, FetchError> {
         Shape::PointSeries => parse_as!(PointSeriesData, PointSeries),
         Shape::Bars => parse_as!(BarsData, Bars),
         Shape::Image => parse_as!(ImageData, Image),
+        Shape::PixelArt => parse_as!(PixelArtData, PixelArt),
         Shape::ImageLinkedList => parse_as!(ImageLinkedListData, ImageLinkedList),
         Shape::Calendar => parse_as!(CalendarData, Calendar),
         Shape::Heatmap => parse_as!(HeatmapData, Heatmap),
@@ -235,6 +238,10 @@ fn empty_body(shape: Shape) -> Body {
         }),
         Shape::Image => Body::Image(ImageData {
             path: String::new(),
+        }),
+        Shape::PixelArt => Body::PixelArt(PixelArtData {
+            pixels: Vec::new(),
+            label: None,
         }),
         Shape::ImageLinkedList => Body::ImageLinkedList(ImageLinkedListData { items: Vec::new() }),
         Shape::Calendar => Body::Calendar(CalendarData {
@@ -519,6 +526,18 @@ value = "main""#,
                 }),
             ),
             (
+                Shape::PixelArt,
+                r#"{"pixels":[[{"r":255,"g":0,"b":0,"a":255},{"r":0,"g":0,"b":0,"a":0}]],"label":"hi"}"#,
+                "label = \"hi\"\npixels = [[{r=255,g=0,b=0,a=255},{r=0,g=0,b=0,a=0}]]",
+                Body::PixelArt(PixelArtData {
+                    pixels: vec![vec![
+                        crate::payload::PixelColor::opaque(255, 0, 0),
+                        crate::payload::PixelColor::TRANSPARENT,
+                    ]],
+                    label: Some("hi".into()),
+                }),
+            ),
+            (
                 Shape::Calendar,
                 r#"{"year":2026,"month":4,"day":30,"events":[1,15]}"#,
                 "year = 2026\nmonth = 4\nday = 30\nevents = [1, 15]",
@@ -706,6 +725,13 @@ value = "main""#,
                 Shape::Image,
                 Body::Image(ImageData {
                     path: String::new(),
+                }),
+            ),
+            (
+                Shape::PixelArt,
+                Body::PixelArt(PixelArtData {
+                    pixels: Vec::new(),
+                    label: None,
                 }),
             ),
             (

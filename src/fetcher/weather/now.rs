@@ -21,6 +21,7 @@ use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::common::{
     API_BASE, Units, http, parse_options, payload, weather_badge, weather_description,
 };
+use super::sprites::sprite_for_code;
 
 const HOURLY_HOURS: usize = 24;
 
@@ -69,7 +70,7 @@ impl Fetcher for WeatherFetcher {
         Safety::Safe
     }
     fn description(&self) -> &'static str {
-        "Forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` / `Text` summarise current conditions; `PointSeries` carries the next 24h of hourly temperature (signed °C / °F); `NumberSeries` / `Bars` carry hourly precipitation in tenths of mm/inch; `Badge` flags severe weather codes (thunderstorm = error, freezing / snow / heavy rain = warn). Metric or imperial units, no API key required."
+        "Forecast for a fixed (latitude, longitude) via Open-Meteo. `Entries` / `Text` summarise current conditions; `PointSeries` carries the next 24h of hourly temperature (signed °C / °F); `NumberSeries` / `Bars` carry hourly precipitation in tenths of mm/inch; `Badge` flags severe weather codes (thunderstorm = error, freezing / snow / heavy rain = warn); `PixelArt` paints a 16×16 truecolor sprite of the current sky. Metric or imperial units, no API key required."
     }
     fn refresh_interval(&self) -> u64 {
         60 * 30
@@ -82,6 +83,7 @@ impl Fetcher for WeatherFetcher {
             Shape::NumberSeries,
             Shape::Bars,
             Shape::Badge,
+            Shape::PixelArt,
         ]
     }
     fn option_schemas(&self) -> &[OptionSchema] {
@@ -106,6 +108,7 @@ impl Fetcher for WeatherFetcher {
             Shape::NumberSeries => number_series(&sample.hourly),
             Shape::Bars => precipitation_bars(&sample.hourly),
             Shape::Badge => Body::Badge(weather_badge(sample.code)),
+            Shape::PixelArt => Body::PixelArt(sprite_for_code(sample.code)),
             _ => return None,
         })
     }
@@ -122,6 +125,7 @@ impl Fetcher for WeatherFetcher {
             Shape::NumberSeries => number_series(&report.hourly),
             Shape::Bars => precipitation_bars(&report.hourly),
             Shape::Badge => Body::Badge(weather_badge(report.code)),
+            Shape::PixelArt => Body::PixelArt(sprite_for_code(report.code)),
             _ => entries(&report),
         };
         Ok(payload(body))
@@ -531,6 +535,7 @@ mod tests {
                 Shape::NumberSeries,
                 Shape::Bars,
                 Shape::Badge,
+                Shape::PixelArt,
             ]
             .as_slice()
         );
@@ -545,6 +550,7 @@ mod tests {
                     | (Shape::NumberSeries, Body::NumberSeries(_))
                     | (Shape::Bars, Body::Bars(_))
                     | (Shape::Badge, Body::Badge(_))
+                    | (Shape::PixelArt, Body::PixelArt(_))
             ));
         }
         let text = fetcher

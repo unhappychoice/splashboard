@@ -13,8 +13,8 @@
 use crate::payload::{
     BadgeData, Bar, BarsData, Body, CalendarData, EntriesData, Entry, HeatmapData, ImageLinkedItem,
     ImageLinkedListData, LinkedLine, LinkedTextBlockData, MarkdownTextBlockData, NumberSeriesData,
-    PointSeries, PointSeriesData, RatioData, Status, TextBlockData, TextData, TimelineData,
-    TimelineEvent,
+    PixelArtData, PixelColor, PointSeries, PointSeriesData, RatioData, Status, TextBlockData,
+    TextData, TimelineData, TimelineEvent,
 };
 use crate::render::Shape;
 
@@ -49,6 +49,7 @@ pub fn canonical_sample(shape: Shape) -> Option<Body> {
         Shape::PointSeries => sine_points(),
         Shape::Bars => bars(&[("rust", 42), ("go", 28), ("ts", 17), ("py", 13)]),
         Shape::Image => return None,
+        Shape::PixelArt => pixel_art_sample(),
         Shape::Calendar => calendar(2026, 4, Some(22), &[10, 15, 30]),
         Shape::Heatmap => heatmap_grid(3, 7),
         Shape::Badge => badge(Status::Ok, "passing"),
@@ -192,6 +193,25 @@ pub fn sine_points() -> Body {
                 })
                 .collect(),
         }],
+    })
+}
+
+/// Tiny 4x4 sprite (a yellow-on-black smiley) used as the shape-level fallback for `PixelArt`.
+/// Fetchers that emit `PixelArt` should override `sample_body` with something representative;
+/// this is just the "this shape can render something" placeholder.
+pub fn pixel_art_sample() -> Body {
+    let bg = PixelColor::TRANSPARENT;
+    let fg = PixelColor::opaque(255, 213, 79);
+    let cheek = PixelColor::opaque(255, 99, 71);
+    let row = |cells: [PixelColor; 4]| cells.to_vec();
+    Body::PixelArt(PixelArtData {
+        pixels: vec![
+            row([bg, fg, fg, bg]),
+            row([fg, bg, bg, fg]),
+            row([fg, cheek, cheek, fg]),
+            row([bg, fg, fg, bg]),
+        ],
+        label: Some("hello".into()),
     })
 }
 

@@ -42,6 +42,7 @@ mod list_ranking;
 mod list_timeline;
 pub mod loading;
 mod media_image;
+mod media_pixel;
 mod status_badge;
 mod text_ascii;
 mod text_markdown;
@@ -66,6 +67,7 @@ pub enum Shape {
     PointSeries,
     Bars,
     Image,
+    PixelArt,
     Calendar,
     Heatmap,
     Badge,
@@ -89,6 +91,7 @@ pub fn shape_of(body: &Body) -> Shape {
         Body::PointSeries(_) => Shape::PointSeries,
         Body::Bars(_) => Shape::Bars,
         Body::Image(_) => Shape::Image,
+        Body::PixelArt(_) => Shape::PixelArt,
         Body::Calendar(_) => Shape::Calendar,
         Body::Heatmap(_) => Shape::Heatmap,
         Body::Badge(_) => Shape::Badge,
@@ -113,6 +116,7 @@ impl Shape {
             Self::PointSeries => "point_series",
             Self::Bars => "bars",
             Self::Image => "image",
+            Self::PixelArt => "pixel_art",
             Self::Calendar => "calendar",
             Self::Heatmap => "heatmap",
             Self::Badge => "badge",
@@ -389,6 +393,7 @@ impl Registry {
         r.register(Arc::new(chart_histogram::ChartHistogramRenderer));
         r.register(Arc::new(chart_pie::ChartPieRenderer));
         r.register(Arc::new(media_image::MediaImageRenderer));
+        r.register(Arc::new(media_pixel::MediaPixelRenderer));
         r.register(Arc::new(grid_calendar::GridCalendarRenderer));
         r.register(Arc::new(grid_heatmap::GridHeatmapRenderer));
         r.register(Arc::new(list_timeline::ListTimelineRenderer));
@@ -424,6 +429,7 @@ pub fn default_renderer_for(shape: Shape) -> &'static str {
         Shape::PointSeries => "chart_line",
         Shape::Bars => "chart_bar",
         Shape::Image => "media_image",
+        Shape::PixelArt => "media_pixel",
         Shape::Calendar => "grid_calendar",
         Shape::Heatmap => "grid_heatmap",
         Shape::Badge => "status_badge",
@@ -537,6 +543,7 @@ pub fn is_empty_body(body: &Body) -> bool {
         Body::PointSeries(d) => d.series.iter().all(|s| s.points.is_empty()),
         Body::Bars(d) => d.bars.is_empty(),
         Body::Image(d) => d.path.is_empty(),
+        Body::PixelArt(d) => d.pixels.is_empty() || d.pixels.iter().all(|r| r.is_empty()),
         Body::Heatmap(d) => d.cells.is_empty() || d.cells.iter().all(|r| r.is_empty()),
         Body::Timeline(d) => d.events.is_empty(),
         // `Error` always carries a message — we want the user to see it, never collapse it to
@@ -733,6 +740,7 @@ mod tests {
             "chart_histogram",
             "chart_pie",
             "media_image",
+            "media_pixel",
         ] {
             assert!(r.get(name).is_some(), "missing builtin renderer: {name}");
         }
@@ -752,6 +760,7 @@ mod tests {
             Shape::PointSeries,
             Shape::Bars,
             Shape::Image,
+            Shape::PixelArt,
             Shape::Calendar,
             Shape::Heatmap,
             Shape::Badge,
