@@ -9,6 +9,7 @@ mod common;
 pub mod countdown;
 pub mod derived;
 pub mod ratio;
+pub(crate) mod sprites;
 pub mod state;
 pub mod sunrise;
 pub mod timezones;

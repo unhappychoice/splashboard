@@ -36,6 +36,7 @@ mod monitor_load;
 mod monitor_memory;
 mod monitor_processes;
 mod monitor_uptime;
+pub(crate) mod sprites;
 
 pub use info_bios::SystemInfoBios;
 pub use info_board::SystemInfoBoard;
@@ -655,7 +656,7 @@ mod tests {
         assert_realtime_contract(
             &SystemMonitorCpu::default(),
             "system_monitor_cpu",
-            &[Shape::Ratio, Shape::Text],
+            &[Shape::Ratio, Shape::Text, Shape::PixelArt],
             Shape::Ratio,
             Shape::Entries,
             0,
@@ -695,7 +696,13 @@ mod tests {
         assert_realtime_contract(
             &SystemMonitorBattery::default(),
             "system_monitor_battery",
-            &[Shape::Ratio, Shape::Text, Shape::Entries, Shape::Badge],
+            &[
+                Shape::Ratio,
+                Shape::Text,
+                Shape::Entries,
+                Shape::Badge,
+                Shape::PixelArt,
+            ],
             Shape::Ratio,
             Shape::Bars,
             2,

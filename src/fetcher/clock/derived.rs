@@ -10,8 +10,9 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::common;
+use super::sprites;
 
-const SHAPES: &[Shape] = &[Shape::Text];
+const SHAPES: &[Shape] = &[Shape::Text, Shape::PixelArt];
 
 pub struct ClockDerivedFetcher;
 
@@ -70,6 +71,9 @@ impl RealtimeFetcher for ClockDerivedFetcher {
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         match shape {
             Shape::Text => Some(samples::text("day 113 of 2026")),
+            // Pick the most recognizable sprite (Full moon) so docs previews lead with a
+            // visually striking sample rather than an empty New-moon disk.
+            Shape::PixelArt => Some(Body::PixelArt(sprites::moon_sprite(4, "Full"))),
             _ => None,
         }
     }
@@ -79,11 +83,17 @@ impl RealtimeFetcher for ClockDerivedFetcher {
             Err(msg) => return common::placeholder(&msg),
         };
         let now = common::now_in(opts.timezone.as_deref());
-        let line = invoke(
-            &now,
-            opts.kind.unwrap_or(Kind::TimeOfDay),
-            opts.hemisphere.unwrap_or_default(),
-        );
+        let kind = opts.kind.unwrap_or(Kind::TimeOfDay);
+        let hemisphere = opts.hemisphere.unwrap_or_default();
+        if matches!(ctx.shape, Some(Shape::PixelArt)) {
+            return Payload {
+                icon: None,
+                status: None,
+                format: None,
+                body: Body::PixelArt(sprite_for_kind(&now, kind, hemisphere)),
+            };
+        }
+        let line = invoke(&now, kind, hemisphere);
         Payload {
             icon: None,
             status: None,
@@ -92,6 +102,52 @@ impl RealtimeFetcher for ClockDerivedFetcher {
         }
     }
 }
+
+/// Pick a sprite for the kind the user configured. Only moon-phase and season have visual
+/// translations today; numeric / textual kinds (`iso_week`, `day_of_year`, `julian_day`,
+/// `unix_epoch`, `time_of_day`, `rokuyou`, `jp_season`, `zodiac`, `chinese_zodiac`) fall
+/// through to a labelled placeholder so the misconfiguration is visible rather than silent.
+fn sprite_for_kind(
+    now: &DateTime<FixedOffset>,
+    kind: Kind,
+    hemisphere: Hemisphere,
+) -> crate::payload::PixelArtData {
+    match kind {
+        Kind::MoonPhase => {
+            let idx = moon_phase_index(now);
+            sprites::moon_sprite(idx, MOON_LABELS[idx])
+        }
+        Kind::Season => sprites::season_sprite(&season(now, hemisphere)),
+        other => sprites::placeholder(kind_label(other)),
+    }
+}
+
+fn kind_label(k: Kind) -> &'static str {
+    match k {
+        Kind::TimeOfDay => "time_of_day",
+        Kind::MoonPhase => "moon_phase",
+        Kind::Zodiac => "zodiac",
+        Kind::ChineseZodiac => "chinese_zodiac",
+        Kind::Season => "season",
+        Kind::JpSeason => "jp_season",
+        Kind::Rokuyou => "rokuyou",
+        Kind::IsoWeek => "iso_week",
+        Kind::DayOfYear => "day_of_year",
+        Kind::JulianDay => "julian_day",
+        Kind::UnixEpoch => "unix_epoch",
+    }
+}
+
+const MOON_LABELS: [&str; 8] = [
+    "New",
+    "Waxing Crescent",
+    "First Quarter",
+    "Waxing Gibbous",
+    "Full",
+    "Waning Gibbous",
+    "Last Quarter",
+    "Waning Crescent",
+];
 
 /// Dispatch a single kind against an already-resolved `now`. Shared with the
 /// `clock_almanac` rollup so both fetchers stay in sync on formatting.
@@ -120,8 +176,10 @@ fn time_of_day(now: &DateTime<FixedOffset>) -> &'static str {
     }
 }
 
-fn moon_phase(now: &DateTime<FixedOffset>) -> String {
-    // Conway's moon-phase approximation. Accuracy ±1 day, adequate for a splash widget.
+/// Conway's moon-phase approximation expressed as an index 0..=7. Shared with the
+/// `PixelArt` shape so the sprite stays consistent with the text label. ±1 day accuracy,
+/// adequate for a splash widget.
+pub(crate) fn moon_phase_index(now: &DateTime<FixedOffset>) -> usize {
     let (mut year, month, day) = (now.year(), now.month() as i32, now.day() as i32);
     let m = if month < 3 {
         year -= 1;
@@ -136,18 +194,13 @@ fn moon_phase(now: &DateTime<FixedOffset>) -> String {
         + c
         - 37.5;
     let phase = ((jdn - 2_451_550.1) / 29.530_588_853).rem_euclid(1.0);
-    let idx = (phase * 8.0).floor() as usize % 8;
-    let (glyph, name) = match idx {
-        0 => ("🌑", "New"),
-        1 => ("🌒", "Waxing Crescent"),
-        2 => ("🌓", "First Quarter"),
-        3 => ("🌔", "Waxing Gibbous"),
-        4 => ("🌕", "Full"),
-        5 => ("🌖", "Waning Gibbous"),
-        6 => ("🌗", "Last Quarter"),
-        _ => ("🌘", "Waning Crescent"),
-    };
-    format!("{glyph} {name}")
+    (phase * 8.0).floor() as usize % 8
+}
+
+fn moon_phase(now: &DateTime<FixedOffset>) -> String {
+    let idx = moon_phase_index(now);
+    let glyph = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"][idx];
+    format!("{glyph} {}", MOON_LABELS[idx])
 }
 
 fn zodiac(now: &DateTime<FixedOffset>) -> String {
@@ -476,5 +529,70 @@ mod tests {
         if let Body::Text(d) = p.body {
             assert!(!d.value.is_empty());
         }
+    }
+
+    fn pixel_ctx(opts: &str) -> FetchContext {
+        FetchContext {
+            widget_id: "d".into(),
+            timeout: Duration::from_secs(1),
+            shape: Some(Shape::PixelArt),
+            options: Some(toml::from_str(opts).unwrap()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn pixel_art_moon_phase_emits_16x16_sprite_with_label() {
+        let p = ClockDerivedFetcher.compute(&pixel_ctx("kind = \"moon_phase\""));
+        let Body::PixelArt(d) = p.body else {
+            panic!("expected PixelArt");
+        };
+        assert_eq!(d.pixels.len(), 16);
+        assert_eq!(d.pixels[0].len(), 16);
+        let label = d.label.expect("sprite carries phase label");
+        assert!(MOON_LABELS.contains(&label.as_str()), "{label}");
+    }
+
+    #[test]
+    fn pixel_art_season_uses_hemisphere_to_pick_sprite() {
+        let p =
+            ClockDerivedFetcher.compute(&pixel_ctx("kind = \"season\"\nhemisphere = \"south\""));
+        let Body::PixelArt(d) = p.body else {
+            panic!("expected PixelArt");
+        };
+        assert_eq!(d.pixels.len(), 16);
+        let label = d.label.unwrap();
+        assert!(["Spring", "Summer", "Autumn", "Winter"].contains(&label.as_str()));
+    }
+
+    #[test]
+    fn pixel_art_unsupported_kind_falls_back_to_labelled_placeholder() {
+        let p = ClockDerivedFetcher.compute(&pixel_ctx("kind = \"iso_week\""));
+        let Body::PixelArt(d) = p.body else {
+            panic!("expected PixelArt");
+        };
+        // 1×1 transparent placeholder; the meaningful signal is in the label.
+        assert_eq!(d.pixels.len(), 1);
+        assert_eq!(d.pixels[0].len(), 1);
+        let label = d.label.unwrap();
+        assert!(label.contains("iso_week"), "label = {label}");
+    }
+
+    #[test]
+    fn moon_phase_index_matches_text_label_table_indices() {
+        let now = at(2026, 1, 21, 0);
+        let idx = moon_phase_index(&now);
+        let text = moon_phase(&now);
+        assert!(text.contains(MOON_LABELS[idx]));
+    }
+
+    #[test]
+    fn sample_body_for_pixel_art_returns_full_moon_sprite() {
+        let body = ClockDerivedFetcher.sample_body(Shape::PixelArt).unwrap();
+        let Body::PixelArt(d) = body else {
+            panic!("expected PixelArt");
+        };
+        assert_eq!(d.label.as_deref(), Some("Full"));
+        assert_eq!(d.pixels.len(), 16);
     }
 }

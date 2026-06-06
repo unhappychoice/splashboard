@@ -10,6 +10,7 @@ use crate::samples;
 
 use super::super::{FetchContext, RealtimeFetcher, Safety};
 use super::payload;
+use super::sprites;
 
 pub struct SystemMonitorCpu {
     state: Mutex<System>,
@@ -42,12 +43,13 @@ impl RealtimeFetcher for SystemMonitorCpu {
         "Aggregated CPU usage across all cores, sampled every frame. Pair with a gauge renderer for a live meter or use the `Text` shape for a plain percentage."
     }
     fn shapes(&self) -> &[Shape] {
-        &[Shape::Ratio, Shape::Text]
+        &[Shape::Ratio, Shape::Text, Shape::PixelArt]
     }
     fn sample_body(&self, shape: Shape) -> Option<Body> {
         Some(match shape {
             Shape::Ratio => samples::ratio(0.42, "cpu"),
             Shape::Text => samples::text("42%"),
+            Shape::PixelArt => Body::PixelArt(sprites::cpu_sprite(0.42, "42%")),
             _ => return None,
         })
     }
@@ -59,6 +61,7 @@ impl RealtimeFetcher for SystemMonitorCpu {
         let label = format!("{pct:.0}%");
         match ctx.shape.unwrap_or(Shape::Ratio) {
             Shape::Text => payload(Body::Text(TextData { value: label })),
+            Shape::PixelArt => payload(Body::PixelArt(sprites::cpu_sprite(ratio, &label))),
             _ => payload(Body::Ratio(RatioData {
                 value: ratio,
                 label: Some(label),
@@ -83,5 +86,35 @@ mod tests {
     fn cpu_load_emits_text_when_requested() {
         let p = SystemMonitorCpu::new().compute(&ctx_with_shape(Some(Shape::Text)));
         assert!(matches!(p.body, Body::Text(_)));
+    }
+
+    #[test]
+    fn cpu_load_emits_pixel_art_when_requested() {
+        let p = SystemMonitorCpu::new().compute(&ctx_with_shape(Some(Shape::PixelArt)));
+        let Body::PixelArt(d) = p.body else {
+            panic!("expected PixelArt body");
+        };
+        assert_eq!(d.pixels.len(), 16);
+        let label = d.label.unwrap();
+        assert!(label.ends_with('%'), "label = {label}");
+    }
+
+    #[test]
+    fn sample_body_covers_every_supported_shape() {
+        let fetcher = SystemMonitorCpu::new();
+        assert!(matches!(
+            fetcher.sample_body(Shape::Ratio),
+            Some(Body::Ratio(_))
+        ));
+        assert!(matches!(
+            fetcher.sample_body(Shape::Text),
+            Some(Body::Text(_))
+        ));
+        let pixel = fetcher.sample_body(Shape::PixelArt).unwrap();
+        let Body::PixelArt(d) = pixel else {
+            panic!("expected PixelArt sample body");
+        };
+        assert_eq!(d.label.as_deref(), Some("42%"));
+        assert!(fetcher.sample_body(Shape::Entries).is_none());
     }
 }
