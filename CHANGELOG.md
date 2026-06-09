@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-06-09
+
+### ✨ Features
+
+- feat(system): emit PixelArt sprites for monitor_cpu ([c488add](https://github.com/unhappychoice/splashboard/commit/c488add))
+- feat(system): emit PixelArt sprites for monitor_battery ([6cfbcd6](https://github.com/unhappychoice/splashboard/commit/6cfbcd6))
+- feat(system): pixel-art sprite catalog for the monitor family ([f051c72](https://github.com/unhappychoice/splashboard/commit/f051c72))
+- feat(clock): PixelArt sprites for moon_phase and season ([9e48fa3](https://github.com/unhappychoice/splashboard/commit/9e48fa3))
+- feat(read_store): support PixelArt shape ([792cdbd](https://github.com/unhappychoice/splashboard/commit/792cdbd))
+- feat(weather): emit PixelArt sprites for current conditions ([ca78384](https://github.com/unhappychoice/splashboard/commit/ca78384))
+- feat(render): add PixelArt shape + media_pixel renderer ([b275bde](https://github.com/unhappychoice/splashboard/commit/b275bde))
+
+### 🐛 Bug Fixes
+
+- fix(weather): thicken fog sprite bands for half-block readability ([f14bd32](https://github.com/unhappychoice/splashboard/commit/f14bd32))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.8.0 ([93ea391](https://github.com/unhappychoice/splashboard/commit/93ea391))
+- chore(deps)(deps): bump ratatui-image from 11.0.2 to 11.0.3 ([ef93a3f](https://github.com/unhappychoice/splashboard/commit/ef93a3f))
+- chore(deps)(deps): bump netdev from 0.43.0 to 0.44.0 ([b314eae](https://github.com/unhappychoice/splashboard/commit/b314eae))
+- chore(deps)(deps): bump chrono from 0.4.44 to 0.4.45 ([8add2a5](https://github.com/unhappychoice/splashboard/commit/8add2a5))
+- chore(ci)(deps): bump codecov/codecov-action from 6 to 7 ([505b58d](https://github.com/unhappychoice/splashboard/commit/505b58d))
+- test(render): cover media_pixel in registry / shape / snapshot lists ([22251b1](https://github.com/unhappychoice/splashboard/commit/22251b1))
+- chore(deps)(deps): bump gix from 0.83.0 to 0.84.0 ([5fe5a50](https://github.com/unhappychoice/splashboard/commit/5fe5a50))
+- chore(deps)(deps): bump sysinfo from 0.39.2 to 0.39.3 ([0431c78](https://github.com/unhappychoice/splashboard/commit/0431c78))
+- chore: sync llm pricing from LiteLLM ([641adcb](https://github.com/unhappychoice/splashboard/commit/641adcb))
+- test(fetcher/codex_usage): compute fixture path from today's date ([ac64f2f](https://github.com/unhappychoice/splashboard/commit/ac64f2f))
+- chore(deps)(deps): bump serde_json from 1.0.149 to 1.0.150 ([80f0ab6](https://github.com/unhappychoice/splashboard/commit/80f0ab6))
+- chore(ci)(deps): bump peter-evans/create-pull-request from 7 to 8 ([b985319](https://github.com/unhappychoice/splashboard/commit/b985319))
+- chore: update flake.nix hashes for v2.7.0 ([e2b8b74](https://github.com/unhappychoice/splashboard/commit/e2b8b74))
+
+
 ## [2.7.0] - 2026-05-24
 
 ### ✨ Features
@@ -23,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.7.0 ([a0c1afb](https://github.com/unhappychoice/splashboard/commit/a0c1afb))
+- chore: bump version to v2.7.0 ([5e822fc](https://github.com/unhappychoice/splashboard/commit/5e822fc))
 - perf(fetcher/claude_code_usage): skip stale JSONL files by mtime ([6d09272](https://github.com/unhappychoice/splashboard/commit/6d09272))
 - perf(fetcher/codex_usage): skip JSONL files outside the since window by filename ([bfc728f](https://github.com/unhappychoice/splashboard/commit/bfc728f))
 - test(fetcher/codex): cover render_body branches for each shape ([a01d64f](https://github.com/unhappychoice/splashboard/commit/a01d64f))
@@ -717,41 +750,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(fetcher): add `code_loc` for tracked-line counts per language ([637c517](https://github.com/unhappychoice/splashboard/commit/637c517))
 - feat(fetcher): add `git_churn` for top-changed files in last N days ([08a859e](https://github.com/unhappychoice/splashboard/commit/08a859e))
 - feat(fetcher): add `git_age` for repository age from first commit ([5a885fa](https://github.com/unhappychoice/splashboard/commit/5a885fa))
-
-### 🐛 Bug Fixes
-
-- fix(fetcher): address coderabbit review on cache key + recent count + today freshness ([2b2e655](https://github.com/unhappychoice/splashboard/commit/2b2e655))
-- fix(fetcher,payload): scope deariary disk cache per token + lock Body::Error wire format ([761c1d1](https://github.com/unhappychoice/splashboard/commit/761c1d1))
-- fix(render,fetcher): restore explicit shape-mismatch error per AGENTS contract ([dba8572](https://github.com/unhappychoice/splashboard/commit/dba8572))
-- fix(fetcher,render): address coderabbit review on deariary PR ([451a53c](https://github.com/unhappychoice/splashboard/commit/451a53c))
-- fix(fetcher): self-review nits on deariary_* family ([75c1668](https://github.com/unhappychoice/splashboard/commit/75c1668))
-- fix(render): grid_table sizes key column to content and right-aligns values ([fb7ce98](https://github.com/unhappychoice/splashboard/commit/fb7ce98))
-- fix(render): list_ranking stretches label and truncates to keep value visible ([5c33a5a](https://github.com/unhappychoice/splashboard/commit/5c33a5a))
-- fix(docs): render LinkedTextBlock previews as real anchors ([685057f](https://github.com/unhappychoice/splashboard/commit/685057f))
-- fix(fetcher): address coderabbit review on shape-coverage PR ([bbfdcf8](https://github.com/unhappychoice/splashboard/commit/bbfdcf8))
-- fix(fetcher): collapse newlines in Text shape to honour single-string contract ([41c1221](https://github.com/unhappychoice/splashboard/commit/41c1221))
-
-### 📝 Other Changes
-
-- chore: bump version to v1.0.0 ([547179a](https://github.com/unhappychoice/splashboard/commit/547179a))
-- docs(secrets): document $HOME/.splashboard/secrets.toml in user guides ([645022b](https://github.com/unhappychoice/splashboard/commit/645022b))
-- refactor(payload,render): model placeholder errors as Body::Error ([530d143](https://github.com/unhappychoice/splashboard/commit/530d143))
-- docs(templates): correct project_codebase TEMPLATES description ([db8e7e2](https://github.com/unhappychoice/splashboard/commit/db8e7e2))
-- docs(presets): correct project_codebase widget table ([8a5462a](https://github.com/unhappychoice/splashboard/commit/8a5462a))
-- docs(presets): list project_codebase in guides + xtask snapshots ([201153e](https://github.com/unhappychoice/splashboard/commit/201153e))
-- refactor(fetcher): adopt tokei for code_* metrics; add code_comments ([5f63fb1](https://github.com/unhappychoice/splashboard/commit/5f63fb1))
-- docs(agents,skill): codify single-shape renderer rule ([bc74d07](https://github.com/unhappychoice/splashboard/commit/bc74d07))
-- refactor(render): narrow text_plain to Text shape only ([67fa9cd](https://github.com/unhappychoice/splashboard/commit/67fa9cd))
-- refactor(templates): use list_plain for TextBlock-emitting widgets ([d873bd5](https://github.com/unhappychoice/splashboard/commit/d873bd5))
-- refactor(render): switch list_plain to Paragraph-backed rendering ([c861c65](https://github.com/unhappychoice/splashboard/commit/c861c65))
-- chore(deps)(deps): bump tui-piechart from 0.3.2 to 0.3.3 ([fd47e7d](https://github.com/unhappychoice/splashboard/commit/fd47e7d))
-- chore: update flake.nix hashes for v0.4.0 ([b39c478](https://github.com/unhappychoice/splashboard/commit/b39c478))
-
-
-## [0.4.0] - 2026-04-26
-
-### ✨ Features
-
 - feat(reference): add description() to Fetcher and Renderer traits ([87a7f22](https://github.com/unhappychoice/splashboard/commit/87a7f22))
 - feat(templates): add home_feed preset — morning briefing ([536425c](https://github.com/unhappychoice/splashboard/commit/536425c))
 - feat(fetcher): add fortune cookie fetcher ([ad2422f](https://github.com/unhappychoice/splashboard/commit/ad2422f))
@@ -864,6 +862,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(fetcher): address coderabbit review on cache key + recent count + today freshness ([2b2e655](https://github.com/unhappychoice/splashboard/commit/2b2e655))
+- fix(fetcher,payload): scope deariary disk cache per token + lock Body::Error wire format ([761c1d1](https://github.com/unhappychoice/splashboard/commit/761c1d1))
+- fix(render,fetcher): restore explicit shape-mismatch error per AGENTS contract ([dba8572](https://github.com/unhappychoice/splashboard/commit/dba8572))
+- fix(fetcher,render): address coderabbit review on deariary PR ([451a53c](https://github.com/unhappychoice/splashboard/commit/451a53c))
+- fix(fetcher): self-review nits on deariary_* family ([75c1668](https://github.com/unhappychoice/splashboard/commit/75c1668))
+- fix(render): grid_table sizes key column to content and right-aligns values ([fb7ce98](https://github.com/unhappychoice/splashboard/commit/fb7ce98))
+- fix(render): list_ranking stretches label and truncates to keep value visible ([5c33a5a](https://github.com/unhappychoice/splashboard/commit/5c33a5a))
+- fix(docs): render LinkedTextBlock previews as real anchors ([685057f](https://github.com/unhappychoice/splashboard/commit/685057f))
+- fix(fetcher): address coderabbit review on shape-coverage PR ([bbfdcf8](https://github.com/unhappychoice/splashboard/commit/bbfdcf8))
+- fix(fetcher): collapse newlines in Text shape to honour single-string contract ([41c1221](https://github.com/unhappychoice/splashboard/commit/41c1221))
 - fix(render): honour TextBlock line count in text_plain natural_height ([0016d0e](https://github.com/unhappychoice/splashboard/commit/0016d0e))
 - fix(fetcher): dedupe quote_of_day and fortune entries; assert no duplicates ([f94c937](https://github.com/unhappychoice/splashboard/commit/f94c937))
 - fix(fetcher): normalise CRLF in fortune / quote_of_day data parsers ([9b2c3dd](https://github.com/unhappychoice/splashboard/commit/9b2c3dd))
@@ -915,6 +923,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v1.0.0 ([547179a](https://github.com/unhappychoice/splashboard/commit/547179a))
+- docs(secrets): document $HOME/.splashboard/secrets.toml in user guides ([645022b](https://github.com/unhappychoice/splashboard/commit/645022b))
+- refactor(payload,render): model placeholder errors as Body::Error ([530d143](https://github.com/unhappychoice/splashboard/commit/530d143))
+- docs(templates): correct project_codebase TEMPLATES description ([db8e7e2](https://github.com/unhappychoice/splashboard/commit/db8e7e2))
+- docs(presets): correct project_codebase widget table ([8a5462a](https://github.com/unhappychoice/splashboard/commit/8a5462a))
+- docs(presets): list project_codebase in guides + xtask snapshots ([201153e](https://github.com/unhappychoice/splashboard/commit/201153e))
+- refactor(fetcher): adopt tokei for code_* metrics; add code_comments ([5f63fb1](https://github.com/unhappychoice/splashboard/commit/5f63fb1))
+- docs(agents,skill): codify single-shape renderer rule ([bc74d07](https://github.com/unhappychoice/splashboard/commit/bc74d07))
+- refactor(render): narrow text_plain to Text shape only ([67fa9cd](https://github.com/unhappychoice/splashboard/commit/67fa9cd))
+- refactor(templates): use list_plain for TextBlock-emitting widgets ([d873bd5](https://github.com/unhappychoice/splashboard/commit/d873bd5))
+- refactor(render): switch list_plain to Paragraph-backed rendering ([c861c65](https://github.com/unhappychoice/splashboard/commit/c861c65))
+- chore(deps)(deps): bump tui-piechart from 0.3.2 to 0.3.3 ([fd47e7d](https://github.com/unhappychoice/splashboard/commit/fd47e7d))
+- chore: update flake.nix hashes for v0.4.0 ([b39c478](https://github.com/unhappychoice/splashboard/commit/b39c478))
 - chore: bump version to v0.4.0 ([a14c913](https://github.com/unhappychoice/splashboard/commit/a14c913))
 - refactor(reference): render fetcher/renderer meta as a table ([a71920c](https://github.com/unhappychoice/splashboard/commit/a71920c))
 - refactor(templates): use height = "auto" for home_feed fortune footer ([0ac7f5a](https://github.com/unhappychoice/splashboard/commit/0ac7f5a))
