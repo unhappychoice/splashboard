@@ -43,6 +43,13 @@
       "cache_read": 0.3,
       "cache_write_5m": 3.75
     },
+    "claude-fable-5": {
+      "input": 10.0,
+      "output": 50.0,
+      "cache_read": 1.0,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20.0
+    },
     "claude-haiku-4-5": {
       "input": 1.0,
       "output": 5.0,
