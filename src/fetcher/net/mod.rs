@@ -24,6 +24,7 @@ mod ip;
 mod mac;
 mod proxy;
 mod speedtest;
+mod vpn;
 
 pub use gateway::NetGateway;
 pub use interfaces::NetInterfaces;
@@ -31,6 +32,7 @@ pub use ip::NetIp;
 pub use mac::NetMac;
 pub use proxy::NetProxy;
 pub use speedtest::NetSpeedtest;
+pub use vpn::NetVpn;
 
 pub fn cached_fetchers() -> Vec<Arc<dyn Fetcher>> {
     vec![
@@ -39,6 +41,7 @@ pub fn cached_fetchers() -> Vec<Arc<dyn Fetcher>> {
         Arc::new(NetMac),
         Arc::new(NetGateway),
         Arc::new(NetSpeedtest),
+        Arc::new(NetVpn),
     ]
 }
 
@@ -225,6 +228,7 @@ mod tests {
                 "net_mac",
                 "net_gateway",
                 "net_speedtest",
+                "net_vpn",
             ]
         );
         assert_eq!(realtime, vec!["net_proxy"]);
