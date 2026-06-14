@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-06-14
+
+### ✨ Features
+
+- feat(fetcher): add net_listening_ports for active LISTEN socket list ([2954703](https://github.com/unhappychoice/splashboard/commit/2954703))
+- feat(fetcher): add net_vpn for VPN connection state ([df5daed](https://github.com/unhappychoice/splashboard/commit/df5daed))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.9.0 ([11cc449](https://github.com/unhappychoice/splashboard/commit/11cc449))
+- chore(deps): add netstat2 for cross-platform socket enumeration ([7d24366](https://github.com/unhappychoice/splashboard/commit/7d24366))
+- chore: sync llm pricing from LiteLLM ([cb56616](https://github.com/unhappychoice/splashboard/commit/cb56616))
+- chore: update flake.nix hashes for v2.8.0 ([b715cb3](https://github.com/unhappychoice/splashboard/commit/b715cb3))
+
+
 ## [2.8.0] - 2026-06-09
 
 ### ✨ Features
@@ -23,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.8.0 ([93ea391](https://github.com/unhappychoice/splashboard/commit/93ea391))
+- chore: bump version to v2.8.0 ([2fd5c43](https://github.com/unhappychoice/splashboard/commit/2fd5c43))
 - chore(deps)(deps): bump ratatui-image from 11.0.2 to 11.0.3 ([ef93a3f](https://github.com/unhappychoice/splashboard/commit/ef93a3f))
 - chore(deps)(deps): bump netdev from 0.43.0 to 0.44.0 ([b314eae](https://github.com/unhappychoice/splashboard/commit/b314eae))
 - chore(deps)(deps): bump chrono from 0.4.44 to 0.4.45 ([8add2a5](https://github.com/unhappychoice/splashboard/commit/8add2a5))
@@ -702,41 +717,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✨ Features
 
 - feat(config): add auto_home / auto_on_cd toggles to opt out of auto-display ([83f7d42](https://github.com/unhappychoice/splashboard/commit/83f7d42))
-
-### 🐛 Bug Fixes
-
-- fix(xtask): step past OSC 8 link cells in HTML snapshot ([ef8d1f8](https://github.com/unhappychoice/splashboard/commit/ef8d1f8))
-
-### 📝 Other Changes
-
-- chore: bump version to v1.1.0 ([8468dac](https://github.com/unhappychoice/splashboard/commit/8468dac))
-- test(github): add offline tests for repo_prs fetcher ([0c325ff](https://github.com/unhappychoice/splashboard/commit/0c325ff))
-- test(github): add offline tests for repo_issues fetcher ([74a2726](https://github.com/unhappychoice/splashboard/commit/74a2726))
-- test(hackernews): cover shared HTTP client with offline tests ([23fdc12](https://github.com/unhappychoice/splashboard/commit/23fdc12))
-- test(github): add offline tests for good_first_issues ([30c9eee](https://github.com/unhappychoice/splashboard/commit/30c9eee))
-- test(github): cover recent_releases fetcher ([010c9df](https://github.com/unhappychoice/splashboard/commit/010c9df))
-- test(github): cover shared issue/PR item renderer helper ([9efefd9](https://github.com/unhappychoice/splashboard/commit/9efefd9))
-- chore(gnhf): require English summary/body in loop prompts ([fc5d3bc](https://github.com/unhappychoice/splashboard/commit/fc5d3bc))
-- perf(build): tighten release profile ([7666931](https://github.com/unhappychoice/splashboard/commit/7666931))
-- perf(cli): use sync dispatch and lazy Tokio init ([e6f5d5e](https://github.com/unhappychoice/splashboard/commit/e6f5d5e))
-- chore(gnhf): pass --prevent-sleep off to gnhf ([cf859fc](https://github.com/unhappychoice/splashboard/commit/cf859fc))
-- test(fetcher): cover github_action_status untested branches ([91235c2](https://github.com/unhappychoice/splashboard/commit/91235c2))
-- test(xtask): cover dashboard_snapshot module ([ec3fb0d](https://github.com/unhappychoice/splashboard/commit/ec3fb0d))
-- chore(gnhf): pick a loop via run.sh argument, drop worktree mode ([f6239a6](https://github.com/unhappychoice/splashboard/commit/f6239a6))
-- chore(gnhf): add launcher for parallel overnight loops ([d732532](https://github.com/unhappychoice/splashboard/commit/d732532))
-- chore(gnhf): save overnight loop prompts ([3bbb4ad](https://github.com/unhappychoice/splashboard/commit/3bbb4ad))
-- test(render): add animated_wave regression tests ([6b1d47b](https://github.com/unhappychoice/splashboard/commit/6b1d47b))
-- test(render): add animated_typewriter regression tests ([d821df6](https://github.com/unhappychoice/splashboard/commit/d821df6))
-- test(render): add animated_boot regression tests ([7f7cae4](https://github.com/unhappychoice/splashboard/commit/7f7cae4))
-- test(render): improve text_plain coverage ([96766c6](https://github.com/unhappychoice/splashboard/commit/96766c6))
-- docs(site): preset gallery in showcases + renderer-page previews ([4a8ca0a](https://github.com/unhappychoice/splashboard/commit/4a8ca0a))
-- chore: update flake.nix hashes for v1.0.0 ([8d8a2bb](https://github.com/unhappychoice/splashboard/commit/8d8a2bb))
-
-
-## [1.0.0] - 2026-04-28
-
-### ✨ Features
-
 - feat(time): project-wide locale + timezone consistency ([01a3a1e](https://github.com/unhappychoice/splashboard/commit/01a3a1e))
 - feat(secrets): load tokens from $HOME/.splashboard/secrets.toml ([ae10678](https://github.com/unhappychoice/splashboard/commit/ae10678))
 - feat(fetcher): add deariary_* family for diary entries ([a473344](https://github.com/unhappychoice/splashboard/commit/a473344))
@@ -862,6 +842,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(xtask): step past OSC 8 link cells in HTML snapshot ([ef8d1f8](https://github.com/unhappychoice/splashboard/commit/ef8d1f8))
 - fix(fetcher): address coderabbit review on cache key + recent count + today freshness ([2b2e655](https://github.com/unhappychoice/splashboard/commit/2b2e655))
 - fix(fetcher,payload): scope deariary disk cache per token + lock Body::Error wire format ([761c1d1](https://github.com/unhappychoice/splashboard/commit/761c1d1))
 - fix(render,fetcher): restore explicit shape-mismatch error per AGENTS contract ([dba8572](https://github.com/unhappychoice/splashboard/commit/dba8572))
@@ -923,6 +904,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v1.1.0 ([8468dac](https://github.com/unhappychoice/splashboard/commit/8468dac))
+- test(github): add offline tests for repo_prs fetcher ([0c325ff](https://github.com/unhappychoice/splashboard/commit/0c325ff))
+- test(github): add offline tests for repo_issues fetcher ([74a2726](https://github.com/unhappychoice/splashboard/commit/74a2726))
+- test(hackernews): cover shared HTTP client with offline tests ([23fdc12](https://github.com/unhappychoice/splashboard/commit/23fdc12))
+- test(github): add offline tests for good_first_issues ([30c9eee](https://github.com/unhappychoice/splashboard/commit/30c9eee))
+- test(github): cover recent_releases fetcher ([010c9df](https://github.com/unhappychoice/splashboard/commit/010c9df))
+- test(github): cover shared issue/PR item renderer helper ([9efefd9](https://github.com/unhappychoice/splashboard/commit/9efefd9))
+- chore(gnhf): require English summary/body in loop prompts ([fc5d3bc](https://github.com/unhappychoice/splashboard/commit/fc5d3bc))
+- perf(build): tighten release profile ([7666931](https://github.com/unhappychoice/splashboard/commit/7666931))
+- perf(cli): use sync dispatch and lazy Tokio init ([e6f5d5e](https://github.com/unhappychoice/splashboard/commit/e6f5d5e))
+- chore(gnhf): pass --prevent-sleep off to gnhf ([cf859fc](https://github.com/unhappychoice/splashboard/commit/cf859fc))
+- test(fetcher): cover github_action_status untested branches ([91235c2](https://github.com/unhappychoice/splashboard/commit/91235c2))
+- test(xtask): cover dashboard_snapshot module ([ec3fb0d](https://github.com/unhappychoice/splashboard/commit/ec3fb0d))
+- chore(gnhf): pick a loop via run.sh argument, drop worktree mode ([f6239a6](https://github.com/unhappychoice/splashboard/commit/f6239a6))
+- chore(gnhf): add launcher for parallel overnight loops ([d732532](https://github.com/unhappychoice/splashboard/commit/d732532))
+- chore(gnhf): save overnight loop prompts ([3bbb4ad](https://github.com/unhappychoice/splashboard/commit/3bbb4ad))
+- test(render): add animated_wave regression tests ([6b1d47b](https://github.com/unhappychoice/splashboard/commit/6b1d47b))
+- test(render): add animated_typewriter regression tests ([d821df6](https://github.com/unhappychoice/splashboard/commit/d821df6))
+- test(render): add animated_boot regression tests ([7f7cae4](https://github.com/unhappychoice/splashboard/commit/7f7cae4))
+- test(render): improve text_plain coverage ([96766c6](https://github.com/unhappychoice/splashboard/commit/96766c6))
+- docs(site): preset gallery in showcases + renderer-page previews ([4a8ca0a](https://github.com/unhappychoice/splashboard/commit/4a8ca0a))
+- chore: update flake.nix hashes for v1.0.0 ([8d8a2bb](https://github.com/unhappychoice/splashboard/commit/8d8a2bb))
 - chore: bump version to v1.0.0 ([547179a](https://github.com/unhappychoice/splashboard/commit/547179a))
 - docs(secrets): document $HOME/.splashboard/secrets.toml in user guides ([645022b](https://github.com/unhappychoice/splashboard/commit/645022b))
 - refactor(payload,render): model placeholder errors as Body::Error ([530d143](https://github.com/unhappychoice/splashboard/commit/530d143))
