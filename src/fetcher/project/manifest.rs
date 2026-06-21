@@ -1,20 +1,30 @@
 //! `project_manifest` — reads version, description, name, and license from the nearest
 //! project manifest file (Cargo.toml › package.json › pyproject.toml › go.mod › composer.json)
-//! walking up from the process CWD. `Text` emits the version string (or module path for Go);
-//! `Entries` delivers all available fields as key/value rows; `TextBlock` lists them as
-//! human-readable lines.
+//! walking up from the process CWD. `Text` emits the version string; `Entries` delivers all
+//! available fields as key/value rows; `TextBlock` lists them as human-readable lines;
+//! `MarkdownTextBlock` formats name / description / version / license as a styled block;
+//! `Badge` shows the version with a tone derived from license permissiveness.
 
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
-use crate::payload::{Body, EntriesData, Entry, Payload, TextBlockData, TextData};
+use crate::payload::{
+    BadgeData, Body, EntriesData, Entry, MarkdownTextBlockData, Payload, Status, TextBlockData,
+    TextData,
+};
 use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
 use super::detect::{ManifestData, cwd_cache_component, detect_manifest};
 
-const SHAPES: &[Shape] = &[Shape::Text, Shape::Entries, Shape::TextBlock];
+const SHAPES: &[Shape] = &[
+    Shape::Text,
+    Shape::Entries,
+    Shape::TextBlock,
+    Shape::MarkdownTextBlock,
+    Shape::Badge,
+];
 
 pub struct ProjectManifest;
 
@@ -31,7 +41,9 @@ impl Fetcher for ProjectManifest {
          process CWD — Cargo.toml, package.json, pyproject.toml, go.mod, or composer.json. \
          `Text` emits the version string (useful as a hero subtitle); `Entries` delivers \
          name / version / description / license as key/value rows; `TextBlock` lists the \
-         same fields as human-readable lines."
+         same fields as human-readable lines; `MarkdownTextBlock` formats them as a styled \
+         block; `Badge` shows the version with a tone derived from license permissiveness \
+         (permissive → ok, copyleft → warn, unknown → warn)."
     }
     fn refresh_interval(&self) -> u64 {
         60 * 5
@@ -61,6 +73,10 @@ impl Fetcher for ProjectManifest {
             Shape::TextBlock => {
                 samples::text_block(&["splashboard 1.4.2", "Terminal splash dashboard", "MIT"])
             }
+            Shape::MarkdownTextBlock => {
+                samples::markdown("# splashboard\n\n_Terminal splash dashboard_\n\n**1.4.2** · MIT")
+            }
+            Shape::Badge => samples::badge(Status::Ok, "v1.4.2"),
             _ => return None,
         })
     }
@@ -80,6 +96,8 @@ fn render_body(data: &ManifestData, shape: Shape) -> Body {
     match shape {
         Shape::Text => text_body(data),
         Shape::TextBlock => text_block_body(data),
+        Shape::MarkdownTextBlock => markdown_body(data),
+        Shape::Badge => badge_body(data),
         _ => entries_body(data),
     }
 }
@@ -106,6 +124,59 @@ fn text_block_body(data: &ManifestData) -> Body {
         lines.push(lic.clone());
     }
     Body::TextBlock(TextBlockData { lines })
+}
+
+fn markdown_body(data: &ManifestData) -> Body {
+    let mut sections: Vec<String> = Vec::new();
+    if let Some(name) = &data.name {
+        sections.push(format!("# {name}"));
+    }
+    if let Some(desc) = &data.description {
+        sections.push(format!("_{desc}_"));
+    }
+    let footer = match (&data.version, &data.license) {
+        (Some(v), Some(l)) => Some(format!("**{v}** · {l}")),
+        (Some(v), None) => Some(format!("**{v}**")),
+        (None, Some(l)) => Some(l.clone()),
+        (None, None) => None,
+    };
+    if let Some(f) = footer {
+        sections.push(f);
+    }
+    Body::MarkdownTextBlock(MarkdownTextBlockData {
+        value: sections.join("\n\n"),
+    })
+}
+
+fn badge_body(data: &ManifestData) -> Body {
+    match (&data.version, &data.name) {
+        (Some(v), _) => Body::Badge(BadgeData {
+            status: license_status(data.license.as_deref()),
+            label: format!("v{v}"),
+        }),
+        (None, Some(n)) => Body::Badge(BadgeData {
+            status: Status::Warn,
+            label: n.clone(),
+        }),
+        (None, None) => Body::Badge(BadgeData {
+            status: Status::Warn,
+            label: String::new(),
+        }),
+    }
+}
+
+fn license_status(license: Option<&str>) -> Status {
+    match license {
+        None => Status::Warn,
+        Some(s) => {
+            let lower = s.to_ascii_lowercase();
+            if lower.contains("agpl") || lower.contains("gpl") {
+                Status::Warn
+            } else {
+                Status::Ok
+            }
+        }
+    }
 }
 
 fn entries_body(data: &ManifestData) -> Body {
@@ -205,6 +276,75 @@ mod tests {
                 value: String::new()
             })
         );
+    }
+
+    #[test]
+    fn markdown_body_composes_heading_description_footer() {
+        let Body::MarkdownTextBlock(md) = render_body(&manifest(), Shape::MarkdownTextBlock) else {
+            panic!("expected MarkdownTextBlock");
+        };
+        assert_eq!(md.value, "# myapp\n\n_A cool app_\n\n**1.0.0** · MIT");
+    }
+
+    #[test]
+    fn markdown_body_skips_missing_sections() {
+        let data = ManifestData {
+            name: Some("bare".into()),
+            version: None,
+            description: None,
+            license: None,
+            ecosystem: "go",
+        };
+        let Body::MarkdownTextBlock(md) = render_body(&data, Shape::MarkdownTextBlock) else {
+            panic!("expected MarkdownTextBlock");
+        };
+        assert_eq!(md.value, "# bare");
+    }
+
+    #[test]
+    fn badge_body_labels_version_with_license_tone() {
+        assert_eq!(
+            render_body(&manifest(), Shape::Badge),
+            Body::Badge(BadgeData {
+                status: Status::Ok,
+                label: "v1.0.0".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn badge_body_warns_on_copyleft_license() {
+        let data = ManifestData {
+            license: Some("GPL-3.0".into()),
+            ..manifest()
+        };
+        let Body::Badge(b) = render_body(&data, Shape::Badge) else {
+            panic!("expected Badge");
+        };
+        assert_eq!(b.status, Status::Warn);
+    }
+
+    #[test]
+    fn badge_body_falls_back_to_name_when_version_missing() {
+        let data = ManifestData {
+            version: None,
+            ..manifest()
+        };
+        let Body::Badge(b) = render_body(&data, Shape::Badge) else {
+            panic!("expected Badge");
+        };
+        assert_eq!(b.label, "myapp");
+        assert_eq!(b.status, Status::Warn);
+    }
+
+    #[test]
+    fn license_status_classifies_permissive_and_copyleft() {
+        assert_eq!(license_status(Some("MIT")), Status::Ok);
+        assert_eq!(license_status(Some("Apache-2.0")), Status::Ok);
+        assert_eq!(license_status(Some("ISC")), Status::Ok);
+        assert_eq!(license_status(Some("GPL-3.0")), Status::Warn);
+        assert_eq!(license_status(Some("AGPL-3.0-only")), Status::Warn);
+        assert_eq!(license_status(None), Status::Warn);
     }
 
     #[test]
