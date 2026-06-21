@@ -19,7 +19,7 @@ jobs:
     name: Refresh pricing snapshot
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # `peter-evans/create-pull-request` supplies its own token below, so
           # checkout doesn't need to persist credentials in the workspace.
