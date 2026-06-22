@@ -145,19 +145,22 @@
       "input": 3.0,
       "output": 15.0,
       "cache_read": 0.3,
-      "cache_write_5m": 3.75
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6.0
     },
     "claude-sonnet-4-5-20250929": {
       "input": 3.0,
       "output": 15.0,
       "cache_read": 0.3,
-      "cache_write_5m": 3.75
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6.0
     },
     "claude-sonnet-4-6": {
       "input": 3.0,
       "output": 15.0,
       "cache_read": 0.3,
-      "cache_write_5m": 3.75
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6.0
     },
     "ft:gpt-3.5-turbo": {
       "input": 3.0,
