@@ -36,6 +36,7 @@ pub mod lobsters;
 pub mod nasa_apod;
 pub mod net;
 pub mod news;
+pub mod project;
 pub mod random_cat;
 pub mod random_dog;
 pub mod random_fortune;
@@ -421,6 +422,9 @@ impl Registry {
             r.register(f);
         }
         for f in code::fetchers() {
+            r.register(f);
+        }
+        for f in project::fetchers() {
             r.register(f);
         }
         for f in basic::realtime_fetchers() {
