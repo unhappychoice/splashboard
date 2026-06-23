@@ -4,7 +4,7 @@
 //! cells that share fg/bg/modifier. Default-styled cells emit plain text (no wrapping span) so
 //! the rendered markup stays readable and small.
 
-use ratatui::buffer::Buffer;
+use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::style::{Color, Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
@@ -130,10 +130,10 @@ fn emit_row(out: &mut String, buf: &Buffer, y: u16, width: u16) {
     let mut x = 0u16;
     while x < width {
         let cell = buf[(x, y)].clone();
-        // Cells flagged `skip` are placeholders for the visible region of an OSC 8 hyperlink
+        // Cells flagged as Skip are placeholders for the visible region of an OSC 8 hyperlink
         // — the link's first cell carries the whole sequence; the trailing cells exist only
         // so terminal cursor math lines up. Drop them in HTML to avoid emitting stray spaces.
-        if cell.skip {
+        if matches!(cell.diff_option, CellDiffOption::Skip) {
             x += 1;
             continue;
         }
@@ -429,7 +429,7 @@ mod tests {
     fn osc8_hyperlink_becomes_anchor() {
         let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
         buf[(0, 0)].set_symbol("\x1b]8;;https://example.com/\x1b\\Hi\x1b]8;;\x1b\\");
-        buf[(1, 0)].set_skip(true);
+        buf[(1, 0)].set_diff_option(CellDiffOption::Skip);
         let html = buffer_to_html(&buf);
         assert!(
             html.contains("<a href=\"https://example.com/\""),
@@ -460,8 +460,8 @@ mod tests {
     fn skip_cells_are_dropped() {
         let mut buf = Buffer::empty(Rect::new(0, 0, 4, 1));
         buf[(0, 0)].set_symbol("a");
-        buf[(1, 0)].set_skip(true);
-        buf[(2, 0)].set_skip(true);
+        buf[(1, 0)].set_diff_option(CellDiffOption::Skip);
+        buf[(2, 0)].set_diff_option(CellDiffOption::Skip);
         buf[(3, 0)].set_symbol("b");
         let html = buffer_to_html(&buf);
         assert_eq!(html.matches("<span class=\"c\">").count(), 2);
