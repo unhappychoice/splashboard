@@ -3,11 +3,13 @@
 //!
 //! How the OSC 8 plumbing works: ratatui's `Buffer` stores per-cell symbol strings that the
 //! crossterm backend prints verbatim. We collapse the whole linked row into the first cell's
-//! symbol — `ESC ] 8 ; ; URL ESC \\ <text> ESC ] 8 ; ; ESC \\` — and mark the trailing cells with
-//! `skip = true` so ratatui's diff doesn't try to redraw them. That keeps the OSC 8 sequence
-//! atomic in the byte stream (no `MoveTo` interruption), and dodges `Buffer::diff`'s width
-//! calculation, which would otherwise count the printable characters inside the escape sequence
-//! as visible columns and incorrectly skip the cells immediately after the link.
+//! symbol — `ESC ] 8 ; ; URL ESC \\ <text> ESC ] 8 ; ; ESC \\` — pin its diff width to 1 via
+//! `CellDiffOption::ForcedWidth(1)`, and mark the trailing cells with `CellDiffOption::Skip` so
+//! ratatui's diff doesn't try to redraw them. The `ForcedWidth(1)` matters because ratatui 0.30's
+//! diff iterator advances by the cell's computed `cell_width` for non-skip cells; without the
+//! pin, the printable characters inside the escape sequence (URL, visible text) would be counted
+//! as visible columns and the iterator would jump far past the trailing cells — even spilling
+//! into the next row — so subsequent rows would never be diffed and would render blank.
 //!
 //! The `skip = true` trick only buys real-terminal correctness: `TestBackend` doesn't
 //! simulate the terminal's char-rendering of the OSC 8 visible portion, so the skipped cells
@@ -17,8 +19,9 @@
 //! capture, while the on-screen `CrosstermBackend` pass keeps the OSC 8 wrap.
 
 use std::cell::Cell as StdCell;
+use std::num::NonZeroU16;
 
-use ratatui::{Frame, buffer::Buffer, layout::Rect, style::Style};
+use ratatui::{Frame, buffer::Buffer, buffer::CellDiffOption, layout::Rect, style::Style};
 
 use crate::options::OptionSchema;
 use crate::payload::{Body, LinkedLine, LinkedTextBlockData};
@@ -156,13 +159,15 @@ fn osc8_suppressed() -> bool {
 }
 
 /// Re-export of the OSC 8 wrapping helper so sibling renderers (`list_cards`) can reuse the
-/// `set_skip` plumbing without duplicating the escape-sequence dance.
+/// diff-option plumbing without duplicating the escape-sequence dance.
 pub(crate) fn wrap_osc8(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Style) {
     if osc8_suppressed() {
         return;
     }
     wrap_link(buf, x, y, end_x, url, style);
 }
+
+const FORCED_WIDTH_1: CellDiffOption = CellDiffOption::ForcedWidth(NonZeroU16::new(1).unwrap());
 
 fn wrap_link(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Style) {
     let visible: String = (x..end_x)
@@ -171,10 +176,11 @@ fn wrap_link(buf: &mut Buffer, x: u16, y: u16, end_x: u16, url: &str, style: Sty
     if let Some(cell) = buf.cell_mut((x, y)) {
         cell.set_symbol(&format!("\x1b]8;;{url}\x1b\\{visible}\x1b]8;;\x1b\\"));
         cell.set_style(style);
+        cell.set_diff_option(FORCED_WIDTH_1);
     }
     for col in (x + 1)..end_x {
         if let Some(cell) = buf.cell_mut((col, y)) {
-            cell.set_skip(true);
+            cell.set_diff_option(CellDiffOption::Skip);
         }
     }
 }
