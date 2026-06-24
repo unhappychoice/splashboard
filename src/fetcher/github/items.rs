@@ -12,6 +12,7 @@ use crate::fetcher::forge_items::{self, ForgeRow};
 use crate::payload::Body;
 use crate::render::Shape;
 
+use super::client::api_repos_prefix;
 use super::common::{RepoSlug, parse_timestamp};
 
 #[derive(Debug, Deserialize, Default)]
@@ -47,10 +48,10 @@ pub struct SearchResult {
     pub items: Vec<IssueItem>,
 }
 
-/// Extracts `owner/name` from a GitHub API repository URL
-/// (`https://api.github.com/repos/owner/name`).
+/// Extracts `owner/name` from a GitHub API repository URL. The prefix tracks the configured
+/// host via `client::api_repos_prefix()`.
 pub fn repo_from_url(url: &str) -> Option<RepoSlug> {
-    let rest = url.strip_prefix("https://api.github.com/repos/")?;
+    let rest = url.strip_prefix(api_repos_prefix())?;
     RepoSlug::parse(rest)
 }
 

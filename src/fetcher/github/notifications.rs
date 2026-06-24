@@ -13,7 +13,7 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::client::rest_get;
+use super::client::{api_repos_prefix, rest_get, web_base};
 use super::common::{cache_key, parse_options, parse_timestamp, payload};
 
 const SHAPES: &[Shape] = &[
@@ -222,8 +222,8 @@ fn short_repo(full: &str) -> String {
 /// or doesn't match the expected prefix; callers fall back to leaving the row unlinked.
 fn subject_html_url(n: &Notification) -> Option<String> {
     let url = n.subject.url.as_deref()?;
-    let rest = url.strip_prefix("https://api.github.com/repos/")?;
-    Some(format!("https://github.com/{rest}"))
+    let rest = url.strip_prefix(api_repos_prefix())?;
+    Some(format!("{}/{rest}", web_base()))
 }
 
 #[cfg(test)]

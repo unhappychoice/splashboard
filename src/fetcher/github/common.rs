@@ -117,30 +117,58 @@ fn remote_slug(repo: &gix::Repository) -> Option<RepoSlug> {
     slug_from_url(&url.to_bstring().to_string())
 }
 
-/// Parses the github URL shapes splashboard supports:
-/// - `git@github.com:owner/name(.git)?`
-/// - `https://github.com/owner/name(.git)?`
-/// - `https://<user>(:<token>)?@github.com/owner/name(.git)?`
-/// - `ssh://git@github.com/owner/name(.git)?`
+/// Parses the github URL shapes splashboard supports against the configured host:
+/// - `<user>@<host>:owner/name(.git)?` (SCP-style; `<user>` is conventionally `git` on
+///   github.com but can be anything — Microsoft GHE uses `microsoft@...`, for instance)
+/// - `https://<host>/owner/name(.git)?`
+/// - `https://<user>(:<token>)?@<host>/owner/name(.git)?`
+/// - `ssh://<user>@<host>/owner/name(.git)?`
 ///
-/// Anything that isn't github.com returns `None` — splashboard's github fetchers target the
-/// github.com API and silently accepting a gitlab remote would be misleading.
+/// When `GH_HOST` is set, the configured host wins; we also try github.com as a fallback so
+/// a user with a GHE shell can still parse github.com remotes.
 pub fn slug_from_url(url: &str) -> Option<RepoSlug> {
-    let rest = url
-        .strip_prefix("git@github.com:")
-        .or_else(|| strip_https_github_prefix(url))
-        .or_else(|| url.strip_prefix("ssh://git@github.com/"))?;
+    let host = super::client::host();
+    parse_with_host(host, url).or_else(|| {
+        if host.eq_ignore_ascii_case("github.com") {
+            None
+        } else {
+            parse_with_host("github.com", url)
+        }
+    })
+}
+
+fn parse_with_host(host: &str, url: &str) -> Option<RepoSlug> {
+    let rest = strip_scp_prefix(host, url)
+        .or_else(|| strip_https_prefix(host, url))
+        .or_else(|| strip_ssh_prefix(host, url))?;
     let rest = rest.strip_suffix(".git").unwrap_or(rest);
     RepoSlug::parse(rest)
 }
 
-fn strip_https_github_prefix(url: &str) -> Option<&str> {
+fn strip_scp_prefix<'a>(host: &str, url: &'a str) -> Option<&'a str> {
+    let (userinfo, rest) = url.split_once('@')?;
+    if userinfo.is_empty() || userinfo.contains([':', '/']) {
+        return None;
+    }
+    rest.strip_prefix(&format!("{host}:")[..])
+}
+
+fn strip_https_prefix<'a>(host: &str, url: &'a str) -> Option<&'a str> {
     let after_scheme = url.strip_prefix("https://")?;
     let after_userinfo = match after_scheme.split_once('@') {
         Some((userinfo, rest)) if !userinfo.contains('/') => rest,
         _ => after_scheme,
     };
-    after_userinfo.strip_prefix("github.com/")
+    after_userinfo.strip_prefix(&format!("{host}/")[..])
+}
+
+fn strip_ssh_prefix<'a>(host: &str, url: &'a str) -> Option<&'a str> {
+    let after_scheme = url.strip_prefix("ssh://")?;
+    let (userinfo, rest) = after_scheme.split_once('@')?;
+    if userinfo.is_empty() || userinfo.contains([':', '/']) {
+        return None;
+    }
+    rest.strip_prefix(&format!("{host}/")[..])
 }
 
 #[allow(dead_code)]

@@ -1,8 +1,11 @@
-//! `github_avatar` — download a github.com avatar PNG and expose it as `Body::Image`.
+//! `github_avatar` — download an avatar PNG and expose it as `Body::Image`.
 //!
-//! Safety::Safe: the host is hardcoded (`github.com/<user>.png`), so config can't redirect
-//! traffic to a different origin. No auth is needed — the endpoint is public — so we do not
-//! attach `GH_TOKEN`, avoiding accidental token exposure along the redirect chain.
+//! - github.com: keeps the original public shortcut (`https://github.com/<user>.png`).
+//! - GHE: the public shortcut redirects to `/login`, so we indirect through
+//!   `/users/<login>` to get the server-signed `avatar_url`.
+//!
+//! Safety::Safe: the host is resolved via `client::host()` (env-var-only), so a malicious
+//! `.splashboard.toml` cannot redirect traffic to an attacker-chosen origin.
 //!
 //! Caching: the PNG is written to `$SPLASHBOARD_HOME/cache/avatars/<user>-<size>.png`. The
 //! fetcher framework already gates re-downloads via `refresh_interval`; we default to one day
@@ -19,10 +22,9 @@ use crate::payload::{Body, ImageData, Payload};
 use crate::render::Shape;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::client::{http, resolve_authenticated_user};
+use super::client::{host, http, rest_get, resolve_authenticated_user, web_base};
 use super::common::cache_key;
 
-const AVATAR_BASE: &str = "https://github.com";
 const DEFAULT_SIZE: u32 = 200;
 
 const OPTION_SCHEMAS: &[OptionSchema] = &[
@@ -103,7 +105,11 @@ async fn download_avatar(user: &str, size: u32) -> Result<PathBuf, FetchError> {
         .ok_or_else(|| FetchError::Failed("$HOME not available for avatar cache".into()))?;
     std::fs::create_dir_all(&out_dir)
         .map_err(|e| FetchError::Failed(format!("create avatar cache dir: {e}")))?;
-    let url = format!("{AVATAR_BASE}/{user}.png?size={size}");
+    let url = if host().eq_ignore_ascii_case("github.com") {
+        format!("{}/{user}.png?size={size}", web_base())
+    } else {
+        resolve_ghe_avatar_url(user, size).await?
+    };
     let res = http()
         .get(&url)
         .send()
@@ -124,6 +130,19 @@ async fn download_avatar(user: &str, size: u32) -> Result<PathBuf, FetchError> {
     let path = out_dir.join(format!("{user}-{size}.{ext}"));
     std::fs::write(&path, &bytes).map_err(|e| FetchError::Failed(format!("write avatar: {e}")))?;
     Ok(path)
+}
+
+#[derive(Debug, Deserialize)]
+struct UserAvatar {
+    avatar_url: String,
+}
+
+/// GHE-only: resolve the server-signed avatar URL via `/users/<login>` and append a size
+/// query so the source is small enough for the media_image renderer.
+async fn resolve_ghe_avatar_url(user: &str, size: u32) -> Result<String, FetchError> {
+    let me: UserAvatar = rest_get(&format!("/users/{user}")).await?;
+    let sep = if me.avatar_url.contains('?') { '&' } else { '?' };
+    Ok(format!("{}{sep}s={size}", me.avatar_url))
 }
 
 fn image_extension(bytes: &[u8]) -> &'static str {
