@@ -22,7 +22,7 @@ use crate::payload::{Body, ImageData, Payload};
 use crate::render::Shape;
 
 use super::super::{FetchContext, FetchError, Fetcher, Safety};
-use super::client::{host, http, rest_get, resolve_authenticated_user, web_base};
+use super::client::{host, http, resolve_authenticated_user, rest_get, web_base};
 use super::common::cache_key;
 
 const DEFAULT_SIZE: u32 = 200;
@@ -141,7 +141,11 @@ struct UserAvatar {
 /// query so the source is small enough for the media_image renderer.
 async fn resolve_ghe_avatar_url(user: &str, size: u32) -> Result<String, FetchError> {
     let me: UserAvatar = rest_get(&format!("/users/{user}")).await?;
-    let sep = if me.avatar_url.contains('?') { '&' } else { '?' };
+    let sep = if me.avatar_url.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
     Ok(format!("{}{sep}s={size}", me.avatar_url))
 }
 

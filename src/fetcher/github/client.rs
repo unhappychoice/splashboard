@@ -1,7 +1,9 @@
 //! Shared HTTP client + auth for the `github_*` fetcher family. Reads `GH_TOKEN` or
-//! `GITHUB_TOKEN` (in that order) once per process. Every fetcher talks to `api.github.com`
-//! only — there is no config-controlled host, so leaking a user's token to an attacker-chosen
-//! origin is not possible by design.
+//! `GITHUB_TOKEN` (in that order) once per process. The host defaults to `github.com` but
+//! can be redirected to a GitHub Enterprise Server via `GH_HOST` / `GITHUB_HOST` (and
+//! optionally `GH_API_URL` / `GH_GRAPHQL_URL` for older `<host>/api/v3` deployments). Host
+//! selection is env-var-only — a `.splashboard.toml` cannot redirect traffic to an
+//! attacker-chosen origin, so the token cannot leak by design.
 //!
 //! The rest helpers accept a path like `"/user"` or `"/repos/foo/bar"`; the base URL is joined
 //! here so fetchers stay free of URL plumbing. GraphQL goes through a single POST helper.
@@ -19,10 +21,16 @@ const DEFAULT_HOST: &str = "github.com";
 const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
 
 fn read_env(var: &str) -> Option<String> {
-    std::env::var(var)
-        .ok()
-        .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty())
+    std::env::var(var).ok().and_then(|raw| normalize_env(&raw))
+}
+
+/// Trim whitespace and a trailing `/` so callers can rely on host / URL values being free of
+/// surface-level user typos like `GH_API_URL=https://ghe.example.com/api/v3/`. Returns `None`
+/// when the value collapses to empty after normalization so the caller can fall back to the
+/// default.
+fn normalize_env(raw: &str) -> Option<String> {
+    let v = raw.trim().trim_end_matches('/');
+    (!v.is_empty()).then(|| v.to_owned())
 }
 
 pub(crate) fn host() -> &'static str {
@@ -73,6 +81,7 @@ pub(crate) fn api_repos_prefix() -> &'static str {
     static API_REPOS_PREFIX: OnceLock<String> = OnceLock::new();
     API_REPOS_PREFIX.get_or_init(|| format!("{}/repos/", api_base()))
 }
+
 const ACCEPT: &str = "application/vnd.github+json";
 const API_VERSION: &str = "2022-11-28";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -268,6 +277,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn normalize_env_strips_trailing_slash() {
+        assert_eq!(
+            normalize_env("https://ghe.example.com/api/v3/").as_deref(),
+            Some("https://ghe.example.com/api/v3")
+        );
+    }
+
+    #[test]
+    fn normalize_env_handles_whitespace_and_empty() {
+        assert_eq!(
+            normalize_env("  github.com  ").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(normalize_env("   ").as_deref(), None);
+        assert_eq!(normalize_env("").as_deref(), None);
+        assert_eq!(normalize_env("/").as_deref(), None);
+    }
+
+    #[test]
+    fn normalize_env_preserves_clean_values() {
+        assert_eq!(
+            normalize_env("https://ghe.example.com/api/v3").as_deref(),
+            Some("https://ghe.example.com/api/v3")
+        );
+        assert_eq!(normalize_env("github.com").as_deref(), Some("github.com"));
     }
 
     #[test]
