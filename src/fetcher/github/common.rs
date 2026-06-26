@@ -274,6 +274,49 @@ mod tests {
     }
 
     #[test]
+    fn parse_with_host_handles_ghe_https() {
+        let s =
+            parse_with_host("ghe.example.com", "https://ghe.example.com/owner/repo.git").unwrap();
+        assert_eq!(s.owner, "owner");
+        assert_eq!(s.name, "repo");
+    }
+
+    #[test]
+    fn parse_with_host_handles_ghe_scp() {
+        let s = parse_with_host("ghe.example.com", "git@ghe.example.com:owner/repo.git").unwrap();
+        assert_eq!(s.owner, "owner");
+        assert_eq!(s.name, "repo");
+    }
+
+    #[test]
+    fn parse_with_host_handles_ghe_ssh_scheme() {
+        let s = parse_with_host(
+            "ghe.example.com",
+            "ssh://git@ghe.example.com/owner/repo.git",
+        )
+        .unwrap();
+        assert_eq!(s.owner, "owner");
+        assert_eq!(s.name, "repo");
+    }
+
+    #[test]
+    fn parse_with_host_accepts_non_git_scp_user() {
+        let s = parse_with_host(
+            "ghe.microsoft.com",
+            "microsoft@ghe.microsoft.com:org/repo.git",
+        )
+        .unwrap();
+        assert_eq!(s.owner, "org");
+        assert_eq!(s.name, "repo");
+    }
+
+    #[test]
+    fn parse_with_host_rejects_other_host() {
+        assert!(parse_with_host("ghe.example.com", "https://github.com/owner/repo").is_none());
+        assert!(parse_with_host("ghe.example.com", "git@github.com:owner/repo.git").is_none());
+    }
+
+    #[test]
     fn parse_timestamp_reads_rfc3339() {
         let ts = parse_timestamp("2026-04-22T10:15:30Z");
         assert_eq!(ts, 1_776_852_930);
