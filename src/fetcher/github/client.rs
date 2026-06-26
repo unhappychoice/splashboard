@@ -1,7 +1,9 @@
 //! Shared HTTP client + auth for the `github_*` fetcher family. Reads `GH_TOKEN` or
-//! `GITHUB_TOKEN` (in that order) once per process. Every fetcher talks to `api.github.com`
-//! only — there is no config-controlled host, so leaking a user's token to an attacker-chosen
-//! origin is not possible by design.
+//! `GITHUB_TOKEN` (in that order) once per process. The host defaults to `github.com` but
+//! can be redirected to a GitHub Enterprise Server via `GH_HOST` / `GITHUB_HOST` (and
+//! optionally `GH_API_URL` / `GH_GRAPHQL_URL` for older `<host>/api/v3` deployments). Host
+//! selection is env-var-only — a `.splashboard.toml` cannot redirect traffic to an
+//! attacker-chosen origin, so the token cannot leak by design.
 //!
 //! The rest helpers accept a path like `"/user"` or `"/repos/foo/bar"`; the base URL is joined
 //! here so fetchers stay free of URL plumbing. GraphQL goes through a single POST helper.
@@ -15,9 +17,71 @@ use serde::de::DeserializeOwned;
 
 use crate::fetcher::FetchError;
 
-const API_BASE: &str = "https://api.github.com";
-const GRAPHQL_URL: &str = "https://api.github.com/graphql";
+const DEFAULT_HOST: &str = "github.com";
 const USER_AGENT: &str = concat!("splashboard/", env!("CARGO_PKG_VERSION"));
+
+fn read_env(var: &str) -> Option<String> {
+    std::env::var(var).ok().and_then(|raw| normalize_env(&raw))
+}
+
+/// Trim whitespace and a trailing `/` so callers can rely on host / URL values being free of
+/// surface-level user typos like `GH_API_URL=https://ghe.example.com/api/v3/`. Returns `None`
+/// when the value collapses to empty after normalization so the caller can fall back to the
+/// default.
+fn normalize_env(raw: &str) -> Option<String> {
+    let v = raw.trim().trim_end_matches('/');
+    (!v.is_empty()).then(|| v.to_owned())
+}
+
+pub(crate) fn host() -> &'static str {
+    static HOST: OnceLock<String> = OnceLock::new();
+    HOST.get_or_init(|| {
+        read_env("GH_HOST")
+            .or_else(|| read_env("GITHUB_HOST"))
+            .unwrap_or_else(|| DEFAULT_HOST.into())
+            // Normalize to lowercase so SCP-style remote parsing (`git@<host>:`) and
+            // `eq_ignore_ascii_case` checks against `"github.com"` stay consistent when
+            // the user types `GH_HOST=GitHub.com`. DNS is case-insensitive so this
+            // doesn't affect URL composition.
+            .to_ascii_lowercase()
+    })
+    .as_str()
+}
+
+/// REST API base URL. Defaults to `https://api.<host>` (github.com and modern GHE).
+/// Override via `GH_API_URL` / `GITHUB_API_URL` for older `<host>/api/v3` GHE deployments
+/// (the env var name matches GitHub Actions' standard `GITHUB_API_URL`).
+pub(crate) fn api_base() -> &'static str {
+    static API_BASE: OnceLock<String> = OnceLock::new();
+    API_BASE.get_or_init(|| {
+        read_env("GH_API_URL")
+            .or_else(|| read_env("GITHUB_API_URL"))
+            .unwrap_or_else(|| format!("https://api.{}", host()))
+    })
+}
+
+/// GraphQL endpoint. Defaults to `https://api.<host>/graphql`. Override via
+/// `GH_GRAPHQL_URL` / `GITHUB_GRAPHQL_URL` for older `<host>/api/graphql` GHE deployments
+/// (matches GitHub Actions' standard `GITHUB_GRAPHQL_URL` env var).
+pub(crate) fn graphql_url() -> &'static str {
+    static GRAPHQL_URL: OnceLock<String> = OnceLock::new();
+    GRAPHQL_URL.get_or_init(|| {
+        read_env("GH_GRAPHQL_URL")
+            .or_else(|| read_env("GITHUB_GRAPHQL_URL"))
+            .unwrap_or_else(|| format!("https://api.{}/graphql", host()))
+    })
+}
+
+pub(crate) fn web_base() -> &'static str {
+    static WEB_BASE: OnceLock<String> = OnceLock::new();
+    WEB_BASE.get_or_init(|| format!("https://{}", host()))
+}
+
+pub(crate) fn api_repos_prefix() -> &'static str {
+    static API_REPOS_PREFIX: OnceLock<String> = OnceLock::new();
+    API_REPOS_PREFIX.get_or_init(|| format!("{}/repos/", api_base()))
+}
+
 const ACCEPT: &str = "application/vnd.github+json";
 const API_VERSION: &str = "2022-11-28";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -76,7 +140,7 @@ pub(crate) fn clear_authenticated_user_cache() {
 /// are both actionable.
 pub async fn rest_get<T: DeserializeOwned>(path: &str) -> Result<T, FetchError> {
     let token = resolve_token()?;
-    let url = format!("{API_BASE}{path}");
+    let url = format!("{}{path}", api_base());
     let res = http()
         .get(&url)
         .bearer_auth(&token)
@@ -96,7 +160,7 @@ pub async fn graphql<T: DeserializeOwned>(
     let token = resolve_token()?;
     let body = serde_json::json!({ "query": query, "variables": variables });
     let res = http()
-        .post(GRAPHQL_URL)
+        .post(graphql_url())
         .bearer_auth(&token)
         .header("Accept", ACCEPT)
         .header("X-GitHub-Api-Version", API_VERSION)
@@ -213,6 +277,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn normalize_env_strips_trailing_slash() {
+        assert_eq!(
+            normalize_env("https://ghe.example.com/api/v3/").as_deref(),
+            Some("https://ghe.example.com/api/v3")
+        );
+    }
+
+    #[test]
+    fn normalize_env_handles_whitespace_and_empty() {
+        assert_eq!(
+            normalize_env("  github.com  ").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(normalize_env("   ").as_deref(), None);
+        assert_eq!(normalize_env("").as_deref(), None);
+        assert_eq!(normalize_env("/").as_deref(), None);
+    }
+
+    #[test]
+    fn normalize_env_preserves_clean_values() {
+        assert_eq!(
+            normalize_env("https://ghe.example.com/api/v3").as_deref(),
+            Some("https://ghe.example.com/api/v3")
+        );
+        assert_eq!(normalize_env("github.com").as_deref(), Some("github.com"));
     }
 
     #[test]
