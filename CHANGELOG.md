@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-06-27
+
+### ✨ Features
+
+- feat(github): support GitHub Enterprise Server via GH_HOST / GITHUB_HOST ([24ed307](https://github.com/unhappychoice/splashboard/commit/24ed307))
+- feat(fetcher): add markdown and badge shapes to project_manifest ([f4a7bee](https://github.com/unhappychoice/splashboard/commit/f4a7bee))
+- feat(fetcher): add project_manifest fetcher ([83cf083](https://github.com/unhappychoice/splashboard/commit/83cf083))
+
+### 🐛 Bug Fixes
+
+- fix(github): normalize trailing slash in env-provided host/URL vars ([228476d](https://github.com/unhappychoice/splashboard/commit/228476d))
+- fix(render): pin OSC 8 cell width and adopt CellDiffOption::Skip ([e140cdc](https://github.com/unhappychoice/splashboard/commit/e140cdc))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.10.0 ([a18549f](https://github.com/unhappychoice/splashboard/commit/a18549f))
+- test(github): cover GHE host parsing for slug_from_url ([4a67095](https://github.com/unhappychoice/splashboard/commit/4a67095))
+- chore(deps)(deps): bump ratatui from 0.30.0 to 0.30.2 ([219de0f](https://github.com/unhappychoice/splashboard/commit/219de0f))
+- chore: sync llm pricing from LiteLLM ([0078bbb](https://github.com/unhappychoice/splashboard/commit/0078bbb))
+- chore(deps)(deps): bump netdev from 0.44.0 to 0.45.0 ([1a9f029](https://github.com/unhappychoice/splashboard/commit/1a9f029))
+- chore(deps)(deps): bump tui-big-text from 0.8.5 to 0.8.8 ([e5a4513](https://github.com/unhappychoice/splashboard/commit/e5a4513))
+- chore(ci)(deps): bump actions/checkout from 6 to 7 ([a12a818](https://github.com/unhappychoice/splashboard/commit/a12a818))
+- chore: update flake.nix hashes for v2.9.0 ([3999efc](https://github.com/unhappychoice/splashboard/commit/3999efc))
+- chore(deps)(deps): bump tui-big-text from 0.8.4 to 0.8.5 ([c554760](https://github.com/unhappychoice/splashboard/commit/c554760))
+- chore(deps)(deps): bump time from 0.3.47 to 0.3.49 ([c9f24fc](https://github.com/unhappychoice/splashboard/commit/c9f24fc))
+- chore(deps)(deps): bump regex from 1.12.3 to 1.12.4 ([e051a75](https://github.com/unhappychoice/splashboard/commit/e051a75))
+
+
 ## [2.9.0] - 2026-06-14
 
 ### ✨ Features
@@ -14,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.9.0 ([11cc449](https://github.com/unhappychoice/splashboard/commit/11cc449))
+- chore: bump version to v2.9.0 ([d2fe366](https://github.com/unhappychoice/splashboard/commit/d2fe366))
 - chore(deps): add netstat2 for cross-platform socket enumeration ([7d24366](https://github.com/unhappychoice/splashboard/commit/7d24366))
 - chore: sync llm pricing from LiteLLM ([cb56616](https://github.com/unhappychoice/splashboard/commit/cb56616))
 - chore: update flake.nix hashes for v2.8.0 ([b715cb3](https://github.com/unhappychoice/splashboard/commit/b715cb3))
@@ -702,18 +730,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.1] - 2026-04-29
 
-### 🐛 Bug Fixes
-
-- fix(render): let animated wrappers pass inner-renderer fields through ([80cf479](https://github.com/unhappychoice/splashboard/commit/80cf479))
-
-### 📝 Other Changes
-
-- chore: bump version to v1.1.1 ([05ca526](https://github.com/unhappychoice/splashboard/commit/05ca526))
-- chore: update flake.nix hashes for v1.1.0 ([bac3e65](https://github.com/unhappychoice/splashboard/commit/bac3e65))
-
-
-## [1.1.0] - 2026-04-29
-
 ### ✨ Features
 
 - feat(config): add auto_home / auto_on_cd toggles to opt out of auto-display ([83f7d42](https://github.com/unhappychoice/splashboard/commit/83f7d42))
@@ -842,6 +858,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(render): let animated wrappers pass inner-renderer fields through ([80cf479](https://github.com/unhappychoice/splashboard/commit/80cf479))
 - fix(xtask): step past OSC 8 link cells in HTML snapshot ([ef8d1f8](https://github.com/unhappychoice/splashboard/commit/ef8d1f8))
 - fix(fetcher): address coderabbit review on cache key + recent count + today freshness ([2b2e655](https://github.com/unhappychoice/splashboard/commit/2b2e655))
 - fix(fetcher,payload): scope deariary disk cache per token + lock Body::Error wire format ([761c1d1](https://github.com/unhappychoice/splashboard/commit/761c1d1))
@@ -904,6 +921,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v1.1.1 ([05ca526](https://github.com/unhappychoice/splashboard/commit/05ca526))
+- chore: update flake.nix hashes for v1.1.0 ([bac3e65](https://github.com/unhappychoice/splashboard/commit/bac3e65))
 - chore: bump version to v1.1.0 ([8468dac](https://github.com/unhappychoice/splashboard/commit/8468dac))
 - test(github): add offline tests for repo_prs fetcher ([0c325ff](https://github.com/unhappychoice/splashboard/commit/0c325ff))
 - test(github): add offline tests for repo_issues fetcher ([74a2726](https://github.com/unhappychoice/splashboard/commit/74a2726))
