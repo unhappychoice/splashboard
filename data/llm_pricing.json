@@ -163,11 +163,11 @@
       "cache_write_1h": 6.0
     },
     "claude-sonnet-5": {
-      "input": 3.0,
-      "output": 15.0,
-      "cache_read": 0.3,
-      "cache_write_5m": 3.75,
-      "cache_write_1h": 6.0
+      "input": 2.0,
+      "output": 10.0,
+      "cache_read": 0.19999999999999998,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4.0
     },
     "ft:gpt-3.5-turbo": {
       "input": 3.0,
