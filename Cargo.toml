@@ -38,7 +38,7 @@ toml = "1.1"
 dirs = "6"
 clap = { version = "4", features = ["derive"] }
 tui-big-text = "0.8"
-tui-piechart = "0.3"
+tui-piechart = "1.0"
 tachyonfx = { version = "0.25", default-features = false, features = ["std"] }
 ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
