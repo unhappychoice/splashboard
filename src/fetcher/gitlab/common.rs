@@ -11,6 +11,7 @@
 //!   trailers before the value ever reaches [`super::client::rest_get`].
 
 use chrono::DateTime;
+use gix::bstr::ByteSlice;
 use sha2::{Digest, Sha256};
 
 use crate::fetcher::{FetchContext, FetchError};
@@ -145,9 +146,9 @@ fn remote_project_from_cwd(host: &str) -> Option<ProjectPath> {
     let names: Vec<_> = repo.remote_names().into_iter().collect();
     let preferred = names
         .iter()
-        .find(|n| n.as_ref() == "origin")
+        .find(|n| n.as_bstr() == "origin")
         .or_else(|| names.first())?;
-    let remote = repo.find_remote(preferred.as_ref()).ok()?;
+    let remote = repo.find_remote(preferred).ok()?;
     let url = remote.url(gix::remote::Direction::Fetch)?;
     project_from_url(&url.to_bstring().to_string(), host)
 }

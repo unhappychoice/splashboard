@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use chrono::DateTime;
+use gix::bstr::ByteSlice;
 use sha2::{Digest, Sha256};
 
 use crate::fetcher::{FetchContext, FetchError};
@@ -109,10 +110,10 @@ fn remote_slug(repo: &gix::Repository) -> Option<RepoSlug> {
     let names: Vec<_> = repo.remote_names().into_iter().collect();
     let preferred = names
         .iter()
-        .find(|n| n.as_ref() == "origin")
+        .find(|n| n.as_bstr() == "origin")
         .or_else(|| names.first());
     let name = preferred?;
-    let remote = repo.find_remote(name.as_ref()).ok()?;
+    let remote = repo.find_remote(name).ok()?;
     let url = remote.url(gix::remote::Direction::Fetch)?;
     slug_from_url(&url.to_bstring().to_string())
 }
