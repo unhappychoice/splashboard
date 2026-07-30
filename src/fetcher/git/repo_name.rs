@@ -4,6 +4,8 @@
 
 use async_trait::async_trait;
 
+use gix::bstr::ByteSlice;
+
 use crate::payload::{Body, Payload, TextData};
 use crate::render::Shape;
 
@@ -55,9 +57,9 @@ fn remote_name(cwd: &std::path::Path) -> Option<String> {
     let names: Vec<_> = repo.remote_names().into_iter().collect();
     let preferred = names
         .iter()
-        .find(|n| n.as_ref() == "origin")
+        .find(|n| n.as_bstr() == "origin")
         .or_else(|| names.first())?;
-    let remote = repo.find_remote(preferred.as_ref()).ok()?;
+    let remote = repo.find_remote(preferred).ok()?;
     let url = remote.url(gix::remote::Direction::Fetch)?;
     slug_from_url(&url.to_bstring().to_string()).map(|s| s.name)
 }
