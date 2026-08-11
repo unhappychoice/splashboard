@@ -75,6 +75,8 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          author: Yuji Ueki <unhappychoice@gmail.com>
+          committer: Yuji Ueki <unhappychoice@gmail.com>
           branch: chore/sync-llm-pricing
           title: 'chore: sync llm pricing from LiteLLM'
           commit-message: |
