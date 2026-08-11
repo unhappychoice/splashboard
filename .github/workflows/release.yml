@@ -61,8 +61,8 @@ jobs:
 
       - name: Create temporary tag
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "unhappychoice@gmail.com"
+          git config --local user.name "Yuji Ueki"
           git add Cargo.toml Cargo.lock flake.nix
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
           git tag ${{ steps.version.outputs.new_version }}
@@ -251,8 +251,8 @@ jobs:
       - name: Commit and push changes
         run: |
           VERSION=${{ needs.release.outputs.new_version }}
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "unhappychoice@gmail.com"
+          git config --local user.name "Yuji Ueki"
           git add flake.nix flake.lock
           git commit -m "chore: update flake.nix hashes for $VERSION" || echo "No changes to commit"
           git push origin main
@@ -310,8 +310,8 @@ jobs:
           FOURTH_SHA_LINE=$(grep -n 'sha256 "' Formula/splashboard.rb | head -4 | tail -1 | cut -d: -f1)
           sed -i "${FOURTH_SHA_LINE}s/sha256 \"[a-f0-9]\+\"/sha256 \"$LINUX_ARM_SHA\"/" Formula/splashboard.rb
 
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "unhappychoice@gmail.com"
+          git config --local user.name "Yuji Ueki"
           git add Formula/splashboard.rb
           git commit -m "chore: update splashboard to $VERSION"
           git push
