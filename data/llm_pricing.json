@@ -5,6 +5,11 @@
     "fields": "USD per 1M tokens"
   },
   "models": {
+    "chat-latest": {
+      "input": 5.0,
+      "output": 30.0,
+      "cache_read": 0.5
+    },
     "chatgpt-4o-latest": {
       "input": 5.0,
       "output": 15.0,
@@ -189,6 +194,18 @@
       "cache_read": 0.19999999999999998,
       "cache_write_5m": 2.5,
       "cache_write_1h": 4.0
+    },
+    "daybreak-blue-latest": {
+      "input": 5.0,
+      "output": 30.0,
+      "cache_read": 0.5,
+      "cache_write_5m": 6.25
+    },
+    "daybreak-red-latest": {
+      "input": 12.5,
+      "output": 75.0,
+      "cache_read": 1.25,
+      "cache_write_5m": 15.625
     },
     "ft:gpt-3.5-turbo": {
       "input": 3.0,
@@ -546,6 +563,12 @@
       "output": 30.0,
       "cache_read": 0.5,
       "cache_write_5m": 6.25
+    },
+    "gpt-5.6-cyber": {
+      "input": 12.5,
+      "output": 75.0,
+      "cache_read": 1.25,
+      "cache_write_5m": 15.625
     },
     "gpt-5.6-luna": {
       "input": 0.19999999999999998,
