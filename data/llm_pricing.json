@@ -196,10 +196,10 @@
       "cache_write_1h": 4.0
     },
     "daybreak-blue-latest": {
-      "input": 5.0,
-      "output": 30.0,
-      "cache_read": 0.5,
-      "cache_write_5m": 6.25
+      "input": 4.0,
+      "output": 20.0,
+      "cache_read": 0.39999999999999997,
+      "cache_write_5m": 5.0
     },
     "daybreak-red-latest": {
       "input": 12.5,
@@ -559,10 +559,10 @@
       "cache_read": 0.5
     },
     "gpt-5.6": {
-      "input": 5.0,
-      "output": 30.0,
-      "cache_read": 0.5,
-      "cache_write_5m": 6.25
+      "input": 4.0,
+      "output": 20.0,
+      "cache_read": 0.39999999999999997,
+      "cache_write_5m": 5.0
     },
     "gpt-5.6-cyber": {
       "input": 12.5,
@@ -577,10 +577,10 @@
       "cache_write_5m": 0.25
     },
     "gpt-5.6-sol": {
-      "input": 5.0,
-      "output": 30.0,
-      "cache_read": 0.5,
-      "cache_write_5m": 6.25
+      "input": 4.0,
+      "output": 20.0,
+      "cache_read": 0.39999999999999997,
+      "cache_write_5m": 5.0
     },
     "gpt-5.6-terra": {
       "input": 2.0,
