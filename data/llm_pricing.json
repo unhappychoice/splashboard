@@ -27,14 +27,14 @@
       "output": 1.25,
       "cache_read": 0.03,
       "cache_write_5m": 0.3,
-      "cache_write_1h": 6.0
+      "cache_write_1h": 0.5
     },
     "claude-3-opus-20240229": {
       "input": 15.0,
       "output": 75.0,
       "cache_read": 1.5,
       "cache_write_5m": 18.75,
-      "cache_write_1h": 6.0
+      "cache_write_1h": 30.0
     },
     "claude-4-opus-20250514": {
       "input": 15.0,
