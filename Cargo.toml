@@ -51,7 +51,7 @@ sysinfo = "0.39.3"
 starship-battery = "0.11"
 netdev = "0.46"
 netstat2 = "0.11"
-gix = { version = "0.86", default-features = false, features = ["revision", "status", "blob-diff", "max-performance-safe", "comfort", "sha1"] }
+gix = { version = "0.87", default-features = false, features = ["revision", "status", "blob-diff", "max-performance-safe", "comfort", "sha1"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
 url = "2"
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
