@@ -209,6 +209,11 @@
       "cache_write_5m": 2.5,
       "cache_write_1h": 4.0
     },
+    "computer-use-preview": {
+      "input": 3.0,
+      "output": 12.0,
+      "cache_read": 0.0
+    },
     "daybreak-blue-latest": {
       "input": 4.0,
       "output": 20.0,
