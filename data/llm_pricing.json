@@ -577,6 +577,11 @@
       "output": 30.0,
       "cache_read": 0.5
     },
+    "gpt-5.5-cyber": {
+      "input": 12.5,
+      "output": 75.0,
+      "cache_read": 1.25
+    },
     "gpt-5.6": {
       "input": 4.0,
       "output": 20.0,
@@ -642,6 +647,11 @@
       "input": 0.6,
       "output": 2.4,
       "cache_read": 0.0
+    },
+    "gpt-rosalind-research": {
+      "input": 5.0,
+      "output": 25.0,
+      "cache_read": 0.5
     },
     "o1": {
       "input": 15.0,
