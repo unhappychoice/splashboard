@@ -373,6 +373,11 @@
       "output": 10.0,
       "cache_read": 0.125
     },
+    "gpt-5-chat-latest": {
+      "input": 1.25,
+      "output": 10.0,
+      "cache_read": 0.125
+    },
     "gpt-5-mini": {
       "input": 0.25,
       "output": 2.0,
@@ -413,12 +418,27 @@
       "output": 10.0,
       "cache_read": 0.125
     },
+    "gpt-5.1-chat-latest": {
+      "input": 1.25,
+      "output": 10.0,
+      "cache_read": 0.125
+    },
     "gpt-5.2": {
       "input": 1.75,
       "output": 14.0,
       "cache_read": 0.175
     },
     "gpt-5.2-2025-12-11": {
+      "input": 1.75,
+      "output": 14.0,
+      "cache_read": 0.175
+    },
+    "gpt-5.2-chat-latest": {
+      "input": 1.75,
+      "output": 14.0,
+      "cache_read": 0.175
+    },
+    "gpt-5.3-chat-latest": {
       "input": 1.75,
       "output": 14.0,
       "cache_read": 0.175
