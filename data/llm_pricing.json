@@ -543,6 +543,12 @@
       "cache_read": 0.19999999999999998,
       "cache_write_5m": 2.5
     },
+    "gpt-6.1-sol": {
+      "input": 2.0,
+      "output": 10.0,
+      "cache_read": 0.09999999999999999,
+      "cache_write_5m": 2.5
+    },
     "gpt-audio": {
       "input": 2.5,
       "output": 10.0,
