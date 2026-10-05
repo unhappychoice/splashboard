@@ -559,6 +559,7 @@ mod tests {
             published: Some(Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
             links: vec![Link {
                 href: "https://store.epicgames.com/p/subnautica".into(),
+                target: None,
                 rel: None,
                 media_type: None,
                 href_lang: None,

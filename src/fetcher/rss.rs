@@ -420,6 +420,7 @@ mod tests {
             rating: None,
             rights: None,
             ttl: None,
+            people: vec![],
             entries: vec![],
         };
         let body = feed::render_body(&empty, 5, Shape::LinkedTextBlock, None, None);
@@ -566,11 +567,10 @@ mod tests {
 
     #[test]
     fn thumbnail_url_picks_media_thumbnail_first_then_content() {
-        use feed_rs::model::{Image, MediaContent, MediaObject, MediaThumbnail};
+        use feed_rs::model::{Image, MediaContent, MediaThumbnail};
         let mut entry = Entry::default();
-        let media = MediaObject {
-            title: None,
-            content: vec![MediaContent {
+        let media = media_object(
+            vec![MediaContent {
                 url: Some(Url::parse("https://example.com/big.jpg").unwrap()),
                 content_type: None,
                 height: None,
@@ -579,8 +579,7 @@ mod tests {
                 size: None,
                 rating: None,
             }],
-            duration: None,
-            thumbnails: vec![MediaThumbnail {
+            vec![MediaThumbnail {
                 image: Image {
                     uri: "https://example.com/thumb.jpg".into(),
                     title: None,
@@ -591,11 +590,7 @@ mod tests {
                 },
                 time: None,
             }],
-            texts: vec![],
-            description: None,
-            community: None,
-            credits: vec![],
-        };
+        );
         entry.media = vec![media];
         assert_eq!(
             feed::thumbnail_url_for(&entry).as_deref(),
@@ -635,6 +630,7 @@ mod tests {
         let entry = Entry {
             links: vec![Link {
                 href: "https://blog.rust-lang.org/post".into(),
+                target: None,
                 rel: None,
                 media_type: None,
                 href_lang: None,
@@ -655,6 +651,7 @@ mod tests {
             published: Some(chrono::Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
             links: vec![Link {
                 href: "https://blog.rust-lang.org/post".into(),
+                target: None,
                 rel: None,
                 media_type: None,
                 href_lang: None,
@@ -838,5 +835,16 @@ mod tests {
             with_thumb > 0,
             "expected at least one entry with a media:thumbnail",
         );
+    }
+
+    /// `MediaObject` has a private field in feed-rs 3, so tests build it via `Default`.
+    fn media_object(
+        content: Vec<feed_rs::model::MediaContent>,
+        thumbnails: Vec<feed_rs::model::MediaThumbnail>,
+    ) -> feed_rs::model::MediaObject {
+        let mut media = feed_rs::model::MediaObject::default();
+        media.content = content;
+        media.thumbnails = thumbnails;
+        media
     }
 }

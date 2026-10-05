@@ -326,12 +326,15 @@ pub(crate) fn collapse_whitespace(s: &str) -> String {
 /// non-empty href would otherwise grab `rel="self"` (a self-pointer back into the feed) on
 /// common Atom shapes.
 pub(crate) fn link_for(entry: &Entry) -> Option<String> {
-    let alternate = entry
+    let mut candidates = entry
         .links
         .iter()
-        .find(|l| !l.href.is_empty() && matches!(l.rel.as_deref(), None | Some("alternate")));
+        .filter(|l| !l.href.is_empty() && l.target.is_none());
+    let alternate = candidates
+        .clone()
+        .find(|l| matches!(l.rel.as_deref(), None | Some("alternate")));
     alternate
-        .or_else(|| entry.links.iter().find(|l| !l.href.is_empty()))
+        .or_else(|| candidates.next())
         .map(|l| l.href.clone())
 }
 
@@ -340,9 +343,17 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
     use feed_rs::model::{
-        Content, Entry as FeedEntry, Feed as FeedDoc, FeedType, Image, Link, MediaContent,
-        MediaObject, MediaThumbnail, Text,
+        Content, Entry as FeedEntry, Feed as FeedDoc, FeedType, Image, Link, LinkTarget,
+        MediaContent, MediaObject, MediaThumbnail, Text,
     };
+
+    /// `MediaObject` has a private field in feed-rs 3, so tests build it via `Default`.
+    fn media_object(content: Vec<MediaContent>, thumbnails: Vec<MediaThumbnail>) -> MediaObject {
+        let mut media = MediaObject::default();
+        media.content = content;
+        media.thumbnails = thumbnails;
+        media
+    }
 
     fn empty_feed() -> FeedDoc {
         FeedDoc {
@@ -363,6 +374,7 @@ mod tests {
             rating: None,
             rights: None,
             ttl: None,
+            people: vec![],
             entries: vec![],
         }
     }
@@ -377,6 +389,7 @@ mod tests {
             published: Some(Utc.with_ymd_and_hms(2026, 4, 26, 12, 0, 0).unwrap()),
             links: vec![Link {
                 href: href.into(),
+                target: None,
                 rel: None,
                 media_type: None,
                 href_lang: None,
@@ -518,11 +531,40 @@ mod tests {
     }
 
     #[test]
+    fn link_for_skips_comment_links() {
+        let comments = Link {
+            target: Some(LinkTarget::Comments),
+            ..link("https://example.com/post#comments", None)
+        };
+        let entry = FeedEntry {
+            links: vec![comments, link("https://example.com/post", None)],
+            ..Default::default()
+        };
+        assert_eq!(
+            link_for(&entry).as_deref(),
+            Some("https://example.com/post")
+        );
+    }
+
+    fn link(href: &str, rel: Option<&str>) -> Link {
+        Link {
+            href: href.into(),
+            target: None,
+            rel: rel.map(Into::into),
+            media_type: None,
+            href_lang: None,
+            title: None,
+            length: None,
+        }
+    }
+
+    #[test]
     fn link_for_prefers_alternate_over_self() {
         let entry = FeedEntry {
             links: vec![
                 Link {
                     href: "https://example.com/feed.xml".into(),
+                    target: None,
                     rel: Some("self".into()),
                     media_type: None,
                     href_lang: None,
@@ -531,6 +573,7 @@ mod tests {
                 },
                 Link {
                     href: "https://example.com/post".into(),
+                    target: None,
                     rel: Some("alternate".into()),
                     media_type: None,
                     href_lang: None,
@@ -551,6 +594,7 @@ mod tests {
         let entry = FeedEntry {
             links: vec![Link {
                 href: "https://example.com/enclosure.mp3".into(),
+                target: None,
                 rel: Some("enclosure".into()),
                 media_type: None,
                 href_lang: None,
@@ -572,9 +616,8 @@ mod tests {
 
     #[test]
     fn thumbnail_url_falls_back_to_media_content_when_no_thumbnail_set() {
-        let media = MediaObject {
-            title: None,
-            content: vec![MediaContent {
+        let media = media_object(
+            vec![MediaContent {
                 url: Some(Url::parse("https://example.com/full.jpg").unwrap()),
                 content_type: None,
                 height: None,
@@ -583,13 +626,8 @@ mod tests {
                 size: None,
                 rating: None,
             }],
-            duration: None,
-            thumbnails: vec![],
-            texts: vec![],
-            description: None,
-            community: None,
-            credits: vec![],
-        };
+            vec![],
+        );
         let entry = FeedEntry {
             media: vec![media],
             ..Default::default()
@@ -620,11 +658,9 @@ mod tests {
     fn thumbnail_url_skips_empty_media_thumbnail_uri() {
         // An entry that carries a Media block whose thumbnail URI is empty falls through to the
         // next source (in this case, content body inline img).
-        let media = MediaObject {
-            title: None,
-            content: vec![],
-            duration: None,
-            thumbnails: vec![MediaThumbnail {
+        let media = media_object(
+            vec![],
+            vec![MediaThumbnail {
                 image: Image {
                     uri: String::new(),
                     title: None,
@@ -635,11 +671,7 @@ mod tests {
                 },
                 time: None,
             }],
-            texts: vec![],
-            description: None,
-            community: None,
-            credits: vec![],
-        };
+        );
         let entry = FeedEntry {
             media: vec![media],
             content: Some(Content {
@@ -705,15 +737,12 @@ mod tests {
         assert!(d.items[0].thumbnail_path.is_none());
     }
 
-    /// Helper for building a `MediaObject` whose only thumbnail is a single image URI. The
-    /// surrounding fields are required by `feed_rs` but unused by `thumbnail_url_for`.
+    /// Helper for building an entry whose only media thumbnail is a single image URI.
     fn entry_with_thumbnail(title: &str, href: &str, thumbnail_uri: &str) -> FeedEntry {
         let mut entry = entry_with_title_and_link(title, href);
-        entry.media = vec![MediaObject {
-            title: None,
-            content: vec![],
-            duration: None,
-            thumbnails: vec![MediaThumbnail {
+        entry.media = vec![media_object(
+            vec![],
+            vec![MediaThumbnail {
                 image: Image {
                     uri: thumbnail_uri.into(),
                     title: None,
@@ -724,11 +753,7 @@ mod tests {
                 },
                 time: None,
             }],
-            texts: vec![],
-            description: None,
-            community: None,
-            credits: vec![],
-        }];
+        )];
         entry
     }
 
