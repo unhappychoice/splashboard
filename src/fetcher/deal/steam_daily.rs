@@ -217,6 +217,7 @@ mod tests {
     fn link(href: &str) -> Link {
         Link {
             href: href.into(),
+            target: None,
             rel: None,
             media_type: None,
             href_lang: None,

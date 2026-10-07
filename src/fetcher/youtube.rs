@@ -311,6 +311,7 @@ fn empty_feed_with_entries(entries: Vec<Entry>) -> Feed {
         rating: None,
         rights: None,
         ttl: None,
+        people: vec![],
         entries,
     }
 }
