@@ -38,6 +38,13 @@
       "cache_write_5m": 1.25,
       "cache_write_1h": 2.0
     },
+    "claude-haiku-5-5": {
+      "input": 0.09999999999999999,
+      "output": 0.5,
+      "cache_read": 0.01,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.19999999999999998
+    },
     "claude-mythos-5": {
       "input": 10.0,
       "output": 50.0,
@@ -153,7 +160,7 @@
     "claude-sonnet-5-5": {
       "input": 2.0,
       "output": 10.0,
-      "cache_read": 0.19999999999999998,
+      "cache_read": 0.09999999999999999,
       "cache_write_5m": 2.5,
       "cache_write_1h": 4.0
     },
@@ -573,6 +580,11 @@
       "input": 0.6,
       "output": 2.4,
       "cache_read": 0.0
+    },
+    "gpt-rosalind-discovery": {
+      "input": 5.0,
+      "output": 25.0,
+      "cache_read": 0.5
     },
     "gpt-rosalind-research": {
       "input": 5.0,
