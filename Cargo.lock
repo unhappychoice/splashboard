@@ -4611,7 +4611,7 @@ dependencies = [
 
 [[package]]
 name = "splashboard"
-version = "2.10.1"
+version = "2.10.2"
 dependencies = [
  "async-trait",
  "chrono",
