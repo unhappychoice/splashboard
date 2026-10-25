@@ -5349,9 +5349,9 @@ dependencies = [
 
 [[package]]
 name = "tui-markdown"
-version = "0.3.11"
+version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cbd479859da89c70663630e3e455895038d337ccfeed132f2108fa89647c45c"
+checksum = "33ab50607adeb8d597e0f3653e5b173c14d7d8ef95f89f25a985828f0e127ba1"
 dependencies = [
  "ansi-to-tui",
  "itertools 0.15.0",
