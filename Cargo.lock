@@ -5362,12 +5362,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "tui-piechart"
-version = "1.1.0"
+name = "tui-nuances"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cb782dbfc50939173957a794a70ad58e445d6494c96d9231fc3e3c0812f290c"
+checksum = "8c4a0e7ec99c630f79977ab650c1a0ef6cc8fccc6077ebee36fc8aa0d329724f"
 dependencies = [
  "ratatui",
+]
+
+[[package]]
+name = "tui-piechart"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3b3d9dfaa69b001a51f98e35af00ad98ebe1a5d8ac4e2e98631704f61ac0536"
+dependencies = [
+ "ratatui",
+ "tui-nuances",
 ]
 
 [[package]]
