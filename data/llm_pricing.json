@@ -558,6 +558,11 @@
       "cache_read": 1.0,
       "cache_write_5m": 12.5
     },
+    "gpt-6-astra-law": {
+      "input": 10.0,
+      "output": 50.0,
+      "cache_read": 1.0
+    },
     "gpt-6-luna": {
       "input": 0.09999999999999999,
       "output": 0.5,
