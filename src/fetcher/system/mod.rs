@@ -351,8 +351,8 @@ fn options_placeholder(msg: &str) -> Payload {
 fn unsupported_placeholder() -> Payload {
     payload(Body::Error(ErrorData {
         kind: ErrorKind::Fetch,
-        message: "⚠ sysinfo".into(),
-        detail: Some("unsupported platform".into()),
+        message: "⚠ sysinfo: unsupported platform".into(),
+        detail: None,
     }))
 }
 
@@ -898,8 +898,8 @@ mod tests {
             panic!("expected error body");
         };
         assert_eq!(e.kind, ErrorKind::Fetch);
-        assert_eq!(e.message, "⚠ sysinfo");
-        assert_eq!(e.detail.as_deref(), Some("unsupported platform"));
+        assert_eq!(e.message, "⚠ sysinfo: unsupported platform");
+        assert_eq!(e.detail, None);
     }
 
     #[test]
