@@ -215,7 +215,9 @@ fn resolve_process_names(sockets: &mut [ListeningSocket]) {
         return;
     }
     let pids: Vec<Pid> = pid_set.iter().map(|p| Pid::from_u32(*p)).collect();
-    let mut sys = System::new();
+    let Ok(mut sys) = System::new() else {
+        return;
+    };
     sys.refresh_processes(ProcessesToUpdate::Some(&pids), true);
     let names: HashMap<u32, String> = pid_set
         .iter()

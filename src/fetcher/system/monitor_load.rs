@@ -34,7 +34,7 @@ impl RealtimeFetcher for SystemMonitorLoad {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let la = System::load_average();
+        let la = System::load_average().unwrap_or_default();
         match ctx.shape.unwrap_or(Shape::Text) {
             Shape::Entries => payload(Body::Entries(EntriesData {
                 items: vec![

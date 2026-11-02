@@ -32,7 +32,7 @@ impl RealtimeFetcher for SystemMonitorUptime {
     }
     fn compute(&self, _ctx: &FetchContext) -> Payload {
         payload(Body::Text(TextData {
-            value: format_uptime(System::uptime()),
+            value: format_uptime(System::uptime().unwrap_or(0)),
         }))
     }
 }

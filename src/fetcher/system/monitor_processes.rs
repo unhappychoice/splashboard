@@ -9,22 +9,24 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, RealtimeFetcher, Safety};
-use super::{entry, payload, top_processes};
+use super::{entry, payload, refreshed_system, top_processes, unsupported_placeholder};
 
 pub(crate) const PROCESS_TOP_COUNT: usize = 5;
 
 pub struct SystemMonitorProcesses {
-    state: Mutex<System>,
+    state: Mutex<Option<System>>,
 }
 
 impl SystemMonitorProcesses {
     pub fn new() -> Self {
-        let mut sys = System::new();
-        sys.refresh_processes(ProcessesToUpdate::All, true);
         Self {
-            state: Mutex::new(sys),
+            state: Mutex::new(refreshed_system(refresh_all_processes)),
         }
     }
+}
+
+fn refresh_all_processes(sys: &mut System) {
+    sys.refresh_processes(ProcessesToUpdate::All, true);
 }
 
 impl Default for SystemMonitorProcesses {
@@ -64,9 +66,12 @@ impl RealtimeFetcher for SystemMonitorProcesses {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        sys.refresh_processes(ProcessesToUpdate::All, true);
-        let rows = top_processes(&sys, PROCESS_TOP_COUNT);
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(sys) = guard.as_mut() else {
+            return unsupported_placeholder();
+        };
+        refresh_all_processes(sys);
+        let rows = top_processes(sys, PROCESS_TOP_COUNT);
         match ctx.shape.unwrap_or(Shape::Entries) {
             Shape::TextBlock => payload(Body::TextBlock(TextBlockData {
                 lines: rows.iter().map(|(n, c)| format!("{n}  {c:.1}%")).collect(),

@@ -9,18 +9,16 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, RealtimeFetcher, Safety};
-use super::{entry, format_bytes, payload, ratio_of};
+use super::{entry, format_bytes, payload, ratio_of, refreshed_system, unsupported_placeholder};
 
 pub struct SystemMonitorMemory {
-    state: Mutex<System>,
+    state: Mutex<Option<System>>,
 }
 
 impl SystemMonitorMemory {
     pub fn new() -> Self {
-        let mut sys = System::new();
-        sys.refresh_memory();
         Self {
-            state: Mutex::new(sys),
+            state: Mutex::new(refreshed_system(System::refresh_memory)),
         }
     }
 }
@@ -57,7 +55,10 @@ impl RealtimeFetcher for SystemMonitorMemory {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(sys) = guard.as_mut() else {
+            return unsupported_placeholder();
+        };
         sys.refresh_memory();
         let total = sys.total_memory();
         let used = sys.used_memory();

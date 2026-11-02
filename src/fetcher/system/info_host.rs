@@ -72,9 +72,9 @@ impl RealtimeFetcher for SystemInfoHost {
         };
         let value = match opts.kind.unwrap_or_default() {
             HostInfoKind::Terminal => detect_terminal(),
-            HostInfoKind::Os => System::name().unwrap_or_else(|| "unknown".into()),
+            HostInfoKind::Os => System::name().unwrap_or_else(|_| "unknown".into()),
             HostInfoKind::OsVersion => os_label(),
-            HostInfoKind::Hostname => System::host_name().unwrap_or_else(|| "unknown".into()),
+            HostInfoKind::Hostname => System::host_name().unwrap_or_else(|_| "unknown".into()),
             HostInfoKind::Shell => detect_shell(),
             HostInfoKind::Arch => std::env::consts::ARCH.into(),
         };
