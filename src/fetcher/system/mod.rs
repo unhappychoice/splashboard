@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 use sysinfo::{Disk, System};
 
-use crate::payload::{Bar, Body, Entry, Payload, TextData};
+use crate::payload::{Bar, Body, Entry, ErrorData, ErrorKind, Payload, TextData};
 
 use super::{Fetcher, RealtimeFetcher};
 
@@ -347,8 +347,13 @@ fn options_placeholder(msg: &str) -> Payload {
 }
 
 /// Shown by realtime fetchers when `sysinfo` can't build a `System` (unsupported target).
+/// `Body::Error` bypasses renderer shape validation, so the warning survives any `render`.
 fn unsupported_placeholder() -> Payload {
-    options_placeholder("unsupported platform")
+    payload(Body::Error(ErrorData {
+        kind: ErrorKind::Fetch,
+        message: "⚠ sysinfo".into(),
+        detail: Some("unsupported platform".into()),
+    }))
 }
 
 fn payload(body: Body) -> Payload {
@@ -885,6 +890,16 @@ mod tests {
         assert_eq!(ratio_of(10, 0), 0.0);
         assert_eq!(ratio_of(5, 10), 0.5);
         assert_eq!(ratio_of(20, 10), 1.0);
+    }
+
+    #[test]
+    fn unsupported_placeholder_is_an_error_body() {
+        let Body::Error(e) = unsupported_placeholder().body else {
+            panic!("expected error body");
+        };
+        assert_eq!(e.kind, ErrorKind::Fetch);
+        assert_eq!(e.message, "⚠ sysinfo");
+        assert_eq!(e.detail.as_deref(), Some("unsupported platform"));
     }
 
     #[test]
