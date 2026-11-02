@@ -9,19 +9,17 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, RealtimeFetcher, Safety};
-use super::payload;
 use super::sprites;
+use super::{payload, refreshed_system, unsupported_placeholder};
 
 pub struct SystemMonitorCpu {
-    state: Mutex<System>,
+    state: Mutex<Option<System>>,
 }
 
 impl SystemMonitorCpu {
     pub fn new() -> Self {
-        let mut sys = System::new();
-        sys.refresh_cpu_usage();
         Self {
-            state: Mutex::new(sys),
+            state: Mutex::new(refreshed_system(System::refresh_cpu_usage)),
         }
     }
 }
@@ -54,7 +52,10 @@ impl RealtimeFetcher for SystemMonitorCpu {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(sys) = guard.as_mut() else {
+            return unsupported_placeholder();
+        };
         sys.refresh_cpu_usage();
         let pct = sys.global_cpu_usage();
         let ratio = (f64::from(pct) / 100.0).clamp(0.0, 1.0);

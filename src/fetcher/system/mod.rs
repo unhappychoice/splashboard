@@ -1,14 +1,14 @@
 //! Cross-platform system fetchers backed by `sysinfo`.
 //!
 //! All are `Safety::Safe` — local kernel counters only, no network or exec. Realtime fetchers
-//! cache a `Mutex<System>` and refresh only the fields they need per frame, so the `<1ms
+//! cache a `Mutex<Option<System>>` (`None` only on targets `sysinfo` doesn't support) and refresh only the fields they need per frame, so the `<1ms
 //! infallible` contract holds even as many widgets sample the same source.
 
 use std::sync::{Arc, OnceLock};
 
-use sysinfo::{Disks, System};
+use sysinfo::{Disk, System};
 
-use crate::payload::{Bar, Body, Entry, Payload, TextData};
+use crate::payload::{Bar, Body, Entry, ErrorData, ErrorKind, Payload, TextData};
 
 use super::{Fetcher, RealtimeFetcher};
 
@@ -95,9 +95,8 @@ struct CpuInfo {
 fn cached_cpu_info() -> &'static CpuInfo {
     static CACHE: OnceLock<CpuInfo> = OnceLock::new();
     CACHE.get_or_init(|| {
-        let mut sys = System::new();
-        sys.refresh_cpu_usage();
-        let cpu = sys.cpus().first();
+        let sys = refreshed_system(System::refresh_cpu_usage);
+        let cpu = sys.as_ref().and_then(|s| s.cpus().first());
         let frequency_mhz = cpu
             .map(|c| c.frequency())
             .filter(|f| *f > 0)
@@ -136,9 +135,7 @@ fn cpu_mhz_from_proc_cpuinfo() -> Option<u64> {
 
 fn format_cpu_cores() -> String {
     let physical = System::physical_core_count().unwrap_or(0);
-    let mut sys = System::new();
-    sys.refresh_cpu_usage();
-    let logical = sys.cpus().len();
+    let logical = refreshed_system(System::refresh_cpu_usage).map_or(0, |s| s.cpus().len());
     match (physical, logical) {
         (0, 0) => "unknown".into(),
         (0, l) => format!("{l} threads"),
@@ -155,7 +152,7 @@ fn format_cpu_frequency(mhz: u64) -> String {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct MemoryTotals {
     memory: u64,
     swap: u64,
@@ -164,12 +161,12 @@ struct MemoryTotals {
 fn cached_memory_totals() -> MemoryTotals {
     static CACHE: OnceLock<MemoryTotals> = OnceLock::new();
     *CACHE.get_or_init(|| {
-        let mut sys = System::new();
-        sys.refresh_memory();
-        MemoryTotals {
-            memory: sys.total_memory(),
-            swap: sys.total_swap(),
-        }
+        refreshed_system(System::refresh_memory)
+            .map(|sys| MemoryTotals {
+                memory: sys.total_memory(),
+                swap: sys.total_swap(),
+            })
+            .unwrap_or_default()
     })
 }
 
@@ -349,6 +346,16 @@ fn options_placeholder(msg: &str) -> Payload {
     }))
 }
 
+/// Shown by realtime fetchers when `sysinfo` can't build a `System` (unsupported target).
+/// `Body::Error` bypasses renderer shape validation, so the warning survives any `render`.
+fn unsupported_placeholder() -> Payload {
+    payload(Body::Error(ErrorData {
+        kind: ErrorKind::Fetch,
+        message: "⚠ sysinfo: unsupported platform".into(),
+        detail: None,
+    }))
+}
+
 fn payload(body: Body) -> Payload {
     Payload {
         icon: None,
@@ -366,10 +373,18 @@ fn entry(key: &str, value: &str) -> Entry {
     }
 }
 
+/// A fresh `System` with `refresh` applied, or `None` on targets `sysinfo` doesn't support.
+fn refreshed_system(refresh: impl FnOnce(&mut System)) -> Option<System> {
+    System::new().ok().map(|mut sys| {
+        refresh(&mut sys);
+        sys
+    })
+}
+
 fn os_label() -> String {
     System::long_os_version()
-        .or_else(System::name)
-        .unwrap_or_else(|| "unknown".into())
+        .or_else(|_| System::name())
+        .unwrap_or_else(|_| "unknown".into())
 }
 
 fn memory_ratio(sys: &System) -> f64 {
@@ -395,7 +410,7 @@ fn top_processes(sys: &System, count: usize) -> Vec<(String, f32)> {
     rows
 }
 
-fn primary_disk(disks: &Disks) -> Option<(u64, u64)> {
+fn primary_disk(disks: &[Disk]) -> Option<(u64, u64)> {
     disks
         .iter()
         .filter(|d| d.total_space() > 0)
@@ -403,7 +418,7 @@ fn primary_disk(disks: &Disks) -> Option<(u64, u64)> {
         .map(|d| (d.total_space(), d.available_space()))
 }
 
-fn disk_bars(disks: &Disks) -> Vec<Bar> {
+fn disk_bars(disks: &[Disk]) -> Vec<Bar> {
     disks
         .iter()
         .filter(|d| d.total_space() > 0)
@@ -878,14 +893,23 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_placeholder_is_an_error_body() {
+        let Body::Error(e) = unsupported_placeholder().body else {
+            panic!("expected error body");
+        };
+        assert_eq!(e.kind, ErrorKind::Fetch);
+        assert_eq!(e.message, "⚠ sysinfo: unsupported platform");
+        assert_eq!(e.detail, None);
+    }
+
+    #[test]
     fn empty_system_and_disk_snapshots_use_safe_fallbacks() {
-        let sys = System::new();
+        let sys = System::new().expect("supported platform");
         assert_eq!(memory_ratio(&sys), 0.0);
         assert!(top_processes(&sys, PROCESS_TOP_COUNT).is_empty());
 
-        let disks = Disks::new();
-        assert_eq!(primary_disk(&disks), None);
-        assert!(disk_bars(&disks).is_empty());
+        assert_eq!(primary_disk(&[]), None);
+        assert!(disk_bars(&[]).is_empty());
         assert_eq!(disk_label(10, 20), "0% of 10 B");
     }
 

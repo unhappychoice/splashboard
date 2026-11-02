@@ -65,7 +65,9 @@ impl RealtimeFetcher for SystemInfoKernel {
         };
         let value = match opts.kind.unwrap_or_default() {
             KernelInfoKind::Name => kernel_name(),
-            KernelInfoKind::Version => System::kernel_version().unwrap_or_else(|| "unknown".into()),
+            KernelInfoKind::Version => {
+                System::kernel_version().unwrap_or_else(|_| "unknown".into())
+            }
         };
         payload(Body::Text(TextData { value }))
     }

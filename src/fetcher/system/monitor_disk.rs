@@ -38,17 +38,18 @@ impl Fetcher for SystemMonitorDisk {
         })
     }
     async fn fetch(&self, ctx: &FetchContext) -> Result<Payload, FetchError> {
-        let disks = Disks::new_with_refreshed_list();
+        let disks = Disks::new_with_refreshed_list().ok();
+        let disks = disks.as_deref().unwrap_or_default();
         let payload = match ctx.shape.unwrap_or(Shape::Ratio) {
             Shape::Bars => payload(Body::Bars(BarsData {
-                bars: disk_bars(&disks),
+                bars: disk_bars(disks),
             })),
             Shape::Text => payload(Body::Text(TextData {
-                value: primary_disk(&disks)
+                value: primary_disk(disks)
                     .map(|(t, a)| disk_label(t, a))
                     .unwrap_or_else(|| "no disks".into()),
             })),
-            _ => primary_disk(&disks)
+            _ => primary_disk(disks)
                 .map(|(total, available)| {
                     let used = total.saturating_sub(available);
                     payload(Body::Ratio(RatioData {

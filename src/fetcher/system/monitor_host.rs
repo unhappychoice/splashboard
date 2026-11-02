@@ -12,23 +12,26 @@ use crate::render::Shape;
 use crate::samples;
 
 use super::super::{FetchContext, RealtimeFetcher, Safety};
-use super::{entry, format_uptime, memory_ratio, os_label, payload};
+use super::{
+    entry, format_uptime, memory_ratio, os_label, payload, refreshed_system,
+    unsupported_placeholder,
+};
 
 pub struct SystemMonitorHost {
-    state: Mutex<System>,
+    state: Mutex<Option<System>>,
     os: String,
     host: String,
 }
 
 impl SystemMonitorHost {
     pub fn new() -> Self {
-        let mut sys = System::new();
-        sys.refresh_cpu_usage();
-        sys.refresh_memory();
         Self {
-            state: Mutex::new(sys),
+            state: Mutex::new(refreshed_system(|sys| {
+                sys.refresh_cpu_usage();
+                sys.refresh_memory();
+            })),
             os: os_label(),
-            host: System::host_name().unwrap_or_else(|| "unknown".into()),
+            host: System::host_name().unwrap_or_else(|_| "unknown".into()),
         }
     }
 }
@@ -74,16 +77,22 @@ impl RealtimeFetcher for SystemMonitorHost {
         })
     }
     fn compute(&self, ctx: &FetchContext) -> Payload {
-        let mut sys = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(sys) = guard.as_mut() else {
+            return unsupported_placeholder();
+        };
         sys.refresh_cpu_usage();
         sys.refresh_memory();
         let rows = [
             ("os", self.os.clone()),
             ("host", self.host.clone()),
-            ("uptime", format_uptime(System::uptime())),
-            ("load", format!("{:.2}", System::load_average().one)),
+            ("uptime", format_uptime(System::uptime().unwrap_or(0))),
+            (
+                "load",
+                format!("{:.2}", System::load_average().unwrap_or_default().one),
+            ),
             ("cpu", format!("{:.0}%", sys.global_cpu_usage())),
-            ("memory", format!("{:.0}%", memory_ratio(&sys) * 100.0)),
+            ("memory", format!("{:.0}%", memory_ratio(sys) * 100.0)),
         ];
         match ctx.shape.unwrap_or(Shape::Entries) {
             Shape::TextBlock => payload(Body::TextBlock(TextBlockData {
