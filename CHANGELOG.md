@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.4] - 2026-11-07
+
+### 🐛 Bug Fixes
+
+- fix(deps): disable unused sysinfo features to keep glibc 2.17 builds ([5b376e1](https://github.com/unhappychoice/splashboard/commit/5b376e1))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.10.4 ([7858494](https://github.com/unhappychoice/splashboard/commit/7858494))
+- chore: update flake.nix hashes for v2.10.3 ([52de972](https://github.com/unhappychoice/splashboard/commit/52de972))
+
+
 ## [2.10.3] - 2026-11-07
 
 ### 🐛 Bug Fixes
@@ -14,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.10.3 ([ab3ea45](https://github.com/unhappychoice/splashboard/commit/ab3ea45))
+- chore: bump version to v2.10.3 ([5cddef8](https://github.com/unhappychoice/splashboard/commit/5cddef8))
 - chore: sync llm pricing from LiteLLM ([b2ff803](https://github.com/unhappychoice/splashboard/commit/b2ff803))
 - chore(deps): bump sysinfo from 0.39 to 0.40 ([b7c96b0](https://github.com/unhappychoice/splashboard/commit/b7c96b0))
 - chore(deps)(deps): bump netdev from 0.46.3 to 0.47.0 ([4c955cc](https://github.com/unhappychoice/splashboard/commit/4c955cc))
@@ -639,21 +651,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✨ Features
 
 - feat(fetcher): add lobsters_top for Lobsters story listings ([6678665](https://github.com/unhappychoice/splashboard/commit/6678665))
-
-### 🐛 Bug Fixes
-
-- fix(github_repo): accept repo option and clean up stale config.toml references ([473494a](https://github.com/unhappychoice/splashboard/commit/473494a))
-
-### 📝 Other Changes
-
-- chore: bump version to v1.3.0 ([46f8ccf](https://github.com/unhappychoice/splashboard/commit/46f8ccf))
-- chore: update flake.nix hashes for v1.2.2 ([4adc0a3](https://github.com/unhappychoice/splashboard/commit/4adc0a3))
-
-
-## [1.2.2] - 2026-05-04
-
-### ✨ Features
-
 - feat(linear): add linear_issues, linear_notifications, linear_cycle fetchers ([daae9cb](https://github.com/unhappychoice/splashboard/commit/daae9cb))
 - feat(fetcher): add `random_dog` — random dog photo from dog.ceo ([d61e2c4](https://github.com/unhappychoice/splashboard/commit/d61e2c4))
 - feat(fetcher): add `random_cat` — random cat picture from cataas.com ([567fcad](https://github.com/unhappychoice/splashboard/commit/567fcad))
@@ -783,6 +780,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(github_repo): accept repo option and clean up stale config.toml references ([473494a](https://github.com/unhappychoice/splashboard/commit/473494a))
 - fix(render): pass theme.bg to ratatui_image so image letterbox is opaque ([b6d835e](https://github.com/unhappychoice/splashboard/commit/b6d835e))
 - fix(render): force iTerm2 protocol for media_image when running under iTerm2 ([2b2c25f](https://github.com/unhappychoice/splashboard/commit/2b2c25f))
 - fix(tests): serialize cache_key stability tests on TEST_ENV_LOCK ([7575989](https://github.com/unhappychoice/splashboard/commit/7575989))
@@ -854,6 +852,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v1.3.0 ([46f8ccf](https://github.com/unhappychoice/splashboard/commit/46f8ccf))
+- chore: update flake.nix hashes for v1.2.2 ([4adc0a3](https://github.com/unhappychoice/splashboard/commit/4adc0a3))
 - chore: bump version to v1.2.2 ([6e82dca](https://github.com/unhappychoice/splashboard/commit/6e82dca))
 - chore: update flake.nix hashes for v1.2.1 ([863f8e6](https://github.com/unhappychoice/splashboard/commit/863f8e6))
 - chore: bump version to v1.2.1 ([c9a6526](https://github.com/unhappychoice/splashboard/commit/c9a6526))
