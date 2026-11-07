@@ -5,11 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.3] - 2026-11-07
+
+### 🐛 Bug Fixes
+
+- fix(system): keep unsupported sysinfo reason on the first line ([df69612](https://github.com/unhappychoice/splashboard/commit/df69612))
+- fix(system): render unsupported sysinfo as an error body ([2bed60c](https://github.com/unhappychoice/splashboard/commit/2bed60c))
+
+### 📝 Other Changes
+
+- chore: bump version to v2.10.3 ([ab3ea45](https://github.com/unhappychoice/splashboard/commit/ab3ea45))
+- chore: sync llm pricing from LiteLLM ([b2ff803](https://github.com/unhappychoice/splashboard/commit/b2ff803))
+- chore(deps): bump sysinfo from 0.39 to 0.40 ([b7c96b0](https://github.com/unhappychoice/splashboard/commit/b7c96b0))
+- chore(deps)(deps): bump netdev from 0.46.3 to 0.47.0 ([4c955cc](https://github.com/unhappychoice/splashboard/commit/4c955cc))
+- chore(deps)(deps): bump tui-piechart from 1.1.0 to 1.4.2 ([4a68320](https://github.com/unhappychoice/splashboard/commit/4a68320))
+- chore(deps)(deps): bump unicode-width from 0.2.2 to 0.2.3 ([e9a32c7](https://github.com/unhappychoice/splashboard/commit/e9a32c7))
+- chore: sync llm pricing from LiteLLM ([62a2cf6](https://github.com/unhappychoice/splashboard/commit/62a2cf6))
+- chore: sync llm pricing from LiteLLM ([9e18630](https://github.com/unhappychoice/splashboard/commit/9e18630))
+- chore: sync llm pricing from LiteLLM ([c840ffc](https://github.com/unhappychoice/splashboard/commit/c840ffc))
+- chore(deps)(deps): bump tui-markdown from 0.3.11 to 0.3.12 ([0af0250](https://github.com/unhappychoice/splashboard/commit/0af0250))
+- chore(deps)(deps): bump tokio from 1.53.3 to 1.54.1 ([2429b25](https://github.com/unhappychoice/splashboard/commit/2429b25))
+- chore(deps)(deps): bump toml from 1.1.7+spec-1.1.0 to 1.1.8+spec-1.1.0 ([2813f95](https://github.com/unhappychoice/splashboard/commit/2813f95))
+- chore(deps)(deps): bump tokio from 1.53.2 to 1.53.3 ([186ab44](https://github.com/unhappychoice/splashboard/commit/186ab44))
+- chore(deps)(deps): bump tui-piechart from 1.0.2 to 1.1.0 ([65a1b4a](https://github.com/unhappychoice/splashboard/commit/65a1b4a))
+- chore(deps)(deps): bump sha2 from 0.11.0 to 0.11.1 ([15c4bea](https://github.com/unhappychoice/splashboard/commit/15c4bea))
+- chore(deps)(deps): bump serde_json from 1.0.151 to 1.0.154 ([29d19e7](https://github.com/unhappychoice/splashboard/commit/29d19e7))
+- chore(deps)(deps): bump tui-markdown from 0.3.10 to 0.3.11 ([1a72159](https://github.com/unhappychoice/splashboard/commit/1a72159))
+- chore: sync llm pricing from LiteLLM ([dbe0931](https://github.com/unhappychoice/splashboard/commit/dbe0931))
+- chore: sync llm pricing from LiteLLM ([88043c8](https://github.com/unhappychoice/splashboard/commit/88043c8))
+- chore(deps)(deps): bump tokio from 1.53.1 to 1.53.2 ([8b18f45](https://github.com/unhappychoice/splashboard/commit/8b18f45))
+- chore(deps)(deps): bump toml from 1.1.6+spec-1.1.0 to 1.1.7+spec-1.1.0 ([83f914c](https://github.com/unhappychoice/splashboard/commit/83f914c))
+- chore: update flake.nix hashes for v2.10.2 ([8f8c116](https://github.com/unhappychoice/splashboard/commit/8f8c116))
+- chore: sync llm pricing from LiteLLM ([91b750a](https://github.com/unhappychoice/splashboard/commit/91b750a))
+
+
 ## [2.10.2] - 2026-10-10
 
 ### 📝 Other Changes
 
-- chore: bump version to v2.10.2 ([1cf4815](https://github.com/unhappychoice/splashboard/commit/1cf4815))
+- chore: bump version to v2.10.2 ([fe96769](https://github.com/unhappychoice/splashboard/commit/fe96769))
 - chore(deps): bump feed-rs from 2.4.0 to 3.0.0 ([e4cbb3d](https://github.com/unhappychoice/splashboard/commit/e4cbb3d))
 - chore(deps)(deps): bump tui-markdown from 0.3.9 to 0.3.10 ([525974b](https://github.com/unhappychoice/splashboard/commit/525974b))
 - chore(deps)(deps): bump tui-big-text from 0.8.9 to 0.8.10 ([0393f54](https://github.com/unhappychoice/splashboard/commit/0393f54))
@@ -618,18 +652,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.2] - 2026-05-04
 
-### 🐛 Bug Fixes
-
-- fix(render): pass theme.bg to ratatui_image so image letterbox is opaque ([b6d835e](https://github.com/unhappychoice/splashboard/commit/b6d835e))
-
-### 📝 Other Changes
-
-- chore: bump version to v1.2.2 ([6e82dca](https://github.com/unhappychoice/splashboard/commit/6e82dca))
-- chore: update flake.nix hashes for v1.2.1 ([863f8e6](https://github.com/unhappychoice/splashboard/commit/863f8e6))
-
-
-## [1.2.1] - 2026-05-04
-
 ### ✨ Features
 
 - feat(linear): add linear_issues, linear_notifications, linear_cycle fetchers ([daae9cb](https://github.com/unhappychoice/splashboard/commit/daae9cb))
@@ -761,6 +783,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- fix(render): pass theme.bg to ratatui_image so image letterbox is opaque ([b6d835e](https://github.com/unhappychoice/splashboard/commit/b6d835e))
 - fix(render): force iTerm2 protocol for media_image when running under iTerm2 ([2b2c25f](https://github.com/unhappychoice/splashboard/commit/2b2c25f))
 - fix(tests): serialize cache_key stability tests on TEST_ENV_LOCK ([7575989](https://github.com/unhappychoice/splashboard/commit/7575989))
 - fix(tests): skip rc/trust assertions on Windows path-resolution mismatches ([558c940](https://github.com/unhappychoice/splashboard/commit/558c940))
@@ -831,6 +854,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
+- chore: bump version to v1.2.2 ([6e82dca](https://github.com/unhappychoice/splashboard/commit/6e82dca))
+- chore: update flake.nix hashes for v1.2.1 ([863f8e6](https://github.com/unhappychoice/splashboard/commit/863f8e6))
 - chore: bump version to v1.2.1 ([c9a6526](https://github.com/unhappychoice/splashboard/commit/c9a6526))
 - style(render): apply rustfmt to media_image.rs ([e760f46](https://github.com/unhappychoice/splashboard/commit/e760f46))
 - chore(deps)(deps): bump unicode-width from 0.2.0 to 0.2.2 ([a5debfd](https://github.com/unhappychoice/splashboard/commit/a5debfd))
