@@ -590,9 +590,9 @@
       "cache_write_5m": 0.125
     },
     "gpt-6-rosalind": {
-      "input": 15.0,
-      "output": 75.0,
-      "cache_read": 1.5,
+      "input": 10.0,
+      "output": 50.0,
+      "cache_read": 1.0,
       "cache_write_5m": 18.75
     },
     "gpt-6-sol": {
