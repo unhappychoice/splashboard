@@ -192,9 +192,9 @@ fn paint_cells(
     let rows = data.cells.len();
     let max_visible_rows = (area.height / CELL_H) as usize;
     let visible_rows = rows.min(max_visible_rows);
-    for r in 0..visible_rows {
+    for (r, row) in data.cells.iter().take(visible_rows).enumerate() {
         for c in 0..visible_cols {
-            let value = data.cells[r][c + col_offset];
+            let value = row[c + col_offset];
             let level = bucket(value, thresholds);
             let color = theme.heatmap_level(level);
             let x = area.x + (c as u16) * CELL_W;
