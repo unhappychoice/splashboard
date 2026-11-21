@@ -593,7 +593,7 @@
       "input": 10.0,
       "output": 50.0,
       "cache_read": 1.0,
-      "cache_write_5m": 18.75
+      "cache_write_5m": 12.5
     },
     "gpt-6-sol": {
       "input": 2.0,
